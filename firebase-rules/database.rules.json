@@ -1,0 +1,86 @@
+{
+  "rules": {
+    "users": {
+      "$uid": {
+        ".read": "auth != null && (auth.uid == $uid || root.child('users').child(auth.uid).child('role').val() == 'admin')",
+        ".write": "auth != null && (auth.uid == $uid || root.child('users').child(auth.uid).child('role').val() == 'admin')",
+        ".validate": "newData.hasChildren(['Email', 'FirstName', 'LastName'])",
+        "Email": {
+          ".validate": "newData.isString() && newData.val().matches(/^[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}$/i)"
+        },
+        "FirstName": {
+          ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 50"
+        },
+        "LastName": {
+          ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 50"
+        },
+        "isOnline": {
+          ".validate": "newData.isBoolean()"
+        },
+        "role": {
+          ".validate": "newData.isString() && newData.val().matches(/^(user|moderator|admin)$/)"
+        },
+        "Password": {
+          ".validate": "newData.isString() && newData.val().length >= 64"
+        },
+        "preferences": {
+          ".validate": "newData.hasChildren(['notifications', 'privacy'])"
+        }
+      }
+    },
+    "chats": {
+      "$chatId": {
+        ".read": "auth != null && (root.child('chats').child($chatId).child('participants').child(auth.uid).exists() || root.child('users').child(auth.uid).child('role').val() == 'admin')",
+        ".write": "auth != null && root.child('chats').child($chatId).child('participants').child(auth.uid).exists()",
+        "messages": {
+          "$messageId": {
+            ".read": "auth != null && (root.child('chats').child($chatId).child('participants').child(auth.uid).exists() || root.child('users').child(auth.uid).child('role').val() == 'admin')",
+            ".write": "auth != null && (newData.child('senderId').val() == auth.uid || root.child('users').child(auth.uid).child('role').val() == 'admin')",
+            ".validate": "newData.hasChildren(['message', 'senderId', 'senderName', 'timestamp'])",
+            "message": {
+              ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 1000 && newData.val().length >= 1"
+            },
+            "senderId": {
+              ".validate": "newData.isString() && newData.val() == auth.uid"
+            },
+            "timestamp": {
+              ".validate": "newData.isNumber()"
+            }
+          }
+        },
+        "participants": {
+          "$uid": {
+            ".validate": "newData.isBoolean()"
+          }
+        }
+      }
+    },
+    "emergency_alerts": {
+      "$alertId": {
+        ".read": "auth != null",
+        ".write": "auth != null && (newData.child('senderId').val() == auth.uid || root.child('users').child(auth.uid).child('role').val() == 'admin')",
+        ".validate": "newData.hasChildren(['message', 'location', 'senderId', 'timestamp', 'status'])",
+        "message": {
+          ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 500"
+        },
+        "location": {
+          ".validate": "newData.isString() && newData.val().length > 0"
+        },
+        "priority": {
+          ".validate": "newData.isString() && newData.val().matches(/^(low|medium|high|critical)$/)"
+        },
+        "status": {
+          ".validate": "newData.isString() && newData.val().matches(/^(active|acknowledged|in_progress|resolved|cancelled)$/)"
+        }
+      }
+    },
+    "analytics": {
+      ".read": "auth != null && root.child('users').child(auth.uid).child('role').val() == 'admin'",
+      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() == 'admin'"
+    },
+    "admin": {
+      ".read": "auth != null && root.child('users').child(auth.uid).child('role').val() == 'admin'",
+      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() == 'admin'"
+    }
+  }
+}
