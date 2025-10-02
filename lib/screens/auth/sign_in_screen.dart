@@ -4,8 +4,6 @@ import 'package:flutter_animate/flutter_animate.dart';
 import '../../constants/app_colors.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../../providers/auth_provider.dart';
-import '../../widgets/modern_action_button.dart';
-import '../../widgets/modern_neumorphic_card.dart';
 import '../../widgets/modern_responsive_layout.dart';
 import 'sign_up_screen.dart';
 import '../../services/firebase_service.dart';

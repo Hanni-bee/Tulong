@@ -201,7 +201,7 @@ class PasswordStrengthIndicator extends StatelessWidget {
                   ),
                 ],
               ),
-            )).toList(),
+            )),
           ] else ...[
             Row(
               children: [

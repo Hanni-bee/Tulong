@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'dart:math';
 import '../constants/app_colors.dart';
 
 // Simple floating card widget without any gradients or animations

@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 
 class InputValidator {
   static const int _minPasswordLength = 8;

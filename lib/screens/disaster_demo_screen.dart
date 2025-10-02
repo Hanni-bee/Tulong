@@ -768,7 +768,7 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
                 ),
               ],
             ),
-          )).toList(),
+          )),
         ],
       ),
     );

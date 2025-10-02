@@ -89,7 +89,7 @@ class NotificationService {
       'Emergency Alerts',
       description: 'Critical emergency notifications',
       importance: Importance.max,
-      sound: const RawResourceAndroidNotificationSound('emergency_alert'),
+      sound: RawResourceAndroidNotificationSound('emergency_alert'),
     );
 
     const messageChannel = AndroidNotificationChannel(

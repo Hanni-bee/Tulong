@@ -451,7 +451,7 @@ class _TutorialWalkthroughScreenState extends State<TutorialWalkthroughScreen>
                 ),
               ],
             ),
-          )).toList(),
+          )),
         ],
       ),
     );

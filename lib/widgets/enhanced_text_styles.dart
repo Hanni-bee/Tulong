@@ -178,36 +178,36 @@ class EnhancedText extends StatelessWidget {
 
 // Predefined text widgets for common use cases
 class PageTitle extends EnhancedText {
-  const PageTitle(String text, {super.key, super.textAlign, super.maxLines, super.overflow, super.color})
-      : super(text, style: EnhancedTextStyles.pageTitle);
+  const PageTitle(super.text, {super.key, super.textAlign, super.maxLines, super.overflow, super.color})
+      : super(style: EnhancedTextStyles.pageTitle);
 }
 
 class SectionTitle extends EnhancedText {
-  const SectionTitle(String text, {super.key, super.textAlign, super.maxLines, super.overflow, super.color})
-      : super(text, style: EnhancedTextStyles.sectionTitle);
+  const SectionTitle(super.text, {super.key, super.textAlign, super.maxLines, super.overflow, super.color})
+      : super(style: EnhancedTextStyles.sectionTitle);
 }
 
 class CardTitle extends EnhancedText {
-  const CardTitle(String text, {super.key, super.textAlign, super.maxLines, super.overflow, super.color})
-      : super(text, style: EnhancedTextStyles.cardTitle);
+  const CardTitle(super.text, {super.key, super.textAlign, super.maxLines, super.overflow, super.color})
+      : super(style: EnhancedTextStyles.cardTitle);
 }
 
 class BodyText extends EnhancedText {
-  const BodyText(String text, {super.key, super.textAlign, super.maxLines, super.overflow, super.color})
-      : super(text, style: EnhancedTextStyles.bodyMedium);
+  const BodyText(super.text, {super.key, super.textAlign, super.maxLines, super.overflow, super.color})
+      : super(style: EnhancedTextStyles.bodyMedium);
 }
 
 class LabelText extends EnhancedText {
-  const LabelText(String text, {super.key, super.textAlign, super.maxLines, super.overflow, super.color})
-      : super(text, style: EnhancedTextStyles.labelLarge);
+  const LabelText(super.text, {super.key, super.textAlign, super.maxLines, super.overflow, super.color})
+      : super(style: EnhancedTextStyles.labelLarge);
 }
 
 class CaptionText extends EnhancedText {
-  const CaptionText(String text, {super.key, super.textAlign, super.maxLines, super.overflow, super.color})
-      : super(text, style: EnhancedTextStyles.caption);
+  const CaptionText(super.text, {super.key, super.textAlign, super.maxLines, super.overflow, super.color})
+      : super(style: EnhancedTextStyles.caption);
 }
 
 class AccentText extends EnhancedText {
-  const AccentText(String text, {super.key, super.textAlign, super.maxLines, super.overflow})
-      : super(text, style: EnhancedTextStyles.accentText);
+  const AccentText(super.text, {super.key, super.textAlign, super.maxLines, super.overflow})
+      : super(style: EnhancedTextStyles.accentText);
 }

@@ -104,7 +104,7 @@ class OfflineSyncService {
             total: total,
           ));
           
-          debugPrint('✅ Synced operation ${operation['type']} (${completed}/$total)');
+          debugPrint('✅ Synced operation ${operation['type']} ($completed/$total)');
         } catch (e) {
           debugPrint('❌ Failed to sync operation ${operation['type']}: $e');
           // Keep failed operations for retry

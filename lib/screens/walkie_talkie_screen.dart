@@ -3,9 +3,6 @@ import '../constants/app_colors.dart';
 import '../widgets/modern_floating_layout.dart';
 import '../widgets/enhanced_text_styles.dart';
 import '../widgets/enhanced_shadows.dart' as shadows;
-import '../widgets/micro_interactions.dart';
-import '../widgets/enhanced_icons.dart';
-import '../widgets/floating_background_elements.dart';
 
 class WalkieTalkieScreen extends StatefulWidget {
   const WalkieTalkieScreen({super.key});

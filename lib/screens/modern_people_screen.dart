@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:provider/provider.dart';
 import '../constants/app_colors.dart';
-import '../providers/network_provider.dart';
 import '../widgets/animated_neumorphic_card.dart';
 import '../widgets/modern_user_card.dart';
 import '../widgets/modern_responsive_layout.dart';

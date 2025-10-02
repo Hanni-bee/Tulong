@@ -25,7 +25,7 @@ class _ModernGlobalChatScreenState extends State<ModernGlobalChatScreen> {
   final ScrollController _scrollController = ScrollController();
   bool _isTyping = false;
   String _typingUser = '';
-  bool _isConnected = true;
+  final bool _isConnected = true;
   
   // Sample global chat messages
   final List<Map<String, dynamic>> _messages = [
