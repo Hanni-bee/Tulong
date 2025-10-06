@@ -58,25 +58,32 @@ class _SignInScreenState extends State<SignInScreen> {
         }
       } else {
         // Regular sign-in without 2FA
-        try {
-          // Try Firebase first (online)
-          final firebaseUser = await FirebaseService().signInWithEmail(email: email, password: password);
-          if (firebaseUser?.user != null) {
-            await authProvider.setAuthenticated(email: email, name: email.split('@')[0]);
-          } else {
-            throw Exception('Firebase sign-in returned no user');
+        // Try SQLite first (offline-first approach)
+        final offlineSuccess = await authProvider.loginOffline(email, password);
+        
+        if (offlineSuccess) {
+          // Offline login successful - attempt Firebase sync if online
+          print('Offline login successful for: $email');
+          
+          // Try to sync with Firebase in background (non-blocking)
+          _attemptFirebaseSync(email, password);
+        } else {
+          // Try Firebase as backup (online)
+          try {
+            final firebaseUser = await FirebaseService().signInWithEmail(email: email, password: password);
+            if (firebaseUser?.user != null) {
+              await authProvider.setAuthenticated(email: email, name: email.split('@')[0]);
+              print('Online login successful for: $email');
+            } else {
+              throw Exception('Firebase sign-in returned no user');
+            }
+          } catch (firebaseError) {
+            print('Both offline and online login failed for: $email');
+            throw Exception('Invalid email or password');
           }
-        } catch (_) {
-          // Fallback to offline SQLite
-          final user = await OfflineAuthService().signInOffline(email: email, password: password);
-          await authProvider.setAuthenticated(email: email, name: user['first_name'] != null ? '${user['first_name']} ${user['last_name']}' : email.split('@')[0]);
         }
 
         if (mounted) {
-          // Mark tutorial as completed for existing users (they've signed in before)
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setBool('tutorial_completed', true);
-          
           // Navigate to splash screen to handle tutorial logic
           Navigator.of(context).pushReplacementNamed('/');
         }
@@ -117,10 +124,6 @@ class _SignInScreenState extends State<SignInScreen> {
         final updatedAuthProvider = Provider.of<AuthProvider>(context, listen: false);
 
         if (updatedAuthProvider.isAuthenticated && updatedAuthProvider.currentUser != null) {
-          // Mark tutorial as completed for existing users (they've signed in before)
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setBool('tutorial_completed', true);
-
           // Navigate to splash screen to handle tutorial logic
           Navigator.of(context).pushReplacementNamed('/');
         } else {
@@ -452,5 +455,52 @@ class _SignInScreenState extends State<SignInScreen> {
         ),
       ),
     );
+  }
+
+  // Attempt Firebase sync in background (non-blocking)
+  void _attemptFirebaseSync(String email, String password) async {
+    try {
+      print('Attempting Firebase sync for: $email');
+      
+      // Check if we have internet connectivity
+      final firebaseService = FirebaseService();
+      final userCredential = await firebaseService.signInWithEmail(email: email, password: password);
+      
+      if (userCredential?.user != null) {
+        // Firebase sync successful - update user data
+        final authProvider = Provider.of<AuthProvider>(context, listen: false);
+        await authProvider.setAuthenticated(email: email, name: email.split('@')[0]);
+        
+        // Mark user as synced in SQLite
+        await authProvider.markUserAsSynced(email);
+        
+        print('Firebase sync successful for: $email');
+        
+        // Show success message to user
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Account synced with server'),
+              backgroundColor: AppColors.success,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      // Firebase sync failed - user can still use app offline
+      print('Firebase sync failed for: $email - $e');
+      
+      // Show info message to user
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Using offline mode - will sync when online'),
+            backgroundColor: AppColors.info,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    }
   }
 }

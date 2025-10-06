@@ -127,8 +127,7 @@ class CustomButton extends StatelessWidget {
     switch (variant) {
       case ButtonVariant.primary:
         return _ButtonStyle(
-          gradient: AppColors.premiumRedGradient,
-          backgroundColor: null,
+          backgroundColor: AppColors.premiumRedGradient,
           textColor: AppColors.white,
           border: Border.all(color: AppColors.white.withOpacity(0.2), width: 1),
           borderRadius: AppSpacing.radiusXl,

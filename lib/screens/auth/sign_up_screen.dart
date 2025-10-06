@@ -199,29 +199,31 @@ class _SignUpScreenState extends State<SignUpScreen> {
           zipCode: _zipCodeController.text.trim(),
         );
         // Mirror into SQLite for offline
-        user = await OfflineAuthService().signUpOffline(
-        firstName: _firstNameController.text.trim(),
-        lastName: _lastNameController.text.trim(),
+        final authProvider = Provider.of<AuthProvider>(context, listen: false);
+        user = await authProvider.signupOffline(
           email: email,
-        address: _addressController.text.trim(),
-        region: _selectedRegion ?? '',
-        city: _selectedProvince ?? '', // Using province as city for now
-        barangay: _selectedBarangay ?? '',
-        zipCode: _zipCodeController.text.trim(),
           password: pwd,
-      );
+          firstName: _firstNameController.text.trim(),
+          lastName: _lastNameController.text.trim(),
+          address: _addressController.text.trim(),
+          region: _selectedRegion ?? '',
+          city: _selectedProvince ?? '', // Using province as city for now
+          barangay: _selectedBarangay ?? '',
+          zipCode: _zipCodeController.text.trim(),
+        );
       } catch (_) {
         // Offline path only
-        user = await OfflineAuthService().signUpOffline(
+        final authProvider = Provider.of<AuthProvider>(context, listen: false);
+        user = await authProvider.signupOffline(
+          email: email,
+          password: pwd,
           firstName: first,
           lastName: last,
-          email: email,
           address: _addressController.text.trim(),
           region: _selectedRegion ?? '',
           city: _selectedProvince ?? '',
           barangay: _selectedBarangay ?? '',
           zipCode: _zipCodeController.text.trim(),
-          password: pwd,
         );
       }
 

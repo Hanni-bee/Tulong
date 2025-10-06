@@ -35,127 +35,48 @@ class AppColors {
   static const Color backgroundLight = Color(0xFFFAFAFA);
   static const Color backgroundDark = Color(0xFF212121);
   static const Color cardBackground = Color(0xFFFFFFFF);
-  static const Color glassBackground = Color(0x1AFFFFFF);
-  
+
   // Text colors with better contrast
   static const Color textPrimary = Color(0xFF1A1A1A);
   static const Color textSecondary = Color(0xFF6B7280);
   static const Color textWhite = Color(0xFFFFFFFF);
   static const Color textLight = Color(0xFF9CA3AF);
-  
+
   // Border and shadow colors
   static const Color borderColor = Color(0xFFE5E7EB);
   static const Color shadowColor = Color(0x0A000000);
-  static const Color glassBorder = Color(0x33FFFFFF);
   
-  // Modern gradient colors with enhanced red theme
-  static const LinearGradient primaryGradient = LinearGradient(
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-    colors: [primaryRedDark, primaryRed, primaryRedAccent],
-    stops: [0.0, 0.5, 1.0],
-  );
-
-  static const LinearGradient backgroundGradient = LinearGradient(
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-    colors: [Color(0xFFF8F9FA), Color(0xFFFFFFFF)],
-  );
-
-  static const LinearGradient cardGradient = LinearGradient(
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-    colors: [white, Color(0xFFF8F9FA)],
-  );
-
-  static const LinearGradient glassGradient = LinearGradient(
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-    colors: [Color(0x1AFFFFFF), Color(0x0DFFFFFF)],
-  );
-
-  // Enhanced red gradients with sophisticated effects
-  static const LinearGradient redGradient = LinearGradient(
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-    colors: [primaryRedDark, primaryRed, primaryRedAccent],
-    stops: [0.0, 0.6, 1.0],
-  );
-
-  // Premium gradient system
-  static const LinearGradient premiumRedGradient = LinearGradient(
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-    colors: [Color(0xFFB71C1C), Color(0xFFD32F2F), Color(0xFFE53935)],
-    stops: [0.0, 0.5, 1.0],
-  );
-
-  static const LinearGradient subtleRedGradient = LinearGradient(
-    begin: Alignment.topCenter,
-    end: Alignment.bottomCenter,
-    colors: [Color(0xFFFCE4EC), Color(0xFFFFEBEE)],
-  );
-
-  static const LinearGradient successGradient = LinearGradient(
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-    colors: [Color(0xFF2E7D32), Color(0xFF4CAF50)],
-  );
-
-  static const LinearGradient warningGradient = LinearGradient(
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-    colors: [Color(0xFFF57C00), Color(0xFFFF9800)],
-  );
-
-  static const LinearGradient infoGradient = LinearGradient(
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-    colors: [Color(0xFF1976D2), Color(0xFF2196F3)],
-  );
-
-  static const LinearGradient redGlassGradient = LinearGradient(
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-    colors: [Color(0x40D32F2F), Color(0x20D32F2F)],
-  );
-
-  static const LinearGradient buttonGradient = LinearGradient(
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-    colors: [primaryRedDark, primaryRed, primaryRedAccent],
-    stops: [0.0, 0.5, 1.0],
-  );
-
-  static const LinearGradient glassButtonGradient = LinearGradient(
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-    colors: [Color(0x60FFFFFF), Color(0x30FFFFFF)],
-  );
-
-  // Premium glassmorphism gradients
-  static const LinearGradient premiumGlassGradient = LinearGradient(
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-    colors: [Color(0x25FFFFFF), Color(0x10FFFFFF)],
-  );
-
-  static const LinearGradient cardGlassGradient = LinearGradient(
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-    colors: [Color(0x30FFFFFF), Color(0x15FFFFFF)],
-  );
-
-  // Error and status gradients
-  static const LinearGradient errorGradient = LinearGradient(
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-    colors: [Color(0xFFD32F2F), Color(0xFFEF4444)],
-  );
-
-  // Enhanced shadow colors
-  static const Color premiumShadow = Color(0x1A000000);
-  static const Color glassShadow = Color(0x0D000000);
+  // Emergency-ready neumorphic shadows and colors
   static const Color redShadow = Color(0x33D32F2F);
+  static const Color neumorphicShadow = Color(0x1A000000);
+  static const Color neumorphicHighlight = Color(0xFFFFFFFF);
+
+  // Emergency status colors with enhanced contrast
+  static const Color emergencyRed = Color(0xFFE53E3E);      // Emergency alerts
+  static const Color warningOrange = Color(0xFFED8936);     // Warnings
+  static const Color successGreen = Color(0xFF38A169);      // Success/connected
+  static const Color infoBlue = Color(0xFF3182CE);          // Information
+  static const Color offlineGray = Color(0xFF718096);       // Offline/disconnected
+
+  // Emergency UI backgrounds
+  static const Color emergencyBackground = Color(0xFFFFFAFA); // Light emergency background
+  static const Color criticalBackground = Color(0xFFFEE2E2);  // Critical alert background
+  static const Color warningBackground = Color(0xFFFFF3CD);   // Warning background
+  static const Color successBackground = Color(0xFFF0FFF4);   // Success background
+
+  // High contrast text colors for emergency situations
+  static const Color emergencyText = Color(0xFF1A202C);      // Dark text for light backgrounds
+  static const Color criticalText = Color(0xFF742A2A);      // Dark red text
+  static const Color warningText = Color(0xFF744210);       // Dark orange text
+  static const Color successText = Color(0xFF22543D);       // Dark green text
+
+  // Solid color replacements for gradients (no gradients/glass effects)
+  static const Color primaryGradient = Color(0xFFD32F2F);  // Solid red instead of gradient
+  static const Color backgroundGradient = Color(0xFFFAFAFA);  // Solid background
+  static const Color cardGradient = Color(0xFFFFFFFF);  // Solid white
+  static const Color premiumRedGradient = Color(0xFFD32F2F);  // Solid red
+  static const Color errorGradient = Color(0xFFEF4444);  // Solid error red
+  static const Color cardGlassGradient = Color(0xFFFFFFFF);  // Solid white
+  static const Color glassBorder = Color(0xFFE5E7EB);  // Solid border
   
 }

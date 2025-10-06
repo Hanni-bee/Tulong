@@ -3,12 +3,13 @@ import '../constants/app_colors.dart';
 import '../constants/app_typography.dart';
 import '../constants/app_spacing.dart';
 
-class EnhancedCard extends StatelessWidget {
+class EnhancedCard extends StatefulWidget {
   final Widget child;
   final EdgeInsets? padding;
   final EdgeInsets? margin;
   final CardVariant variant;
   final CardSize size;
+  final CardState state;
   final bool isElevated;
   final bool isInteractive;
   final VoidCallback? onTap;
@@ -18,14 +19,18 @@ class EnhancedCard extends StatelessWidget {
   final Widget? header;
   final Widget? footer;
   final bool isLoading;
+  final bool enableHoverEffects;
+  final bool enablePressEffects;
+  final Duration animationDuration;
 
   const EnhancedCard({
     super.key,
     required this.child,
     this.padding,
     this.margin,
-    this.variant = CardVariant.defaultCard,
+    this.variant = CardVariant.elevated,
     this.size = CardSize.medium,
+    this.state = CardState.normal,
     this.isElevated = true,
     this.isInteractive = false,
     this.onTap,
@@ -35,75 +40,189 @@ class EnhancedCard extends StatelessWidget {
     this.header,
     this.footer,
     this.isLoading = false,
+    this.enableHoverEffects = true,
+    this.enablePressEffects = true,
+    this.animationDuration = const Duration(milliseconds: 200),
   });
+
+  @override
+  State<EnhancedCard> createState() => _EnhancedCardState();
+}
+
+class _EnhancedCardState extends State<EnhancedCard> with TickerProviderStateMixin {
+  late AnimationController _animationController;
+  late AnimationController _hoverController;
+  late Animation<double> _scaleAnimation;
+  late Animation<double> _elevationAnimation;
+  late Animation<double> _hoverAnimation;
+
+  bool _isHovered = false;
+  bool _isPressed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _animationController = AnimationController(
+      duration: widget.animationDuration,
+      vsync: this,
+    );
+
+    _hoverController = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+
+    _scaleAnimation = Tween<double>(
+      begin: 1.0,
+      end: 0.98,
+    ).animate(CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeInOut,
+    ));
+
+    _elevationAnimation = Tween<double>(
+      begin: 8.0,
+      end: 2.0,
+    ).animate(CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeInOut,
+    ));
+
+    _hoverAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _hoverController,
+      curve: Curves.easeOutCubic,
+    ));
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    _hoverController.dispose();
+    super.dispose();
+  }
+
+  void _handleTapDown(TapDownDetails details) {
+    if (widget.enablePressEffects && widget.onTap != null && widget.state != CardState.disabled) {
+      setState(() => _isPressed = true);
+      _animationController.forward();
+    }
+  }
+
+  void _handleTapUp(TapUpDetails details) {
+    if (widget.enablePressEffects && widget.onTap != null && widget.state != CardState.disabled) {
+      setState(() => _isPressed = false);
+      _animationController.reverse();
+    }
+  }
+
+  void _handleTapCancel() {
+    if (widget.enablePressEffects && widget.state != CardState.disabled) {
+      setState(() => _isPressed = false);
+      _animationController.reverse();
+    }
+  }
+
+  void _handleHoverEnter(PointerEvent event) {
+    if (widget.enableHoverEffects && widget.state != CardState.disabled) {
+      setState(() => _isHovered = true);
+      _hoverController.forward();
+    }
+  }
+
+  void _handleHoverExit(PointerEvent event) {
+    if (widget.enableHoverEffects) {
+      setState(() => _isHovered = false);
+      _hoverController.reverse();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final cardStyle = _getCardStyle();
-    
-    Widget cardContent = Container(
-      margin: margin ?? EdgeInsets.zero,
-      decoration: BoxDecoration(
-        gradient: cardStyle.gradient,
-        color: cardStyle.backgroundColor,
-        borderRadius: BorderRadius.circular(cardStyle.borderRadius),
-        border: cardStyle.border,
-        boxShadow: isElevated ? cardStyle.shadows : [],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: isInteractive ? onTap : null,
-          borderRadius: BorderRadius.circular(cardStyle.borderRadius),
-          child: Container(
-            padding: padding ?? _getPadding(),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Header
-                if (header != null || title != null) ...[
-                  _buildHeader(),
-                  const SizedBox(height: AppSpacing.md),
-                ],
-                
-                // Content
-                if (isLoading)
-                  _buildLoadingContent()
-                else
-                  child,
-                
-                // Footer
-                if (footer != null) ...[
-                  const SizedBox(height: AppSpacing.md),
-                  footer!,
-                ],
-              ],
+
+    return AnimatedBuilder(
+      animation: Listenable.merge([_animationController, _hoverController]),
+      builder: (context, child) {
+        return Transform.scale(
+          scale: _scaleAnimation.value * (1.0 + (_hoverAnimation.value * 0.02)),
+          child: MouseRegion(
+            onEnter: _handleHoverEnter,
+            onExit: _handleHoverExit,
+            child: GestureDetector(
+              onTapDown: _handleTapDown,
+              onTapUp: _handleTapUp,
+              onTapCancel: _handleTapCancel,
+              onTap: widget.state != CardState.disabled ? widget.onTap : null,
+              child: Opacity(
+                opacity: widget.state == CardState.disabled ? 0.6 : 1.0,
+                child: Container(
+                  margin: widget.margin ?? EdgeInsets.zero,
+                  decoration: BoxDecoration(
+                    gradient: cardStyle.gradient,
+                    color: cardStyle.backgroundColor,
+                    borderRadius: BorderRadius.circular(cardStyle.borderRadius),
+                    border: cardStyle.border,
+                    boxShadow: widget.isElevated ? _getDynamicShadows(cardStyle.shadows) : [],
+                  ),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: Container(
+                      padding: widget.padding ?? _getPadding(),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Header
+                          if (widget.header != null || widget.title != null) ...[
+                            _buildHeader(),
+                            const SizedBox(height: AppSpacing.md),
+                          ],
+
+                          // Content
+                          if (widget.isLoading)
+                            _buildLoadingContent()
+                          else
+                            widget.child,
+
+                          // Footer
+                          if (widget.footer != null) ...[
+                            const SizedBox(height: AppSpacing.md),
+                            widget.footer!,
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
-
-    return cardContent;
   }
 
   Widget _buildHeader() {
-    if (header != null) return header!;
-    
+    if (widget.header != null) return widget.header!;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (title != null)
+        if (widget.title != null)
           Text(
-            title!,
+            widget.title!,
             style: AppTypography.headlineSmall.copyWith(
-              color: AppColors.textPrimary,
+              color: widget.state == CardState.disabled
+                ? AppColors.textSecondary
+                : AppColors.textPrimary,
             ),
           ),
-        if (subtitle != null) ...[
+        if (widget.subtitle != null) ...[
           const SizedBox(height: AppSpacing.xs),
           Text(
-            subtitle!,
+            widget.subtitle!,
             style: AppTypography.bodyMedium.copyWith(
               color: AppColors.textSecondary,
             ),
@@ -115,18 +234,18 @@ class EnhancedCard extends StatelessWidget {
 
   Widget _buildLoadingContent() {
     return SizedBox(
-      height: 120, // Increased for better loading content display
+      height: _getLoadingHeight(),
       child: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             SizedBox(
-              width: 24,
-              height: 24,
+              width: 28,
+              height: 28,
               child: CircularProgressIndicator(
-                strokeWidth: 2,
+                strokeWidth: 3,
                 valueColor: AlwaysStoppedAnimation<Color>(
-                  accentColor ?? AppColors.primaryRed,
+                  widget.accentColor ?? AppColors.primaryRed,
                 ),
               ),
             ),
@@ -143,12 +262,60 @@ class EnhancedCard extends StatelessWidget {
     );
   }
 
+  double _getLoadingHeight() {
+    switch (widget.size) {
+      case CardSize.small:
+        return 80;
+      case CardSize.medium:
+        return 120;
+      case CardSize.large:
+        return 160;
+    }
+  }
+
+  List<BoxShadow> _getDynamicShadows(List<BoxShadow> baseShadows) {
+    if (widget.state == CardState.disabled) {
+      return [
+        BoxShadow(
+          color: Colors.black.withOpacity(0.05),
+          blurRadius: 4,
+          offset: const Offset(0, 2),
+        ),
+      ];
+    }
+
+    if (_isPressed) {
+      return [
+        BoxShadow(
+          color: Colors.black.withOpacity(0.08),
+          blurRadius: 4,
+          offset: const Offset(0, 2),
+        ),
+      ];
+    }
+
+    if (_isHovered) {
+      return baseShadows.map((shadow) {
+        return BoxShadow(
+          color: shadow.color,
+          blurRadius: (shadow.blurRadius * 1.3).clamp(0.0, 40.0),
+          offset: Offset(
+            shadow.offset.dx,
+            (shadow.offset.dy * 1.2).clamp(-10.0, 20.0),
+          ),
+          spreadRadius: (shadow.spreadRadius ?? 0) + 2,
+        );
+      }).toList();
+    }
+
+    return baseShadows;
+  }
+
   _CardStyle _getCardStyle() {
-    switch (variant) {
-      case CardVariant.defaultCard:
+    switch (widget.variant) {
+      case CardVariant.elevated:
         return _CardStyle(
-          gradient: AppColors.cardGlassGradient,
-          backgroundColor: null,
+          backgroundColor: AppColors.cardGlassGradient,
           border: Border.all(
             color: AppColors.glassBorder,
             width: 1,
@@ -161,43 +328,20 @@ class EnhancedCard extends StatelessWidget {
               offset: Offset(0, 8),
             ),
             BoxShadow(
-              color: AppColors.white.withOpacity(0.1),
+              color: AppColors.neumorphicHighlight.withOpacity(0.8),
               blurRadius: 10,
               offset: const Offset(0, -2),
             ),
           ],
         );
-      case CardVariant.accentCard:
-        return _CardStyle(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              (accentColor ?? AppColors.primaryRed).withOpacity(0.1),
-              (accentColor ?? AppColors.primaryRed).withOpacity(0.05),
-            ],
-          ),
-          backgroundColor: null,
-          border: Border.all(
-            color: (accentColor ?? AppColors.primaryRed).withOpacity(0.3),
-            width: 1,
-          ),
-          borderRadius: AppSpacing.radiusXl,
-          shadows: [
-            BoxShadow(
-              color: (accentColor ?? AppColors.primaryRed).withOpacity(0.2),
-              blurRadius: 15,
-              offset: const Offset(0, 5),
-            ),
-          ],
-        );
-      case CardVariant.flatCard:
+
+      case CardVariant.outlined:
         return _CardStyle(
           gradient: null,
           backgroundColor: AppColors.white,
           border: Border.all(
-            color: AppColors.lightGray,
-            width: 1,
+            color: AppColors.borderColor,
+            width: 1.5,
           ),
           borderRadius: AppSpacing.radiusLg,
           shadows: [
@@ -208,25 +352,144 @@ class EnhancedCard extends StatelessWidget {
             ),
           ],
         );
-      case CardVariant.glassCard:
+
+      case CardVariant.filled:
         return _CardStyle(
-          gradient: AppColors.premiumGlassGradient,
+          gradient: null,
+          backgroundColor: widget.accentColor ?? AppColors.primaryRed.withOpacity(0.05),
+          border: Border.all(
+            color: (widget.accentColor ?? AppColors.primaryRed).withOpacity(0.2),
+            width: 1,
+          ),
+          borderRadius: AppSpacing.radiusXl,
+          shadows: [
+            BoxShadow(
+              color: (widget.accentColor ?? AppColors.primaryRed).withOpacity(0.15),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        );
+
+      // Removed gradient case - no gradients allowed
+        return _CardStyle(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              (widget.accentColor ?? AppColors.primaryRed).withOpacity(0.8),
+              (widget.accentColor ?? AppColors.primaryRed).withOpacity(0.4),
+              (widget.accentColor ?? AppColors.primaryRed).withOpacity(0.9),
+            ],
+          ),
           backgroundColor: null,
           border: Border.all(
-            color: AppColors.glassBorder,
-            width: 1.5,
+            color: (widget.accentColor ?? AppColors.primaryRed).withOpacity(0.3),
+            width: 1,
           ),
           borderRadius: AppSpacing.radiusXxl,
           shadows: [
             BoxShadow(
-              color: AppColors.white.withOpacity(0.2),
-              blurRadius: 25,
+              color: (widget.accentColor ?? AppColors.primaryRed).withOpacity(0.25),
+              blurRadius: 20,
+              offset: const Offset(0, 8),
+            ),
+            BoxShadow(
+              color: Colors.white.withOpacity(0.1),
+              blurRadius: 10,
+              offset: const Offset(0, -2),
+            ),
+          ],
+        );
+
+      case CardVariant.neumorphic:
+        return _CardStyle(
+          gradient: null,
+          backgroundColor: AppColors.white,
+          border: null,
+          borderRadius: AppSpacing.radiusXxl,
+          shadows: [
+            BoxShadow(
+              color: AppColors.neumorphicShadow,
+              blurRadius: 20,
               offset: const Offset(0, 10),
             ),
-            const BoxShadow(
-              color: AppColors.redShadow,
+            BoxShadow(
+              color: AppColors.neumorphicHighlight,
+              blurRadius: 20,
+              offset: const Offset(0, -10),
+            ),
+          ],
+        );
+
+      case CardVariant.emergency:
+        return _CardStyle(
+          gradient: null,
+          backgroundColor: AppColors.criticalBackground,
+          border: Border.all(
+            color: AppColors.emergencyRed,
+            width: 2,
+          ),
+          borderRadius: AppSpacing.radiusLg,
+          shadows: [
+            BoxShadow(
+              color: AppColors.emergencyRed.withOpacity(0.3),
               blurRadius: 15,
-              offset: Offset(0, 5),
+              offset: const Offset(0, 8),
+            ),
+          ],
+        );
+
+      case CardVariant.status:
+        return _CardStyle(
+          gradient: null,
+          backgroundColor: AppColors.emergencyBackground,
+          border: Border.all(
+            color: AppColors.borderColor,
+            width: 1,
+          ),
+          borderRadius: AppSpacing.radiusMd,
+          shadows: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        );
+
+      case CardVariant.alert:
+        return _CardStyle(
+          gradient: null,
+          backgroundColor: AppColors.warningBackground,
+          border: Border.all(
+            color: AppColors.warningOrange,
+            width: 1.5,
+          ),
+          borderRadius: AppSpacing.radiusLg,
+          shadows: [
+            BoxShadow(
+              color: AppColors.warningOrange.withOpacity(0.2),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        );
+
+      case CardVariant.network:
+        return _CardStyle(
+          gradient: null,
+          backgroundColor: AppColors.successBackground,
+          border: Border.all(
+            color: AppColors.successGreen,
+            width: 1,
+          ),
+          borderRadius: AppSpacing.radiusMd,
+          shadows: [
+            BoxShadow(
+              color: AppColors.successGreen.withOpacity(0.15),
+              blurRadius: 10,
+              offset: const Offset(0, 3),
             ),
           ],
         );
@@ -234,7 +497,7 @@ class EnhancedCard extends StatelessWidget {
   }
 
   EdgeInsets _getPadding() {
-    switch (size) {
+    switch (widget.size) {
       case CardSize.small:
         return const EdgeInsets.all(AppSpacing.md);
       case CardSize.medium:
@@ -245,8 +508,30 @@ class EnhancedCard extends StatelessWidget {
   }
 }
 
-enum CardVariant { defaultCard, accentCard, flatCard, glassCard }
-enum CardSize { small, medium, large }
+enum CardVariant {
+  elevated,    // Default elevated card with neumorphism
+  outlined,    // Clean outlined card
+  filled,      // Subtle filled card with accent color
+  neumorphic,  // Premium neumorphic card
+  emergency,   // Emergency alert card with high contrast
+  status,      // Status indicator card
+  alert,       // Alert/notification card
+  network,     // Network status card
+}
+
+enum CardSize {
+  small,       // Compact card for lists
+  medium,      // Standard card size
+  large,       // Large card for hero sections
+}
+
+enum CardState {
+  normal,      // Default interactive state
+  hovered,     // Mouse hover state (desktop)
+  pressed,     // Touch press state (mobile)
+  disabled,    // Non-interactive state
+  loading,     // Loading state
+}
 
 class _CardStyle {
   final LinearGradient? gradient;

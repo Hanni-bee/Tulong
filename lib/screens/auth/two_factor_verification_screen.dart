@@ -145,10 +145,6 @@ class _TwoFactorVerificationScreenState extends State<TwoFactorVerificationScree
           );
 
           if (mounted) {
-            // Mark tutorial as completed for existing users (they've signed in before)
-            final prefs = await SharedPreferences.getInstance();
-            await prefs.setBool('tutorial_completed', true);
-            
             // Navigate to splash screen to handle tutorial logic
             Navigator.of(context).pushReplacementNamed('/');
           }

@@ -5,6 +5,8 @@ import '../constants/app_colors.dart';
 import '../providers/network_provider.dart';
 import '../utils/responsive_spacing.dart';
 import '../utils/phone_responsive_helper.dart';
+import '../widgets/enhanced_card.dart';
+import '../widgets/enhanced_text_styles.dart';
 import 'modern_home_screen.dart';
 import 'modern_global_chat_screen.dart';
 import 'walkie_talkie_screen.dart';
@@ -21,6 +23,8 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
   int _currentIndex = 0;
   late PageController _pageController;
   late AnimationController _animationController;
+  late AnimationController _statusController;
+  late Animation<double> _statusAnimation;
   
   final List<Widget> _screens = [
     const ModernHomeScreen(),
@@ -64,7 +68,20 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
       duration: const Duration(milliseconds: 300),
       vsync: this,
     );
-    
+
+    _statusController = AnimationController(
+      duration: const Duration(milliseconds: 2000),
+      vsync: this,
+    )..repeat(reverse: true);
+
+    _statusAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _statusController,
+      curve: Curves.easeInOut,
+    ));
+
     // Initialize network connection
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final networkProvider = Provider.of<NetworkProvider>(context, listen: false);
@@ -76,6 +93,7 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
   void dispose() {
     _pageController.dispose();
     _animationController.dispose();
+    _statusController.dispose();
     super.dispose();
   }
 
@@ -99,46 +117,95 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: PageView.builder(
-        controller: _pageController,
-        onPageChanged: _onPageChanged,
-        itemCount: _screens.length,
-        itemBuilder: (context, index) {
-          final screen = _screens[index];
-          final isCurrent = index == _currentIndex;
-          return AnimatedOpacity(
-            duration: const Duration(milliseconds: 120),
-            opacity: isCurrent ? 1.0 : 0.9,
-            child: screen,
-          );
-        },
+      body: Stack(
+        children: [
+          // Background gradient for visual depth
+          Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Color(0xFFF8F9FA),
+                  Color(0xFFF1F3F4),
+                  Color(0xFFE8EAED),
+                ],
+                stops: [0.0, 0.5, 1.0],
+              ),
+            ),
+          ),
+
+          // Page content
+          PageView.builder(
+            controller: _pageController,
+            onPageChanged: _onPageChanged,
+            itemCount: _screens.length,
+            itemBuilder: (context, index) {
+              final screen = _screens[index];
+              final isCurrent = index == _currentIndex;
+              return AnimatedOpacity(
+                duration: const Duration(milliseconds: 150),
+                opacity: isCurrent ? 1.0 : 0.85,
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.white.withOpacity(0.95),
+                        Colors.white.withOpacity(0.9),
+                      ],
+                    ),
+                  ),
+                  child: screen,
+                ),
+              );
+            },
+          ),
+
+
+        ],
       ),
       bottomNavigationBar: PhoneResponsiveBuilder(
         builder: (context, screenSize) {
           return Container(
-            height: PhoneResponsiveHelper.getPhoneBottomNavHeight(context),
+            height: PhoneResponsiveHelper.getPhoneBottomNavHeight(context) + 8,
             padding: EdgeInsets.zero,
             child: Stack(
+              clipBehavior: Clip.none,
               children: [
-                // Floating bottom bar background
+                // Enhanced floating bottom bar background
                 Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
+                  left: 16,
+                  right: 16,
+                  bottom: 8,
                   child: Container(
                     height: PhoneResponsiveHelper.getPhoneBottomNavHeight(context),
                     decoration: BoxDecoration(
-                      color: AppColors.white,
-                      borderRadius: BorderRadius.circular(PhoneResponsiveHelper.getPhoneBorderRadius(context) * 1.25),
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          Colors.white.withOpacity(0.95),
+                          Colors.white.withOpacity(0.9),
+                          Colors.white.withOpacity(0.85),
+                        ],
+                      ),
+                      borderRadius: BorderRadius.circular(PhoneResponsiveHelper.getPhoneBorderRadius(context) * 1.5),
                       border: Border.all(
-                        color: AppColors.primaryRed.withOpacity(0.08),
-                        width: 1,
+                        color: AppColors.borderColor.withOpacity(0.3),
+                        width: 1.5,
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: AppColors.primaryRed.withOpacity(0.05),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
+                          color: Colors.black.withOpacity(0.08),
+                          blurRadius: 20,
+                          offset: const Offset(0, 8),
+                        ),
+                        BoxShadow(
+                          color: Colors.white.withOpacity(0.6),
+                          blurRadius: 15,
+                          offset: const Offset(0, -4),
                         ),
                       ],
                     ),
@@ -158,6 +225,7 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
                     ),
                   ),
                 ),
+
               ],
             ),
           );
@@ -214,7 +282,7 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
               ),
               child: Icon(
                 isSelected ? item.activeIcon : item.icon,
-                color: isSelected ? Colors.white : AppColors.mediumGray,
+                color: isSelected ? Colors.white : Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
                 size: 20,
               ),
             ),
@@ -222,7 +290,7 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
             AnimatedDefaultTextStyle(
               duration: const Duration(milliseconds: 200),
               style: TextStyle(
-                color: isSelected ? item.color : AppColors.mediumGray,
+                color: isSelected ? item.color : Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
                 fontSize: 10,
                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
               ),
@@ -240,62 +308,127 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
 
   Widget _buildModernNavItem(int index, NavigationItem item) {
     final isSelected = _currentIndex == index;
-    
+
     return Expanded(
       child: GestureDetector(
         onTap: () => _onTabTapped(index),
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 250),
+          duration: const Duration(milliseconds: 300),
           curve: Curves.easeInOut,
-          height: 52,
-          margin: const EdgeInsets.symmetric(horizontal: 2),
+          height: 60,
+          margin: const EdgeInsets.symmetric(horizontal: 4),
           decoration: BoxDecoration(
-            color: isSelected ? item.color.withOpacity(0.12) : Colors.transparent,
-            borderRadius: BorderRadius.circular(26),
+            color: isSelected ? item.color.withOpacity(0.15) : Colors.transparent,
+            borderRadius: BorderRadius.circular(30),
             border: isSelected ? Border.all(
-              color: item.color.withOpacity(0.25),
-              width: 1.5,
+              color: item.color.withOpacity(0.3),
+              width: 2,
             ) : null,
           ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+          child: Stack(
+            alignment: Alignment.center,
             children: [
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 250),
-                curve: Curves.easeInOut,
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: isSelected ? item.color : Colors.transparent,
-                  borderRadius: BorderRadius.circular(14),
-                  boxShadow: isSelected ? [
-                    BoxShadow(
-                      color: item.color.withOpacity(0.3),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
+              // Background glow effect for selected item
+              if (isSelected)
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 300),
+                  width: 50,
+                  height: 50,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: item.color.withOpacity(0.2),
+                    boxShadow: [
+                      BoxShadow(
+                        color: item.color.withOpacity(0.4),
+                        blurRadius: 15,
+                        spreadRadius: 2,
+                      ),
+                    ],
+                  ),
+                ),
+
+              Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // Icon container with enhanced styling
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeInOut,
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: isSelected ? item.color : Colors.transparent,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: isSelected ? [
+                        BoxShadow(
+                          color: item.color.withOpacity(0.4),
+                          blurRadius: 12,
+                          offset: const Offset(0, 3),
+                        ),
+                        BoxShadow(
+                          color: Colors.white.withOpacity(0.3),
+                          blurRadius: 8,
+                          offset: const Offset(0, -2),
+                        ),
+                      ] : null,
                     ),
-                  ] : null,
-                ),
-                child: Icon(
-                  isSelected ? item.activeIcon : item.icon,
-                  color: isSelected ? Colors.white : AppColors.textSecondary,
-                  size: 18,
-                ),
+                    child: Icon(
+                      isSelected ? item.activeIcon : item.icon,
+                      color: isSelected ? Colors.white : AppColors.textSecondary,
+                      size: 20,
+                    ),
+                  ),
+
+                  const SizedBox(height: 2),
+
+                  // Enhanced label with better typography
+                  AnimatedDefaultTextStyle(
+                    duration: const Duration(milliseconds: 300),
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                      color: isSelected ? item.color : AppColors.textSecondary,
+                      letterSpacing: 0.3,
+                      shadows: isSelected ? [
+                        Shadow(
+                          color: item.color.withOpacity(0.3),
+                          blurRadius: 4,
+                          offset: const Offset(0, 1),
+                        ),
+                      ] : null,
+                    ),
+                    child: Text(
+                      item.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontFamily: 'Inter',
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 1),
-              AnimatedDefaultTextStyle(
-                duration: const Duration(milliseconds: 250),
-                style: TextStyle(
-                  fontSize: 9,
-                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                  color: isSelected ? item.color : AppColors.textSecondary,
-                  letterSpacing: 0.2,
+
+              // Floating indicator dot
+              if (isSelected)
+                Positioned(
+                  top: 6,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 300),
+                    width: 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: item.color,
+                      borderRadius: BorderRadius.circular(3),
+                      boxShadow: [
+                        BoxShadow(
+                          color: item.color.withOpacity(0.5),
+                          blurRadius: 6,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
-                child: Text(
-                  item.label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
             ],
           ),
         ),

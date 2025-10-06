@@ -24,15 +24,59 @@ class LocationService {
   
   // Get all regions using reliable GitHub API
   static Future<List<Map<String, dynamic>>> getRegions() async {
-    // 1) Try GitHub API first
+    // First, try local JSON for reliable data
     try {
-      print('🌐 Calling GitHub API for regions...');
+      print('🌐 Using local JSON for regions...');
+      final String jsonString = await rootBundle.loadString(_localDataFile);
+      final Map<String, dynamic> data = json.decode(jsonString);
+      final List<Map<String, dynamic>> regions = [];
+
+      // Add NCR districts first
+      if (data.containsKey('NCR') && data['NCR'] is Map<String, dynamic>) {
+        final ncrData = data['NCR'] as Map<String, dynamic>;
+        if (ncrData.containsKey('province_list') && ncrData['province_list'] is Map<String, dynamic>) {
+          (ncrData['province_list'] as Map<String, dynamic>).forEach((districtName, districtData) {
+            regions.add({
+              'code': districtName,
+              'name': districtName,
+              'regionCode': 'NCR',
+              'type': 'district'
+            });
+          });
+        }
+      }
+
+      // Add other regions
+      data.forEach((key, value) {
+        if (value is Map<String, dynamic> && key != 'NCR') {
+          final regionName = _getRegionName(key);
+          regions.add({
+            'code': key,
+            'name': regionName,
+            'regionCode': key,
+            'type': 'region'
+          });
+        }
+      });
+
+      print('✅ Local JSON: Loaded ${regions.length} regions (including NCR districts)');
+      for (final region in regions.take(5)) {
+        print('   - ${region['name']} (${region['code']})');
+      }
+      return regions;
+    } catch (e) {
+      print('❌ Local JSON failed for regions: $e');
+    }
+
+    // Fallback to GitHub API if local fails
+    try {
+      print('🌐 Trying GitHub API for regions...');
       final response = await http.get(
         Uri.parse('$_githubApi/regions.json'),
         headers: {'Accept': 'application/json'},
       ).timeout(const Duration(seconds: 10));
       print('📡 GitHub regions response status: ${response.statusCode}');
-      
+
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);
         final regions = data.map<Map<String, dynamic>>((r) => {
@@ -42,39 +86,10 @@ class LocationService {
           'type': 'region',
         }).toList();
         print('✅ GitHub API: Loaded ${regions.length} regions');
-        for (final region in regions.take(3)) {
-          print('   - ${region['name']} (${region['code']})');
-        }
         return regions;
       }
     } catch (e) {
       print('❌ GitHub API failed for regions: $e');
-    }
-
-    // Fallback to local JSON
-    try {
-      print('🌐 Using local JSON fallback for regions...');
-      final String jsonString = await rootBundle.loadString(_localDataFile);
-      final Map<String, dynamic> data = json.decode(jsonString);
-      final List<Map<String, dynamic>> regions = [];
-      data.forEach((key, value) {
-        if (value is Map<String, dynamic>) {
-          if (key == 'NCR') {
-            final ncrData = value;
-            if (ncrData['province_list'] != null) {
-              (ncrData['province_list'] as Map<String, dynamic>).forEach((districtName, districtData) {
-                regions.add({'code': districtName, 'name': districtName, 'regionCode': 'NCR', 'type': 'district'});
-              });
-            }
-          } else {
-            regions.add({'code': key, 'name': _getRegionName(key), 'regionCode': key, 'type': 'region'});
-          }
-        }
-      });
-      print('✅ Local JSON: Loaded ${regions.length} regions (including NCR districts)');
-      return regions;
-    } catch (e) {
-      print('❌ Local JSON failed: $e');
     }
 
     // Final fallback
@@ -116,19 +131,53 @@ class LocationService {
       return await _getNCRCities();
     }
 
-    // 1) Try GitHub API first
+    // First, try local JSON for reliable province data
+    try {
+      print('🌐 Using local JSON for provinces in region $regionCode...');
+      final String jsonString = await rootBundle.loadString(_localDataFile);
+      final Map<String, dynamic> data = json.decode(jsonString);
+
+      // Find the region in the data
+      final regionData = data[regionCode];
+      if (regionData != null && regionData is Map<String, dynamic>) {
+        final List<Map<String, dynamic>> provinces = [];
+
+        // Extract provinces from the province_list
+        if (regionData.containsKey('province_list') && regionData['province_list'] is Map<String, dynamic>) {
+          (regionData['province_list'] as Map<String, dynamic>).forEach((provinceName, provinceData) {
+            provinces.add({
+              'code': provinceName,
+              'name': provinceName,
+              'regionCode': regionCode,
+            });
+          });
+        }
+
+        if (provinces.isNotEmpty) {
+          print('✅ Local JSON: Loaded ${provinces.length} provinces for region $regionCode');
+          for (final province in provinces.take(3)) {
+            print('   - ${province['name']} (${province['code']})');
+          }
+          return provinces;
+        }
+      }
+    } catch (e) {
+      print('❌ Local JSON failed for provinces: $e');
+    }
+
+    // Fallback to GitHub API if local fails
     try {
       const url = '$_githubApi/provinces.json';
-      print('🌐 Calling GitHub API: $url');
+      print('🌐 Trying GitHub API for provinces: $url');
       final response = await http.get(
         Uri.parse(url),
         headers: {'Accept': 'application/json'},
       ).timeout(const Duration(seconds: 10));
-      print('📡 GitHub response status: ${response.statusCode}');
+      print('📡 GitHub provinces response status: ${response.statusCode}');
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);
-        final provinces = data.where((p) => 
-          p['region_code']?.toString() == regionCode || 
+        final provinces = data.where((p) =>
+          p['region_code']?.toString() == regionCode ||
           p['regionCode']?.toString() == regionCode
         ).map<Map<String, dynamic>>((p) => {
           'code': p['code']?.toString() ?? '',
@@ -140,11 +189,11 @@ class LocationService {
         }
       }
     } catch (e) {
-      print('❌ GitHub provinces failed: $e');
+      print('❌ GitHub API provinces failed: $e');
     }
 
-    // Fallback to local data
-    print('⚠️ GitHub API failed, using local fallback data for region $regionCode');
+    // Final fallback
+    print('⚠️ All sources failed, using hardcoded provinces for region $regionCode');
     return getFallbackProvinces(regionCode);
   }
   
@@ -156,19 +205,72 @@ class LocationService {
       return await _getNCRCitiesFromDistrict(provinceCode);
     }
 
-    // 1) Try GitHub API first
+    // First, try local JSON for reliable city data
     try {
-      print('🌐 Calling GitHub API for cities in province $provinceCode...');
+      print('🌐 Using local JSON for cities in province $provinceCode...');
+      final String jsonString = await rootBundle.loadString(_localDataFile);
+      final Map<String, dynamic> data = json.decode(jsonString);
+
+      // Find the region first
+      String? regionCode;
+      String? foundProvinceCode;
+
+      // Search through all regions to find the province
+      data.forEach((regionKey, regionValue) {
+        if (regionValue is Map<String, dynamic> && regionValue.containsKey('province_list')) {
+          final provinceList = regionValue['province_list'] as Map<String, dynamic>;
+          if (provinceList.containsKey(provinceCode)) {
+            regionCode = regionKey;
+            foundProvinceCode = provinceCode;
+          }
+        }
+      });
+
+      if (regionCode != null && foundProvinceCode != null) {
+        final regionData = data[regionCode];
+        final provinceData = regionData['province_list'][foundProvinceCode];
+
+        if (provinceData != null && provinceData is Map<String, dynamic>) {
+          final List<Map<String, dynamic>> cities = [];
+
+          // Extract cities from municipality_list
+          if (provinceData.containsKey('municipality_list') && provinceData['municipality_list'] is Map<String, dynamic>) {
+            (provinceData['municipality_list'] as Map<String, dynamic>).forEach((cityName, cityData) {
+              cities.add({
+                'code': cityName,
+                'name': cityName,
+                'provinceCode': foundProvinceCode,
+                'regionCode': regionCode,
+              });
+            });
+          }
+
+          if (cities.isNotEmpty) {
+            print('✅ Local JSON: Loaded ${cities.length} cities for province $provinceCode');
+            for (final city in cities.take(3)) {
+              print('   - ${city['name']} (${city['code']})');
+            }
+            return cities;
+          }
+        }
+      }
+    } catch (e) {
+      print('❌ Local JSON failed for cities: $e');
+    }
+
+    // Fallback to GitHub API if local fails
+    try {
+      print('🌐 Trying GitHub API for cities in province $provinceCode...');
       final response = await http.get(
         Uri.parse('$_githubApi/cities.json'),
         headers: {'Accept': 'application/json'},
       ).timeout(const Duration(seconds: 10));
       print('📡 GitHub cities response status: ${response.statusCode}');
-      
+
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);
-        final cities = data.where((c) => 
-          c['province_code']?.toString() == provinceCode || 
+        final cities = data.where((c) =>
+          c['province_code']?.toString() == provinceCode ||
           c['provinceCode']?.toString() == provinceCode
         ).map<Map<String, dynamic>>((c) => {
           'code': c['code']?.toString() ?? '',
@@ -180,11 +282,11 @@ class LocationService {
         }
       }
     } catch (e) {
-      print('❌ GitHub cities failed: $e');
+      print('❌ GitHub API cities failed: $e');
     }
 
-    // Fallback to local data
-    print('⚠️ GitHub API failed, using local fallback data for province $provinceCode');
+    // Final fallback
+    print('⚠️ All sources failed, using hardcoded cities for province $provinceCode');
     return getFallbackCities(provinceCode);
   }
 
@@ -381,16 +483,63 @@ class LocationService {
     return getFallbackBarangays(cityName);
   }
   
-  // Get barangays by city code using Buonzz API
+  // Get barangays by city code using local JSON first
   static Future<List<Map<String, dynamic>>> getBarangays(String cityCode) async {
-    // If the value looks like a city name (has letters/spaces), try NCR local path first
+    // If the value looks like a city name (has letters/spaces), try local JSON path first
     if (cityCode.contains(RegExp(r'[A-Za-z]'))) {
       print('🏙️ Barangays requested by city name "$cityCode"');
-      // 1) NCR local lookup (fast if the city is in NCR)
+
+      // 1) Try local JSON lookup first (faster and more reliable)
+      try {
+        print('🌐 Using local JSON for barangays in city "$cityCode"...');
+        final String jsonString = await rootBundle.loadString(_localDataFile);
+        final Map<String, dynamic> data = json.decode(jsonString);
+
+        // Search through all regions and provinces to find the city
+        for (final regionEntry in data.entries) {
+          final regionKey = regionEntry.key;
+          final regionValue = regionEntry.value;
+          
+          if (regionValue is Map<String, dynamic> && regionValue.containsKey('province_list')) {
+            final provinceList = regionValue['province_list'] as Map<String, dynamic>;
+
+            for (final provinceEntry in provinceList.entries) {
+              final provinceName = provinceEntry.key;
+              final provinceData = provinceEntry.value;
+              
+              if (provinceData is Map<String, dynamic> && provinceData.containsKey('municipality_list')) {
+                final municipalityList = provinceData['municipality_list'] as Map<String, dynamic>;
+
+                // Check if this city exists
+                if (municipalityList.containsKey(cityCode)) {
+                  final cityData = municipalityList[cityCode];
+                  if (cityData is Map<String, dynamic> && cityData.containsKey('barangay_list')) {
+                    final barangayList = cityData['barangay_list'] as List<dynamic>;
+                    final barangays = barangayList.map<Map<String, dynamic>>((barangay) => {
+                      'code': barangay.toString(),
+                      'name': barangay.toString(),
+                      'cityCode': cityCode,
+                      'provinceCode': provinceName,
+                      'regionCode': regionKey,
+                    }).toList();
+
+                    print('✅ Local JSON: Loaded ${barangays.length} barangays for city "$cityCode"');
+                    return barangays;
+                  }
+                }
+              }
+            }
+          }
+        }
+      } catch (e) {
+        print('❌ Local JSON failed for barangays: $e');
+      }
+
+      // 2) NCR local lookup as backup
       final ncrResult = await _getNCRBarangaysFromCity(cityCode);
       if (ncrResult.isNotEmpty) return ncrResult;
 
-      // 2) Try GitHub API lookup by city name → get code(s) then fetch barangays
+      // 3) Try GitHub API lookup by city name → get code(s) then fetch barangays
       try {
         print('🌐 Calling GitHub API for barangays in city "$cityCode"...');
         // First get all cities to find matching codes
@@ -399,12 +548,12 @@ class LocationService {
           headers: {'Accept': 'application/json'},
         ).timeout(const Duration(seconds: 10));
         print('📡 GitHub cities response status: ${citiesResponse.statusCode}');
-        
+
         if (citiesResponse.statusCode == 200) {
           final List<dynamic> cities = json.decode(citiesResponse.body);
           final target = _normalizeName(cityCode);
           final matchedCodes = <String>[];
-          
+
           for (final c in cities) {
             final name = (c['name'] ?? '').toString();
             final code = (c['code'] ?? '').toString();
@@ -412,7 +561,7 @@ class LocationService {
               matchedCodes.add(code);
             }
           }
-          
+
           if (matchedCodes.isNotEmpty) {
             final results = <Map<String, dynamic>>[];
             for (final code in matchedCodes) {
@@ -422,11 +571,11 @@ class LocationService {
                   headers: {'Accept': 'application/json'},
                 ).timeout(const Duration(seconds: 10));
                 print('📡 GitHub barangays response status: ${r.statusCode}');
-                
+
                 if (r.statusCode == 200) {
                   final List<dynamic> brgys = json.decode(r.body);
-                  final cityBarangays = brgys.where((b) => 
-                    b['city_code']?.toString() == code || 
+                  final cityBarangays = brgys.where((b) =>
+                    b['city_code']?.toString() == code ||
                     b['cityCode']?.toString() == code
                   ).map<Map<String, dynamic>>((b) => {
                     'code': (b['code'] ?? '').toString(),
@@ -452,8 +601,8 @@ class LocationService {
       if (ncrResult.isNotEmpty) return ncrResult;
     }
 
-    // Fallback to local data
-    print('⚠️ GitHub API failed, using local fallback data for city $cityCode');
+    // Final fallback
+    print('⚠️ All sources failed, using hardcoded barangays for city $cityCode');
     return getFallbackBarangays(cityCode);
   }
 
@@ -533,39 +682,46 @@ class LocationService {
     // Return comprehensive province data for offline use
     final Map<String, List<Map<String, dynamic>>> regionProvinces = {
       'NCR': [
-        {'code': 'NCR-001', 'name': 'Manila'},
-        {'code': 'NCR-002', 'name': 'Quezon City'},
-        {'code': 'NCR-003', 'name': 'Caloocan'},
-        {'code': 'NCR-004', 'name': 'Las Piñas'},
-        {'code': 'NCR-005', 'name': 'Makati'},
-        {'code': 'NCR-006', 'name': 'Malabon'},
-        {'code': 'NCR-007', 'name': 'Mandaluyong'},
-        {'code': 'NCR-008', 'name': 'Marikina'},
-        {'code': 'NCR-009', 'name': 'Muntinlupa'},
-        {'code': 'NCR-010', 'name': 'Navotas'},
-        {'code': 'NCR-011', 'name': 'Parañaque'},
-        {'code': 'NCR-012', 'name': 'Pasay'},
-        {'code': 'NCR-013', 'name': 'Pasig'},
-        {'code': 'NCR-014', 'name': 'Pateros'},
-        {'code': 'NCR-015', 'name': 'San Juan'},
-        {'code': 'NCR-016', 'name': 'Taguig'},
-        {'code': 'NCR-017', 'name': 'Valenzuela'},
+        {'code': 'NATIONAL CAPITAL REGION - FIRST DISTRICT', 'name': 'NATIONAL CAPITAL REGION - FIRST DISTRICT'},
+        {'code': 'NATIONAL CAPITAL REGION - SECOND DISTRICT', 'name': 'NATIONAL CAPITAL REGION - SECOND DISTRICT'},
+        {'code': 'NATIONAL CAPITAL REGION - THIRD DISTRICT', 'name': 'NATIONAL CAPITAL REGION - THIRD DISTRICT'},
+        {'code': 'NATIONAL CAPITAL REGION - FOURTH DISTRICT', 'name': 'NATIONAL CAPITAL REGION - FOURTH DISTRICT'},
+      ],
+      '01': [ // Ilocos Region
+        {'code': 'ILOCOS NORTE', 'name': 'ILOCOS NORTE'},
+        {'code': 'ILOCOS SUR', 'name': 'ILOCOS SUR'},
+        {'code': 'LA UNION', 'name': 'LA UNION'},
+        {'code': 'PANGASINAN', 'name': 'PANGASINAN'},
+      ],
+      '02': [ // Cagayan Valley
+        {'code': 'BATANES', 'name': 'BATANES'},
+        {'code': 'CAGAYAN', 'name': 'CAGAYAN'},
+        {'code': 'ISABELA', 'name': 'ISABELA'},
+        {'code': 'NUEVA VIZCAYA', 'name': 'NUEVA VIZCAYA'},
+        {'code': 'QUIRINO', 'name': 'QUIRINO'},
       ],
       '03': [ // Central Luzon
-        {'code': '03-001', 'name': 'Bataan'},
-        {'code': '03-002', 'name': 'Bulacan'},
-        {'code': '03-003', 'name': 'Nueva Ecija'},
-        {'code': '03-004', 'name': 'Pampanga'},
-        {'code': '03-005', 'name': 'Tarlac'},
-        {'code': '03-006', 'name': 'Zambales'},
-        {'code': '03-007', 'name': 'Aurora'},
+        {'code': 'AURORA', 'name': 'AURORA'},
+        {'code': 'BATAAN', 'name': 'BATAAN'},
+        {'code': 'BULACAN', 'name': 'BULACAN'},
+        {'code': 'NUEVA ECIJA', 'name': 'NUEVA ECIJA'},
+        {'code': 'PAMPANGA', 'name': 'PAMPANGA'},
+        {'code': 'TARLAC', 'name': 'TARLAC'},
+        {'code': 'ZAMBALES', 'name': 'ZAMBALES'},
       ],
       '04A': [ // CALABARZON
-        {'code': '04A-001', 'name': 'Cavite'},
-        {'code': '04A-002', 'name': 'Laguna'},
-        {'code': '04A-003', 'name': 'Batangas'},
-        {'code': '04A-004', 'name': 'Rizal'},
-        {'code': '04A-005', 'name': 'Quezon'},
+        {'code': 'BATANGAS', 'name': 'BATANGAS'},
+        {'code': 'CAVITE', 'name': 'CAVITE'},
+        {'code': 'LAGUNA', 'name': 'LAGUNA'},
+        {'code': 'QUEZON', 'name': 'QUEZON'},
+        {'code': 'RIZAL', 'name': 'RIZAL'},
+      ],
+      '04B': [ // MIMAROPA
+        {'code': 'MARINDUQUE', 'name': 'MARINDUQUE'},
+        {'code': 'OCCIDENTAL MINDORO', 'name': 'OCCIDENTAL MINDORO'},
+        {'code': 'ORIENTAL MINDORO', 'name': 'ORIENTAL MINDORO'},
+        {'code': 'PALAWAN', 'name': 'PALAWAN'},
+        {'code': 'ROMBLON', 'name': 'ROMBLON'},
       ],
     };
     
@@ -783,36 +939,36 @@ class LocationService {
     return cityBarangays[cityCode] ?? [];
   }
 
-  // Fallback NCR districts data
+  // Fallback NCR districts data - matches actual JSON structure
   static List<Map<String, dynamic>> getFallbackNCRDistricts() {
       return [
-      {'code': 'NCR-1', 'name': 'NATIONAL CAPITAL REGION - FIRST DISTRICT', 'regionCode': 'NCR'},
-      {'code': 'NCR-2', 'name': 'NATIONAL CAPITAL REGION - SECOND DISTRICT', 'regionCode': 'NCR'},
-      {'code': 'NCR-3', 'name': 'NATIONAL CAPITAL REGION - THIRD DISTRICT', 'regionCode': 'NCR'},
-      {'code': 'NCR-4', 'name': 'NATIONAL CAPITAL REGION - FOURTH DISTRICT', 'regionCode': 'NCR'},
+      {'code': 'NATIONAL CAPITAL REGION - FIRST DISTRICT', 'name': 'NATIONAL CAPITAL REGION - FIRST DISTRICT', 'regionCode': 'NCR'},
+      {'code': 'NATIONAL CAPITAL REGION - SECOND DISTRICT', 'name': 'NATIONAL CAPITAL REGION - SECOND DISTRICT', 'regionCode': 'NCR'},
+      {'code': 'NATIONAL CAPITAL REGION - THIRD DISTRICT', 'name': 'NATIONAL CAPITAL REGION - THIRD DISTRICT', 'regionCode': 'NCR'},
+      {'code': 'NATIONAL CAPITAL REGION - FOURTH DISTRICT', 'name': 'NATIONAL CAPITAL REGION - FOURTH DISTRICT', 'regionCode': 'NCR'},
     ];
   }
 
-  // Fallback NCR cities data
+  // Fallback NCR cities data - matches actual JSON structure
   static List<Map<String, dynamic>> getFallbackNCRCities() {
       return [
-      {'code': 'NCR-001', 'name': 'Manila', 'regionCode': 'NCR'},
-      {'code': 'NCR-002', 'name': 'Quezon City', 'regionCode': 'NCR'},
-      {'code': 'NCR-003', 'name': 'Caloocan', 'regionCode': 'NCR'},
-      {'code': 'NCR-004', 'name': 'Las Piñas', 'regionCode': 'NCR'},
-      {'code': 'NCR-005', 'name': 'Makati', 'regionCode': 'NCR'},
-      {'code': 'NCR-006', 'name': 'Malabon', 'regionCode': 'NCR'},
-      {'code': 'NCR-007', 'name': 'Mandaluyong', 'regionCode': 'NCR'},
-      {'code': 'NCR-008', 'name': 'Marikina', 'regionCode': 'NCR'},
-      {'code': 'NCR-009', 'name': 'Muntinlupa', 'regionCode': 'NCR'},
-      {'code': 'NCR-010', 'name': 'Navotas', 'regionCode': 'NCR'},
-      {'code': 'NCR-011', 'name': 'Parañaque', 'regionCode': 'NCR'},
-      {'code': 'NCR-012', 'name': 'Pasay', 'regionCode': 'NCR'},
-      {'code': 'NCR-013', 'name': 'Pasig', 'regionCode': 'NCR'},
-      {'code': 'NCR-014', 'name': 'Pateros', 'regionCode': 'NCR'},
-      {'code': 'NCR-015', 'name': 'San Juan', 'regionCode': 'NCR'},
-      {'code': 'NCR-016', 'name': 'Taguig', 'regionCode': 'NCR'},
-      {'code': 'NCR-017', 'name': 'Valenzuela', 'regionCode': 'NCR'},
+      {'code': 'CITY OF MANILA', 'name': 'CITY OF MANILA', 'regionCode': 'NCR'},
+      {'code': 'CITY OF QUEZON', 'name': 'CITY OF QUEZON', 'regionCode': 'NCR'},
+      {'code': 'CITY OF CALOOCAN', 'name': 'CITY OF CALOOCAN', 'regionCode': 'NCR'},
+      {'code': 'CITY OF LAS PIÑAS', 'name': 'CITY OF LAS PIÑAS', 'regionCode': 'NCR'},
+      {'code': 'CITY OF MAKATI', 'name': 'CITY OF MAKATI', 'regionCode': 'NCR'},
+      {'code': 'CITY OF MALABON', 'name': 'CITY OF MALABON', 'regionCode': 'NCR'},
+      {'code': 'CITY OF MANDALUYONG', 'name': 'CITY OF MANDALUYONG', 'regionCode': 'NCR'},
+      {'code': 'CITY OF MARIKINA', 'name': 'CITY OF MARIKINA', 'regionCode': 'NCR'},
+      {'code': 'CITY OF MUNTINLUPA', 'name': 'CITY OF MUNTINLUPA', 'regionCode': 'NCR'},
+      {'code': 'CITY OF NAVOTAS', 'name': 'CITY OF NAVOTAS', 'regionCode': 'NCR'},
+      {'code': 'CITY OF PARAÑAQUE', 'name': 'CITY OF PARAÑAQUE', 'regionCode': 'NCR'},
+      {'code': 'CITY OF PASAY', 'name': 'CITY OF PASAY', 'regionCode': 'NCR'},
+      {'code': 'CITY OF PASIG', 'name': 'CITY OF PASIG', 'regionCode': 'NCR'},
+      {'code': 'CITY OF PATEROS', 'name': 'CITY OF PATEROS', 'regionCode': 'NCR'},
+      {'code': 'CITY OF SAN JUAN', 'name': 'CITY OF SAN JUAN', 'regionCode': 'NCR'},
+      {'code': 'CITY OF TAGUIG', 'name': 'CITY OF TAGUIG', 'regionCode': 'NCR'},
+      {'code': 'CITY OF VALENZUELA', 'name': 'CITY OF VALENZUELA', 'regionCode': 'NCR'},
     ];
   }
 

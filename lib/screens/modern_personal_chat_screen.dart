@@ -209,7 +209,7 @@ class _ModernPersonalChatScreenState extends State<ModernPersonalChatScreen> {
                     width: 80,
                     height: 80,
                     decoration: BoxDecoration(
-                      gradient: AppColors.primaryGradient,
+                      color: AppColors.primaryGradient,
                       borderRadius: BorderRadius.circular(40),
                       boxShadow: [
                         BoxShadow(
@@ -299,7 +299,7 @@ class _ModernPersonalChatScreenState extends State<ModernPersonalChatScreen> {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  gradient: AppColors.primaryGradient,
+                  color: AppColors.primaryGradient,
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
                     color: widget.isOnline ? AppColors.success : AppColors.mediumGray,
@@ -435,7 +435,7 @@ class _ModernPersonalChatScreenState extends State<ModernPersonalChatScreen> {
           Expanded(
             child: Container(
               decoration: const BoxDecoration(
-                gradient: AppColors.backgroundGradient,
+                color: AppColors.backgroundGradient,
               ),
               child: PerformanceOptimizer.buildOptimizedListView(
                 itemCount: _messages.length,
@@ -486,7 +486,7 @@ class _ModernPersonalChatScreenState extends State<ModernPersonalChatScreen> {
                   width: 48,
                   height: 48,
                   decoration: BoxDecoration(
-                    gradient: AppColors.errorGradient,
+                    color: AppColors.errorGradient,
                     borderRadius: BorderRadius.circular(24),
                     boxShadow: [
                       BoxShadow(
@@ -536,7 +536,7 @@ class _ModernPersonalChatScreenState extends State<ModernPersonalChatScreen> {
                   width: 48,
                   height: 48,
                   decoration: BoxDecoration(
-                    gradient: AppColors.primaryGradient,
+                    color: AppColors.primaryGradient,
                     borderRadius: BorderRadius.circular(24),
                     boxShadow: [
                       BoxShadow(

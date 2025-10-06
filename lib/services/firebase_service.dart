@@ -8,7 +8,9 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/input_validator.dart';
+import 'sqlite_service.dart';
 
 class FirebaseService {
   static final FirebaseService _instance = FirebaseService._internal();
@@ -21,6 +23,9 @@ class FirebaseService {
   FirebaseStorage get storage => FirebaseStorage.instance;
   FirebaseAnalytics get analytics => FirebaseAnalytics.instance;
   FirebaseMessaging get messaging => FirebaseMessaging.instance;
+  
+  // SQLite service for offline functionality
+  final SQLiteService _sqliteService = SQLiteService();
   
   // Google Sign-In - Android compatible implementation
   Future<UserCredential?> signInWithGoogle() async {
@@ -84,6 +89,32 @@ class FirebaseService {
         'signInMethod': 'google',
       });
 
+      // Save user to SQLite for offline access
+      await _saveUserToSQLite(
+        email: email,
+        firstName: displayName.split(' ')[0],
+        lastName: displayName.split(' ').length > 1 ? displayName.split(' ').sublist(1).join(' ') : '',
+        address: '',
+        region: '',
+        city: '',
+        barangay: '',
+        zipCode: '',
+        hashedPassword: '', // Google users don't have passwords initially
+        firebaseUid: user.uid,
+      );
+
+      // Check if this is a new Google user
+      final prefs = await SharedPreferences.getInstance();
+      final existingUserCreatedAt = prefs.getString('user_created_at_$email');
+      
+      // Only set creation timestamp if user doesn't have one (truly new user)
+      if (existingUserCreatedAt == null) {
+        await prefs.setString('user_created_at_$email', DateTime.now().millisecondsSinceEpoch.toString());
+        print('New Google user marked for tutorial: $email');
+      } else {
+        print('Existing Google user (already has creation timestamp): $email');
+      }
+
       print('✅ User profile updated in database');
 
       // Log analytics
@@ -100,6 +131,67 @@ class FirebaseService {
 
   // Current user
   User? get currentUser => auth.currentUser;
+
+  // Helper method to save user to SQLite for offline access
+  Future<void> _saveUserToSQLite({
+    required String email,
+    required String firstName,
+    required String lastName,
+    required String address,
+    required String region,
+    required String city,
+    required String barangay,
+    required String zipCode,
+    required String hashedPassword,
+    String? firebaseUid,
+  }) async {
+    try {
+      // Check if user already exists in SQLite
+      final existingUser = await _sqliteService.getUserByEmail(email);
+      
+      if (existingUser != null) {
+        // Update existing user
+        await _sqliteService.updateUser(existingUser['id'], {
+          'firebase_uid': firebaseUid,
+          'first_name': firstName,
+          'last_name': lastName,
+          'address': address,
+          'region': region,
+          'city': city,
+          'barangay': barangay,
+          'zip_code': zipCode,
+          'password': hashedPassword,
+          'is_online': 1,
+          'last_seen': DateTime.now().millisecondsSinceEpoch,
+          'is_synced': firebaseUid != null ? 1 : 0,
+          'sync_timestamp': firebaseUid != null ? DateTime.now().millisecondsSinceEpoch : null,
+        });
+        print('SQLite user updated: $email');
+      } else {
+        // Create new user
+        await _sqliteService.insertUser({
+          'firebase_uid': firebaseUid,
+          'email': email,
+          'first_name': firstName,
+          'last_name': lastName,
+          'address': address,
+          'region': region,
+          'city': city,
+          'barangay': barangay,
+          'zip_code': zipCode,
+          'password': hashedPassword,
+          'is_online': 1,
+          'created_at': DateTime.now().millisecondsSinceEpoch,
+          'last_seen': DateTime.now().millisecondsSinceEpoch,
+          'is_synced': firebaseUid != null ? 1 : 0,
+          'sync_timestamp': firebaseUid != null ? DateTime.now().millisecondsSinceEpoch : null,
+        });
+        print('SQLite user created: $email');
+      }
+    } catch (e) {
+      print('Error saving user to SQLite: $e');
+    }
+  }
 
   // Hash password using SHA-256
   String _hashPassword(String password) {
@@ -188,6 +280,25 @@ class FirebaseService {
           'lastSeen': ServerValue.timestamp,
         });
 
+        // Save user to SQLite for offline access
+        await _saveUserToSQLite(
+          email: email.trim(),
+          firstName: sanitizedFirstName,
+          lastName: sanitizedLastName,
+          address: sanitizedAddress,
+          region: sanitizedRegion,
+          city: sanitizedCity,
+          barangay: sanitizedBarangay,
+          zipCode: zipCode,
+          hashedPassword: _hashPassword(password),
+          firebaseUid: userCredential.user!.uid,
+        );
+
+        // Mark user as new for tutorial purposes
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('user_created_at_${email.trim()}', DateTime.now().millisecondsSinceEpoch.toString());
+        print('New user marked for tutorial: ${email.trim()}');
+
         // Log sign up event
         await analytics.logSignUp(signUpMethod: 'email');
       }
@@ -247,6 +358,24 @@ class FirebaseService {
           'isOnline': true,
           'lastSeen': ServerValue.timestamp,
         });
+
+        // Save user to SQLite for offline access (get user data from Firebase)
+        final userSnapshot = await database.ref('users/${userCredential.user!.uid}').get();
+        if (userSnapshot.exists) {
+          final userData = userSnapshot.value as Map;
+          await _saveUserToSQLite(
+            email: email.trim(),
+            firstName: userData['FirstName'] ?? '',
+            lastName: userData['LastName'] ?? '',
+            address: userData['Address'] ?? '',
+            region: userData['Region'] ?? '',
+            city: userData['City'] ?? '',
+            barangay: userData['Barangay'] ?? '',
+            zipCode: userData['ZipCode'] ?? '',
+            hashedPassword: hashedPassword,
+            firebaseUid: userCredential.user!.uid,
+          );
+        }
 
         // Log sign in event
         await analytics.logLogin(loginMethod: 'email');
@@ -329,23 +458,34 @@ class FirebaseService {
 
   Future<void> signOut() async {
     try {
-      // Update user offline status
+      // Update user offline status (only if online)
       if (currentUser != null) {
-        await database.ref('users/${currentUser!.uid}').update({
-          'isOnline': false,
-          'lastSeen': ServerValue.timestamp,
-        });
+        try {
+          await database.ref('users/${currentUser!.uid}').update({
+            'isOnline': false,
+            'lastSeen': ServerValue.timestamp,
+          });
+        } catch (e) {
+          print('Failed to update online status (offline): $e');
+          // Continue with sign out even if database update fails
+        }
       }
 
       // Sign out from Google Sign-In
-      final GoogleSignIn googleSignIn = GoogleSignIn();
-      await googleSignIn.signOut();
+      try {
+        final GoogleSignIn googleSignIn = GoogleSignIn();
+        await googleSignIn.signOut();
+      } catch (e) {
+        print('Google sign out failed: $e');
+        // Continue with Firebase sign out
+      }
       
       // Sign out from Firebase
       await auth.signOut();
       await analytics.logEvent(name: 'user_sign_out');
     } catch (e) {
-      throw Exception('Sign out failed: ${e.toString()}');
+      print('Firebase sign out error: $e');
+      // Don't throw exception - allow local sign out to continue
     }
   }
 

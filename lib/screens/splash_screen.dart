@@ -111,13 +111,21 @@ class _SplashScreenState extends State<SplashScreen>
         final prefs = await SharedPreferences.getInstance();
         final tutorialCompleted = prefs.getBool('tutorial_completed') ?? false;
         
-        print('Tutorial completed: $tutorialCompleted');
+        // Check if user is truly new (created after tutorial implementation)
+        final isNewUser = await authProvider.isNewUser();
         
-        if (tutorialCompleted) {
+        print('Tutorial completed: $tutorialCompleted');
+        print('Is new user: $isNewUser');
+        print('User email: ${authProvider.userEmail}');
+        print('Decision: ${tutorialCompleted || !isNewUser ? "Go to main" : "Show tutorial"}');
+        
+        if (tutorialCompleted || !isNewUser) {
+          // Existing user or tutorial already completed
           print('Navigating to main screen');
           Navigator.of(context).pushReplacementNamed('/main');
         } else {
-          print('Navigating to tutorial screen');
+          // New user who hasn't completed tutorial
+          print('Navigating to tutorial screen for new user');
           Navigator.of(context).pushReplacementNamed('/tutorial');
         }
       } else {
