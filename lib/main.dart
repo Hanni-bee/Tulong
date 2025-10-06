@@ -18,6 +18,7 @@ import 'services/firebase_service.dart';
 import 'services/offline_auth_service.dart';
 import 'services/notification_service.dart';
 import 'services/offline_sync_service.dart';
+import 'services/philippine_location_service.dart';
 
 void main() async {
   // Optimize app performance
@@ -34,7 +35,10 @@ void main() async {
   
   // Initialize offline sync service
   await OfflineSyncService().initialize();
-  
+
+  // Initialize Philippine location service (loads once at startup)
+  await PhilippineLocationService.instance.initialize();
+
   // Clear image cache on startup
   PerformanceOptimizer.clearImageCache();
   

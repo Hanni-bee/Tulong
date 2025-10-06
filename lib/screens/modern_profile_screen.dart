@@ -7,6 +7,8 @@ import '../widgets/animated_neumorphic_card.dart';
 import '../widgets/modern_responsive_layout.dart';
 import '../widgets/modern_floating_layout.dart';
 import '../widgets/enhanced_text_styles.dart';
+import '../widgets/theme_selection_modal.dart';
+import '../services/philippine_location_service.dart';
 import 'notification_settings_screen.dart';
 
 class ModernProfileScreen extends StatefulWidget {
@@ -38,17 +40,17 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
   @override
   void initState() {
     super.initState();
-    
+
     _fadeController = AnimationController(
       duration: const Duration(milliseconds: 800),
       vsync: this,
     );
-    
+
     _slideController = AnimationController(
       duration: const Duration(milliseconds: 600),
       vsync: this,
     );
-    
+
     _fadeAnimation = Tween<double>(
       begin: 0.0,
       end: 1.0,
@@ -92,20 +94,20 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                 // Header
                 _buildHeader(),
                 const SizedBox(height: 24),
-                
+
                 // Profile Info
                 _buildProfileInfo(),
                 const SizedBox(height: 24),
-                
+
                 // Quick Stats
                 _buildQuickStats(),
                 const SizedBox(height: 24),
-                
+
                 // Settings Sections
                 _buildSettingsSections(),
                 const SizedBox(height: 24),
-                
-                
+
+
                 // Action Buttons
                 _buildActionButtons(),
                 const SizedBox(height: 24),
@@ -147,14 +149,14 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
               size: 24,
             ),
           ),
-          
+
           const SizedBox(width: 16),
-          
+
           // Title
           const Expanded(
             child: PageTitle('Profile'),
           ),
-          
+
           // Edit button
           IconButton(
             onPressed: () => _editProfile(context),
@@ -192,118 +194,122 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
     return Consumer<AuthProvider>(
       builder: (context, authProvider, child) {
         final userName = authProvider.userName ?? _userProfile['name'];
-        
+
         // Debug logging
-        print('Profile Screen - AuthProvider userName: ${authProvider.userName}');
-        print('Profile Screen - AuthProvider userEmail: ${authProvider.userEmail}');
-        print('Profile Screen - AuthProvider isAuthenticated: ${authProvider.isAuthenticated}');
+        print(
+            'Profile Screen - AuthProvider userName: ${authProvider.userName}');
+        print(
+            'Profile Screen - AuthProvider userEmail: ${authProvider.userEmail}');
+        print(
+            'Profile Screen - AuthProvider isAuthenticated: ${authProvider.isAuthenticated}');
         print('Profile Screen - Final userName: $userName');
-        
+
         return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 420),
-        child: AnimatedNeumorphicCard(
-          child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          // Profile Avatar
-          Container(
-            width: 120,
-            height: 120,
-            decoration: BoxDecoration(
-              color: AppColors.primaryRed,
-              borderRadius: BorderRadius.circular(60),
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.primaryRed.withOpacity(0.4),
-                  blurRadius: 24,
-                  offset: const Offset(0, 10),
-                ),
-                BoxShadow(
-                  color: AppColors.white.withOpacity(0.8),
-                  blurRadius: 24,
-                  offset: const Offset(0, -10),
-                ),
-              ],
-            ),
-            child: Center(
-              child: Text(
-                _getInitials(userName),
-                style: const TextStyle(
-                  color: AppColors.white,
-                  fontSize: 42,
-                  fontWeight: FontWeight.bold,
-                ),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: AnimatedNeumorphicCard(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // Profile Avatar
+                  Container(
+                    width: 120,
+                    height: 120,
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryRed,
+                      borderRadius: BorderRadius.circular(60),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.primaryRed.withOpacity(0.4),
+                          blurRadius: 24,
+                          offset: const Offset(0, 10),
+                        ),
+                        BoxShadow(
+                          color: AppColors.white.withOpacity(0.8),
+                          blurRadius: 24,
+                          offset: const Offset(0, -10),
+                        ),
+                      ],
+                    ),
+                    child: Center(
+                      child: Text(
+                        _getInitials(userName),
+                        style: const TextStyle(
+                          color: AppColors.white,
+                          fontSize: 42,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 24),
+
+                  // Name and Role
+                  Text(
+                    userName,
+                    style: const TextStyle(
+                      fontSize: 32,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.textPrimary,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+
+                  const SizedBox(height: 8),
+
+                  Text(
+                    _userProfile['role'],
+                    style: const TextStyle(
+                      fontSize: 18,
+                      color: AppColors.textSecondary,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // Status
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: AppColors.success.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: AppColors.success.withOpacity(0.3),
+                        width: 1,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 10,
+                          height: 10,
+                          decoration: const BoxDecoration(
+                            color: AppColors.success,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          _userProfile['status'],
+                          style: const TextStyle(
+                            color: AppColors.success,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
-          
-          const SizedBox(height: 24),
-          
-          // Name and Role
-          Text(
-            userName ?? 'Loading...',
-            style: const TextStyle(
-              fontSize: 32,
-              fontWeight: FontWeight.bold,
-              color: AppColors.textPrimary,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          
-          const SizedBox(height: 8),
-          
-          Text(
-            _userProfile['role'],
-            style: const TextStyle(
-              fontSize: 18,
-              color: AppColors.textSecondary,
-              fontWeight: FontWeight.w500,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          
-          const SizedBox(height: 16),
-          
-          // Status
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            decoration: BoxDecoration(
-              color: AppColors.success.withOpacity(0.15),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: AppColors.success.withOpacity(0.3),
-                width: 1,
-              ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 10,
-                  height: 10,
-                  decoration: const BoxDecoration(
-                    color: AppColors.success,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Text(
-                  _userProfile['status'],
-                  style: const TextStyle(
-                    color: AppColors.success,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-          ),
-        ),
-      ),
-      );
+        );
       },
     );
   }
@@ -312,7 +318,8 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
     if (name == null || name.trim().isEmpty) return 'JD';
     final parts = name.trim().split(RegExp(r"\s+"));
     if (parts.length == 1) return parts.first.substring(0, 1).toUpperCase();
-    return (parts[0].isNotEmpty ? parts[0][0] : '') + (parts[1].isNotEmpty ? parts[1][0] : '');
+    return (parts[0].isNotEmpty ? parts[0][0] : '') +
+        (parts.length > 1 && parts[1].isNotEmpty ? parts[1][0] : '');
   }
 
   Widget _buildQuickStats() {
@@ -416,9 +423,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
             ),
           ],
         ),
-        
         const SizedBox(height: 16),
-        
         _buildSettingsSection(
           title: 'App Settings',
           items: [
@@ -499,9 +504,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                 size: 20,
               ),
             ),
-            
             const SizedBox(width: 16),
-            
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -524,7 +527,6 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                 ],
               ),
             ),
-            
             const Icon(
               Icons.chevron_right,
               color: AppColors.mediumGray,
@@ -568,9 +570,9 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
             ),
           ),
         ),
-        
+
         const SizedBox(height: 16),
-        
+
         // Delete Account Button
         SizedBox(
           width: double.infinity,
@@ -618,143 +620,394 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
   void _editPersonalInfo(BuildContext context) {
     HapticFeedback.lightImpact();
     final auth = context.read<AuthProvider>();
-    final TextEditingController nameCtrl = TextEditingController(text: auth.userName ?? _userProfile['name']);
-    final TextEditingController emailCtrl = TextEditingController(text: auth.userEmail ?? _userProfile['email'] ?? 'john.doe@example.com');
+
+    // Initialize controllers with current user data
+    final TextEditingController firstNameCtrl =
+        TextEditingController(text: auth.userName?.split(' ').first ?? '');
+    final TextEditingController lastNameCtrl = TextEditingController(
+        text: auth.userName?.split(' ').skip(1).join(' ') ?? '');
+    final TextEditingController emailCtrl = TextEditingController(
+        text: auth.userEmail ?? _userProfile['email'] ?? 'john.doe@example.com');
+    final TextEditingController addressCtrl =
+        TextEditingController(text: _userProfile['address'] ?? '');
+
+    // Form key for validation
+    final _formKey = GlobalKey<FormState>();
+
+    // Location data - use pre-loaded singleton
+    String? selectedRegion;
+    String? selectedProvince;
+    String? selectedCity;
+    String? selectedBarangay;
+
+    bool _isLoading = false;
+
+    // Initialize with current user data if it exists
+    selectedRegion = _userProfile['region'];
+    selectedProvince = _userProfile['province'];
+    selectedCity = _userProfile['city'];
+    selectedBarangay = _userProfile['barangay'];
+    
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) {
-        return Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-          child: AnimatedNeumorphicCard(
-            margin: const EdgeInsets.all(16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Personal Information',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: nameCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Name',
-                    border: OutlineInputBorder(),
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                  bottom: MediaQuery.of(context).viewInsets.bottom),
+              child: AnimatedNeumorphicCard(
+                margin: const EdgeInsets.all(16),
+                child: SingleChildScrollView(
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Row(
+                          children: [
+                            Icon(
+                              Icons.person,
+                              color: AppColors.primaryRed,
+                              size: 24,
+                            ),
+                            SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Update Profile',
+                                style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppColors.textPrimary),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 24),
+
+                        // First Name
+                        TextFormField(
+                          controller: firstNameCtrl,
+                          decoration: const InputDecoration(
+                            labelText: 'First Name',
+                            border: OutlineInputBorder(),
+                            hintText: 'Enter your first name',
+                          ),
+                          validator: (value) {
+                            if (value == null || value.trim().isEmpty) {
+                              return 'First name is required';
+                            }
+                            if (value.contains(RegExp(r'[0-9]'))) {
+                              return 'First name cannot contain numbers';
+                            }
+                            return null;
+                          },
+                          autovalidateMode: AutovalidateMode.onUserInteraction,
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Last Name
+                        TextFormField(
+                          controller: lastNameCtrl,
+                          decoration: const InputDecoration(
+                            labelText: 'Last Name',
+                            border: OutlineInputBorder(),
+                            hintText: 'Enter your last name',
+                          ),
+                          validator: (value) {
+                            if (value == null || value.trim().isEmpty) {
+                              return 'Last name is required';
+                            }
+                            if (value.contains(RegExp(r'[0-9]'))) {
+                              return 'Last name cannot contain numbers';
+                            }
+                            return null;
+                          },
+                          autovalidateMode: AutovalidateMode.onUserInteraction,
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Email (Read-only)
+                        TextFormField(
+                          controller: emailCtrl,
+                          enabled: false, // Make email read-only
+                          decoration: const InputDecoration(
+                            labelText: 'Email',
+                            border: OutlineInputBorder(),
+                            hintText: 'Email cannot be changed',
+                            filled: true,
+                            fillColor: AppColors.lightGray,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Address
+                        TextFormField(
+                          controller: addressCtrl,
+                          decoration: const InputDecoration(
+                            labelText: 'Address',
+                            border: OutlineInputBorder(),
+                            hintText: 'Enter your complete address',
+                          ),
+                          maxLines: 2,
+                          validator: (value) {
+                            if (value == null || value.trim().isEmpty) {
+                              return 'Address is required';
+                            }
+                            return null;
+                          },
+                          autovalidateMode: AutovalidateMode.onUserInteraction,
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Region Dropdown
+                        DropdownButtonFormField<String>(
+                          value: selectedRegion,
+                          decoration: const InputDecoration(
+                            labelText: 'Region',
+                            border: OutlineInputBorder(),
+                            hintText: 'Select Region',
+                          ),
+                          items: PhilippineLocationService.instance
+                              .getRegions()
+                              .map((region) {
+                            return DropdownMenuItem<String>(
+                              value: region,
+                              child: Text(region),
+                            );
+                          }).toList(),
+                          onChanged: (value) {
+                            setState(() {
+                              selectedRegion = value;
+                              // Reset dependent dropdowns
+                              selectedProvince = null;
+                              selectedCity = null;
+                              selectedBarangay = null;
+                            });
+                          },
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Region is required';
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Province Dropdown
+                        DropdownButtonFormField<String>(
+                          value: selectedProvince,
+                          decoration: const InputDecoration(
+                            labelText: 'Province',
+                            border: OutlineInputBorder(),
+                            hintText: 'Select Province',
+                          ),
+                          items: selectedRegion != null
+                              ? PhilippineLocationService.instance
+                                  .getProvincesForRegion(selectedRegion!)
+                                  .map((province) {
+                                return DropdownMenuItem<String>(
+                                  value: province,
+                                  child: Text(province),
+                                );
+                              }).toList()
+                              : [const DropdownMenuItem<String>(
+                                  value: '',
+                                  child: Text('Please select Region first'),
+                                )],
+                          onChanged: (value) {
+                            if (value != null && value.isNotEmpty) {
+                              setState(() {
+                                selectedProvince = value;
+                                // Reset dependent dropdowns
+                                selectedCity = null;
+                                selectedBarangay = null;
+                              });
+                            }
+                          },
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Province is required';
+                            }
+                            return null;
+                          },
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        // City/Municipality Dropdown
+                        DropdownButtonFormField<String>(
+                          value: selectedCity,
+                          decoration: const InputDecoration(
+                            labelText: 'City/Municipality',
+                            border: OutlineInputBorder(),
+                            hintText: 'Select City/Municipality',
+                          ),
+                          items: selectedProvince != null
+                              ? PhilippineLocationService.instance
+                                  .getCitiesForProvince(
+                                      selectedRegion!, selectedProvince!)
+                                  .map((city) {
+                                return DropdownMenuItem<String>(
+                                  value: city,
+                                  child: Text(city),
+                                );
+                              }).toList()
+                              : [const DropdownMenuItem<String>(
+                                  value: '',
+                                  child: Text('Please select Province first'),
+                                )],
+                          onChanged: (value) {
+                            if (value != null && value.isNotEmpty) {
+                              setState(() {
+                                selectedCity = value;
+                                // Reset dependent dropdowns
+                                selectedBarangay = null;
+                              });
+                            }
+                          },
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'City/Municipality is required';
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Barangay Dropdown
+                        DropdownButtonFormField<String>(
+                          value: selectedBarangay,
+                          decoration: const InputDecoration(
+                            labelText: 'Barangay',
+                            border: OutlineInputBorder(),
+                            hintText: 'Select Barangay',
+                          ),
+                          items: selectedCity != null
+                              ? PhilippineLocationService.instance
+                                  .getBarangaysForCity(selectedRegion!,
+                                      selectedProvince!, selectedCity!)
+                                  .map((barangay) {
+                                return DropdownMenuItem<String>(
+                                  value: barangay,
+                                  child: Text(barangay),
+                                );
+                              }).toList()
+                              : [const DropdownMenuItem<String>(
+                                  value: '',
+                                  child: Text('Please select City first'),
+                                )],
+                          onChanged: (value) {
+                            if (value != null && value.isNotEmpty) {
+                              setState(() {
+                                selectedBarangay = value;
+                              });
+                            }
+                          },
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Barangay is required';
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 20),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context),
+                              child: const Text('Cancel'),
+                            ),
+                            const SizedBox(width: 8),
+                            ElevatedButton(
+                              onPressed: _isLoading
+                                  ? null
+                                  : () async {
+                                      if (!_formKey.currentState!
+                                          .validate()) {
+                                        return;
+                                      }
+                                      
+                                      setState(() {
+                                        _isLoading = true;
+                                      });
+
+                                      try {
+                                        // Update AuthProvider 
+                                        await auth.updateUserProfile(
+                                          firstName: firstNameCtrl.text.trim(),
+                                          lastName: lastNameCtrl.text.trim(),
+                                          address: addressCtrl.text.trim(),
+                                          region: selectedRegion ?? '',
+                                          city: selectedProvince ?? '',
+                                          barangay: selectedBarangay ?? '',
+                                        );
+
+                                        if (!mounted) return;
+
+                                        // Update local state in the main profile screen
+                                        this.setState(() {
+                                           _userProfile['name'] = '${firstNameCtrl.text.trim()} ${lastNameCtrl.text.trim()}';
+                                           _userProfile['address'] = addressCtrl.text.trim();
+                                           _userProfile['region'] = selectedRegion;
+                                           _userProfile['province'] = selectedProvince;
+                                           _userProfile['city'] = selectedCity;
+                                           _userProfile['barangay'] = selectedBarangay;
+                                        });
+
+                                        Navigator.pop(context);
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(
+                                              content: Text('Profile updated successfully'),
+                                              backgroundColor: AppColors.success),
+                                        );
+                                      } catch (e) {
+                                        if (!mounted) return;
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                              content: Text('Error updating profile: $e'),
+                                              backgroundColor: AppColors.error),
+                                        );
+                                      } finally {
+                                        if (mounted) {
+                                          setState(() {
+                                            _isLoading = false;
+                                          });
+                                        }
+                                      }
+                                    },
+                              style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.primaryRed,
+                                  foregroundColor: AppColors.white),
+                              child: _isLoading
+                                  ? const SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Colors.white),
+                                    )
+                                  : const Text('Save'),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: emailCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Email',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('Cancel'),
-                    ),
-                    const SizedBox(width: 8),
-                    ElevatedButton(
-                      onPressed: () {
-                        auth.updateProfile(nameCtrl.text.trim(), emailCtrl.text.trim());
-                        Navigator.pop(context);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Profile updated'), backgroundColor: AppColors.success),
-                        );
-                      },
-                      style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryRed, foregroundColor: AppColors.white),
-                      child: const Text('Save'),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         );
       },
     );
   }
 
-  void _openSecurity(BuildContext context) {
-    HapticFeedback.lightImpact();
-    final TextEditingController currentCtrl = TextEditingController();
-    final TextEditingController newCtrl = TextEditingController();
-    final TextEditingController confirmCtrl = TextEditingController();
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        return Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-          child: AnimatedNeumorphicCard(
-            margin: const EdgeInsets.all(16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Security',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: currentCtrl,
-                  obscureText: true,
-                  decoration: const InputDecoration(labelText: 'Current Password', border: OutlineInputBorder()),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: newCtrl,
-                  obscureText: true,
-                  decoration: const InputDecoration(labelText: 'New Password', border: OutlineInputBorder()),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: confirmCtrl,
-                  obscureText: true,
-                  decoration: const InputDecoration(labelText: 'Confirm Password', border: OutlineInputBorder()),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-                    const SizedBox(width: 8),
-                    ElevatedButton(
-                      onPressed: () {
-                        if (newCtrl.text.isEmpty || newCtrl.text != confirmCtrl.text) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Passwords do not match'), backgroundColor: AppColors.error),
-                          );
-                          return;
-                        }
-                        Navigator.pop(context);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Password updated (demo)'), backgroundColor: AppColors.success),
-                        );
-                      },
-                      style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryRed, foregroundColor: AppColors.white),
-                      child: const Text('Update'),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
+  // **FIX**: Restored the missing _openNotifications method
   void _openNotifications(BuildContext context) {
     HapticFeedback.lightImpact();
     Navigator.of(context).push(
@@ -766,11 +1019,11 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
 
   void _openTheme(BuildContext context) {
     HapticFeedback.lightImpact();
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Theme settings'),
-        backgroundColor: AppColors.info,
-      ),
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => const ThemeSelectionModal(),
     );
   }
 
@@ -794,23 +1047,241 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
     );
   }
 
-  void _addEmergencyContact(BuildContext context) {
+  void _openSecurity(BuildContext context) {
     HapticFeedback.lightImpact();
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Add emergency contact'),
-        backgroundColor: AppColors.success,
-      ),
-    );
-  }
+    final auth = context.read<AuthProvider>();
 
-  void _callEmergencyContact(Map<String, dynamic> contact) {
-    HapticFeedback.lightImpact();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Calling ${contact['name']}'),
-        backgroundColor: AppColors.success,
-      ),
+    // Check if user is using Gmail SSO
+    final bool isGmailSSO = auth.isGmailSSO;
+
+    final TextEditingController currentCtrl = TextEditingController();
+    final TextEditingController newCtrl = TextEditingController();
+    final TextEditingController confirmCtrl = TextEditingController();
+
+    // State for password visibility
+    bool obscureCurrent = true;
+    bool obscureNew = true;
+    bool obscureConfirm = true;
+    
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                  bottom: MediaQuery.of(context).viewInsets.bottom),
+              child: AnimatedNeumorphicCard(
+                margin: const EdgeInsets.all(16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          isGmailSSO ? Icons.account_circle : Icons.security,
+                          color: AppColors.primaryRed,
+                          size: 24,
+                        ),
+                        const SizedBox(width: 8),
+                        const Expanded(
+                          child: Text(
+                            'Security',
+                            style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.textPrimary),
+                          ),
+                        ),
+                        if (isGmailSSO)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: AppColors.info.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                  color: AppColors.info.withOpacity(0.3)),
+                            ),
+                            child: const Text(
+                              'Google Account',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: AppColors.info,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    if (!isGmailSSO) ...[
+                      // Current Password (only for sign-up accounts)
+                      TextField(
+                        controller: currentCtrl,
+                        obscureText: obscureCurrent,
+                        decoration: InputDecoration(
+                          labelText: 'Current Password',
+                          border: const OutlineInputBorder(),
+                          hintText: 'Enter your current password',
+                          suffixIcon: IconButton(
+                            icon: Icon(obscureCurrent
+                                ? Icons.visibility
+                                : Icons.visibility_off),
+                            onPressed: () {
+                              setModalState(() {
+                                obscureCurrent = !obscureCurrent;
+                              });
+                            },
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+
+                    // New Password
+                    TextField(
+                      controller: newCtrl,
+                      obscureText: obscureNew,
+                      decoration: InputDecoration(
+                        labelText: isGmailSSO ? 'New or Create Password' : 'New Password',
+                        border: const OutlineInputBorder(),
+                        hintText: isGmailSSO ? 'Enter a password to enable email login' : 'Enter your new password',
+                        suffixIcon: IconButton(
+                          icon: Icon(obscureNew
+                              ? Icons.visibility
+                              : Icons.visibility_off),
+                          onPressed: () {
+                            setModalState(() {
+                              obscureNew = !obscureNew;
+                            });
+                          },
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Confirm Password
+                    TextField(
+                      controller: confirmCtrl,
+                      obscureText: obscureConfirm,
+                      decoration: InputDecoration(
+                        labelText: 'Confirm Password',
+                        border: const OutlineInputBorder(),
+                        hintText: 'Confirm your new password',
+                        suffixIcon: IconButton(
+                          icon: Icon(obscureConfirm
+                              ? Icons.visibility
+                              : Icons.visibility_off),
+                          onPressed: () {
+                            setModalState(() {
+                              obscureConfirm = !obscureConfirm;
+                            });
+                          },
+                        ),
+                      ),
+                    ),
+                    if (isGmailSSO) ...[
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: AppColors.info.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                              color: AppColors.info.withOpacity(0.3)),
+                        ),
+                        child: const Row(
+                          children: [
+                            Icon(Icons.info_outline,
+                                color: AppColors.info, size: 20),
+                            SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'You can create a password to enable email/password login alongside your Google Sign-In.',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: AppColors.info,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+
+                    const SizedBox(height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text('Cancel'),
+                        ),
+                        const SizedBox(width: 8),
+                        ElevatedButton(
+                          onPressed: () async {
+                            if (newCtrl.text.isEmpty || confirmCtrl.text.isEmpty) {
+                               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please fill out all password fields.'), backgroundColor: AppColors.error));
+                               return;
+                            }
+                            if (newCtrl.text.length < 6) {
+                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Password must be at least 6 characters.'), backgroundColor: AppColors.error));
+                              return;
+                            }
+                            if (newCtrl.text != confirmCtrl.text) {
+                               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Passwords do not match.'), backgroundColor: AppColors.error));
+                               return;
+                            }
+                            
+                            try {
+                               bool success = false;
+                               if(isGmailSSO){
+                                  await auth.createPasswordForGoogleAccount(newCtrl.text);
+                                  success = true;
+                               } else {
+                                  if (currentCtrl.text.isEmpty) {
+                                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter your current password.'), backgroundColor: AppColors.error));
+                                      return;
+                                  }
+                                  final isValid = await auth.verifyCurrentPassword(currentCtrl.text);
+                                  if(!mounted) return;
+                                  if(isValid){
+                                    await auth.updatePassword(newCtrl.text);
+                                    success = true;
+                                  } else {
+                                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Current password is incorrect.'), backgroundColor: AppColors.error));
+                                  }
+                               }
+
+                               if(!mounted) return;
+
+                               if(success){
+                                Navigator.pop(context);
+                                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Password updated successfully!'), backgroundColor: AppColors.success));
+                               }
+                            } catch (e) {
+                              if(!mounted) return;
+                               ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('An error occurred: $e'), backgroundColor: AppColors.error));
+                            }
+                          },
+                          style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primaryRed,
+                              foregroundColor: AppColors.white),
+                          child: const Text('Update'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
@@ -828,10 +1299,13 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
           ),
           ElevatedButton(
             onPressed: () {
-              Navigator.pop(context);
-              // Clear auth state and route to sign-in
-              context.read<AuthProvider>().signOut();
-              Navigator.of(context).pushNamedAndRemoveUntil('/signin', (route) => false);
+              final authProvider = context.read<AuthProvider>();
+              final navigator = Navigator.of(context);
+
+              navigator.pop(context); // Close the dialog first
+
+              authProvider.signOut();
+              navigator.pushNamedAndRemoveUntil('/signin', (route) => false);
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.error,
@@ -850,7 +1324,8 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Delete Account'),
-        content: const Text('This action cannot be undone. Are you sure you want to delete your account?'),
+        content: const Text(
+            'This action cannot be undone. Are you sure you want to delete your account?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
