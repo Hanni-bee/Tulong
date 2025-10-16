@@ -8,6 +8,15 @@ class UserModel {
   final String status;
   final String? phone;
   final String? location;
+  // Address fields
+  final String street;
+  final String barangay;
+  final String city;
+  final String province;
+  final String zipCode;
+  // Setup completion
+  final bool addressSetupCompleted;
+  final bool isGoogleAuth;
 
   const UserModel({
     required this.id,
@@ -19,6 +28,13 @@ class UserModel {
     this.status = 'Offline',
     this.phone,
     this.location,
+    this.street = '',
+    this.barangay = '',
+    this.city = '',
+    this.province = '',
+    this.zipCode = '',
+    this.addressSetupCompleted = false,
+    this.isGoogleAuth = false,
   });
 
   factory UserModel.fromMap(Map<String, dynamic> map) {
@@ -32,6 +48,13 @@ class UserModel {
       status: map['status'] ?? 'Offline',
       phone: map['phone'],
       location: map['location'],
+      street: map['street'] ?? '',
+      barangay: map['barangay'] ?? '',
+      city: map['city'] ?? '',
+      province: map['province'] ?? '',
+      zipCode: map['zipCode'] ?? '',
+      addressSetupCompleted: map['addressSetupCompleted'] ?? false,
+      isGoogleAuth: map['isGoogleAuth'] ?? false,
     );
   }
 
@@ -46,6 +69,13 @@ class UserModel {
       'status': status,
       'phone': phone,
       'location': location,
+      'street': street,
+      'barangay': barangay,
+      'city': city,
+      'province': province,
+      'zipCode': zipCode,
+      'addressSetupCompleted': addressSetupCompleted,
+      'isGoogleAuth': isGoogleAuth,
     };
   }
 
@@ -59,6 +89,13 @@ class UserModel {
     String? status,
     String? phone,
     String? location,
+    String? street,
+    String? barangay,
+    String? city,
+    String? province,
+    String? zipCode,
+    bool? addressSetupCompleted,
+    bool? isGoogleAuth,
   }) {
     return UserModel(
       id: id ?? this.id,
@@ -70,6 +107,13 @@ class UserModel {
       status: status ?? this.status,
       phone: phone ?? this.phone,
       location: location ?? this.location,
+      street: street ?? this.street,
+      barangay: barangay ?? this.barangay,
+      city: city ?? this.city,
+      province: province ?? this.province,
+      zipCode: zipCode ?? this.zipCode,
+      addressSetupCompleted: addressSetupCompleted ?? this.addressSetupCompleted,
+      isGoogleAuth: isGoogleAuth ?? this.isGoogleAuth,
     );
   }
 

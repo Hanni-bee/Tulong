@@ -10,6 +10,10 @@ import '../widgets/enhanced_text_styles.dart';
 import '../widgets/theme_selection_modal.dart';
 import '../services/philippine_location_service.dart';
 import 'notification_settings_screen.dart';
+import '../constants/app_typography.dart';
+import '../widgets/enhanced_card.dart';
+import '../widgets/enhanced_button.dart';
+import '../widgets/polished_animations.dart';
 
 class ModernProfileScreen extends StatefulWidget {
   const ModernProfileScreen({super.key});
@@ -92,24 +96,38 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // Header
-                _buildHeader(),
+                PolishedFadeIn(
+                  delay: const Duration(milliseconds: 100),
+                  child: _buildHeader(),
+                ),
                 const SizedBox(height: 24),
 
                 // Profile Info
-                _buildProfileInfo(),
+                PolishedFadeIn(
+                  delay: const Duration(milliseconds: 200),
+                  child: _buildProfileInfo(),
+                ),
                 const SizedBox(height: 24),
 
                 // Quick Stats
-                _buildQuickStats(),
+                PolishedFadeIn(
+                  delay: const Duration(milliseconds: 300),
+                  child: _buildQuickStats(),
+                ),
                 const SizedBox(height: 24),
 
                 // Settings Sections
-                _buildSettingsSections(),
+                PolishedFadeIn(
+                  delay: const Duration(milliseconds: 400),
+                  child: _buildSettingsSections(),
+                ),
                 const SizedBox(height: 24),
 
-
                 // Action Buttons
-                _buildActionButtons(),
+                PolishedFadeIn(
+                  delay: const Duration(milliseconds: 500),
+                  child: _buildActionButtons(),
+                ),
                 const SizedBox(height: 24),
               ],
             ),
@@ -248,9 +266,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                   // Name and Role
                   Text(
                     userName,
-                    style: const TextStyle(
-                      fontSize: 32,
-                      fontWeight: FontWeight.bold,
+                    style: AppTypography.displayMedium.copyWith(
                       color: AppColors.textPrimary,
                     ),
                     textAlign: TextAlign.center,
@@ -260,10 +276,8 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
 
                   Text(
                     _userProfile['role'],
-                    style: const TextStyle(
-                      fontSize: 18,
+                    style: AppTypography.titleMedium.copyWith(
                       color: AppColors.textSecondary,
-                      fontWeight: FontWeight.w500,
                     ),
                     textAlign: TextAlign.center,
                   ),
@@ -482,57 +496,61 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
     required String subtitle,
     required VoidCallback onTap,
   }) {
-    return GestureDetector(
-      onTap: () {
-        HapticFeedback.lightImpact();
-        onTap();
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        child: Row(
-          children: [
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: AppColors.ultraLightGray,
-                borderRadius: BorderRadius.circular(12),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          HapticFeedback.lightImpact();
+          onTap();
+        },
+        borderRadius: BorderRadius.circular(12),
+        splashColor: AppColors.primaryRed.withOpacity(0.1),
+        highlightColor: AppColors.primaryRed.withOpacity(0.05),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: AppColors.primaryRed.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  icon,
+                  color: AppColors.primaryRed,
+                  size: 20,
+                ),
               ),
-              child: Icon(
-                icon,
-                color: AppColors.primaryRed,
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: AppTypography.titleSmall.copyWith(
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: AppTypography.bodySmall.copyWith(
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.chevron_right,
+                color: AppColors.mediumGray,
                 size: 20,
               ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                  Text(
-                    subtitle,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const Icon(
-              Icons.chevron_right,
-              color: AppColors.mediumGray,
-              size: 20,
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -542,65 +560,29 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
     return Column(
       children: [
         // Sign Out Button
-        SizedBox(
-          width: double.infinity,
-          child: AnimatedNeumorphicCard(
-            backgroundColor: AppColors.error.withOpacity(0.1),
-            child: GestureDetector(
-              onTap: () => _signOut(context),
-              child: const Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.logout,
-                    color: AppColors.error,
-                    size: 20,
-                  ),
-                  SizedBox(width: 12),
-                  Text(
-                    'Sign Out',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.error,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
+        EnhancedButton(
+          text: 'Sign Out',
+          variant: ButtonVariant.danger,
+          size: ButtonSize.large,
+          icon: Icons.logout,
+          fullWidth: true,
+          onPressed: () {
+            _signOut(context);
+          },
         ),
 
         const SizedBox(height: 16),
 
         // Delete Account Button
-        SizedBox(
-          width: double.infinity,
-          child: AnimatedNeumorphicCard(
-            backgroundColor: AppColors.mediumGray.withOpacity(0.1),
-            child: GestureDetector(
-              onTap: () => _deleteAccount(context),
-              child: const Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.delete_forever,
-                    color: AppColors.mediumGray,
-                    size: 20,
-                  ),
-                  SizedBox(width: 12),
-                  Text(
-                    'Delete Account',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.mediumGray,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
+        EnhancedButton(
+          text: 'Delete Account',
+          variant: ButtonVariant.secondary,
+          size: ButtonSize.large,
+          icon: Icons.delete_forever,
+          fullWidth: true,
+          onPressed: () {
+            _deleteAccount(context);
+          },
         ),
       ],
     );

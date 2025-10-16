@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../../constants/app_colors.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/firebase_service.dart';
-import '../../services/offline_auth_service.dart';
 import 'sign_up_screen.dart';
 
 class SignInScreen extends StatefulWidget {
@@ -315,8 +313,6 @@ class _SignInScreenState extends State<SignInScreen> {
                           ),
                         ),
                       ),
-                      
-                      const SizedBox(height: 8),
                       
                       // Sign in button
                       SizedBox(

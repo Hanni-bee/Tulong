@@ -1,7 +1,10 @@
 import 'dart:math';
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'sqlite_service.dart';
 
 class TwoFactorAuthService {
   static final TwoFactorAuthService _instance = TwoFactorAuthService._internal();
@@ -280,6 +283,59 @@ class TwoFactorAuthService {
       return true;
     } catch (e) {
       print('Error resetting password: $e');
+      rethrow;
+    }
+  }
+
+  // Actually update password after email reset (called when user clicks reset link and sets new password)
+  Future<bool> updatePasswordAfterReset({
+    required String email,
+    required String newPassword,
+  }) async {
+    try {
+      // Hash the new password
+      final bytes = utf8.encode(newPassword);
+      final digest = sha256.convert(bytes);
+      final hashedPassword = digest.toString();
+
+      // Update password in Firebase Realtime Database
+      final userSnapshot = await _database.ref('users').orderByChild('Email').equalTo(email).get();
+      if (userSnapshot.exists) {
+        final users = userSnapshot.value as Map;
+        String? userUid;
+        
+        users.forEach((key, value) {
+          final user = value as Map;
+          if (user['Email'] == email) {
+            userUid = key;
+          }
+        });
+
+        if (userUid != null) {
+          // Update password in Firebase Realtime Database
+          await _database.ref('users/$userUid').update({
+            'Password': hashedPassword,
+          });
+
+          // Update password in SQLite
+          final sqliteService = SQLiteService();
+          final existingUser = await sqliteService.getUserByEmail(email);
+          
+          if (existingUser != null) {
+            await sqliteService.updateUser(existingUser['id'], {
+              'password': hashedPassword,
+              'sync_timestamp': DateTime.now().millisecondsSinceEpoch,
+            });
+            print('✅ Password updated in both Firebase and SQLite for: $email');
+          }
+
+          return true;
+        }
+      }
+      
+      return false;
+    } catch (e) {
+      print('Error updating password after reset: $e');
       rethrow;
     }
   }

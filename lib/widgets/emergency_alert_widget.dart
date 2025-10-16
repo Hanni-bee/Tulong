@@ -57,8 +57,8 @@ class _EmergencyAlertWidgetState extends State<EmergencyAlertWidget>
     
     _pulseController.repeat(reverse: true);
     
-    // Haptic feedback for emergency alerts
-    HapticFeedback.heavyImpact();
+    // Haptic feedback for emergency alerts - Reduced intensity
+    HapticFeedback.mediumImpact();
   }
 
   @override
@@ -144,11 +144,11 @@ class _EmergencyAlertWidgetState extends State<EmergencyAlertWidget>
                           ),
                         ),
                       
-                      // Simple overlay for better text visibility
+                      // Better overlay for text visibility
                       if (widget.showGif && widget.gifPath != null)
                         Container(
                           decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.5),
+                            color: Colors.black.withOpacity(0.7), // Increased opacity for better contrast
                           ),
                         ),
                       
@@ -196,10 +196,19 @@ class _EmergencyAlertWidgetState extends State<EmergencyAlertWidget>
                                       Text(
                                         widget.title,
                                         style: TextStyle(
-                                          fontSize: 20,
+                                          fontSize: 18, // Reduced from 20 to prevent overflow
                                           fontWeight: FontWeight.bold,
                                           color: widget.showGif ? Colors.white : severityColor,
+                                          shadows: widget.showGif ? [
+                                            Shadow(
+                                              color: Colors.black,
+                                              blurRadius: 2,
+                                              offset: const Offset(1, 1),
+                                            ),
+                                          ] : null,
                                         ),
+                                        maxLines: 1, // Prevent text wrapping
+                                        overflow: TextOverflow.ellipsis, // Add ellipsis if too long
                                       ),
                                       const SizedBox(height: 4),
                                       Text(
@@ -207,27 +216,41 @@ class _EmergencyAlertWidgetState extends State<EmergencyAlertWidget>
                                         style: TextStyle(
                                           fontSize: 12,
                                           fontWeight: FontWeight.w600,
-                                          color: widget.showGif ? Colors.white.withOpacity(0.9) : severityColor.withOpacity(0.8),
+                                          color: widget.showGif ? Colors.white : severityColor.withOpacity(0.8),
+                                          shadows: widget.showGif ? [
+                                            Shadow(
+                                              color: Colors.black,
+                                              blurRadius: 2,
+                                              offset: const Offset(1, 1),
+                                            ),
+                                          ] : null,
                                         ),
+                                        maxLines: 1, // Prevent text wrapping
+                                        overflow: TextOverflow.ellipsis,
                                       ),
                                     ],
                                   ),
                                 ),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 6,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: severityColor,
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                  child: Text(
-                                    'EMERGENCY',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.bold,
+                                Flexible( // Changed from Container to Flexible to prevent overflow
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, // Reduced padding
+                                      vertical: 4,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: severityColor,
+                                      borderRadius: BorderRadius.circular(16), // Reduced radius
+                                    ),
+                                    child: Text(
+                                      'EMERGENCY',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 9, // Reduced font size
+                                        fontWeight: FontWeight.bold,
+                                        letterSpacing: 0.5, // Added letter spacing for readability
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
                                 ),
@@ -242,12 +265,12 @@ class _EmergencyAlertWidgetState extends State<EmergencyAlertWidget>
                               padding: const EdgeInsets.all(16),
                               decoration: BoxDecoration(
                                 color: widget.showGif 
-                                    ? Colors.black.withOpacity(0.6)
+                                    ? Colors.black.withOpacity(0.8) // Increased opacity for better contrast
                                     : Colors.white.withOpacity(0.9),
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
-                                  color: severityColor.withOpacity(0.3),
-                                  width: 1,
+                                  color: severityColor.withOpacity(0.5), // Increased border opacity
+                                  width: 2, // Increased border width
                                 ),
                               ),
                               child: Text(
@@ -257,6 +280,13 @@ class _EmergencyAlertWidgetState extends State<EmergencyAlertWidget>
                                   color: widget.showGif ? Colors.white : AppColors.textPrimary,
                                   fontWeight: FontWeight.w500,
                                   height: 1.4,
+                                  shadows: widget.showGif ? [
+                                    Shadow(
+                                      color: Colors.black,
+                                      blurRadius: 2,
+                                      offset: const Offset(1, 1),
+                                    ),
+                                  ] : null, // Add text shadows when showing GIF
                                 ),
                               ),
                             ),
@@ -269,24 +299,37 @@ class _EmergencyAlertWidgetState extends State<EmergencyAlertWidget>
                                 width: double.infinity,
                                 padding: const EdgeInsets.symmetric(vertical: 12),
                                 decoration: BoxDecoration(
-                                  color: severityColor.withOpacity(0.1),
+                                  color: widget.showGif 
+                                      ? Colors.black.withOpacity(0.6) // Dark background when showing GIF
+                                      : severityColor.withOpacity(0.1),
                                   borderRadius: BorderRadius.circular(12),
+                                  border: widget.showGif ? Border.all(
+                                    color: severityColor.withOpacity(0.5),
+                                    width: 1,
+                                  ) : null,
                                 ),
                                 child: Row(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
                                     Icon(
                                       Icons.touch_app,
-                                      color: severityColor,
+                                      color: widget.showGif ? Colors.white : severityColor,
                                       size: 20,
                                     ),
                                     const SizedBox(width: 8),
                                     Text(
                                       'Tap for more information',
                                       style: TextStyle(
-                                        color: severityColor,
+                                        color: widget.showGif ? Colors.white : severityColor,
                                         fontWeight: FontWeight.w600,
                                         fontSize: 14,
+                                        shadows: widget.showGif ? [
+                                          Shadow(
+                                            color: Colors.black,
+                                            blurRadius: 2,
+                                            offset: const Offset(1, 1),
+                                          ),
+                                        ] : null, // Add text shadows when showing GIF
                                       ),
                                     ),
                                   ],

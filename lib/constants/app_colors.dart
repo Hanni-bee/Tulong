@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
 
 class AppColors {
-  // Primary colors with modern tones
+  // Primary colors with modern tones - Keeping original red theme
   static const Color primaryRed = Color(0xFFD32F2F);
   static const Color primaryRedDark = Color(0xFFB71C1C);
   static const Color primaryRedLight = Color(0xFFFFCDD2);
   static const Color primaryRedAccent = Color(0xFFE53935);
+  
+  // Neumorphic base colors (neutral grays for depth effects)
+  static const Color neumorphicBase = Color(0xFFF5F5F5);
+  static const Color neumorphicLight = Color(0xFFFFFFFF);
+  static const Color neumorphicDark = Color(0xFFBDBDBD);
   
   // Secondary colors
   static const Color white = Color(0xFFFFFFFF);
@@ -14,6 +19,11 @@ class AppColors {
   static const Color lightGray = Color(0xFFF5F5F5);
   static const Color mediumGray = Color(0xFF757575);
   static const Color ultraLightGray = Color(0xFFF8F9FA);
+  
+  // Modern gradient colors (using original red theme)
+  static const Color gradientStart = Color(0xFFD32F2F);
+  static const Color gradientEnd = Color(0xFFB71C1C);
+  static const Color gradientAccent = Color(0xFFE53935);
   
   // Status colors with modern palette
   static const Color online = Color(0xFF10B981);

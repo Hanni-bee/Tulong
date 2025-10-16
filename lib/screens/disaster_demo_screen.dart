@@ -122,8 +122,8 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
       _isEmergencyActive = true;
     });
     
-    // Haptic feedback
-    HapticFeedback.heavyImpact();
+    // Reduced haptic feedback - lighter impact instead of heavy
+    HapticFeedback.mediumImpact();
     
     // Start animations
     _pulseController.repeat(reverse: true);
@@ -351,7 +351,7 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
       builder: (context, child) {
         return Transform.translate(
           offset: Offset(
-            _isEmergencyActive ? _shakeAnimation.value * 10 : 0.0,
+            _isEmergencyActive ? _shakeAnimation.value * 5 : 0.0, // Reduced from 10 to 5
             0.0,
           ),
           child: Container(
@@ -411,77 +411,111 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
                           ),
                         ),
                         
-                        // Overlay gradient
+                        // Overlay gradient - Reduced opacity for better text readability
                         Positioned.fill(
                           child: Container(
                             decoration: BoxDecoration(
-                              color: Colors.black.withOpacity(0.4),
+                              color: Colors.black.withOpacity(0.2), // Reduced from 0.4 to 0.2
                             ),
                           ),
                         ),
                         
-                        // Content overlay
+                        // Content overlay with better background for text readability
                         Positioned(
                           bottom: 16,
                           left: 16,
                           right: 16,
-                          child: Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  color: scenario.color.withOpacity(0.9),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Icon(
-                                  scenario.icon,
-                                  color: Colors.white,
-                                  size: 24,
-                                ),
+                          child: Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(0.7), // Dark background for text
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: scenario.color.withOpacity(0.8),
+                                width: 2,
                               ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      scenario.title,
-                                      style: const TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      scenario.description,
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.white.withOpacity(0.9),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 4,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: scenario.color,
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Text(
-                                  scenario.severity.toUpperCase(),
-                                  style: const TextStyle(
+                            ),
+                            child: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: scenario.color,
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Icon(
+                                    scenario.icon,
                                     color: Colors.white,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold,
+                                    size: 24,
                                   ),
                                 ),
-                              ),
-                            ],
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        scenario.title,
+                                        style: const TextStyle(
+                                          fontSize: 16, // Reduced from 18
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.white,
+                                          shadows: [
+                                            Shadow(
+                                              color: Colors.black,
+                                              blurRadius: 2,
+                                              offset: Offset(1, 1),
+                                            ),
+                                          ],
+                                        ),
+                                        maxLines: 1, // Prevent text wrapping
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        scenario.description,
+                                        style: const TextStyle(
+                                          fontSize: 11, // Reduced from 12
+                                          color: Colors.white,
+                                          shadows: [
+                                            Shadow(
+                                              color: Colors.black,
+                                              blurRadius: 2,
+                                              offset: Offset(1, 1),
+                                            ),
+                                          ],
+                                        ),
+                                        maxLines: 2, // Allow 2 lines for description
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Flexible( // Changed to Flexible to prevent overflow
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 6, // Reduced padding
+                                      vertical: 3,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: scenario.color,
+                                      borderRadius: BorderRadius.circular(10), // Reduced radius
+                                    ),
+                                    child: Text(
+                                      scenario.severity.toUpperCase(),
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 8, // Reduced font size
+                                        fontWeight: FontWeight.bold,
+                                        letterSpacing: 0.5, // Added letter spacing
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ],

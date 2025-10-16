@@ -8,6 +8,12 @@ import '../widgets/search_bar.dart';
 import '../utils/responsive_helper.dart';
 import '../utils/responsive_spacing.dart';
 import 'modern_personal_chat_screen.dart';
+import '../widgets/modern_empty_state.dart';
+import '../widgets/modern_skeleton_loader.dart';
+import '../widgets/polished_shimmer.dart';
+import '../widgets/polished_animations.dart';
+import '../constants/app_typography.dart';
+import 'package:flutter/services.dart';
 
 class PeopleScreen extends StatefulWidget {
   const PeopleScreen({super.key});
@@ -19,6 +25,7 @@ class PeopleScreen extends StatefulWidget {
 class _PeopleScreenState extends State<PeopleScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
+  bool _isLoading = false;
 
   // Sample users data
   final List<Map<String, dynamic>> _users = [
@@ -192,12 +199,43 @@ class _PeopleScreenState extends State<PeopleScreen> {
               
               const SizedBox(height: 16),
               
-              // Users list
+              // Users list with loading and empty states
               LayoutBuilder(
                 builder: (context, constraints) {
+                  // Show loading skeleton
+                  if (_isLoading) {
+                    return PolishedStaggeredList(
+                      staggerDuration: const Duration(milliseconds: 100),
+                      children: List.generate(5, (index) {
+                        return const PolishedListItemSkeleton();
+                      }),
+                    );
+                  }
+
+                  // Show empty state
+                  if (_filteredUsers.isEmpty) {
+                    return ModernEmptyState(
+                      icon: _searchQuery.isEmpty ? Icons.people_outline : Icons.search_off,
+                      title: _searchQuery.isEmpty ? 'No Users Yet' : 'No Results Found',
+                      message: _searchQuery.isEmpty
+                          ? 'No users are currently connected to the network.'
+                          : 'Try adjusting your search to find what you\'re looking for.',
+                      actionLabel: _searchQuery.isEmpty ? null : 'Clear Search',
+                      onAction: _searchQuery.isEmpty
+                          ? null
+                          : () {
+                              setState(() {
+                                _searchQuery = '';
+                                _searchController.clear();
+                              });
+                            },
+                    );
+                  }
+
+                  // Show users list
                   return ListView.builder(
                     shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
+                    physics: const BouncingScrollPhysics(),
                     itemCount: _filteredUsers.length,
                     itemBuilder: (context, index) {
                       final user = _filteredUsers[index];
@@ -209,9 +247,11 @@ class _PeopleScreenState extends State<PeopleScreen> {
                           isOnline: user['isOnline'],
                           lastSeen: user['lastSeen'],
                           onTap: () {
+                            HapticFeedback.lightImpact();
                             _showUserProfile(context, user);
                           },
                           onMessage: () {
+                            HapticFeedback.mediumImpact();
                             _openPersonalMessage(context, user);
                           },
                         ),
@@ -356,21 +396,29 @@ class _PeopleScreenState extends State<PeopleScreen> {
   }
 
   Future<void> _refreshUsers() async {
+    setState(() {
+      _isLoading = true;
+    });
+
     // Simulate network delay
     await Future.delayed(const Duration(seconds: 1));
     
     // Simulate updating user status
     setState(() {
+      _isLoading = false;
       // In a real app, this would fetch fresh data from the server
       // For now, we'll just trigger a rebuild to show the refresh worked
     });
     
     if (mounted) {
+      HapticFeedback.lightImpact();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Users refreshed'),
-          duration: Duration(seconds: 1),
-          backgroundColor: AppColors.online,
+        SnackBar(
+          content: Text('Users refreshed', style: AppTypography.bodyMedium.copyWith(color: Colors.white)),
+          duration: const Duration(seconds: 1),
+          backgroundColor: AppColors.success,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
       );
     }

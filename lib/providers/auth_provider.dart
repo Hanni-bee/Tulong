@@ -6,6 +6,7 @@ import 'dart:io';
 import '../services/firebase_service.dart';
 import '../services/sqlite_service.dart';
 import '../services/two_factor_auth_service.dart';
+import '../models/user_model.dart';
 
 class AuthProvider extends ChangeNotifier {
   bool _isAuthenticated = false;
@@ -13,6 +14,7 @@ class AuthProvider extends ChangeNotifier {
   String? _userEmail;
   String? _userName;
   bool _twoFactorEnabled = false;
+  UserModel? _currentUserModel;
   final Map<String, String> _registeredUsers = {}; // email -> password (demo)
   final TwoFactorAuthService _twoFactorService = TwoFactorAuthService();
   final SQLiteService _sqliteService = SQLiteService();
@@ -21,8 +23,24 @@ class AuthProvider extends ChangeNotifier {
   String? get currentUser => _currentUser;
   String? get userEmail => _userEmail;
   String? get userName => _userName;
+  UserModel? get currentUserModel => _currentUserModel;
   bool get hasSession => _isAuthenticated && _userEmail != null;
   bool get twoFactorEnabled => _twoFactorEnabled;
+
+  // Method to update current user model
+  void updateUser(UserModel user) {
+    _currentUserModel = user;
+    _currentUser = user.id;
+    _userEmail = user.email;
+    _userName = user.name;
+    notifyListeners();
+  }
+
+  // Check if address setup is required for current user
+  bool get isAddressSetupRequired {
+    if (_currentUserModel == null) return false;
+    return _currentUserModel!.isGoogleAuth && !_currentUserModel!.addressSetupCompleted;
+  }
 
   // Helper method to update SQLite user password
   Future<void> _updateSQLiteUserPassword(String email, String hashedPassword) async {
@@ -263,15 +281,28 @@ class AuthProvider extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       await prefs.clear(); // Clear ALL stored preferences
       
+      // Create UserModel for Google Auth user
+      final userModel = UserModel(
+        id: user.uid,
+        name: displayName,
+        email: email,
+        avatar: user.photoURL,
+        isGoogleAuth: true,
+        addressSetupCompleted: false, // Will need address setup
+      );
+
       // Set fresh Google account data
       _isAuthenticated = true;
-      _currentUser = email;
+      _currentUser = user.uid;
       _userEmail = email;
       _userName = displayName;
+      _currentUserModel = userModel;
       
       // Save ONLY the new session data
       await prefs.setString('session_email', _userEmail!);
       await prefs.setString('session_name', _userName!);
+      await prefs.setBool('is_google_auth', true);
+      await prefs.setBool('address_setup_completed', false);
       
       // Set creation timestamp for new user detection (tutorial)
       await prefs.setString('user_created_at_$_userEmail', DateTime.now().millisecondsSinceEpoch.toString());
@@ -279,6 +310,7 @@ class AuthProvider extends ChangeNotifier {
       print('Google user data saved - Name: $_userName, Email: $_userEmail');
       print('All previous session data cleared');
       print('New user timestamp set for tutorial: $_userEmail');
+      print('Google Auth user created - Address setup required: ${!userModel.addressSetupCompleted}');
 
       // Ensure state is updated synchronously
       notifyListeners();

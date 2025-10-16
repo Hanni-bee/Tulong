@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/app_colors.dart';
+import '../constants/app_typography.dart';
 import 'package:lottie/lottie.dart';
 import '../widgets/modern_neumorphic_card.dart';
 import '../widgets/modern_emergency_button.dart';
@@ -13,9 +14,16 @@ import '../widgets/emergency_alert_widget.dart';
 import '../widgets/enhanced_text_styles.dart';
 import '../widgets/enhanced_shadows.dart' as shadows;
 import '../widgets/micro_interactions.dart';
+import '../widgets/interactive_gestures.dart';
+import '../widgets/enhanced_card.dart';
+import '../widgets/enhanced_button.dart';
+import '../widgets/polished_shimmer.dart';
+import '../widgets/polished_animations.dart';
 import '../utils/page_transitions.dart';
 import '../utils/phone_responsive_helper.dart';
+import '../config/page_transition_config.dart';
 import 'modern_global_chat_screen.dart';
+import 'enhanced_global_chat_screen.dart';
 import 'walkie_talkie_screen.dart';
 import 'modern_people_screen.dart';
 import 'modern_profile_screen.dart';
@@ -181,40 +189,59 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       // Header Section
-                      _buildHeader(),
+                      PolishedFadeIn(
+                        delay: const Duration(milliseconds: 100),
+                        child: _buildHeader(),
+                      ),
                       const SizedBox(height: 16),
                       
                       // Quick Actions
-                      shadows.FloatingCard(
-                        margin: const EdgeInsets.symmetric(horizontal: 4),
-                        child: _buildQuickActions(),
+                      PolishedFadeIn(
+                        delay: const Duration(milliseconds: 200),
+                        child: PrimaryCard(
+                          margin: const EdgeInsets.symmetric(horizontal: 16),
+                          child: _buildQuickActions(),
+                        ),
                       ),
                       const SizedBox(height: 16),
                       
                       // Recent Activity
-                      shadows.FloatingCard(
-                        margin: const EdgeInsets.symmetric(horizontal: 4),
-                        child: _buildRecentActivity(),
+                      PolishedFadeIn(
+                        delay: const Duration(milliseconds: 300),
+                        child: SecondaryCard(
+                          margin: const EdgeInsets.symmetric(horizontal: 16),
+                          child: _buildRecentActivity(),
+                        ),
                       ),
                       const SizedBox(height: 12),
                       
                       // Contacts Section
-                      shadows.FloatingCard(
-                        margin: const EdgeInsets.symmetric(horizontal: 4),
-                        child: _buildContactsSection(),
+                      PolishedFadeIn(
+                        delay: const Duration(milliseconds: 400),
+                        child: PrimaryCard(
+                          margin: const EdgeInsets.symmetric(horizontal: 16),
+                          child: _buildContactsSection(),
+                        ),
                       ),
                       const SizedBox(height: 12),
                       
                       // Emergency Section
-                      shadows.FloatingCard(
-                        margin: const EdgeInsets.symmetric(horizontal: 4),
-                        child: _buildEmergencySection(),
+                      PolishedFadeIn(
+                        delay: const Duration(milliseconds: 500),
+                        child: AccentCard(
+                          margin: const EdgeInsets.symmetric(horizontal: 16),
+                          accentColor: AppColors.error,
+                          child: _buildEmergencySection(),
+                        ),
                       ),
                       
                       const SizedBox(height: 12),
                       
                       // Sample Emergency Alert with GIF
-                      _buildSampleEmergencyAlert(),
+                      PolishedFadeIn(
+                        delay: const Duration(milliseconds: 600),
+                        child: _buildSampleEmergencyAlert(),
+                      ),
                     ],
                   ),
                 ),
@@ -410,26 +437,20 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
           const SizedBox(height: 20),
           
           // App Info - Better typography hierarchy
-          const Column(
+          Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 'Welcome to T.U.L.O.N.G',
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.w800,
+                style: AppTypography.appTitle.copyWith(
                   color: AppColors.textPrimary,
-                  letterSpacing: -0.5,
                 ),
               ),
-              SizedBox(height: 8),
+              const SizedBox(height: 8),
               Text(
                 'Your emergency communication network',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w500,
+                style: AppTypography.bodyLarge.copyWith(
                   color: AppColors.mediumGray,
-                  letterSpacing: 0.2,
                 ),
               ),
             ],
@@ -487,21 +508,17 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                       color: AppColors.primaryRed.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(PhoneResponsiveHelper.getPhoneBorderRadius(context) * 0.5),
                     ),
-                    child: PhoneResponsiveText(
+                    child: Text(
                       'Quick Actions',
-                      textSize: PhoneTextSize.subtitle,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w600,
+                      style: AppTypography.cardTitle.copyWith(
                         color: AppColors.primaryRed,
                       ),
                     ),
                   ),
                   const Spacer(),
-                  PhoneResponsiveText(
+                  Text(
                     'Tap to use',
-                    textSize: PhoneTextSize.caption,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w500,
+                    style: AppTypography.captionText.copyWith(
                       color: AppColors.primaryRed.withOpacity(0.7),
                     ),
                   ),
@@ -509,9 +526,10 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
               ),
               SizedBox(height: PhoneResponsiveHelper.getPhoneSpacing(context)),
               SizedBox(
-                height: PhoneResponsiveHelper.getPhoneButtonHeight(context) + PhoneResponsiveHelper.getPhoneSpacing(context) * 2,
+                height: 120, // Fixed height to accommodate larger buttons
                 child: ListView(
                   scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 8), // Add padding for better spacing
                   children: [
                     _buildUniformActionButton(
                       onPressed: () => _showEmergencyDialog(context),
@@ -520,7 +538,7 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                       title: 'Emergency',
                       subtitle: 'Alert',
                     ),
-                    SizedBox(width: PhoneResponsiveHelper.getPhoneSpacing(context)),
+                    const SizedBox(width: 12), // Fixed spacing between buttons
                     _buildUniformActionButton(
                       onPressed: () => _navigateToChat(context),
                       backgroundColor: AppColors.info,
@@ -528,7 +546,7 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                       title: 'Send',
                       subtitle: 'Message',
                     ),
-                    SizedBox(width: PhoneResponsiveHelper.getPhoneSpacing(context)),
+                    const SizedBox(width: 12), // Fixed spacing between buttons
                     _buildUniformActionButton(
                       onPressed: () => _navigateToContacts(context),
                       backgroundColor: Colors.green,
@@ -536,7 +554,7 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                       title: 'Message',
                       subtitle: 'Contact',
                     ),
-                    SizedBox(width: PhoneResponsiveHelper.getPhoneSpacing(context)),
+                    const SizedBox(width: 12), // Fixed spacing between buttons
                     _buildUniformActionButton(
                       onPressed: () => _navigateToWalkieTalkie(context),
                       backgroundColor: AppColors.success,
@@ -544,7 +562,7 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                       title: 'Voice',
                       subtitle: 'Call',
                     ),
-                    SizedBox(width: PhoneResponsiveHelper.getPhoneSpacing(context)),
+                    const SizedBox(width: 12), // Fixed spacing between buttons
                     _buildUniformActionButton(
                       onPressed: () => _navigateToPeople(context),
                       backgroundColor: AppColors.warning,
@@ -552,7 +570,7 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                       title: 'People',
                       subtitle: 'Contacts',
                     ),
-                    SizedBox(width: PhoneResponsiveHelper.getPhoneSpacing(context)),
+                    const SizedBox(width: 12), // Fixed spacing between buttons
                     _buildUniformActionButton(
                       onPressed: () => _navigateToProfile(context),
                       backgroundColor: AppColors.primaryRed,
@@ -560,7 +578,7 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                       title: 'Profile',
                       subtitle: 'Settings',
                     ),
-                    SizedBox(width: PhoneResponsiveHelper.getPhoneSpacing(context)),
+                    const SizedBox(width: 12), // Fixed spacing between buttons
                     _buildUniformActionButton(
                       onPressed: () => _navigateToDisasterDemo(context),
                       backgroundColor: Colors.purple,
@@ -590,36 +608,37 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
         return InteractiveButton(
           onPressed: onPressed,
           backgroundColor: backgroundColor,
-          padding: PhoneResponsiveHelper.getPhonePadding(context),
-          borderRadius: BorderRadius.circular(PhoneResponsiveHelper.getPhoneBorderRadius(context) * 0.75),
+          padding: const EdgeInsets.all(16), // Increased padding for better touch
+          borderRadius: BorderRadius.circular(16), // Fixed border radius
           shadows: shadows.EnhancedShadows.buttonMedium,
           child: SizedBox(
-            width: PhoneResponsiveHelper.getPhoneContactCardWidth(context) * 0.8,
+            width: 100, // Fixed width - larger than before
+            height: 100, // Fixed height for consistent sizing
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(
                   icon, 
                   color: AppColors.white, 
-                  size: PhoneResponsiveHelper.getPhoneIconSize(context, small: 20, medium: 22, large: 24, extraLarge: 26),
+                  size: 28, // Increased icon size for better visibility
                 ),
-                SizedBox(height: PhoneResponsiveHelper.getPhoneSpacing(context) * 0.5),
-                PhoneResponsiveText(
+                const SizedBox(height: 8), // Fixed spacing
+                Text(
                   title,
-                  textSize: PhoneTextSize.caption,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
+                  style: AppTypography.buttonLabel.copyWith(
                     color: AppColors.white,
+                    fontWeight: FontWeight.w700,
                   ),
                   textAlign: TextAlign.center,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-                PhoneResponsiveText(
+                const SizedBox(height: 2), // Small spacing
+                Text(
                   subtitle,
-                  textSize: PhoneTextSize.caption,
-                  style: const TextStyle(
+                  style: AppTypography.captionText.copyWith(
                     color: AppColors.white,
+                    fontWeight: FontWeight.w500,
                   ),
                   textAlign: TextAlign.center,
                   maxLines: 1,
@@ -982,8 +1001,8 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
         ),
         const SizedBox(height: 12),
         EmergencyAlertWidget(
-          title: 'Emergency Alert System Active',
-          message: 'This is how emergency alerts will appear in the app. The system is monitoring for disasters and will automatically notify all users.',
+          title: 'Emergency System Active', // Shortened title to prevent wrapping
+          message: 'Emergency alert system is monitoring for disasters and will automatically notify all users in your area.',
           severity: 'High',
           showGif: true,
           gifPath: 'assets/gifs/disasters/emergency.gif',
@@ -1002,23 +1021,13 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
   }
 
   void _navigateToChat(BuildContext context) {
-    HapticFeedback.lightImpact();
-    Navigator.of(context).push(
-      ModernPageRoute(
-        child: const ModernGlobalChatScreen(),
-        transitionType: ModernTransitionType.slideAndFade,
-      ),
-    );
+    HapticFeedback.mediumImpact();
+    context.pushPage(const EnhancedGlobalChatScreen());
   }
 
   void _navigateToWalkieTalkie(BuildContext context) {
-    HapticFeedback.lightImpact();
-    Navigator.of(context).push(
-      ModernPageRoute(
-        child: const WalkieTalkieScreen(),
-        transitionType: ModernTransitionType.slideAndFade,
-      ),
-    );
+    HapticFeedback.mediumImpact();
+    context.pushPage(const WalkieTalkieScreen());
   }
 
   void _navigateToPeople(BuildContext context) {
@@ -1047,13 +1056,8 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
   }
 
   void _navigateToContacts(BuildContext context) {
-    HapticFeedback.lightImpact();
-    Navigator.of(context).push(
-      ModernPageRoute(
-        child: const ModernPeopleScreen(),
-        transitionType: ModernTransitionType.slideAndFade,
-      ),
-    );
+    HapticFeedback.mediumImpact();
+    context.pushPage(const ModernPeopleScreen());
   }
 
   void _startPrivateChat(BuildContext context, Map<String, dynamic> contact) {

@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
 import '../constants/app_strings.dart';
 import '../widgets/notification_card.dart';
+import '../constants/app_typography.dart';
+import '../widgets/modern_empty_state.dart';
+import 'package:flutter/services.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -174,28 +177,38 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             ),
           ),
           
-          // Notifications list
+          // Notifications list with empty state
           Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              itemCount: _notifications.length,
-              itemBuilder: (context, index) {
-                final notification = _notifications[index];
-                return NotificationCard(
-                  title: notification['title'],
-                  message: notification['message'],
-                  timestamp: notification['timestamp'],
-                  type: notification['type'],
-                  isRead: notification['isRead'],
-                  onTap: () {
-                    _markAsRead(notification['id']);
-                  },
-                  onDismiss: () {
-                    _dismissNotification(notification['id']);
-                  },
-                );
-              },
-            ),
+            child: _notifications.isEmpty
+                ? ModernEmptyState(
+                    icon: Icons.notifications_none,
+                    title: 'No Notifications',
+                    message: 'You\'re all caught up! No new notifications at the moment.',
+                    iconColor: AppColors.mediumGray,
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    physics: const BouncingScrollPhysics(),
+                    itemCount: _notifications.length,
+                    itemBuilder: (context, index) {
+                      final notification = _notifications[index];
+                      return NotificationCard(
+                        title: notification['title'],
+                        message: notification['message'],
+                        timestamp: notification['timestamp'],
+                        type: notification['type'],
+                        isRead: notification['isRead'],
+                        onTap: () {
+                          HapticFeedback.lightImpact();
+                          _markAsRead(notification['id']);
+                        },
+                        onDismiss: () {
+                          HapticFeedback.mediumImpact();
+                          _dismissNotification(notification['id']);
+                        },
+                      );
+                    },
+                  ),
           ),
         ],
       ),
@@ -212,27 +225,33 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   }
 
   void _markAllAsRead() {
+    HapticFeedback.mediumImpact();
     setState(() {
       for (var notification in _notifications) {
         notification['isRead'] = true;
       }
     });
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('All notifications marked as read'),
-        backgroundColor: AppColors.online,
+      SnackBar(
+        content: Text('All notifications marked as read', style: AppTypography.bodyMedium.copyWith(color: Colors.white)),
+        backgroundColor: AppColors.success,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     );
   }
 
   void _dismissNotification(String notificationId) {
+    HapticFeedback.lightImpact();
     setState(() {
       _notifications.removeWhere((n) => n['id'] == notificationId);
     });
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Notification dismissed'),
+      SnackBar(
+        content: Text('Notification dismissed', style: AppTypography.bodyMedium.copyWith(color: Colors.white)),
         backgroundColor: AppColors.mediumGray,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     );
   }

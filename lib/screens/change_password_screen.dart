@@ -3,6 +3,7 @@ import '../constants/app_colors.dart';
 import '../constants/app_strings.dart';
 import '../widgets/custom_text_field.dart';
 import '../widgets/custom_button.dart';
+import '../services/firebase_service.dart';
 
 class ChangePasswordScreen extends StatefulWidget {
   const ChangePasswordScreen({super.key});
@@ -36,22 +37,42 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
         _isLoading = true;
       });
 
-      // Simulate API call
-      await Future.delayed(const Duration(seconds: 2));
-      
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
+      try {
+        final firebaseService = FirebaseService();
         
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Password changed successfully'),
-            backgroundColor: AppColors.online,
-          ),
+        // Use the actual Firebase service to change password
+        await firebaseService.changePassword(
+          currentPassword: _currentPasswordController.text,
+          newPassword: _newPasswordController.text,
         );
         
-        Navigator.of(context).pop();
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+          
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Password changed successfully'),
+              backgroundColor: AppColors.online,
+            ),
+          );
+          
+          Navigator.of(context).pop();
+        }
+      } catch (e) {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+          
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to change password: ${e.toString()}'),
+              backgroundColor: AppColors.error,
+            ),
+          );
+        }
       }
     }
   }

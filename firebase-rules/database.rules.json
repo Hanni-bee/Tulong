@@ -4,7 +4,7 @@
       "$uid": {
         ".read": "auth != null && (auth.uid == $uid || root.child('users').child(auth.uid).child('role').val() == 'admin')",
         ".write": "auth != null && (auth.uid == $uid || root.child('users').child(auth.uid).child('role').val() == 'admin')",
-        ".validate": "newData.hasChildren(['Email', 'FirstName', 'LastName'])",
+        ".validate": "newData.hasChildren(['Email'])",
         "Email": {
           ".validate": "newData.isString() && newData.val().matches(/^[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}$/i)"
         },
@@ -12,7 +12,7 @@
           ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 50"
         },
         "LastName": {
-          ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 50"
+          ".validate": "newData.isString() && newData.val().length >= 0 && newData.val().length <= 50"
         },
         "isOnline": {
           ".validate": "newData.isBoolean()"
@@ -21,7 +21,7 @@
           ".validate": "newData.isString() && newData.val().matches(/^(user|moderator|admin)$/)"
         },
         "Password": {
-          ".validate": "newData.isString() && newData.val().length >= 64"
+          ".validate": "newData.isString() && newData.val().length >= 0"
         },
         "preferences": {
           ".validate": "newData.hasChildren(['notifications', 'privacy'])"

@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:convert';
+import 'dart:math';
 import 'package:crypto/crypto.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -10,12 +11,26 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/input_validator.dart';
+import '../models/user_model.dart';
 import 'sqlite_service.dart';
+
 
 class FirebaseService {
   static final FirebaseService _instance = FirebaseService._internal();
   factory FirebaseService() => _instance;
   FirebaseService._internal();
+  
+  // Global debug logs list
+  static List<String> debugLogs = [];
+  
+  // Add debug log method
+  void _addDebugLog(String message) {
+    debugLogs.add('${DateTime.now().toString().substring(11, 19)}: $message');
+    // Keep only last 100 logs
+    if (debugLogs.length > 100) {
+      debugLogs.removeAt(0);
+    }
+  }
 
   // Firebase instances
   FirebaseAuth get auth => FirebaseAuth.instance;
@@ -77,17 +92,71 @@ class FirebaseService {
       final displayName = user.displayName ?? user.email?.split('@')[0] ?? 'User';
       final email = user.email ?? '';
 
-      await database.ref('users/${user.uid}').update({
-        'FirstName': displayName.split(' ')[0],
-        'LastName': displayName.split(' ').length > 1 ? displayName.split(' ').sublist(1).join(' ') : '',
-        'Email': email,
-        'DisplayName': displayName,
-        'PhotoURL': user.photoURL ?? '',
-        'Provider': 'google',
-        'isOnline': true,
-        'lastSeen': ServerValue.timestamp,
-        'signInMethod': 'google',
-      });
+      // Check if user already has email/password access
+      bool hasEmailPassword = false;
+      try {
+        final existingUserSnapshot = await database.ref('users/${user.uid}').get();
+        hasEmailPassword = existingUserSnapshot.exists && 
+            (existingUserSnapshot.value as Map?)?['hasEmailPassword'] == true;
+      } catch (e) {
+        print('⚠️ Could not check existing user data: $e');
+        _addDebugLog('⚠️ Could not check existing user data: $e');
+        // Continue without failing - assume new user
+      }
+
+      // Generate a temporary password for hybrid account functionality
+      // This allows Google users to also use email/password login
+      String tempPassword = '';
+      String hashedTempPassword = '';
+      
+      if (!hasEmailPassword) {
+        // Generate a secure temporary password that users can change later
+        tempPassword = _generateSecurePassword();
+        hashedTempPassword = _hashPassword(tempPassword);
+        
+        print('🔐 Generated temporary password for hybrid account: $email');
+        _addDebugLog('🔐 Generated temporary password for hybrid account: $email');
+        
+        // Link email/password credential to the Google account
+        try {
+          final emailCredential = EmailAuthProvider.credential(
+            email: email,
+            password: tempPassword,
+          );
+          await user.linkWithCredential(emailCredential);
+          print('✅ Email/password credential linked to Google account');
+          _addDebugLog('✅ Email/password credential linked to Google account');
+        } catch (e) {
+          print('⚠️ Could not link email/password credential: $e');
+          _addDebugLog('⚠️ Could not link email/password credential: $e');
+          // Continue without failing - user can still use Google login
+        }
+      }
+
+      try {
+        await database.ref('users/${user.uid}').update({
+          'FirstName': displayName.split(' ')[0],
+          'LastName': displayName.split(' ').length > 1 ? displayName.split(' ').sublist(1).join(' ') : '',
+          'Email': email,
+          'DisplayName': displayName,
+          'PhotoURL': user.photoURL ?? '',
+          'Provider': 'google',
+          'Password': hashedTempPassword, // Store the hashed temp password
+          'isOnline': true,
+          'lastSeen': ServerValue.timestamp,
+          'signInMethod': hasEmailPassword ? 'multi' : 'google', // Mark as multi-provider if hybrid
+          'hasEmailPassword': true, // Always enable email/password for Google users
+          'isMultiProvider': !hasEmailPassword, // Mark as multi-provider for new hybrid accounts
+          'tempPasswordGenerated': !hasEmailPassword, // Flag for first-time password generation
+        });
+
+        print('✅ User profile updated in Firebase Database');
+        _addDebugLog('✅ User profile updated in Firebase Database');
+      } catch (e) {
+        print('⚠️ Could not update user profile in database: $e');
+        _addDebugLog('⚠️ Could not update user profile in database: $e');
+        // Continue without failing - user is still authenticated
+      }
 
       // Save user to SQLite for offline access
       await _saveUserToSQLite(
@@ -99,7 +168,7 @@ class FirebaseService {
         city: '',
         barangay: '',
         zipCode: '',
-        hashedPassword: '', // Google users don't have passwords initially
+        hashedPassword: hashedTempPassword, // Store the hashed temp password
         firebaseUid: user.uid,
       );
 
@@ -193,11 +262,194 @@ class FirebaseService {
     }
   }
 
+  // Helper method to update password in SQLite database
+  Future<void> _updatePasswordInSQLite({
+    required String email,
+    required String hashedPassword,
+  }) async {
+    try {
+      print('🔍 Looking for user in SQLite: $email');
+      _addDebugLog('🔍 Looking for user in SQLite: $email');
+      
+      // Get existing user from SQLite
+      final existingUser = await _sqliteService.getUserByEmail(email);
+      
+      if (existingUser != null) {
+        print('✅ User found in SQLite with ID: ${existingUser['id']}');
+        print('🔍 Old SQLite password: ${existingUser['password']}');
+        print('🔍 New password hash: $hashedPassword');
+        _addDebugLog('✅ User found in SQLite with ID: ${existingUser['id']}');
+        _addDebugLog('🔍 Old SQLite password: ${existingUser['password']}');
+        _addDebugLog('🔍 New password hash: $hashedPassword');
+        
+        // Update password for the user
+        await _sqliteService.updateUser(existingUser['id'], {
+          'password': hashedPassword,
+          'sync_timestamp': DateTime.now().millisecondsSinceEpoch,
+        });
+        
+        print('✅ SQLite password updated for: $email');
+        _addDebugLog('✅ SQLite password updated for: $email');
+      } else {
+        print('❌ User not found in SQLite: $email');
+        _addDebugLog('❌ User not found in SQLite: $email');
+        throw Exception('User not found in local database');
+      }
+    } catch (e) {
+      print('❌ Error updating password in SQLite: $e');
+      _addDebugLog('❌ Error updating password in SQLite: $e');
+      rethrow;
+    }
+  }
+
+  // Sync password after email reset (call this when user logs in after password reset)
+  Future<void> syncPasswordAfterReset() async {
+    try {
+      if (currentUser == null) {
+        throw Exception('No user is currently signed in');
+      }
+
+      final email = currentUser!.email!;
+      
+      // Get the current Firebase Auth password (this is the new password set via email reset)
+      // We need to get this from the user's current session
+      final userSnapshot = await database.ref('users').orderByChild('Email').equalTo(email).get();
+      
+      if (userSnapshot.exists) {
+        final users = userSnapshot.value as Map;
+        String? userUid;
+        
+        users.forEach((key, value) {
+          final user = value as Map;
+          if (user['Email'] == email) {
+            userUid = key;
+          }
+        });
+
+        if (userUid != null) {
+          // The issue is we can't get the actual password from Firebase Auth
+          // So we need to prompt the user to enter their new password
+          print('⚠️ Password reset detected. User needs to enter new password to sync.');
+          throw Exception('Please enter your new password to complete the sync');
+        }
+      }
+    } catch (e) {
+      print('❌ Error syncing password after reset: $e');
+      rethrow;
+    }
+  }
+
+  // Update password in all systems after email reset
+  Future<void> updatePasswordAfterEmailReset({
+    required String newPassword,
+  }) async {
+    try {
+      if (currentUser == null) {
+        throw Exception('No user is currently signed in');
+      }
+
+      final email = currentUser!.email!;
+      final hashedPassword = _hashPassword(newPassword);
+      
+      // Update password in Firebase Realtime Database
+      await database.ref('users/${currentUser!.uid}').update({
+        'Password': hashedPassword,
+      });
+      
+      // Update password in SQLite
+      await _updatePasswordInSQLite(
+        email: email,
+        hashedPassword: hashedPassword,
+      );
+      
+      print('✅ Password synced after email reset for: $email');
+    } catch (e) {
+      print('❌ Error updating password after email reset: $e');
+      throw Exception('Failed to sync password: ${e.toString()}');
+    }
+  }
+
   // Hash password using SHA-256
   String _hashPassword(String password) {
     final bytes = utf8.encode(password);
     final digest = sha256.convert(bytes);
     return digest.toString();
+  }
+
+  // Generate a secure temporary password for hybrid accounts
+  String _generateSecurePassword() {
+    const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#\$%^&*';
+    final random = Random();
+    final password = List.generate(12, (index) => chars[random.nextInt(chars.length)]).join();
+    
+    // Ensure password meets complexity requirements
+    final hasUppercase = password.contains(RegExp(r'[A-Z]'));
+    final hasLowercase = password.contains(RegExp(r'[a-z]'));
+    final hasNumbers = password.contains(RegExp(r'[0-9]'));
+    final hasSpecial = password.contains(RegExp(r'[!@#$%^&*]'));
+    
+    if (hasUppercase && hasLowercase && hasNumbers && hasSpecial) {
+      return password;
+    } else {
+      // Fallback: ensure at least one of each type
+      final upper = chars.substring(26, 52)[random.nextInt(26)];
+      final lower = chars.substring(0, 26)[random.nextInt(26)];
+      final number = chars.substring(52, 62)[random.nextInt(10)];
+      final special = chars.substring(62)[random.nextInt(8)];
+      
+      return password.substring(0, 8) + upper + lower + number + special;
+    }
+  }
+
+  // Create database entry for existing Firebase Auth user
+  Future<void> _createDatabaseEntryForExistingUser(User user, String email, String password) async {
+    try {
+      print('🔧 Creating database entry for existing Firebase Auth user: $email');
+      _addDebugLog('🔧 Creating database entry for existing Firebase Auth user: $email');
+      
+      final hashedPassword = _hashPassword(password);
+      final displayName = user.displayName ?? user.email?.split('@')[0] ?? 'User';
+      
+      // Check if this is a Google user trying to add email/password access
+      final isGoogleUser = user.providerData.any((provider) => provider.providerId == 'google.com');
+      
+      // Create entry in Firebase Realtime Database
+      await database.ref('users/${user.uid}').set({
+        'FirstName': displayName.split(' ')[0],
+        'LastName': displayName.split(' ').length > 1 ? displayName.split(' ').sublist(1).join(' ') : '',
+        'Email': email,
+        'DisplayName': displayName,
+        'PhotoURL': user.photoURL ?? '',
+        'Provider': isGoogleUser ? 'google' : 'email',
+        'Password': hashedPassword,
+        'isOnline': true,
+        'lastSeen': ServerValue.timestamp,
+        'signInMethod': isGoogleUser ? 'google' : 'email',
+        'hasEmailPassword': true, // User now has email/password access
+        'createdAt': ServerValue.timestamp,
+      });
+
+      // Save to SQLite
+      await _saveUserToSQLite(
+        email: email,
+        firstName: displayName.split(' ')[0],
+        lastName: displayName.split(' ').length > 1 ? displayName.split(' ').sublist(1).join(' ') : '',
+        address: '',
+        region: '',
+        city: '',
+        barangay: '',
+        zipCode: '',
+        hashedPassword: hashedPassword,
+        firebaseUid: user.uid,
+      );
+
+      print('✅ Database entry created for existing user: $email');
+      _addDebugLog('✅ Database entry created for existing user: $email');
+    } catch (e) {
+      print('❌ Error creating database entry: $e');
+      _addDebugLog('❌ Error creating database entry: $e');
+      rethrow;
+    }
   }
 
 
@@ -324,65 +576,128 @@ class FirebaseService {
         throw Exception('Password is required');
       }
 
-      // Hash the provided password for comparison
-      final hashedPassword = _hashPassword(password);
+      print('🔐 Starting email/password sign-in for: ${email.trim()}');
+      _addDebugLog('🔐 Starting email/password sign-in for: ${email.trim()}');
 
-      // First verify the user exists and password matches in our database
-      final userSnapshot = await database.ref('users').orderByChild('Email').equalTo(email.trim()).get();
-      if (userSnapshot.exists) {
-        final users = userSnapshot.value as Map;
-        bool validUser = false;
-
-        users.forEach((key, value) {
-          final user = value as Map;
-          if (user['Password'] == hashedPassword) {
-            validUser = true;
-          }
-        });
-
-        if (!validUser) {
-          throw Exception('Invalid email or password');
-        }
-      } else {
+      // Step 1: Attempt Firebase Auth login first (let Firebase Auth be the source of truth)
+      UserCredential userCredential;
+      try {
+        userCredential = await auth.signInWithEmailAndPassword(
+            email: email.trim(),
+            password: password,
+          );
+        print('✅ Firebase Auth login successful');
+        _addDebugLog('✅ Firebase Auth login successful');
+        } catch (e) {
+        print('❌ Firebase Auth login failed: $e');
+        _addDebugLog('❌ Firebase Auth login failed: $e');
         throw Exception('Invalid email or password');
       }
 
-      final userCredential = await auth.signInWithEmailAndPassword(
-        email: email.trim(),
-        password: password,
-      );
+      // Step 2: Get the authenticated user and their UID
+      final user = userCredential.user!;
+      final uid = user.uid;
+      print('🔍 Authenticated user UID: $uid');
+      _addDebugLog('🔍 Authenticated user UID: $uid');
 
-      // Update user online status
-      if (userCredential.user != null) {
-        await database.ref('users/${userCredential.user!.uid}').update({
-          'isOnline': true,
-          'lastSeen': ServerValue.timestamp,
-        });
-
-        // Save user to SQLite for offline access (get user data from Firebase)
-        final userSnapshot = await database.ref('users/${userCredential.user!.uid}').get();
-        if (userSnapshot.exists) {
-          final userData = userSnapshot.value as Map;
-          await _saveUserToSQLite(
-            email: email.trim(),
-            firstName: userData['FirstName'] ?? '',
-            lastName: userData['LastName'] ?? '',
-            address: userData['Address'] ?? '',
-            region: userData['Region'] ?? '',
-            city: userData['City'] ?? '',
-            barangay: userData['Barangay'] ?? '',
-            zipCode: userData['ZipCode'] ?? '',
-            hashedPassword: hashedPassword,
-            firebaseUid: userCredential.user!.uid,
-          );
-        }
-
-        // Log sign in event
-        await analytics.logLogin(loginMethod: 'email');
+      // Step 3: Fetch user data from Firebase Realtime Database
+      final userSnapshot = await database.ref('users/$uid').get();
+      
+      if (!userSnapshot.exists) {
+        print('⚠️ User not found in Realtime Database - creating entry');
+        _addDebugLog('⚠️ User not found in Realtime Database - creating entry');
+        
+        // Create database entry for existing Firebase Auth user
+        await _createDatabaseEntryForExistingUser(user, email.trim(), password);
       }
 
+      // Step 4: Get user data and check for password sync
+      final userDataSnapshot = await database.ref('users/$uid').get();
+      final userData = userDataSnapshot.value as Map<String, dynamic>?;
+      
+      if (userData == null) {
+        throw Exception('User data not found in database');
+      }
+
+      // Step 5: Generate hash of the password the user just used to log in
+      final newHashedPassword = _hashPassword(password);
+      final storedPassword = userData['Password'] as String?;
+      
+      print('🔍 Password sync check:');
+      print('  - Stored password hash: ${storedPassword ?? "null"}');
+      print('  - New password hash: $newHashedPassword');
+      print('  - Hashes match: ${storedPassword == newHashedPassword}');
+      _addDebugLog('🔍 Password sync check:');
+      _addDebugLog('  - Stored password hash: ${storedPassword ?? "null"}');
+      _addDebugLog('  - New password hash: $newHashedPassword');
+      _addDebugLog('  - Hashes match: ${storedPassword == newHashedPassword}');
+
+      // Step 6: Check if password reset occurred (hashes don't match)
+      if (storedPassword != newHashedPassword) {
+        print('🔄 Password reset detected - syncing new password across all systems');
+        _addDebugLog('🔄 Password reset detected - syncing new password across all systems');
+        
+        // This confirms that a password reset occurred via email
+        // Update the password everywhere to keep systems in sync
+        
+        // Update Firebase Realtime Database
+        await database.ref('users/$uid').update({
+          'Password': newHashedPassword,
+          'hasEmailPassword': true,
+          'signInMethod': userData['signInMethod'] == 'google' ? 'multi' : 'email',
+          'isMultiProvider': userData['signInMethod'] == 'google' ? true : false,
+          'passwordSyncedAt': ServerValue.timestamp,
+        });
+        print('✅ Firebase Realtime Database updated with new password');
+
+        // Update SQLite database
+          await _updatePasswordInSQLite(
+            email: email.trim(),
+          hashedPassword: newHashedPassword,
+          );
+        print('✅ SQLite database updated with new password');
+
+        print('✅ Password successfully synced after reset');
+        _addDebugLog('✅ Password successfully synced after reset');
+        } else {
+        print('✅ Password hash matches - no sync needed');
+        _addDebugLog('✅ Password hash matches - no sync needed');
+      }
+
+      // Step 7: Update user online status
+      await database.ref('users/$uid').update({
+        'isOnline': true,
+        'lastSeen': ServerValue.timestamp,
+      });
+
+      // Step 8: Update SQLite for offline access
+      final updatedUserData = await database.ref('users/$uid').get();
+      if (updatedUserData.exists) {
+        final finalUserData = updatedUserData.value as Map;
+        await _saveUserToSQLite(
+          email: email.trim(),
+          firstName: finalUserData['FirstName'] ?? '',
+          lastName: finalUserData['LastName'] ?? '',
+          address: finalUserData['Address'] ?? '',
+          region: finalUserData['Region'] ?? '',
+          city: finalUserData['City'] ?? '',
+          barangay: finalUserData['Barangay'] ?? '',
+          zipCode: finalUserData['ZipCode'] ?? '',
+          hashedPassword: newHashedPassword,
+          firebaseUid: uid,
+        );
+      }
+
+      // Step 9: Log analytics
+      await analytics.logLogin(loginMethod: 'email');
+
+      print('🎉 Email/password sign-in completed successfully');
+      _addDebugLog('🎉 Email/password sign-in completed successfully');
+      
       return userCredential;
     } catch (e) {
+      print('❌ Sign in failed: $e');
+      _addDebugLog('❌ Sign in failed: $e');
       throw Exception('Sign in failed: ${e.toString()}');
     }
   }
@@ -397,6 +712,58 @@ class FirebaseService {
         throw Exception(emailError);
       }
 
+      // Check if user exists in our database to determine account type
+      print('🔍 Checking user account type for: ${email.trim()}');
+      _addDebugLog('🔍 Checking user account type for: ${email.trim()}');
+      
+      final userSnapshot = await database.ref('users').orderByChild('Email').equalTo(email.trim()).get();
+      
+      if (userSnapshot.exists) {
+        final users = userSnapshot.value as Map;
+        Map<String, dynamic>? userData;
+        
+        // Find the user data
+        users.forEach((key, value) {
+          final user = value as Map<String, dynamic>;
+          if (user['Email'] == email.trim()) {
+            userData = user;
+          }
+        });
+        
+        if (userData != null) {
+          final provider = userData!['Provider'] as String?;
+          final signInMethod = userData!['signInMethod'] as String?;
+          final hasEmailPassword = userData!['hasEmailPassword'] as bool?;
+          
+          print('🔍 User account info:');
+          print('  - Provider: $provider');
+          print('  - Sign-in method: $signInMethod');
+          print('  - Has email password: $hasEmailPassword');
+          _addDebugLog('🔍 User account info:');
+          _addDebugLog('  - Provider: $provider');
+          _addDebugLog('  - Sign-in method: $signInMethod');
+          _addDebugLog('  - Has email password: $hasEmailPassword');
+          
+          // Check if this is a pure Google SSO account (no password access)
+          if ((provider == 'google' || signInMethod == 'google') && hasEmailPassword != true) {
+            print('❌ Pure Google SSO account detected - cannot send password reset');
+            _addDebugLog('❌ Pure Google SSO account detected - cannot send password reset');
+            throw Exception('This account is managed by Google. To reset your password, please use Google\'s password recovery service.');
+          }
+          
+          // User has password access (either pure email/password or hybrid account)
+          print('✅ Account has password access - sending reset email');
+          _addDebugLog('✅ Account has password access - sending reset email');
+        } else {
+          print('❌ User data not found in database');
+          _addDebugLog('❌ User data not found in database');
+          throw Exception('User account not found.');
+        }
+      } else {
+        print('⚠️ User not found in database - attempting to send reset email anyway');
+        _addDebugLog('⚠️ User not found in database - attempting to send reset email anyway');
+      }
+
       // Send password reset email
       await auth.sendPasswordResetEmail(email: email.trim());
       
@@ -409,7 +776,153 @@ class FirebaseService {
       print('✅ Password reset email sent to: $email');
     } catch (e) {
       print('❌ Password reset failed: $e');
+      _addDebugLog('❌ Password reset failed: $e');
       throw Exception('Failed to send password reset email: ${e.toString()}');
+    }
+  }
+
+  // Check if user has a temporary password and needs to change it
+  Future<bool> hasTemporaryPassword() async {
+    try {
+      if (currentUser == null) return false;
+      
+      final userSnapshot = await database.ref('users/${currentUser!.uid}').get();
+      if (userSnapshot.exists) {
+        final userData = userSnapshot.value as Map<String, dynamic>;
+        return userData['tempPasswordGenerated'] == true;
+      }
+      return false;
+    } catch (e) {
+      print('Error checking temporary password status: $e');
+      return false;
+    }
+  }
+
+  // Change temporary password to a user-defined password
+  Future<void> changeTemporaryPassword(String newPassword) async {
+    try {
+      if (currentUser == null) {
+        throw Exception('No user is currently signed in');
+      }
+
+      final user = currentUser!;
+      final email = user.email!;
+      
+      print('🔧 Changing temporary password for: $email');
+      _addDebugLog('🔧 Changing temporary password for: $email');
+
+      // Validate new password
+      final passwordError = InputValidator.validatePassword(newPassword);
+      if (passwordError != null) {
+        throw Exception(passwordError);
+      }
+
+      // Update password in Firebase Auth
+      await user.updatePassword(newPassword);
+      
+      // Hash the new password
+      final hashedPassword = _hashPassword(newPassword);
+
+      // Update the user's record in Firebase Realtime Database
+      await database.ref('users/${user.uid}').update({
+        'Password': hashedPassword,
+        'tempPasswordGenerated': false, // Mark as no longer temporary
+        'passwordChangedAt': ServerValue.timestamp,
+      });
+
+      // Update the local SQLite database
+      await _updatePasswordInSQLite(
+        email: email,
+        hashedPassword: hashedPassword,
+      );
+
+      // Log analytics event
+      await analytics.logEvent(
+        name: 'temporary_password_changed',
+        parameters: {'email_domain': email.split('@').last},
+      );
+
+      print('✅ Temporary password successfully changed for: $email');
+      _addDebugLog('✅ Temporary password successfully changed for: $email');
+      
+    } catch (e) {
+      print('❌ Failed to change temporary password: $e');
+      _addDebugLog('❌ Failed to change temporary password: $e');
+      throw Exception('Failed to change temporary password: ${e.toString()}');
+    }
+  }
+
+  // Add password to Google account (Hybrid Account pattern)
+  Future<void> addPasswordToGoogleAccount(String newPassword) async {
+    try {
+      // Check if user is currently signed in
+      if (currentUser == null) {
+        throw Exception('No user is currently signed in');
+      }
+
+      final user = currentUser!;
+      final email = user.email!;
+      
+      print('🔧 Adding password to Google account for: $email');
+      _addDebugLog('🔧 Adding password to Google account for: $email');
+
+      // Validate new password
+      final passwordError = InputValidator.validatePassword(newPassword);
+      if (passwordError != null) {
+        throw Exception(passwordError);
+      }
+
+      // Create a new credential using the new password
+      final credential = EmailAuthProvider.credential(
+        email: email,
+        password: newPassword,
+      );
+
+      // Link this new credential to the currently signed-in Google user
+      await user.linkWithCredential(credential);
+      
+      print('✅ Password credential linked to Google account');
+      _addDebugLog('✅ Password credential linked to Google account');
+
+      // Hash the new password for storage
+      final hashedPassword = _hashPassword(newPassword);
+
+      // Update the user's record in Firebase Realtime Database
+      await database.ref('users/${user.uid}').update({
+        'Password': hashedPassword,
+        'hasEmailPassword': true,
+        'signInMethod': 'multi', // Mark as multi-provider account
+        'isMultiProvider': true,
+        'updatedAt': ServerValue.timestamp,
+      });
+
+      // Update the local SQLite database with the new hashed password
+      await _updatePasswordInSQLite(
+        email: email,
+        hashedPassword: hashedPassword,
+      );
+
+      // Log analytics event
+      await analytics.logEvent(
+        name: 'password_added_to_google_account',
+        parameters: {'email_domain': email.split('@').last},
+      );
+
+      print('✅ Password successfully added to Google account for: $email');
+      _addDebugLog('✅ Password successfully added to Google account for: $email');
+      
+    } catch (e) {
+      print('❌ Failed to add password to Google account: $e');
+      _addDebugLog('❌ Failed to add password to Google account: $e');
+      
+      // Handle specific Firebase Auth errors
+      if (e.toString().contains('credential-already-in-use')) {
+        throw Exception('This email is already associated with a password account. Please use email/password login instead.');
+      } else if (e.toString().contains('invalid-credential')) {
+        throw Exception('Invalid credential. Please try again.');
+      } else {
+        throw Exception('Failed to add password to Google account: ${e.toString()}');
+      }
     }
   }
 
@@ -445,6 +958,12 @@ class FirebaseService {
       await database.ref('users/${currentUser!.uid}').update({
         'Password': hashedPassword,
       });
+      
+      // Update password in SQLite database
+      await _updatePasswordInSQLite(
+        email: currentUser!.email!,
+        hashedPassword: hashedPassword,
+      );
       
       // Log password change
       await analytics.logEvent(name: 'password_changed');
@@ -573,6 +1092,21 @@ class FirebaseService {
     try {
       await database.ref('users/$userId').update(data);
     } catch (e) {
+      throw Exception('Failed to update profile: ${e.toString()}');
+    }
+  }
+
+  // Update UserModel profile (for address setup)
+  Future<void> updateUserModelProfile(UserModel user) async {
+    try {
+      final data = user.toMap();
+      // Remove id from data as it's the key
+      data.remove('id');
+      
+      await database.ref('users/${user.id}').update(data);
+      _addDebugLog('✅ User profile updated: ${user.name}');
+    } catch (e) {
+      _addDebugLog('❌ Failed to update user profile: ${e.toString()}');
       throw Exception('Failed to update profile: ${e.toString()}');
     }
   }
