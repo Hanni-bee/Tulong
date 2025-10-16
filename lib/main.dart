@@ -14,6 +14,7 @@ import 'screens/interactive_tutorial_screen.dart';
 import 'screens/tutorial_walkthrough_screen.dart';
 import 'screens/disaster_demo_screen.dart';
 import 'screens/setup/address_setup_screen.dart';
+import 'screens/update_profile_screen.dart';
 import 'screens/main_navigation.dart';
 import 'providers/auth_provider.dart';
 import 'providers/network_provider.dart';
@@ -185,6 +186,7 @@ class TulongApp extends StatelessWidget {
           '/tutorial': (context) => const InteractiveTutorialScreen(), // New interactive tutorial
           '/tutorial-old': (context) => const TutorialWalkthroughScreen(), // Old tutorial (fallback)
           '/address-setup': (context) => const AddressSetupScreen(), // Address setup for Google Auth users
+          '/update-profile': (context) => const UpdateProfileScreen(), // Update profile with address
           '/disaster-demo': (context) => const DisasterDemoScreen(),
           '/main': (context) => const MainNavigation(),
         },

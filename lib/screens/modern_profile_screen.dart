@@ -421,7 +421,10 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
               icon: Icons.person,
               title: 'Personal Information',
               subtitle: 'Update your personal details',
-              onTap: () => _editPersonalInfo(context),
+              onTap: () {
+                HapticFeedback.mediumImpact();
+                Navigator.of(context).pushNamed('/update-profile');
+              },
             ),
             _buildSettingsItem(
               icon: Icons.security,

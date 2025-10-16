@@ -278,7 +278,7 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
             children: [
               // Connected users list - Proper spacing and constraints
               Expanded(
-                flex: 4, // Give more space to user list
+                flex: 3, // Give less space to user list
                 child: Container(
                   margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
                   decoration: BoxDecoration(
@@ -709,7 +709,7 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
               
               // Walkie-talkie controls - Improved layout with proper spacing
               Expanded(
-                flex: 3, // Give less space to controls to make room for users
+                flex: 4, // Give more space to controls
                 child: Container(
                   margin: const EdgeInsets.fromLTRB(16, 8, 16, 16),
                   padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
@@ -733,9 +733,10 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                       ),
                     ],
                   ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
                     // Header for controls
                     Container(
                       padding: const EdgeInsets.only(bottom: 16),
@@ -789,8 +790,8 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                             return Transform.scale(
                               scale: _isTransmitting ? _recordingAnimation.value : _pulseAnimation.value,
                               child: Container(
-                                width: 120,
-                                height: 120,
+                                width: 100,
+                                height: 100,
                                 decoration: BoxDecoration(
                                   color: _isTransmitting ? AppColors.error : AppColors.primaryRed,
                                   shape: BoxShape.circle,
@@ -801,8 +802,8 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                                   boxShadow: [
                                     BoxShadow(
                                       color: (_isTransmitting ? AppColors.error : AppColors.primaryRed).withOpacity(0.4),
-                                      blurRadius: 24,
-                                      spreadRadius: 12,
+                                      blurRadius: 12,
+                                      spreadRadius: 4,
                                       offset: const Offset(0, 8),
                                     ),
                                     BoxShadow(
@@ -818,7 +819,7 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                                     Icon(
                                       Icons.mic,
                                       color: AppColors.white,
-                                      size: 40,
+                                      size: 32,
                                     ),
                                     if (_isTransmitting)
                                       Positioned(
@@ -846,88 +847,6 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                         ),
                       ),
                     ),
-                
-                    
-                    const SizedBox(height: 16),
-                    
-                    // Status text - Enhanced with better styling
-                    Center(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: _isTransmitting 
-                              ? AppColors.error.withOpacity(0.1)
-                              : AppColors.primaryRed.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                            color: _isTransmitting 
-                                ? AppColors.error.withOpacity(0.3)
-                                : AppColors.primaryRed.withOpacity(0.3),
-                            width: 1.5,
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              _isTransmitting ? Icons.radio_button_checked : Icons.mic,
-                              color: _isTransmitting ? AppColors.error : AppColors.primaryRed,
-                              size: 18,
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              _isTransmitting 
-                                  ? 'TRANSMITTING...'
-                                  : 'Hold to transmit',
-                              style: TextStyle(
-                                color: _isTransmitting ? AppColors.error : AppColors.primaryRed,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: 0.5,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    
-                    // Transmission timer - Enhanced display
-                    if (_isTransmitting)
-                      Container(
-                        margin: const EdgeInsets.only(top: 12),
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                        decoration: BoxDecoration(
-                          color: AppColors.error.withOpacity(0.05),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: AppColors.error.withOpacity(0.2),
-                            width: 1.5,
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Container(
-                              width: 8,
-                              height: 8,
-                              decoration: const BoxDecoration(
-                                color: AppColors.error,
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              'Duration: ${_formatDuration(_transmissionTime)}',
-                              style: const TextStyle(
-                                color: AppColors.error,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                
                     
                     const SizedBox(height: 20),
                     
@@ -1053,7 +972,88 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                         ),
                       ],
                     ),
+                    
+                    const SizedBox(height: 16),
+                    
+                    // Status text - Enhanced with better styling
+                    Center(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: _isTransmitting 
+                              ? AppColors.error.withOpacity(0.1)
+                              : AppColors.primaryRed.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: _isTransmitting 
+                                ? AppColors.error.withOpacity(0.3)
+                                : AppColors.primaryRed.withOpacity(0.3),
+                            width: 1.5,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              _isTransmitting ? Icons.radio_button_checked : Icons.mic,
+                              color: _isTransmitting ? AppColors.error : AppColors.primaryRed,
+                              size: 18,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              _isTransmitting 
+                                  ? 'TRANSMITTING...'
+                                  : 'Hold to transmit',
+                              style: TextStyle(
+                                color: _isTransmitting ? AppColors.error : AppColors.primaryRed,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    
+                    // Transmission timer - Enhanced display
+                    if (_isTransmitting)
+                      Container(
+                        margin: const EdgeInsets.only(top: 12),
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: AppColors.error.withOpacity(0.05),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: AppColors.error.withOpacity(0.2),
+                            width: 1.5,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Container(
+                              width: 8,
+                              height: 8,
+                              decoration: const BoxDecoration(
+                                color: AppColors.error,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Duration: ${_formatDuration(_transmissionTime)}',
+                              style: const TextStyle(
+                                color: AppColors.error,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                   ],
+                ),
                 ),
                 ),
               ),
