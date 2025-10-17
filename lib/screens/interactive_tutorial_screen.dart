@@ -197,13 +197,12 @@ class _InteractiveTutorialScreenState extends State<InteractiveTutorialScreen>
   Future<void> _completeTutorial() async {
     HapticFeedback.mediumImpact();
     
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('tutorial_completed', true);
-
     if (mounted) {
-      // Check if user is Google Auth and needs address setup
+      // Mark tutorial as completed using AuthProvider
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      await authProvider.markTutorialCompleted();
       
+      // Check if user is Google Auth and needs address setup
       if (authProvider.isAddressSetupRequired) {
         // Redirect to address setup for Google Auth users
         Navigator.of(context).pushReplacementNamed('/address-setup');

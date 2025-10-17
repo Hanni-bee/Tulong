@@ -42,6 +42,37 @@ class AuthProvider extends ChangeNotifier {
     return _currentUserModel!.isGoogleAuth && !_currentUserModel!.addressSetupCompleted;
   }
 
+  // Check if tutorial is required for current user
+  Future<bool> isTutorialRequired() async {
+    if (_userEmail == null) return false;
+    final prefs = await SharedPreferences.getInstance();
+    final hasCompletedTutorial = prefs.getBool('tutorial_completed_$_userEmail') ?? false;
+    return !hasCompletedTutorial;
+  }
+
+  // Mark tutorial as completed
+  Future<void> markTutorialCompleted() async {
+    if (_userEmail == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('tutorial_completed_$_userEmail', true);
+    print('Tutorial marked as completed for: $_userEmail');
+  }
+
+  // Mark address setup as completed
+  Future<void> markAddressSetupCompleted() async {
+    if (_userEmail == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('address_setup_completed_$_userEmail', true);
+    
+    // Update current user model
+    if (_currentUserModel != null) {
+      _currentUserModel = _currentUserModel!.copyWith(addressSetupCompleted: true);
+      notifyListeners();
+    }
+    
+    print('Address setup marked as completed for: $_userEmail');
+  }
+
   // Helper method to update SQLite user password
   Future<void> _updateSQLiteUserPassword(String email, String hashedPassword) async {
     try {
@@ -277,9 +308,17 @@ class AuthProvider extends ChangeNotifier {
       
       print('Google Sign-In successful - User: $displayName, Email: $email');
       
-      // COMPLETELY CLEAR all previous session data
       final prefs = await SharedPreferences.getInstance();
-      await prefs.clear(); // Clear ALL stored preferences
+      
+      // Check if this is a returning user
+      final isReturningUser = prefs.containsKey('user_created_at_$email');
+      final hasCompletedTutorial = prefs.getBool('tutorial_completed_$email') ?? false;
+      final hasCompletedAddressSetup = prefs.getBool('address_setup_completed_$email') ?? false;
+      
+      print('User detection - Email: $email');
+      print('Is returning user: $isReturningUser');
+      print('Has completed tutorial: $hasCompletedTutorial');
+      print('Has completed address setup: $hasCompletedAddressSetup');
       
       // Create UserModel for Google Auth user
       final userModel = UserModel(
@@ -288,28 +327,31 @@ class AuthProvider extends ChangeNotifier {
         email: email,
         avatar: user.photoURL,
         isGoogleAuth: true,
-        addressSetupCompleted: false, // Will need address setup
+        addressSetupCompleted: hasCompletedAddressSetup,
       );
 
-      // Set fresh Google account data
+      // Set Google account data
       _isAuthenticated = true;
       _currentUser = user.uid;
       _userEmail = email;
       _userName = displayName;
       _currentUserModel = userModel;
       
-      // Save ONLY the new session data
+      // Save session data
       await prefs.setString('session_email', _userEmail!);
       await prefs.setString('session_name', _userName!);
       await prefs.setBool('is_google_auth', true);
-      await prefs.setBool('address_setup_completed', false);
+      await prefs.setBool('address_setup_completed', hasCompletedAddressSetup);
       
-      // Set creation timestamp for new user detection (tutorial)
-      await prefs.setString('user_created_at_$_userEmail', DateTime.now().millisecondsSinceEpoch.toString());
+      // Only set creation timestamp for new users
+      if (!isReturningUser) {
+        await prefs.setString('user_created_at_$email', DateTime.now().millisecondsSinceEpoch.toString());
+        print('New user timestamp set for tutorial: $email');
+      } else {
+        print('Returning user detected - preserving existing data');
+      }
 
       print('Google user data saved - Name: $_userName, Email: $_userEmail');
-      print('All previous session data cleared');
-      print('New user timestamp set for tutorial: $_userEmail');
       print('Google Auth user created - Address setup required: ${!userModel.addressSetupCompleted}');
 
       // Ensure state is updated synchronously

@@ -205,6 +205,57 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
     );
   }
 
+  Widget _buildGoogleSignInButton() {
+    return GestureDetector(
+      onTap: _signInWithGoogle,
+      child: Container(
+        height: 56,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: const Color(0xFFDADCE0),
+            width: 1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.1),
+              blurRadius: 4,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // Google Logo
+            Container(
+              width: 20,
+              height: 20,
+              decoration: const BoxDecoration(
+                image: DecorationImage(
+                  image: NetworkImage(
+                    'https://developers.google.com/identity/images/g-logo.png',
+                  ),
+                  fit: BoxFit.contain,
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            const Text(
+              'Continue with Google',
+              style: TextStyle(
+                color: Color(0xFF3C4043),
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -400,14 +451,7 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
                             const SizedBox(height: 20),
 
                             // Google Sign In Button
-                            ModernOutlinedButton(
-                              text: 'Continue with Google',
-                              icon: Icons.g_mobiledata,
-                              onPressed: _signInWithGoogle,  // Always enabled
-                              borderColor: AppColors.mediumGray,
-                              textColor: AppColors.darkGray,
-                              height: 56,
-                            ),
+                            _buildGoogleSignInButton(),
                           ],
                         ),
                       ),

@@ -7,6 +7,7 @@ import '../widgets/polished_animations.dart';
 import 'modern_home_screen.dart';
 import 'enhanced_global_chat_screen.dart';
 import 'walkie_talkie_screen.dart';
+import 'hardware_screen.dart';
 import 'modern_profile_screen.dart';
 
 class MainNavigation extends StatefulWidget {
@@ -25,6 +26,7 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
     const ModernHomeScreen(),
     const EnhancedGlobalChatScreen(),
     const WalkieTalkieScreen(),
+    const HardwareScreen(),
     const ModernProfileScreen(),
   ];
 

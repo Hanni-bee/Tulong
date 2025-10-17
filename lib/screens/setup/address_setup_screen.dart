@@ -176,6 +176,9 @@ class _AddressSetupScreenState extends State<AddressSetupScreen> {
 
       await firebaseService.updateUserModelProfile(updatedUser);
       authProvider.updateUser(updatedUser);
+      
+      // Mark address setup as completed
+      await authProvider.markAddressSetupCompleted();
 
       HapticFeedback.mediumImpact();
       

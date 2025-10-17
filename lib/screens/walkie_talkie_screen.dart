@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 import '../constants/app_colors.dart';
 import '../widgets/modern_floating_layout.dart';
 import '../widgets/enhanced_text_styles.dart';
 import '../widgets/enhanced_shadows.dart' as shadows;
+import '../services/hardware_service.dart';
+import '../widgets/hardware_status_widgets.dart';
 
 class WalkieTalkieScreen extends StatefulWidget {
   const WalkieTalkieScreen({super.key});
@@ -255,6 +258,14 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         const SectionTitle('Walkie Talkie'),
+                        const SizedBox(height: 4),
+                        Consumer<HardwareService>(
+                          builder: (context, hardwareService, child) {
+                            return HardwareStatusBar(
+                              hardwareService: hardwareService,
+                            );
+                          },
+                        ),
                       ],
                     ),
                   ),

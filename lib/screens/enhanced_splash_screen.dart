@@ -175,13 +175,14 @@ class _EnhancedSplashScreenState extends State<EnhancedSplashScreen>
     await Future.delayed(const Duration(milliseconds: 300));
 
     if (authProvider.isAuthenticated && authProvider.userEmail != null) {
-      final prefs = await SharedPreferences.getInstance();
-      final tutorialCompleted = prefs.getBool('tutorial_completed') ?? false;
-      final isNewUser = await authProvider.isNewUser();
-
-      if (tutorialCompleted || !isNewUser) {
+      // Check if tutorial is required for this user
+      final tutorialRequired = await authProvider.isTutorialRequired();
+      
+      if (!tutorialRequired) {
+        // User has completed tutorial, go to main app
         Navigator.of(context).pushReplacementNamed('/main');
       } else {
+        // User needs to complete tutorial
         Navigator.of(context).pushReplacementNamed('/tutorial');
       }
     } else {
