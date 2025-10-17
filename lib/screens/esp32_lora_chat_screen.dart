@@ -38,7 +38,7 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen>
   StreamSubscription<String>? _statusSubscription;
   
   bool _isSending = false;
-  String _selectedChatMode = 'group'; // 'group' or 'private'
+  // REMOVED: _selectedChatMode - Group chat only now
   
   // ============================================================================
   // INITIALIZATION
@@ -109,12 +109,23 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen>
   // ============================================================================
   
   void _handleIncomingMessage(Map<String, dynamic> message) {
+    // Mark as NOT local (received from another node)
+    message['isLocal'] = false;
+    
+    print('📥 ESP32 LoRa Chat: Incoming message: ${message['message']}');
+    print('📊 Total messages: ${_messages.length}');
+    
     setState(() {
       _messages.add(message);
     });
     
-    _animateNewMessage();
-    _scrollToBottom();
+    print('📊 After add: ${_messages.length}');
+    
+    // Wait for frame to render
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _animateNewMessage();
+      _scrollToBottom();
+    });
     
     // Provide haptic feedback
     HapticFeedback.lightImpact();
@@ -173,30 +184,39 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen>
     try {
       // Add message to local list immediately for instant feedback
       final localMessage = {
-        'type': _selectedChatMode,
+        'type': 'group',
         'sender_name': esp32Service.userName,
         'sender_id': esp32Service.esp32NodeId,
-        'receiver_id': _selectedChatMode == 'group' ? 'all' : 'target_node',
+        'receiver_id': 'all',
         'message': message,
         'timestamp': DateTime.now().toString(),
         'isLocal': true,
         'status': 'sending', // Add status
       };
       
+      print('📤 Sending message: $message');
+      print('📊 Messages before: ${_messages.length}');
+      
       setState(() {
         _messages.add(localMessage);
       });
       
-      _animateNewMessage();
-      _scrollToBottom();
+      print('📊 Messages after: ${_messages.length}');
+      
+      // Clear input field first (before animations)
       _messageController.clear();
       
-      // Send via ESP32
-      if (_selectedChatMode == 'group') {
-        await esp32Service.sendGroupMessage(message);
-      } else {
-        await esp32Service.sendPrivateMessage(message, 'target_node');
-      }
+      // Force immediate rebuild
+      setState(() {});
+      
+      // Wait for frame to render, then animate and scroll
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _animateNewMessage();
+        _scrollToBottom();
+      });
+      
+      // Send via ESP32 (always group mode)
+      await esp32Service.sendGroupMessage(message);
       
       // Update message status to sent
       setState(() {
@@ -252,8 +272,7 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen>
       body: Column(
         children: [
           _buildModernAppBar(),
-          _buildConnectionStatusCard(),
-          _buildChatModeSelector(),
+          // Connection status in app bar, no separate card
           Expanded(child: _buildMessagesList()),
           _buildModernMessageInput(),
         ],
@@ -317,7 +336,7 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen>
                       return GestureDetector(
                         onTap: () {
                           HapticFeedback.lightImpact();
-                          Navigator.of(context).pushNamed('/esp32-auth');
+                          Navigator.of(context).pushNamed('/esp32-scanner');
                         },
                         child: Container(
                           padding: const EdgeInsets.all(12),
@@ -449,7 +468,7 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen>
                         child: ElevatedButton(
                           onPressed: () {
                             HapticFeedback.lightImpact();
-                            Navigator.of(context).pushNamed('/esp32-auth');
+                            Navigator.of(context).pushNamed('/esp32-scanner');
                           },
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppColors.online,
@@ -486,133 +505,7 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen>
     );
   }
   
-  Widget _buildChatModeSelector() {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      child: EnhancedCard(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            Expanded(
-              child: GestureDetector(
-                onTap: () => setState(() => _selectedChatMode = 'group'),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF8F9FA),
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: _selectedChatMode == 'group' ? [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
-                        blurRadius: 8,
-                        offset: const Offset(2, 2),
-                      ),
-                      BoxShadow(
-                        color: Colors.white.withOpacity(0.8),
-                        blurRadius: 8,
-                        offset: const Offset(-2, -2),
-                      ),
-                    ] : [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
-                        blurRadius: 4,
-                        offset: const Offset(1, 1),
-                      ),
-                      BoxShadow(
-                        color: Colors.white.withOpacity(0.9),
-                        blurRadius: 4,
-                        offset: const Offset(-1, -1),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.group,
-                        color: _selectedChatMode == 'group' 
-                            ? AppColors.primaryRed 
-                            : AppColors.mediumGray,
-                        size: 20,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Group Chat',
-                        style: AppTypography.bodyLarge.copyWith(
-                          color: _selectedChatMode == 'group' 
-                              ? AppColors.primaryRed 
-                              : AppColors.mediumGray,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: GestureDetector(
-                onTap: () => setState(() => _selectedChatMode = 'private'),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF8F9FA),
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: _selectedChatMode == 'private' ? [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
-                        blurRadius: 8,
-                        offset: const Offset(2, 2),
-                      ),
-                      BoxShadow(
-                        color: Colors.white.withOpacity(0.8),
-                        blurRadius: 8,
-                        offset: const Offset(-2, -2),
-                      ),
-                    ] : [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
-                        blurRadius: 4,
-                        offset: const Offset(1, 1),
-                      ),
-                      BoxShadow(
-                        color: Colors.white.withOpacity(0.9),
-                        blurRadius: 4,
-                        offset: const Offset(-1, -1),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.person,
-                        color: _selectedChatMode == 'private' 
-                            ? AppColors.primaryRed 
-                            : AppColors.mediumGray,
-                        size: 20,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Private Chat',
-                        style: AppTypography.bodyLarge.copyWith(
-                          color: _selectedChatMode == 'private' 
-                              ? AppColors.primaryRed 
-                              : AppColors.mediumGray,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  // REMOVED: _buildChatModeSelector() - Group chat only now
   
   Widget _buildMessagesList() {
     if (_messages.isEmpty) {
@@ -644,17 +537,12 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen>
       );
     }
     
-    return AnimatedBuilder(
-      animation: _messageAnimation,
-      builder: (context, child) {
-        return ListView.builder(
-          controller: _scrollController,
-          padding: const EdgeInsets.all(16),
-          itemCount: _messages.length,
-          itemBuilder: (context, index) {
-            return _buildMessageBubble(_messages[index], index);
-          },
-        );
+    return ListView.builder(
+      controller: _scrollController,
+      padding: const EdgeInsets.all(16),
+      itemCount: _messages.length,
+      itemBuilder: (context, index) {
+        return _buildMessageBubble(_messages[index], index);
       },
     );
   }
@@ -703,31 +591,31 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen>
       ),
       child: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), // Reduced vertical padding
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Expanded(
-                child: EnhancedTextField(
-                  controller: _messageController,
-                  focusNode: _messageFocus,
-                  label: _selectedChatMode == 'group' 
-                      ? 'Group Message' 
-                      : 'Private Message',
-                  hint: _selectedChatMode == 'group' 
-                      ? 'Type a group message...' 
-                      : 'Type a private message...',
-                  maxLines: 3,
+                child: Container(
+                  constraints: const BoxConstraints(maxHeight: 100), // Limit height
+                  child: EnhancedTextField(
+                    controller: _messageController,
+                    focusNode: _messageFocus,
+                    label: 'Message', // Simplified label
+                    hint: 'Type a message...',
+                    maxLines: 2, // Reduced from 3 to 2
+                  ),
                 ),
               ),
               const SizedBox(width: 12),
               GestureDetector(
                 onTap: _isSending ? null : _sendMessage,
                 child: Container(
-                  width: 56,
-                  height: 56,
+                  width: 48, // Smaller button (was 56)
+                  height: 48,
                   decoration: BoxDecoration(
                     color: _isSending ? AppColors.lightGray : const Color(0xFFF8F9FA),
-                    borderRadius: BorderRadius.circular(28),
+                    borderRadius: BorderRadius.circular(24),
                     boxShadow: _isSending ? null : [
                       BoxShadow(
                         color: Colors.black.withOpacity(0.1),
@@ -742,18 +630,17 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen>
                     ],
                   ),
                   child: _isSending
-                      ? const SizedBox(
-                          width: 24,
-                          height: 24,
+                      ? const Padding(
+                          padding: EdgeInsets.all(12),
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
                             valueColor: AlwaysStoppedAnimation<Color>(AppColors.mediumGray),
                           ),
                         )
-                      : Icon(
+                      : const Icon(
                           Icons.send_rounded,
                           color: AppColors.primaryRed,
-                          size: 24,
+                          size: 22, // Smaller icon
                         ),
                 ),
               ),

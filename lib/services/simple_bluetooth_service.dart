@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 
 /// Simple Bluetooth Service for ESP32 Communication
@@ -35,6 +34,8 @@ class SimpleBluetoothService extends ChangeNotifier {
   String _esp32NodeId = '';
   String _esp32Mac = '';
   String _userName = '';
+  String _pairedDeviceName = '';
+  String _pairedDeviceAddress = '';
 
   // ============================================================================
   // MESSAGE HANDLING
@@ -55,6 +56,8 @@ class SimpleBluetoothService extends ChangeNotifier {
   String get connectionStatus => _connectionStatus;
   String get lastError => _lastError;
   String get esp32NodeId => _esp32NodeId;
+  String get pairedDeviceName => _pairedDeviceName;
+  String get pairedDeviceAddress => _pairedDeviceAddress;
   String get esp32Mac => _esp32Mac;
   String get userName => _userName;
   
@@ -142,14 +145,29 @@ class SimpleBluetoothService extends ChangeNotifier {
 
   void _handleMessageReceived(dynamic arguments) {
     try {
-      final Map<String, dynamic> data = Map<String, dynamic>.from(arguments);
+      final Map<String, dynamic> wrapper = Map<String, dynamic>.from(arguments);
       
-      if (data.containsKey('auth_request')) {
-        _handleAuthRequest(data);
-      } else if (data.containsKey('sync_complete')) {
-        _handleSyncComplete(data);
-      } else if (data.containsKey('type')) {
-        _handleChatMessage(data);
+      // Kotlin sends {"message": "JSON_STRING"}
+      // We need to parse the JSON string inside
+      if (wrapper.containsKey('message')) {
+        final String messageJson = wrapper['message'] as String;
+        _addStatusLog('Raw RX: $messageJson');
+        
+        // Parse the JSON string
+        final Map<String, dynamic> data = json.decode(messageJson);
+        
+        if (data.containsKey('auth_request')) {
+          _handleAuthRequest(data);
+        } else if (data.containsKey('sync_complete')) {
+          _handleSyncComplete(data);
+        } else if (data.containsKey('type')) {
+          _handleChatMessage(data);
+        } else if (data.containsKey('ack')) {
+          // Acknowledgment, just log it
+          _addStatusLog('✓ ESP32 acknowledged');
+        } else {
+          _addStatusLog('Unknown message type: $messageJson');
+        }
       }
       
     } catch (e) {
@@ -163,6 +181,56 @@ class SimpleBluetoothService extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ============================================================================
+  // DEVICE SCANNING AND PAIRING
+  // ============================================================================
+  
+  Future<List<Map<String, String>>> scanDevices() async {
+    try {
+      _addStatusLog('Scanning for ESP32 devices...');
+      
+      final devices = await _channel.invokeMethod<List>('scanDevices');
+      
+      if (devices != null) {
+        final deviceList = devices
+            .map((d) => Map<String, String>.from(d as Map))
+            .where((d) => d['name']?.startsWith('ESP32_Node') ?? false)
+            .toList();
+        
+        _addStatusLog('Found ${deviceList.length} ESP32 device(s)');
+        return deviceList;
+      }
+      
+      return [];
+    } catch (e) {
+      _addErrorLog('Error scanning devices: $e');
+      return [];
+    }
+  }
+  
+  Future<bool> pairDevice(String name, String address) async {
+    try {
+      _addStatusLog('Pairing with $name...');
+      
+      final result = await _channel.invokeMethod<bool>('pairDevice', {
+        'name': name,
+        'address': address,
+      });
+      
+      if (result == true) {
+        _addStatusLog('✓ Paired with $name');
+        await savePairedDevice(name, address);
+        return true;
+      } else {
+        _addErrorLog('Pairing failed');
+        return false;
+      }
+    } catch (e) {
+      _addErrorLog('Error pairing device: $e');
+      return false;
+    }
+  }
+  
   // ============================================================================
   // CONNECTION MANAGEMENT
   // ============================================================================
@@ -381,9 +449,15 @@ class SimpleBluetoothService extends ChangeNotifier {
       _esp32Mac = prefs.getString('esp32_mac') ?? '';
       _esp32NodeId = prefs.getString('esp32_node_id') ?? '';
       _isAuthenticated = prefs.getBool('esp32_authenticated') ?? false;
+      _pairedDeviceName = prefs.getString('paired_device_name') ?? '';
+      _pairedDeviceAddress = prefs.getString('paired_device_address') ?? '';
       
       if (_esp32Mac.isNotEmpty) {
         _addStatusLog('Loaded stored ESP32 data: $_esp32NodeId');
+      }
+      
+      if (_pairedDeviceName.isNotEmpty) {
+        _addStatusLog('✅ Previously paired: $_pairedDeviceName');
       }
       
     } catch (e) {
@@ -398,11 +472,36 @@ class SimpleBluetoothService extends ChangeNotifier {
       await prefs.setString('esp32_mac', _esp32Mac);
       await prefs.setString('esp32_node_id', _esp32NodeId);
       await prefs.setBool('esp32_authenticated', _isAuthenticated);
+      await prefs.setString('paired_device_name', _pairedDeviceName);
+      await prefs.setString('paired_device_address', _pairedDeviceAddress);
       
       _addStatusLog('Saved ESP32 data to storage');
       
     } catch (e) {
       _addErrorLog('Error saving data: $e');
+    }
+  }
+  
+  Future<void> savePairedDevice(String name, String address) async {
+    _pairedDeviceName = name;
+    _pairedDeviceAddress = address;
+    await _saveStoredData();
+    _addStatusLog('✅ Saved paired device: $name');
+    notifyListeners();
+  }
+  
+  Future<void> clearPairedDevice() async {
+    try {
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      await prefs.remove('paired_device_name');
+      await prefs.remove('paired_device_address');
+      
+      _pairedDeviceName = '';
+      _pairedDeviceAddress = '';
+      _addStatusLog('Cleared paired device');
+      notifyListeners();
+    } catch (e) {
+      _addErrorLog('Error clearing paired device: $e');
     }
   }
 

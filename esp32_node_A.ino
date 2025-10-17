@@ -127,22 +127,44 @@ void loop() {
     int rssi = LoRa.packetRssi();
     float snr = LoRa.packetSnr();
     
-    Serial.print("[LoRa RX] RSSI: ");
+    Serial.println("╔═══════════════════════════════════════════╗");
+    Serial.println("║ [LoRa RX] ← INCOMING MESSAGE");
+    Serial.print("║ [RSSI] ");
     Serial.print(rssi);
-    Serial.print(" dBm, SNR: ");
+    Serial.print(" dBm | [SNR] ");
     Serial.print(snr);
     Serial.println(" dB");
-    Serial.print("[LoRa RX] Data: ");
+    Serial.print("║ [DATA] ");
     Serial.println(msg);
     
-    // Forward to BT if connected
-    if (conn && BT.hasClient()) {
-      BT.println(msg);
-      Serial.println("[LoRa→BT] Forwarded to app");
-    } else {
-      Serial.println("[LoRa→BT] Not forwarded (no client)");
+    // CHECK IF MESSAGE IS FROM THIS NODE (ignore own messages)
+    bool isFromSelf = false;
+    if (msg.indexOf("\"from_node\":\"" + nId + "\"") > 0) {
+      isFromSelf = true;
+      Serial.println("║ [FILTER] ⚠️  OWN MESSAGE - IGNORED (no loopback)");
     }
     
+    // Forward to BT only if NOT from self
+    if (!isFromSelf && conn && BT.hasClient()) {
+      BT.println(msg);
+      Serial.println("║ [LoRa→BT] ✓ FORWARDED to app");
+      
+      // Extract and display message content
+      int msgStart = msg.indexOf("\"message\":\"") + 11;
+      int msgEnd = msg.indexOf("\"", msgStart);
+      if (msgStart > 10 && msgEnd > msgStart) {
+        String msgContent = msg.substring(msgStart, msgEnd);
+        Serial.print("║ [CONTENT] ");
+        Serial.println(msgContent);
+      }
+      
+    } else if (isFromSelf) {
+      Serial.println("║ [LoRa→BT] Skipped (own message)");
+    } else {
+      Serial.println("║ [LoRa→BT] Not forwarded (no BT client)");
+    }
+    
+    Serial.println("╚═══════════════════════════════════════════╝");
     Serial.println();
   }
   
@@ -150,17 +172,19 @@ void loop() {
 }
 
 void handleBT(String m) {
-  Serial.print("[BT RX] ");
+  Serial.println("╔═══════════════════════════════════════════╗");
+  Serial.print("║ [BT RX] ");
   Serial.println(m);
   
-  // Send acknowledgment
+  // Send acknowledgment to app immediately
   if (conn && BT.hasClient()) {
     BT.println("{\"ack\":\"received\"}");
+    Serial.println("║ [ACK] Sent to app");
   }
   
   // Check if it's a chat message
   if (m.indexOf("\"type\":") > 0 && m.indexOf("\"message\":") > 0) {
-    // Extract message for logging
+    // Extract message content for logging
     int msgStart = m.indexOf("\"message\":\"") + 11;
     int msgEnd = m.indexOf("\"", msgStart);
     String msgContent = "";
@@ -168,23 +192,42 @@ void handleBT(String m) {
       msgContent = m.substring(msgStart, msgEnd);
     }
     
-    // Transmit via LoRa
-    Serial.println("[LoRa TX] Transmitting...");
-    LoRa.beginPacket();
-    LoRa.print(m);
-    LoRa.endPacket();
+    Serial.print("║ [MSG] Content: ");
+    Serial.println(msgContent);
     
-    Serial.print("[LoRa TX] Success (");
-    Serial.print(m.length());
-    Serial.println(" bytes)");
-    if (msgContent.length() > 0) {
-      Serial.print("[LoRa TX] Message: ");
-      Serial.println(msgContent);
+    // ADD NODE ID TO MESSAGE (so other nodes know who sent it)
+    String loraMsg = "";
+    int lastBrace = m.lastIndexOf("}");
+    if (lastBrace > 0) {
+      loraMsg = m.substring(0, lastBrace);
+      loraMsg += ",\"from_node\":\"" + nId + "\"}";
+    } else {
+      loraMsg = m; // fallback
     }
-    Serial.println();
+    
+    // Transmit via LoRa with confirmation
+    Serial.println("║ [LoRa TX] ➤ Broadcasting...");
+    
+    LoRa.beginPacket();
+    LoRa.print(loraMsg);
+    bool txSuccess = LoRa.endPacket();
+    
+    if (txSuccess) {
+      Serial.print("║ [LoRa TX] ✓ SUCCESS (");
+      Serial.print(loraMsg.length());
+      Serial.println(" bytes)");
+    } else {
+      Serial.println("║ [LoRa TX] ✗ FAILED!");
+    }
+    
+    Serial.print("║ [LoRa TX] Data: ");
+    Serial.println(loraMsg);
+    
   } else {
-    Serial.println("[BT RX] Non-message data (ignored for LoRa)");
-    Serial.println();
+    Serial.println("║ [BT RX] Non-message data (ignored)");
   }
+  
+  Serial.println("╚═══════════════════════════════════════════╝");
+  Serial.println();
 }
 

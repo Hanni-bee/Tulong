@@ -17,6 +17,7 @@ import 'screens/setup/address_setup_screen.dart';
 import 'screens/update_profile_screen.dart';
 import 'screens/esp32_test_screen.dart';
 import 'screens/esp32_auth_screen.dart';
+import 'screens/esp32_device_scanner.dart';
 import 'screens/main_navigation.dart';
 import 'providers/auth_provider.dart';
 import 'providers/network_provider.dart';
@@ -192,6 +193,7 @@ class TulongApp extends StatelessWidget {
           '/address-setup': (context) => const AddressSetupScreen(), // Address setup for Google Auth users
           '/update-profile': (context) => const UpdateProfileScreen(), // Update profile with address
           '/esp32-auth': (context) => const ESP32AuthScreen(), // ESP32 Bluetooth authentication
+          '/esp32-scanner': (context) => const ESP32DeviceScanner(), // ESP32 device scanner with pairing
           '/esp32-test': (context) => const ESP32TestScreen(), // ESP32 debug console
           '/disaster-demo': (context) => const DisasterDemoScreen(),
           '/main': (context) => const MainNavigation(),

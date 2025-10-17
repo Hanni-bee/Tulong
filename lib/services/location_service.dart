@@ -54,7 +54,7 @@ class LocationService {
     print('⚠️ All sources failed, using hardcoded regions');
     return getFallbackRegions();
   }
-  
+
   // Get provinces by region code
   static Future<List<Map<String, dynamic>>> getProvinces(String regionCode) async {
     // Try local JSON for reliable province data
@@ -162,54 +162,54 @@ class LocationService {
   
   // Get barangays by city code using local JSON first
   static Future<List<Map<String, dynamic>>> getBarangays(String cityCode) async {
-    print('🏙️ Barangays requested by city name "$cityCode"');
+      print('🏙️ Barangays requested by city name "$cityCode"');
 
     // Try local JSON lookup first (faster and more reliable)
-    try {
-      print('🌐 Using local JSON for barangays in city "$cityCode"...');
-      final String jsonString = await rootBundle.loadString(_localDataFile);
-      final Map<String, dynamic> data = json.decode(jsonString);
+      try {
+        print('🌐 Using local JSON for barangays in city "$cityCode"...');
+        final String jsonString = await rootBundle.loadString(_localDataFile);
+        final Map<String, dynamic> data = json.decode(jsonString);
 
-      // Search through all regions and provinces to find the city
-      for (final regionEntry in data.entries) {
-        final regionKey = regionEntry.key;
-        final regionValue = regionEntry.value;
-        
-        if (regionValue is Map<String, dynamic> && regionValue.containsKey('province_list')) {
-          final provinceList = regionValue['province_list'] as Map<String, dynamic>;
+        // Search through all regions and provinces to find the city
+        for (final regionEntry in data.entries) {
+          final regionKey = regionEntry.key;
+          final regionValue = regionEntry.value;
+          
+          if (regionValue is Map<String, dynamic> && regionValue.containsKey('province_list')) {
+            final provinceList = regionValue['province_list'] as Map<String, dynamic>;
 
-          for (final provinceEntry in provinceList.entries) {
-            final provinceName = provinceEntry.key;
-            final provinceData = provinceEntry.value;
-            
-            if (provinceData is Map<String, dynamic> && provinceData.containsKey('municipality_list')) {
-              final municipalityList = provinceData['municipality_list'] as Map<String, dynamic>;
+            for (final provinceEntry in provinceList.entries) {
+              final provinceName = provinceEntry.key;
+              final provinceData = provinceEntry.value;
+              
+              if (provinceData is Map<String, dynamic> && provinceData.containsKey('municipality_list')) {
+                final municipalityList = provinceData['municipality_list'] as Map<String, dynamic>;
 
-              // Check if this city exists
-              if (municipalityList.containsKey(cityCode)) {
-                final cityData = municipalityList[cityCode];
-                if (cityData is Map<String, dynamic> && cityData.containsKey('barangay_list')) {
-                  final barangayList = cityData['barangay_list'] as List<dynamic>;
-                  final barangays = barangayList.map<Map<String, dynamic>>((barangay) => {
+                // Check if this city exists
+                if (municipalityList.containsKey(cityCode)) {
+                  final cityData = municipalityList[cityCode];
+                  if (cityData is Map<String, dynamic> && cityData.containsKey('barangay_list')) {
+                    final barangayList = cityData['barangay_list'] as List<dynamic>;
+                    final barangays = barangayList.map<Map<String, dynamic>>((barangay) => {
                     'brgy_code': barangay.toString(),
                     'brgy_name': barangay.toString(),
-                    'code': barangay.toString(),
-                    'name': barangay.toString(),
-                    'cityCode': cityCode,
-                    'provinceCode': provinceName,
-                    'regionCode': regionKey,
-                  }).toList();
+                      'code': barangay.toString(),
+                      'name': barangay.toString(),
+                      'cityCode': cityCode,
+                      'provinceCode': provinceName,
+                      'regionCode': regionKey,
+                    }).toList();
 
-                  print('✅ Local JSON: Loaded ${barangays.length} barangays for city "$cityCode"');
-                  return barangays;
+                    print('✅ Local JSON: Loaded ${barangays.length} barangays for city "$cityCode"');
+                    return barangays;
+                  }
                 }
               }
             }
           }
         }
-      }
-    } catch (e) {
-      print('❌ Local JSON failed for barangays: $e');
+      } catch (e) {
+        print('❌ Local JSON failed for barangays: $e');
     }
 
     // Final fallback

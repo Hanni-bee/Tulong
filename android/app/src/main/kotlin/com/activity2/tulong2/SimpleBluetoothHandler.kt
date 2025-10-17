@@ -41,18 +41,126 @@ class SimpleBluetoothHandler(private val flutterEngine: FlutterEngine) : MethodC
     
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
+            "scanDevices" -> scanForDevices(result)
+            "pairDevice" -> {
+                val name = call.argument<String>("name")
+                val address = call.argument<String>("address")
+                if (name != null && address != null) {
+                    pairDevice(name, address, result)
+                } else {
+                    result.error("INVALID_ARGUMENT", "Name or address is null", null)
+                }
+            }
             "connectToESP32" -> connectToESP32(result)
             "disconnect" -> disconnect(result)
             "sendMessage" -> {
-                val message = call.argument<String>("message")
-                if (message != null) {
-                    sendMessage(message, result)
+                // Accept the entire argument map and convert to JSON
+                val messageData = call.arguments as? Map<*, *>
+                if (messageData != null) {
+                    sendMessage(messageData, result)
                 } else {
-                    result.error("INVALID_ARGUMENT", "Message is null", null)
+                    result.error("INVALID_ARGUMENT", "Message data is null", null)
                 }
             }
             else -> result.notImplemented()
         }
+    }
+    
+    private fun scanForDevices(result: MethodChannel.Result) {
+        Thread {
+            try {
+                if (bluetoothAdapter == null) {
+                    mainHandler.post {
+                        result.error("NO_BLUETOOTH", "Bluetooth not available", null)
+                    }
+                    return@Thread
+                }
+                
+                if (!bluetoothAdapter!!.isEnabled) {
+                    mainHandler.post {
+                        result.error("BLUETOOTH_DISABLED", "Please enable Bluetooth", null)
+                    }
+                    return@Thread
+                }
+                
+                // Get bonded devices
+                val devices = mutableListOf<Map<String, String>>()
+                
+                try {
+                    val bondedDevices = bluetoothAdapter!!.bondedDevices
+                    for (device in bondedDevices) {
+                        if (device.name != null && device.name.startsWith("ESP32_Node")) {
+                            devices.add(mapOf(
+                                "name" to device.name,
+                                "address" to device.address,
+                                "bonded" to "true"
+                            ))
+                        }
+                    }
+                } catch (e: SecurityException) {
+                    mainHandler.post {
+                        result.error("PERMISSION_DENIED", "Bluetooth permission required", null)
+                    }
+                    return@Thread
+                }
+                
+                mainHandler.post {
+                    result.success(devices)
+                }
+                
+            } catch (e: Exception) {
+                mainHandler.post {
+                    result.error("SCAN_ERROR", "Error scanning: ${e.message}", null)
+                }
+            }
+        }.start()
+    }
+    
+    private fun pairDevice(name: String, address: String, result: MethodChannel.Result) {
+        Thread {
+            try {
+                if (bluetoothAdapter == null) {
+                    mainHandler.post {
+                        result.error("NO_BLUETOOTH", "Bluetooth not available", null)
+                    }
+                    return@Thread
+                }
+                
+                val device = bluetoothAdapter!!.getRemoteDevice(address)
+                
+                try {
+                    // Check if already bonded
+                    if (device.bondState == BluetoothDevice.BOND_BONDED) {
+                        mainHandler.post {
+                            result.success(true)
+                        }
+                        return@Thread
+                    }
+                    
+                    // Attempt to pair
+                    val createBondMethod = device.javaClass.getMethod("createBond")
+                    val bondResult = createBondMethod.invoke(device) as Boolean
+                    
+                    mainHandler.post {
+                        result.success(bondResult)
+                    }
+                    
+                } catch (e: SecurityException) {
+                    mainHandler.post {
+                        result.error("PERMISSION_DENIED", "Bluetooth permission required", null)
+                    }
+                } catch (e: Exception) {
+                    mainHandler.post {
+                        result.error("PAIR_ERROR", "Pairing failed: ${e.message}", null)
+                    }
+                }
+                
+            } catch (e: Exception) {
+                mainHandler.post {
+                    result.error("DEVICE_ERROR", "Device error: ${e.message}", null)
+                }
+            }
+        }.start()
     }
     
     private fun connectToESP32(result: MethodChannel.Result) {
@@ -181,7 +289,7 @@ class SimpleBluetoothHandler(private val flutterEngine: FlutterEngine) : MethodC
         }
     }
     
-    private fun sendMessage(message: String, result: MethodChannel.Result) {
+    private fun sendMessage(messageData: Map<*, *>, result: MethodChannel.Result) {
         if (!isConnected || outputStream == null) {
             result.error("NOT_CONNECTED", "Not connected to ESP32", null)
             return
@@ -189,8 +297,16 @@ class SimpleBluetoothHandler(private val flutterEngine: FlutterEngine) : MethodC
         
         Thread {
             try {
-                outputStream?.write((message + "\n").toByteArray())
+                // Convert Map to JSON string
+                val jsonString = mapToJson(messageData)
+                
+                // Send with newline terminator
+                outputStream?.write((jsonString + "\n").toByteArray())
                 outputStream?.flush()
+                
+                // Log for debugging
+                updateStatus("TX: $jsonString")
+                
                 mainHandler.post {
                     result.success(true)
                 }
@@ -200,6 +316,26 @@ class SimpleBluetoothHandler(private val flutterEngine: FlutterEngine) : MethodC
                 }
             }
         }.start()
+    }
+    
+    // Helper function to convert Map to JSON string
+    private fun mapToJson(map: Map<*, *>): String {
+        val json = StringBuilder("{")
+        var first = true
+        for ((key, value) in map) {
+            if (!first) json.append(",")
+            first = false
+            json.append("\"${key}\":")
+            when (value) {
+                is String -> json.append("\"${value}\"")
+                is Number -> json.append(value)
+                is Boolean -> json.append(value)
+                is Map<*, *> -> json.append(mapToJson(value))
+                else -> json.append("\"${value}\"")
+            }
+        }
+        json.append("}")
+        return json.toString()
     }
     
     private fun startReadThread() {
