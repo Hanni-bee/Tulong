@@ -237,7 +237,7 @@ class _EnhancedTextFieldState extends State<EnhancedTextField> with TickerProvid
                       }
                     },
                     maxLines: widget.maxLines,
-                    enabled: widget.enabled && widget.state != InputState.disabled,
+                    enabled: widget.enabled,
                     maxLength: widget.maxLength,
                     textInputAction: widget.textInputAction,
                     inputFormatters: widget.inputFormatters,
@@ -484,7 +484,7 @@ class _EnhancedTextFieldState extends State<EnhancedTextField> with TickerProvid
           padding: const EdgeInsets.only(top: AppSpacing.xs),
           child: Text(
             _errorText!,
-            style: AppTypography.caption.copyWith(
+            style: AppTypography.bodySmall.copyWith(
               color: AppColors.error,
             ),
           ),
@@ -498,7 +498,7 @@ class _EnhancedTextFieldState extends State<EnhancedTextField> with TickerProvid
           padding: const EdgeInsets.only(top: AppSpacing.xs),
           child: Text(
             widget.helperText!,
-            style: AppTypography.caption.copyWith(
+            style: AppTypography.bodySmall.copyWith(
               color: AppColors.textSecondary,
             ),
           ),
@@ -513,7 +513,7 @@ class _EnhancedTextFieldState extends State<EnhancedTextField> with TickerProvid
           padding: const EdgeInsets.only(top: AppSpacing.xs),
           child: Text(
             '${_controller.text.length}/${widget.maxLength}',
-            style: AppTypography.caption.copyWith(
+            style: AppTypography.bodySmall.copyWith(
               color: _controller.text.length > widget.maxLength!
                 ? AppColors.error
                 : AppColors.textSecondary,
@@ -555,7 +555,7 @@ class _EnhancedTextFieldState extends State<EnhancedTextField> with TickerProvid
         const SizedBox(width: AppSpacing.sm),
         Text(
           _getStrengthText(strength),
-          style: AppTypography.caption.copyWith(
+          style: AppTypography.bodySmall.copyWith(
             color: _getStrengthColor(strength),
             fontWeight: FontWeight.w600,
           ),

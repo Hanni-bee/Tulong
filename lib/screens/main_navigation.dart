@@ -6,8 +6,9 @@ import '../providers/network_provider.dart';
 import '../widgets/polished_animations.dart';
 import 'modern_home_screen.dart';
 import 'enhanced_global_chat_screen.dart';
+import 'esp32_lora_chat_screen.dart';
 import 'walkie_talkie_screen.dart';
-import 'hardware_screen.dart';
+// Hardware screen removed - using pure Bluetooth only
 import 'modern_profile_screen.dart';
 
 class MainNavigation extends StatefulWidget {
@@ -25,8 +26,8 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
   final List<Widget> _screens = [
     const ModernHomeScreen(),
     const EnhancedGlobalChatScreen(),
+    const ESP32LoRaChatScreen(),
     const WalkieTalkieScreen(),
-    const HardwareScreen(),
     const ModernProfileScreen(),
   ];
 
@@ -42,6 +43,12 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
       activeIcon: Icons.message,
       label: 'Chat',
       color: AppColors.success,
+    ),
+    const NavigationItem(
+      icon: Icons.bluetooth_outlined,
+      activeIcon: Icons.bluetooth,
+      label: 'LoRa',
+      color: AppColors.online,
     ),
     const NavigationItem(
       icon: Icons.call_outlined,

@@ -48,6 +48,7 @@ dependencies:
   
   # Hardware communication dependencies
   permission_handler: ^11.0.1
+  # flutter_bluetooth_serial: ^0.4.0  # Using custom implementation instead
 
 dev_dependencies:
   flutter_test:

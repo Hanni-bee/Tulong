@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/app_colors.dart';
 import '../providers/auth_provider.dart';
 import '../utils/neumorphic_utils.dart';
+import '../utils/permission_helper.dart';
 
 class EnhancedSplashScreen extends StatefulWidget {
   const EnhancedSplashScreen({super.key});
@@ -162,7 +163,13 @@ class _EnhancedSplashScreenState extends State<EnhancedSplashScreen>
       }
     }
 
+    // Request permissions before navigating
     await Future.delayed(const Duration(milliseconds: 500));
+    if (mounted) {
+      await PermissionHelper.requestAllPermissions(context);
+    }
+    
+    await Future.delayed(const Duration(milliseconds: 300));
     _navigateToNext();
   }
 

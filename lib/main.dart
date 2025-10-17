@@ -15,12 +15,13 @@ import 'screens/tutorial_walkthrough_screen.dart';
 import 'screens/disaster_demo_screen.dart';
 import 'screens/setup/address_setup_screen.dart';
 import 'screens/update_profile_screen.dart';
-import 'screens/hardware_screen.dart';
+import 'screens/esp32_test_screen.dart';
+import 'screens/esp32_auth_screen.dart';
 import 'screens/main_navigation.dart';
 import 'providers/auth_provider.dart';
 import 'providers/network_provider.dart';
 import 'providers/power_provider.dart';
-import 'services/hardware_service.dart';
+import 'services/simple_bluetooth_service.dart';
 import 'utils/performance_optimizer.dart';
 import 'services/firebase_service.dart';
 import 'services/offline_auth_service.dart';
@@ -64,7 +65,7 @@ class TulongApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => AuthProvider()..loadSession()),
         ChangeNotifierProvider(create: (_) => NetworkProvider()),
         ChangeNotifierProvider(create: (_) => PowerProvider()),
-        ChangeNotifierProvider(create: (_) => HardwareService()),
+        ChangeNotifierProvider(create: (_) => SimpleBluetoothService()),
       ],
       child: MaterialApp(
         title: 'T.U.L.O.N.G',
@@ -190,7 +191,8 @@ class TulongApp extends StatelessWidget {
           '/tutorial-old': (context) => const TutorialWalkthroughScreen(), // Old tutorial (fallback)
           '/address-setup': (context) => const AddressSetupScreen(), // Address setup for Google Auth users
           '/update-profile': (context) => const UpdateProfileScreen(), // Update profile with address
-          '/hardware': (context) => const HardwareScreen(), // Hardware settings and management
+          '/esp32-auth': (context) => const ESP32AuthScreen(), // ESP32 Bluetooth authentication
+          '/esp32-test': (context) => const ESP32TestScreen(), // ESP32 debug console
           '/disaster-demo': (context) => const DisasterDemoScreen(),
           '/main': (context) => const MainNavigation(),
         },
