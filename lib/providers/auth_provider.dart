@@ -120,7 +120,7 @@ class AuthProvider extends ChangeNotifier {
       return;
     }
     
-    if (email != null && email.isNotEmpty) {
+    if (email.isNotEmpty) {
       // Check if there's a different Google user currently signed in
       final firebaseService = FirebaseService();
       final currentFirebaseUser = firebaseService.currentUser;
@@ -423,11 +423,15 @@ class AuthProvider extends ChangeNotifier {
     _userEmail = null;
     _userName = null;
     
-    // Clear all preferences
+    // Clear only session preferences, keep SQLite data intact
     final prefs = await SharedPreferences.getInstance();
-    await prefs.clear();
+    await prefs.remove('session_email');
+    await prefs.remove('session_name');
+    await prefs.remove('current_user');
+    await prefs.remove('is_google_auth');
+    await prefs.remove('address_setup_completed');
     
-    print('Complete sign out - all data cleared');
+    print('Sign out complete - session cleared, SQLite data preserved');
     notifyListeners();
   }
   

@@ -46,6 +46,14 @@ class SimpleBluetoothService extends ChangeNotifier {
   final StreamController<String> _statusController = 
       StreamController<String>.broadcast();
 
+  // =========================================================================
+  // MESSAGE STORE (Single source of truth for chat UI)
+  // =========================================================================
+
+  final List<Map<String, dynamic>> _messages = <Map<String, dynamic>>[];
+  final StreamController<List<Map<String, dynamic>>> _messagesStreamController =
+      StreamController<List<Map<String, dynamic>>>.broadcast();
+
   // ============================================================================
   // GETTERS
   // ============================================================================
@@ -63,6 +71,8 @@ class SimpleBluetoothService extends ChangeNotifier {
   
   Stream<Map<String, dynamic>> get messageStream => _messageController.stream;
   Stream<String> get statusStream => _statusController.stream;
+  Stream<List<Map<String, dynamic>>> get messagesStream => _messagesStreamController.stream;
+  List<Map<String, dynamic>> get messages => List.unmodifiable(_messages);
 
   // ============================================================================
   // INITIALIZATION
@@ -371,6 +381,8 @@ class SimpleBluetoothService extends ChangeNotifier {
     }
     
     try {
+      final String messageId = '${DateTime.now().millisecondsSinceEpoch}-${(_userName.isNotEmpty ? _userName[0] : 'U')}';
+
       Map<String, dynamic> messageData = {
         'type': type,
         'sender_name': _userName,
@@ -378,8 +390,16 @@ class SimpleBluetoothService extends ChangeNotifier {
         'receiver_id': receiverId,
         'message': message,
         'timestamp': DateTime.now().toIso8601String(),
+        'id': messageId,
       };
-      
+
+      // Optimistic append to store for instant UI
+      final localData = Map<String, dynamic>.from(messageData)
+        ..['isLocal'] = true
+        ..['status'] = 'sending';
+      _messages.add(localData);
+      _messagesStreamController.add(List<Map<String, dynamic>>.from(_messages));
+
       _sendMessage(messageData);
       
       _addStatusLog('Sent $type message: $message');
@@ -410,17 +430,24 @@ class SimpleBluetoothService extends ChangeNotifier {
       String messageType = data['type'] ?? '';
       String senderName = data['sender_name'] ?? 'Unknown';
       String message = data['message'] ?? '';
-      
+
+      // Mark as remote by default unless explicitly local
+      data['isLocal'] = data['isLocal'] == true;
+
       if (messageType == 'group') {
         _addStatusLog('📢 Group message from $senderName: $message');
       } else if (messageType == 'private') {
         String receiverId = data['receiver_id'] ?? '';
         _addStatusLog('💬 Private message from $senderName → $receiverId: $message');
       }
-      
-      // Forward to UI
+
+      // Push to old per-message stream (backwards compatibility)
       _messageController.add(data);
-      
+
+      // Append to message store and notify list stream
+      _messages.add(Map<String, dynamic>.from(data));
+      _messagesStreamController.add(List<Map<String, dynamic>>.from(_messages));
+
     } catch (e) {
       _addErrorLog('Error handling chat message: $e');
     }

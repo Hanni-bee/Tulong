@@ -5,7 +5,6 @@ import '../constants/app_colors.dart';
 import '../providers/network_provider.dart';
 import '../widgets/polished_animations.dart';
 import 'modern_home_screen.dart';
-import 'enhanced_global_chat_screen.dart';
 import 'esp32_lora_chat_screen.dart';
 import 'walkie_talkie_screen.dart';
 // Hardware screen removed - using pure Bluetooth only
@@ -25,7 +24,6 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
   
   final List<Widget> _screens = [
     const ModernHomeScreen(),
-    const EnhancedGlobalChatScreen(),
     const ESP32LoRaChatScreen(),
     const WalkieTalkieScreen(),
     const ModernProfileScreen(),
@@ -37,12 +35,6 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
       activeIcon: Icons.home,
       label: 'Home',
       color: AppColors.primaryRed,
-    ),
-    const NavigationItem(
-      icon: Icons.message_outlined,
-      activeIcon: Icons.message,
-      label: 'Chat',
-      color: AppColors.success,
     ),
     const NavigationItem(
       icon: Icons.bluetooth_outlined,
@@ -109,11 +101,14 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.neumorphicBase,
-      body: PageView(
-        controller: _pageController,
-        onPageChanged: _onPageChanged,
-        physics: const BouncingScrollPhysics(), // Smooth swipe physics
-        children: _screens,
+      body: ScrollConfiguration(
+        behavior: const _NoScrollbarsBehavior(),
+        child: PageView(
+          controller: _pageController,
+          onPageChanged: _onPageChanged,
+          physics: const BouncingScrollPhysics(), // Smooth swipe physics
+          children: _screens,
+        ),
       ),
       bottomNavigationBar: Container(
         margin: const EdgeInsets.all(16),
@@ -276,4 +271,19 @@ class NavigationItem {
     required this.label,
     required this.color,
   });
+}
+
+// Local scroll behavior that removes glow and scrollbar indicators
+class _NoScrollbarsBehavior extends ScrollBehavior {
+  const _NoScrollbarsBehavior();
+
+  @override
+  Widget buildOverscrollIndicator(BuildContext context, Widget child, ScrollableDetails details) {
+    return child; // no glow
+  }
+
+  @override
+  Widget buildScrollbar(BuildContext context, Widget child, ScrollableDetails details) {
+    return child; // no scrollbar
+  }
 }

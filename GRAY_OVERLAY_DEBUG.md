@@ -1,6 +1,23 @@
 # 🔍 GRAY OVERLAY ISSUE - DEBUG GUIDE
 
-## 📸 **What I See:**
+## ✅ **ISSUE RESOLVED!**
+
+### 🎯 **Root Cause Found:**
+The gray overlay was caused by a **semi-transparent container** in the Walkie Talkie screen that was allowing the gray background from `MainNavigation` to bleed through.
+
+**The Problem:**
+- Line 290 in `walkie_talkie_screen.dart` had: `color: AppColors.white.withOpacity(0.8)`
+- This made the container 80% opaque (20% transparent)
+- The MainNavigation Scaffold uses `backgroundColor: AppColors.neumorphicBase` (gray color: `0xFFF5F5F5`)
+- The 20% transparency allowed the gray background to show through
+
+**The Fix:**
+- Changed `AppColors.white.withOpacity(0.8)` to `AppColors.white` (fully opaque)
+- Now the container is 100% opaque and blocks the gray background completely
+
+---
+
+## 📸 **What Was Seen:**
 A large **gray rectangular box** covering the middle section of the Walkie Talkie screen, blocking:
 - Connected Users section
 - Voice Controls section

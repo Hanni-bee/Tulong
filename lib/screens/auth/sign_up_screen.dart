@@ -7,8 +7,8 @@ import '../../widgets/password_strength_indicator.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/firebase_service.dart';
-import '../../services/offline_auth_service.dart';
 import '../../widgets/terms_conditions_modal.dart';
+import 'dart:io';
 import '../../services/location_service.dart';
 import '../../utils/input_validator.dart';
 import '../../utils/responsive_spacing.dart';
@@ -36,9 +36,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
   bool _acceptedTerms = false;
   
   // Real-time validation states
-  bool _hasMinLength = false;
-  bool _hasSpecialChar = false;
-  bool _hasUppercase = false;
   bool _nameHasNumbers = false;
 
   // Location data
@@ -72,13 +69,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
     super.dispose();
   }
 
-  void _checkPasswordRequirements(String password) {
-    setState(() {
-      _hasMinLength = password.length >= 8;
-      _hasSpecialChar = password.contains(RegExp(r'[!@#$%^&*(),.?":{}|<>]'));
-      _hasUppercase = password.contains(RegExp(r'[A-Z]'));
-    });
-  }
 
   void _checkNameValidation(String name) {
     setState(() {
@@ -179,15 +169,19 @@ class _SignUpScreenState extends State<SignUpScreen> {
     });
 
     try {
+      // If device is offline, create the account locally only (no Firebase attempt)
+      final isOffline = await _isConnected().then((v) => !v);
+
       final first = _firstNameController.text.trim();
       final last = _lastNameController.text.trim();
       final email = _emailController.text.trim();
       final pwd = _passwordController.text;
 
-      // Prefer online (Firebase); if offline, fallback to SQLite and queue sync
-      Map<String, dynamic>? user;
-      try {
-        final cred = await FirebaseService().signUpWithEmail(
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+
+      if (isOffline) {
+        // Strict offline signup
+        await authProvider.signupOffline(
           email: email,
           password: pwd,
           firstName: first,
@@ -198,23 +192,20 @@ class _SignUpScreenState extends State<SignUpScreen> {
           barangay: _selectedBarangay ?? '',
           zipCode: _zipCodeController.text.trim(),
         );
-        // Mirror into SQLite for offline
-        final authProvider = Provider.of<AuthProvider>(context, listen: false);
-        user = await authProvider.signupOffline(
+      } else {
+        // Online-first, then mirror to SQLite
+        await FirebaseService().signUpWithEmail(
           email: email,
           password: pwd,
-          firstName: _firstNameController.text.trim(),
-          lastName: _lastNameController.text.trim(),
+          firstName: first,
+          lastName: last,
           address: _addressController.text.trim(),
           region: _selectedRegion ?? '',
-          city: _selectedProvince ?? '', // Using province as city for now
+          city: _selectedProvince ?? '',
           barangay: _selectedBarangay ?? '',
           zipCode: _zipCodeController.text.trim(),
         );
-      } catch (_) {
-        // Offline path only
-        final authProvider = Provider.of<AuthProvider>(context, listen: false);
-        user = await authProvider.signupOffline(
+        await authProvider.signupOffline(
           email: email,
           password: pwd,
           firstName: first,
@@ -236,9 +227,18 @@ class _SignUpScreenState extends State<SignUpScreen> {
       // Navigate to splash screen to handle tutorial logic for new users
       Navigator.of(context).pushReplacementNamed('/');
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Account created successfully!'),
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle, color: Colors.white),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text('Account created successfully! Works offline and will sync when online.'),
+              ),
+            ],
+          ),
           backgroundColor: AppColors.success,
+          duration: const Duration(seconds: 4),
         ),
       );
     } catch (e) {
@@ -256,6 +256,16 @@ class _SignUpScreenState extends State<SignUpScreen> {
           _isLoading = false;
         });
       }
+    }
+  }
+
+  // Simple connectivity check
+  Future<bool> _isConnected() async {
+    try {
+      final result = await InternetAddress.lookup('example.com');
+      return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+    } catch (_) {
+      return false;
     }
   }
 
@@ -847,7 +857,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
             obscureText: _obscurePassword,
             prefixIcon: Icons.lock_outline,
             onChanged: (value) {
-              _checkPasswordRequirements(value);
+              // Password validation handled by form validator
             },
             suffixIcon: IconButton(
               icon: Icon(
@@ -1035,65 +1045,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
     );
   }
 
-  Widget _buildPasswordValidation() {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.grey.shade50,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.grey.shade200),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Password Requirements:',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: Colors.grey,
-            ),
-          ),
-          const SizedBox(height: 8),
-          _buildValidationItem(
-            'At least 8 characters',
-            _hasMinLength,
-          ),
-          _buildValidationItem(
-            '1 special character (!@#\$%^&*)',
-            _hasSpecialChar,
-          ),
-          _buildValidationItem(
-            '1 uppercase letter (A-Z)',
-            _hasUppercase,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildValidationItem(String text, bool isValid) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Row(
-        children: [
-          Icon(
-            isValid ? Icons.check_circle : Icons.radio_button_unchecked,
-            size: 16,
-            color: isValid ? Colors.green : Colors.grey,
-          ),
-          const SizedBox(width: 8),
-          Text(
-            text,
-            style: TextStyle(
-              fontSize: 12,
-              color: isValid ? Colors.green : Colors.grey,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
   Widget _buildNameValidationError(String message) {
     return Container(

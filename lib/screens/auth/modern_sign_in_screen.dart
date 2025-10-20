@@ -607,6 +607,7 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
     );
   }
 
+
   // Attempt Firebase sync in background (non-blocking)
   void _attemptFirebaseSync(String email, String password) async {
     try {
@@ -641,25 +642,28 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
         }
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Row(
-              children: [
-                Icon(Icons.info_outline, color: Colors.white),
-                SizedBox(width: 12),
-                Text('Using offline mode - will sync when online'),
-              ],
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Row(
+                children: [
+                  Icon(Icons.wifi_off, color: Colors.white),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Text('Using offline mode - will sync when online'),
+                  ),
+                ],
+              ),
+              backgroundColor: AppColors.info,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              margin: const EdgeInsets.all(16),
+              duration: const Duration(seconds: 3),
             ),
-            backgroundColor: AppColors.info,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            margin: const EdgeInsets.all(16),
-          ),
-        );
-      }
+          );
+        }
     }
   }
 }

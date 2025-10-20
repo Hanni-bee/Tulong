@@ -230,13 +230,17 @@ class _InteractiveTutorialScreenState extends State<InteractiveTutorialScreen>
             onPressed: () => Navigator.pop(context),
             child: const Text('Cancel'),
           ),
-          ModernGradientButton(
-            text: 'Skip',
+          ElevatedButton(
             onPressed: () {
               Navigator.pop(context);
               _completeTutorial();
             },
-            height: 40,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primaryRed,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            ),
+            child: const Text('Yes, Skip'),
           ),
         ],
       ),

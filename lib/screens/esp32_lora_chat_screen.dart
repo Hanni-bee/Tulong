@@ -36,6 +36,7 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen>
   List<Map<String, dynamic>> _messages = [];
   StreamSubscription<Map<String, dynamic>>? _messageSubscription;
   StreamSubscription<String>? _statusSubscription;
+  StreamSubscription<List<Map<String, dynamic>>>? _messagesListSubscription;
   
   bool _isSending = false;
   // REMOVED: _selectedChatMode - Group chat only now
@@ -96,6 +97,14 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen>
     // Listen for incoming messages
     _messageSubscription = esp32Service.messageStream.listen((message) {
       _handleIncomingMessage(message);
+    });
+    
+    // Listen to the canonical message list from the service
+    _messagesListSubscription = esp32Service.messagesStream.listen((list) {
+      setState(() {
+        _messages = list;
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
     });
     
     // Listen for status updates
@@ -300,12 +309,9 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen>
       child: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(16),
-          child: Row(
+          child:           Row(
             children: [
-              IconButton(
-                icon: const Icon(Icons.arrow_back_ios, color: AppColors.darkGray),
-                onPressed: () => Navigator.pop(context),
-              ),
+              const SizedBox(width: 16),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -738,6 +744,7 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen>
     _messageAnimationController.dispose();
     _messageSubscription?.cancel();
     _statusSubscription?.cancel();
+    _messagesListSubscription?.cancel();
     super.dispose();
   }
 }

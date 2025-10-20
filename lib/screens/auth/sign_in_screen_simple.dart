@@ -414,7 +414,7 @@ class _SignInScreenState extends State<SignInScreen> {
                 ),
               ),
               
-              const SizedBox(height: 30),
+              const SizedBox(height: 20),
               
               // Sign up link
               Row(
@@ -453,6 +453,7 @@ class _SignInScreenState extends State<SignInScreen> {
     );
   }
 
+
   // Attempt Firebase sync in background (non-blocking)
   void _attemptFirebaseSync(String email, String password) async {
     try {
@@ -488,15 +489,23 @@ class _SignInScreenState extends State<SignInScreen> {
       print('Firebase sync failed for: $email - $e');
       
       // Show info message to user
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Using offline mode - will sync when online'),
-            backgroundColor: AppColors.info,
-            duration: Duration(seconds: 2),
-          ),
-        );
-      }
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Row(
+                children: [
+                  Icon(Icons.wifi_off, color: Colors.white),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Text('Using offline mode - will sync when online'),
+                  ),
+                ],
+              ),
+              backgroundColor: AppColors.info,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
     }
   }
 }
