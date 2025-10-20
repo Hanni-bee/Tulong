@@ -395,8 +395,7 @@ class SimpleBluetoothService extends ChangeNotifier {
 
       // Optimistic append to store for instant UI
       final localData = Map<String, dynamic>.from(messageData)
-        ..['isLocal'] = true
-        ..['status'] = 'sending';
+        ..['isLocal'] = true;
       _messages.add(localData);
       _messagesStreamController.add(List<Map<String, dynamic>>.from(_messages));
 

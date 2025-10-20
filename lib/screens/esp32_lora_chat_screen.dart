@@ -5,12 +5,9 @@ import 'package:provider/provider.dart';
 import '../constants/app_colors.dart';
 import '../constants/app_typography.dart';
 import '../services/simple_bluetooth_service.dart';
-import '../widgets/modern_message_bubble.dart';
-import '../widgets/enhanced_card.dart';
-import '../widgets/enhanced_text_field.dart';
 
-/// ESP32 LoRa Chat Screen
-/// Integrates with ESP32 Bluetooth service for offline messaging
+/// ESP32 LoRa Chat Screen - Ultra Simple Version
+/// No animations, no pop-ups, no complex status tracking
 class ESP32LoRaChatScreen extends StatefulWidget {
   const ESP32LoRaChatScreen({super.key});
 
@@ -18,79 +15,32 @@ class ESP32LoRaChatScreen extends StatefulWidget {
   State<ESP32LoRaChatScreen> createState() => _ESP32LoRaChatScreenState();
 }
 
-class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen>
-    with TickerProviderStateMixin {
-  // ============================================================================
-  // CONTROLLERS AND STATE
-  // ============================================================================
-  
+class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
-  final FocusNode _messageFocus = FocusNode();
-  
-  late AnimationController _connectionAnimationController;
-  late AnimationController _messageAnimationController;
-  late Animation<double> _connectionAnimation;
-  late Animation<double> _messageAnimation;
   
   List<Map<String, dynamic>> _messages = [];
   StreamSubscription<Map<String, dynamic>>? _messageSubscription;
-  StreamSubscription<String>? _statusSubscription;
   StreamSubscription<List<Map<String, dynamic>>>? _messagesListSubscription;
   
   bool _isSending = false;
-  // REMOVED: _selectedChatMode - Group chat only now
-  
-  // ============================================================================
-  // INITIALIZATION
-  // ============================================================================
-  
+
   @override
   void initState() {
     super.initState();
-    _initializeAnimations();
     _initializeESP32Service();
     _setupMessageStreams();
   }
-  
-  void _initializeAnimations() {
-    _connectionAnimationController = AnimationController(
-      duration: const Duration(milliseconds: 800),
-      vsync: this,
-    );
-    
-    _messageAnimationController = AnimationController(
-      duration: const Duration(milliseconds: 300),
-      vsync: this,
-    );
-    
-    _connectionAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _connectionAnimationController,
-      curve: Curves.easeInOut,
-    ));
-    
-    _messageAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _messageAnimationController,
-      curve: Curves.easeOut,
-    ));
-  }
-  
+
   void _initializeESP32Service() async {
     final esp32Service = Provider.of<SimpleBluetoothService>(context, listen: false);
     await esp32Service.initialize();
     
-    // Auto-connect to ESP32 if not already connected
     if (!esp32Service.isConnected) {
       await esp32Service.connectToESP32();
     }
   }
-  
+
   void _setupMessageStreams() {
     final esp32Service = Provider.of<SimpleBluetoothService>(context, listen: false);
     
@@ -104,94 +54,44 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen>
       setState(() {
         _messages = list;
       });
-      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
-    });
-    
-    // Listen for status updates
-    _statusSubscription = esp32Service.statusStream.listen((status) {
-      _handleStatusUpdate(status);
+      _scrollToBottom();
     });
   }
-  
-  // ============================================================================
-  // MESSAGE HANDLING
-  // ============================================================================
-  
+
   void _handleIncomingMessage(Map<String, dynamic> message) {
-    // Mark as NOT local (received from another node)
     message['isLocal'] = false;
-    
-    print('📥 ESP32 LoRa Chat: Incoming message: ${message['message']}');
-    print('📊 Total messages: ${_messages.length}');
-    
     setState(() {
       _messages.add(message);
     });
-    
-    print('📊 After add: ${_messages.length}');
-    
-    // Wait for frame to render
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _animateNewMessage();
-      _scrollToBottom();
-    });
-    
-    // Provide haptic feedback
-    HapticFeedback.lightImpact();
+    _scrollToBottom();
   }
-  
-  void _handleStatusUpdate(String status) {
-    // Update connection animation based on status
-    if (status.contains('Connected')) {
-      _connectionAnimationController.forward();
-    } else if (status.contains('Disconnected')) {
-      _connectionAnimationController.reverse();
+
+  void _scrollToBottom() {
+    if (_scrollController.hasClients) {
+      _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
     }
   }
-  
-  void _animateNewMessage() {
-    _messageAnimationController.forward().then((_) {
-      _messageAnimationController.reverse();
-    });
-  }
-  
-  void _scrollToBottom() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
-      }
-    });
-  }
-  
-  // ============================================================================
-  // MESSAGE SENDING
-  // ============================================================================
-  
+
   Future<void> _sendMessage() async {
     final message = _messageController.text.trim();
     if (message.isEmpty || _isSending) return;
     
     final esp32Service = Provider.of<SimpleBluetoothService>(context, listen: false);
     
-    // Check connection first
     if (!esp32Service.isConnected) {
-      _showErrorSnackBar('❌ Not connected to ESP32. Tap Bluetooth icon to connect.');
+      _showSimpleMessage('Not connected to ESP32');
       return;
     }
     
     if (!esp32Service.isAuthenticated) {
-      _showErrorSnackBar('⏳ Authenticating... Please wait.');
+      _showSimpleMessage('Authenticating...');
       return;
     }
     
     setState(() => _isSending = true);
     
     try {
-      // Add message to local list immediately for instant feedback
+      // Add message to local list immediately
       final localMessage = {
         'type': 'group',
         'sender_name': esp32Service.userName,
@@ -200,319 +100,92 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen>
         'message': message,
         'timestamp': DateTime.now().toString(),
         'isLocal': true,
-        'status': 'sending', // Add status
       };
-      
-      print('📤 Sending message: $message');
-      print('📊 Messages before: ${_messages.length}');
       
       setState(() {
         _messages.add(localMessage);
       });
       
-      print('📊 Messages after: ${_messages.length}');
-      
-      // Clear input field first (before animations)
       _messageController.clear();
+      _scrollToBottom();
       
-      // Force immediate rebuild
-      setState(() {});
-      
-      // Wait for frame to render, then animate and scroll
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _animateNewMessage();
-        _scrollToBottom();
-      });
-      
-      // Send via ESP32 (always group mode)
+      // Send via ESP32
       await esp32Service.sendGroupMessage(message);
       
-      // Update message status to sent
-      setState(() {
-        if (_messages.isNotEmpty) {
-          _messages.last['status'] = 'sent';
-        }
-      });
-      
-      HapticFeedback.mediumImpact();
-      _showSuccessSnackBar('✓ Message sent via LoRa');
-      
     } catch (e) {
-      _showErrorSnackBar('❌ Failed to send: $e');
-      // Mark message as failed
-      if (_messages.isNotEmpty && _messages.last['message'] == message) {
-        setState(() {
-          _messages.last['status'] = 'failed';
-        });
-      }
+      _showSimpleMessage('Failed to send: $e');
     } finally {
       setState(() => _isSending = false);
     }
   }
-  
-  void _showSuccessSnackBar(String message) {
-    if (!mounted) return;
+
+  void _showSimpleMessage(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Row(
-          children: [
-            const Icon(Icons.check_circle, color: Colors.white, size: 20),
-            const SizedBox(width: 8),
-            Expanded(child: Text(message)),
-          ],
-        ),
-        backgroundColor: AppColors.success,
-        behavior: SnackBarBehavior.floating,
+        content: Text(message),
         duration: const Duration(seconds: 2),
-        margin: const EdgeInsets.all(16),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     );
   }
-  
-  // ============================================================================
-  // UI BUILDERS
-  // ============================================================================
-  
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
+      appBar: _buildSimpleAppBar(),
       body: Column(
         children: [
-          _buildModernAppBar(),
-          // Connection status in app bar, no separate card
           Expanded(child: _buildMessagesList()),
-          _buildModernMessageInput(),
+          _buildSimpleMessageInput(),
         ],
       ),
     );
   }
-  
-  Widget _buildModernAppBar() {
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8F9FA),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
+
+  PreferredSizeWidget _buildSimpleAppBar() {
+    return AppBar(
+      backgroundColor: const Color(0xFFF8F9FA),
+      elevation: 0,
+      title: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'ESP32 LoRa Chat',
+            style: AppTypography.titleLarge.copyWith(
+              color: AppColors.darkGray,
+              fontWeight: FontWeight.bold,
+            ),
           ),
-          BoxShadow(
-            color: Colors.white.withOpacity(0.8),
-            blurRadius: 10,
-            offset: const Offset(0, -2),
+          Consumer<SimpleBluetoothService>(
+            builder: (context, esp32Service, child) {
+              return Text(
+                esp32Service.isConnected ? 'Connected' : 'Disconnected',
+                style: AppTypography.bodySmall.copyWith(
+                  color: esp32Service.isConnected ? AppColors.success : AppColors.error,
+                ),
+              );
+            },
           ),
         ],
       ),
-      child: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child:           Row(
-            children: [
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'ESP32 LoRa Chat',
-                      style: AppTypography.titleLarge.copyWith(
-                        color: AppColors.darkGray,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    Consumer<SimpleBluetoothService>(
-                      builder: (context, esp32Service, child) {
-                        return Text(
-                          esp32Service.isConnected ? 'Connected' : 'Disconnected',
-                          style: AppTypography.bodyMedium.copyWith(
-                            color: esp32Service.isConnected ? AppColors.success : AppColors.error,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        );
-                      },
-                    ),
-                  ],
-                ),
-              ),
-                  Consumer<SimpleBluetoothService>(
-                    builder: (context, esp32Service, child) {
-                      return GestureDetector(
-                        onTap: () {
-                          HapticFeedback.lightImpact();
-                          Navigator.of(context).pushNamed('/esp32-scanner');
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF8F9FA),
-                            borderRadius: BorderRadius.circular(16),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.1),
-                                blurRadius: 8,
-                                offset: const Offset(2, 2),
-                              ),
-                              BoxShadow(
-                                color: Colors.white.withOpacity(0.8),
-                                blurRadius: 8,
-                                offset: const Offset(-2, -2),
-                              ),
-                            ],
-                          ),
-                          child: Icon(
-                            esp32Service.isConnected ? Icons.bluetooth_connected : Icons.bluetooth,
-                            color: esp32Service.isConnected ? AppColors.success : AppColors.online,
-                            size: 24,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-  
-  Widget _buildConnectionStatusCard() {
-    return Consumer<SimpleBluetoothService>(
-      builder: (context, esp32Service, child) {
-        return AnimatedBuilder(
-          animation: _connectionAnimation,
-          builder: (context, child) {
-            return Container(
-              margin: const EdgeInsets.all(16),
-              child: EnhancedCard(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: esp32Service.isConnected 
-                                ? AppColors.success.withOpacity(0.1)
-                                : AppColors.error.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Icon(
-                            esp32Service.isConnected ? Icons.bluetooth_connected : Icons.bluetooth_disabled,
-                            color: esp32Service.isConnected ? AppColors.success : AppColors.error,
-                            size: 24,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                esp32Service.connectionStatus,
-                                style: AppTypography.bodyLarge.copyWith(
-                                  color: esp32Service.isConnected ? AppColors.success : AppColors.error,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              if (esp32Service.isAuthenticated) ...[
-                                const SizedBox(height: 4),
-                                Text(
-                                  'Node: ${esp32Service.esp32NodeId}',
-                                  style: AppTypography.bodySmall.copyWith(
-                                    color: AppColors.mediumGray,
-                                  ),
-                                ),
-                                Text(
-                                  'User: ${esp32Service.userName}',
-                                  style: AppTypography.bodySmall.copyWith(
-                                    color: AppColors.mediumGray,
-                                  ),
-                                ),
-                              ] else if (!esp32Service.isConnected) ...[
-                                const SizedBox(height: 4),
-                                Text(
-                                  'Tap button below to connect',
-                                  style: AppTypography.bodySmall.copyWith(
-                                    color: AppColors.mediumGray,
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
-                        if (esp32Service.isConnected && esp32Service.isAuthenticated)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: AppColors.success.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(
-                                color: AppColors.success.withOpacity(0.3),
-                              ),
-                            ),
-                            child: const Text(
-                              '✓ READY',
-                              style: TextStyle(
-                                color: AppColors.success,
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                    // Show connect button when not connected
-                    if (!esp32Service.isConnected) ...[
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 48,
-                        child: ElevatedButton(
-                          onPressed: () {
-                            HapticFeedback.lightImpact();
-                            Navigator.of(context).pushNamed('/esp32-scanner');
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.online,
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            elevation: 2,
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: const [
-                              Icon(Icons.bluetooth_searching, size: 20),
-                              SizedBox(width: 8),
-                              Text(
-                                'Connect to ESP32',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
+      actions: [
+        Consumer<SimpleBluetoothService>(
+          builder: (context, esp32Service, child) {
+            return IconButton(
+              onPressed: () {
+                Navigator.of(context).pushNamed('/esp32-scanner');
+              },
+              icon: Icon(
+                esp32Service.isConnected ? Icons.bluetooth_connected : Icons.bluetooth,
+                color: esp32Service.isConnected ? AppColors.success : AppColors.online,
               ),
             );
           },
-        );
-      },
+        ),
+      ],
     );
   }
-  
-  // REMOVED: _buildChatModeSelector() - Group chat only now
-  
+
   Widget _buildMessagesList() {
     if (_messages.isEmpty) {
       return Center(
@@ -548,68 +221,163 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen>
       padding: const EdgeInsets.all(16),
       itemCount: _messages.length,
       itemBuilder: (context, index) {
-        return _buildMessageBubble(_messages[index], index);
+        return _buildSimpleMessageBubble(_messages[index]);
       },
     );
   }
-  
-  Widget _buildMessageBubble(Map<String, dynamic> message, int index) {
+
+  Widget _buildSimpleMessageBubble(Map<String, dynamic> message) {
     final isLocal = message['isLocal'] == true;
-    final messageType = message['type'] ?? 'group';
     final senderName = message['sender_name'] ?? 'Unknown';
     final messageText = message['message'] ?? '';
     final timestamp = message['timestamp'] ?? '';
     
-    return AnimatedBuilder(
-      animation: _messageAnimation,
-      builder: (context, child) {
-        return Transform.scale(
-          scale: index == _messages.length - 1 ? _messageAnimation.value : 1.0,
-          child: Container(
-            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-            child: ModernMessageBubble(
-              text: messageText,
-              senderName: senderName,
-              timestamp: DateTime.tryParse(timestamp) ?? DateTime.now(),
-              isMe: isLocal,
-              isEmergency: messageType == 'group' && messageText.toLowerCase().contains('emergency'),
-              isRead: true,
-              onTap: () => _showMessageOptions(message),
-              onLongPress: () => _showMessageOptions(message),
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: isLocal ? MainAxisAlignment.end : MainAxisAlignment.start,
+        children: [
+          if (!isLocal) ...[
+            CircleAvatar(
+              radius: 16,
+              backgroundColor: AppColors.primaryRed.withOpacity(0.1),
+              child: Text(
+                senderName.isNotEmpty ? senderName[0].toUpperCase() : '?',
+                style: AppTypography.bodySmall.copyWith(
+                  color: AppColors.primaryRed,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+          ],
+          Flexible(
+            child: Container(
+              constraints: BoxConstraints(
+                maxWidth: MediaQuery.of(context).size.width * 0.75,
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: isLocal ? AppColors.primaryRed : Colors.white,
+                borderRadius: BorderRadius.circular(20).copyWith(
+                  bottomLeft: isLocal ? const Radius.circular(20) : const Radius.circular(4),
+                  bottomRight: isLocal ? const Radius.circular(4) : const Radius.circular(20),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (!isLocal)
+                    Text(
+                      senderName,
+                      style: AppTypography.bodySmall.copyWith(
+                        color: AppColors.mediumGray,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  if (!isLocal) const SizedBox(height: 4),
+                  Text(
+                    messageText,
+                    style: AppTypography.bodyMedium.copyWith(
+                      color: isLocal ? Colors.white : AppColors.darkGray,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _formatTime(timestamp),
+                    style: AppTypography.bodySmall.copyWith(
+                      color: isLocal ? Colors.white70 : AppColors.lightGray,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-        );
-      },
+          if (isLocal) ...[
+            const SizedBox(width: 8),
+            CircleAvatar(
+              radius: 16,
+              backgroundColor: AppColors.primaryRed.withOpacity(0.1),
+              child: Text(
+                'Me',
+                style: AppTypography.bodySmall.copyWith(
+                  color: AppColors.primaryRed,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
-  
-  Widget _buildModernMessageInput() {
+
+  String _formatTime(String timestamp) {
+    try {
+      final dateTime = DateTime.parse(timestamp);
+      final now = DateTime.now();
+      final difference = now.difference(dateTime);
+      
+      if (difference.inMinutes < 1) {
+        return 'now';
+      } else if (difference.inHours < 1) {
+        return '${difference.inMinutes}m';
+      } else if (difference.inDays < 1) {
+        return '${difference.inHours}h';
+      } else {
+        return '${dateTime.day}/${dateTime.month}';
+      }
+    } catch (e) {
+      return 'now';
+    }
+  }
+
+  Widget _buildSimpleMessageInput() {
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.white,
+        color: Colors.white,
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.1),
-            blurRadius: 10,
-            offset: const Offset(0, -4),
+            blurRadius: 4,
+            offset: const Offset(0, -2),
           ),
         ],
       ),
       child: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), // Reduced vertical padding
+          padding: const EdgeInsets.all(16),
           child: Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Expanded(
                 child: Container(
-                  constraints: const BoxConstraints(maxHeight: 100), // Limit height
-                  child: EnhancedTextField(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8F9FA),
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(
+                      color: AppColors.lightGray.withOpacity(0.3),
+                    ),
+                  ),
+                  child: TextField(
                     controller: _messageController,
-                    focusNode: _messageFocus,
-                    label: 'Message', // Simplified label
-                    hint: 'Type a message...',
-                    maxLines: 2, // Reduced from 3 to 2
+                    decoration: const InputDecoration(
+                      hintText: 'Type a message...',
+                      border: InputBorder.none,
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                    ),
+                    maxLines: null,
+                    textInputAction: TextInputAction.send,
+                    onSubmitted: (_) => _sendMessage(),
                   ),
                 ),
               ),
@@ -617,36 +385,24 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen>
               GestureDetector(
                 onTap: _isSending ? null : _sendMessage,
                 child: Container(
-                  width: 48, // Smaller button (was 56)
+                  width: 48,
                   height: 48,
                   decoration: BoxDecoration(
-                    color: _isSending ? AppColors.lightGray : const Color(0xFFF8F9FA),
+                    color: _isSending ? AppColors.lightGray : AppColors.primaryRed,
                     borderRadius: BorderRadius.circular(24),
-                    boxShadow: _isSending ? null : [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
-                        blurRadius: 8,
-                        offset: const Offset(2, 2),
-                      ),
-                      BoxShadow(
-                        color: Colors.white.withOpacity(0.8),
-                        blurRadius: 8,
-                        offset: const Offset(-2, -2),
-                      ),
-                    ],
                   ),
                   child: _isSending
                       ? const Padding(
                           padding: EdgeInsets.all(12),
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(AppColors.mediumGray),
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                           ),
                         )
                       : const Icon(
                           Icons.send_rounded,
-                          color: AppColors.primaryRed,
-                          size: 22, // Smaller icon
+                          color: Colors.white,
+                          size: 20,
                         ),
                 ),
               ),
@@ -656,97 +412,13 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen>
       ),
     );
   }
-  
-  // ============================================================================
-  // UTILITY FUNCTIONS
-  // ============================================================================
-  
-  
-  // Connection dialog removed - using dedicated auth screen instead
-  
-  void _showErrorSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: AppColors.error,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-      ),
-    );
-  }
 
-  void _showMessageOptions(Map<String, dynamic> message) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        margin: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: AppColors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.1),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(16),
-              child: Text(
-                'Message Options',
-                style: AppTypography.bodyLarge.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-            ListTile(
-              leading: const Icon(Icons.copy, color: AppColors.primaryRed),
-              title: const Text('Copy Message'),
-              onTap: () {
-                Clipboard.setData(ClipboardData(text: message['message'] ?? ''));
-                Navigator.pop(context);
-                _showErrorSnackBar('Message copied to clipboard');
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.share, color: AppColors.primaryRed),
-              title: const Text('Share Message'),
-              onTap: () {
-                Navigator.pop(context);
-                // TODO: Implement share functionality
-                _showErrorSnackBar('Share functionality coming soon');
-              },
-            ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
-    );
-  }
-  
-  // ============================================================================
-  // CLEANUP
-  // ============================================================================
-  
   @override
   void dispose() {
     _messageController.dispose();
     _scrollController.dispose();
-    _messageFocus.dispose();
-    _connectionAnimationController.dispose();
-    _messageAnimationController.dispose();
     _messageSubscription?.cancel();
-    _statusSubscription?.cancel();
     _messagesListSubscription?.cancel();
     super.dispose();
   }
 }
-
-
