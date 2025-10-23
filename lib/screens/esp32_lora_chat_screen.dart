@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../constants/app_colors.dart';
 import '../constants/app_typography.dart';
 import '../services/simple_bluetooth_service.dart';
+import '../controllers/voice_controller.dart';
 
 /// ESP32 LoRa Chat Screen - Ultra Simple Version
 /// No animations, no pop-ups, no complex status tracking
@@ -22,14 +23,21 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen> {
   List<Map<String, dynamic>> _messages = [];
   StreamSubscription<Map<String, dynamic>>? _messageSubscription;
   StreamSubscription<List<Map<String, dynamic>>>? _messagesListSubscription;
+  StreamSubscription<Map<String, dynamic>>? _voiceFrameSubscription;
   
   bool _isSending = false;
+  bool _isRecording = false;
+  bool _isPlaying = false;
+  
+  late VoiceController _voiceController;
 
   @override
   void initState() {
     super.initState();
+    _voiceController = VoiceController();
     _initializeESP32Service();
     _setupMessageStreams();
+    _setupVoiceStreams();
   }
 
   void _initializeESP32Service() async {
@@ -39,6 +47,9 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen> {
     if (!esp32Service.isConnected) {
       await esp32Service.connectToESP32();
     }
+    
+    // Initialize voice controller
+    await _voiceController.initialize();
   }
 
   void _setupMessageStreams() {
@@ -58,7 +69,40 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen> {
     });
   }
 
+  void _setupVoiceStreams() {
+    // Listen for voice frames from voice controller
+    _voiceFrameSubscription = _voiceController.voiceFrameStream.listen((frame) {
+      _sendVoiceFrame(frame);
+    });
+    
+    // Listen for recording state
+    _voiceController.recordingStream.listen((recording) {
+      setState(() {
+        _isRecording = recording;
+      });
+    });
+    
+    // Listen for playing state
+    _voiceController.playingStream.listen((playing) {
+      setState(() {
+        _isPlaying = playing;
+      });
+    });
+    
+    // Listen for voice errors
+    _voiceController.errorStream.listen((error) {
+      _showSimpleMessage('Voice error: $error');
+    });
+  }
+
   void _handleIncomingMessage(Map<String, dynamic> message) {
+    // Check if it's a voice message
+    if (message['type'] == 'voice_message' && message['data_b64_pcm16le'] != null) {
+      final String base64Data = message['data_b64_pcm16le'];
+      _voiceController.playBase64Pcm(base64Data);
+      return;
+    }
+    
     message['isLocal'] = false;
     setState(() {
       _messages.add(message);
@@ -70,6 +114,37 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen> {
     if (_scrollController.hasClients) {
       _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
     }
+  }
+
+  void _sendVoiceFrame(Map<String, dynamic> frame) {
+    final esp32Service = Provider.of<SimpleBluetoothService>(context, listen: false);
+    
+    if (!esp32Service.isConnected) {
+      _showSimpleMessage('Not connected to ESP32');
+      return;
+    }
+    
+    // Send voice frame via ESP32 service
+    final Map<String, dynamic> voiceMessage = {
+      'type': 'voice_frame',
+      'messageId': frame['messageId'],
+      'frame_seq': frame['frameSeq'],
+      'is_last': frame['isLast'],
+      'pcm16le_b64': frame['pcm16leB64'],
+    };
+    
+    // Send via the existing Bluetooth service
+    esp32Service.sendMessage(voiceMessage);
+  }
+
+  void _startPTT() {
+    _voiceController.startPTT();
+    HapticFeedback.mediumImpact();
+  }
+
+  void _stopPTT() {
+    _voiceController.stopPTT();
+    HapticFeedback.lightImpact();
   }
 
   Future<void> _sendMessage() async {
@@ -354,57 +429,129 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen> {
       child: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(16),
-          child: Row(
+          child: Column(
             children: [
-              Expanded(
-                child: Container(
+              // Voice status indicator
+              if (_isRecording || _isPlaying)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+                  margin: const EdgeInsets.only(bottom: 12),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF8F9FA),
-                    borderRadius: BorderRadius.circular(24),
+                    color: _isRecording ? AppColors.error.withOpacity(0.1) : AppColors.success.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                      color: AppColors.lightGray.withOpacity(0.3),
+                      color: _isRecording ? AppColors.error : AppColors.success,
+                      width: 1,
                     ),
                   ),
-                  child: TextField(
-                    controller: _messageController,
-                    decoration: const InputDecoration(
-                      hintText: 'Type a message...',
-                      border: InputBorder.none,
-                      contentPadding: EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        _isRecording ? Icons.mic : Icons.volume_up,
+                        color: _isRecording ? AppColors.error : AppColors.success,
+                        size: 16,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        _isRecording ? 'Recording...' : 'Playing...',
+                        style: AppTypography.bodySmall.copyWith(
+                          color: _isRecording ? AppColors.error : AppColors.success,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              
+              // Input row
+              Row(
+                children: [
+                  // PTT Button
+                  GestureDetector(
+                    onTapDown: (_) => _startPTT(),
+                    onTapUp: (_) => _stopPTT(),
+                    onTapCancel: () => _stopPTT(),
+                    child: Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: _isRecording ? AppColors.error : AppColors.online,
+                        borderRadius: BorderRadius.circular(24),
+                        boxShadow: _isRecording ? [
+                          BoxShadow(
+                            color: AppColors.error.withOpacity(0.3),
+                            blurRadius: 8,
+                            spreadRadius: 2,
+                          ),
+                        ] : null,
+                      ),
+                      child: Icon(
+                        _isRecording ? Icons.mic : Icons.mic_none,
+                        color: Colors.white,
+                        size: 20,
                       ),
                     ),
-                    maxLines: null,
-                    textInputAction: TextInputAction.send,
-                    onSubmitted: (_) => _sendMessage(),
                   ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              GestureDetector(
-                onTap: _isSending ? null : _sendMessage,
-                child: Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    color: _isSending ? AppColors.lightGray : AppColors.primaryRed,
-                    borderRadius: BorderRadius.circular(24),
-                  ),
-                  child: _isSending
-                      ? const Padding(
-                          padding: EdgeInsets.all(12),
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                          ),
-                        )
-                      : const Icon(
-                          Icons.send_rounded,
-                          color: Colors.white,
-                          size: 20,
+                  
+                  const SizedBox(width: 12),
+                  
+                  // Text input
+                  Expanded(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8F9FA),
+                        borderRadius: BorderRadius.circular(24),
+                        border: Border.all(
+                          color: AppColors.lightGray.withOpacity(0.3),
                         ),
-                ),
+                      ),
+                      child: TextField(
+                        controller: _messageController,
+                        decoration: const InputDecoration(
+                          hintText: 'Type a message...',
+                          border: InputBorder.none,
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 12,
+                          ),
+                        ),
+                        maxLines: null,
+                        textInputAction: TextInputAction.send,
+                        onSubmitted: (_) => _sendMessage(),
+                      ),
+                    ),
+                  ),
+                  
+                  const SizedBox(width: 12),
+                  
+                  // Send button
+                  GestureDetector(
+                    onTap: _isSending ? null : _sendMessage,
+                    child: Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: _isSending ? AppColors.lightGray : AppColors.primaryRed,
+                        borderRadius: BorderRadius.circular(24),
+                      ),
+                      child: _isSending
+                          ? const Padding(
+                              padding: EdgeInsets.all(12),
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              ),
+                            )
+                          : const Icon(
+                              Icons.send_rounded,
+                              color: Colors.white,
+                              size: 20,
+                            ),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -419,6 +566,8 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen> {
     _scrollController.dispose();
     _messageSubscription?.cancel();
     _messagesListSubscription?.cancel();
+    _voiceFrameSubscription?.cancel();
+    _voiceController.dispose();
     super.dispose();
   }
 }

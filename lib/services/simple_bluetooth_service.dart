@@ -328,7 +328,7 @@ class SimpleBluetoothService extends ChangeNotifier {
         'firstname': firstName,
       };
       
-      _sendMessage(authResponse);
+      sendMessage(authResponse);
       
       // Store ESP32 info
       _esp32NodeId = esp32NodeId;
@@ -399,7 +399,7 @@ class SimpleBluetoothService extends ChangeNotifier {
       _messages.add(localData);
       _messagesStreamController.add(List<Map<String, dynamic>>.from(_messages));
 
-      _sendMessage(messageData);
+      sendMessage(messageData);
       
       _addStatusLog('Sent $type message: $message');
       
@@ -452,7 +452,7 @@ class SimpleBluetoothService extends ChangeNotifier {
     }
   }
 
-  void _sendMessage(Map<String, dynamic> data) {
+  void sendMessage(Map<String, dynamic> data) {
     try {
       _channel.invokeMethod('sendMessage', data);
       

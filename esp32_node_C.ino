@@ -36,7 +36,7 @@ extern "C" {
 #define RST 2
 #define DIO0 4
 #define FREQ 433E6
-#define BT_DEVICE_NAME "ESP32_Node_A"  // change per node
+#define BT_DEVICE_NAME "ESP32_Node_C"  // change per node
 
 BluetoothSerial BT;
 String nodeId = "";
