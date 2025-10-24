@@ -8,7 +8,7 @@ import 'package:permission_handler/permission_handler.dart';
 /// Voice Controller for Push-To-Talk and Voice Playback
 /// Handles PCM16LE recording and playback with Base64 encoding
 class VoiceController {
-  static const int sampleRate = 8000;
+  static const int sampleRate = 8000;  // ESP32 expects 8kHz for ADPCM
   static const int numChannels = 1;
   static const int frameSize = 800; // ~100ms at 8kHz
   static const int maxFrameSize = 1600; // 200ms max
@@ -188,12 +188,10 @@ class VoiceController {
       final Uint8List pcmData = Uint8List.fromList(frame);
       final String base64Data = base64.encode(pcmData);
       
-      // Create voice frame
+      // Create voice frame - ESP32 compatible format
       final Map<String, dynamic> voiceFrame = {
         "messageId": _currentMessageId,
-        "frameSeq": _frameSequence,
-        "isLast": false,
-        "pcm16leB64": base64Data,
+        "pcm16leb64": base64Data,  // ESP32 expects this exact key name
       };
       
       _voiceFrameController.add(voiceFrame);
@@ -209,9 +207,7 @@ class VoiceController {
   void _sendFinalFrame() {
     final Map<String, dynamic> finalFrame = {
       "messageId": _currentMessageId,
-      "frameSeq": _frameSequence,
-      "isLast": true,
-      "pcm16leB64": "", // Empty for final frame
+      "pcm16leb64": "", // Empty for final frame - ESP32 compatible
     };
     
     _voiceFrameController.add(finalFrame);
@@ -255,6 +251,33 @@ class VoiceController {
     } catch (e) {
       _errorController.add("Base64 decode failed: $e");
     }
+  }
+
+  /// Handle voice message from ESP32 (LoRa received and decoded)
+  Future<void> handleVoiceMessage(Map<String, dynamic> messageData) async {
+    try {
+      if (messageData['type'] == 'voice_message' && 
+          messageData.containsKey('data_b64_pcm16le')) {
+        
+        final String messageId = messageData['messageId'] ?? 'unknown';
+        final String fromNode = messageData['from_node'] ?? 'unknown';
+        final String base64Pcm = messageData['data_b64_pcm16le'];
+        
+        _addStatusLog('🎵 Received voice message from $fromNode (ID: $messageId)');
+        
+        // Decode and play the PCM16LE data
+        await playBase64Pcm(base64Pcm);
+        
+        _addStatusLog('✅ Voice message playback completed');
+      }
+    } catch (e) {
+      _errorController.add("Voice message handling failed: $e");
+    }
+  }
+
+  /// Add status log for debugging
+  void _addStatusLog(String message) {
+    print('[VOICE] $message');
   }
 
   /// Generate unique message ID

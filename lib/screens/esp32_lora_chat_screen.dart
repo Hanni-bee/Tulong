@@ -58,6 +58,11 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen> {
     // Listen for incoming messages
     _messageSubscription = esp32Service.messageStream.listen((message) {
       _handleIncomingMessage(message);
+      
+      // Handle voice messages from ESP32
+      if (message['type'] == 'voice_message') {
+        _voiceController.handleVoiceMessage(message);
+      }
     });
     
     // Listen to the canonical message list from the service
@@ -124,13 +129,10 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen> {
       return;
     }
     
-    // Send voice frame via ESP32 service
+    // Send voice frame via ESP32 service - ESP32 compatible format
     final Map<String, dynamic> voiceMessage = {
-      'type': 'voice_frame',
       'messageId': frame['messageId'],
-      'frame_seq': frame['frameSeq'],
-      'is_last': frame['isLast'],
-      'pcm16le_b64': frame['pcm16leB64'],
+      'pcm16leb64': frame['pcm16leb64'],  // Direct ESP32 format
     };
     
     // Send via the existing Bluetooth service
