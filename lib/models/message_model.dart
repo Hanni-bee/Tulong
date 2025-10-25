@@ -60,6 +60,33 @@ class MessageModel {
     );
   }
 
+  /// Create a voice message
+  factory MessageModel.voiceMessage({
+    required String id,
+    required String senderId,
+    required String receiverId,
+    required String voiceFilePath,
+    required int voiceDuration,
+    required DateTime timestamp,
+    bool isEmergency = false,
+    String? replyToId,
+  }) {
+    return MessageModel(
+      id: id,
+      senderId: senderId,
+      receiverId: receiverId,
+      content: 'Voice message',
+      type: MessageType.audio,
+      timestamp: timestamp,
+      isEmergency: isEmergency,
+      replyToId: replyToId,
+      metadata: {
+        'voiceFilePath': voiceFilePath,
+        'voiceDuration': voiceDuration,
+      },
+    );
+  }
+
   Map<String, dynamic> toMap() {
     return {
       'id': id,
@@ -109,6 +136,22 @@ class MessageModel {
 
   @override
   int get hashCode => id.hashCode;
+
+  /// Check if this is a voice message
+  bool get isVoiceMessage => type == MessageType.audio;
+
+  /// Get voice file path from metadata
+  String? get voiceFilePath => metadata?['voiceFilePath'];
+
+  /// Get voice duration from metadata
+  int get voiceDuration => metadata?['voiceDuration'] ?? 0;
+
+  /// Format voice duration as MM:SS
+  String get formattedVoiceDuration {
+    final minutes = voiceDuration ~/ 60;
+    final seconds = voiceDuration % 60;
+    return '${minutes.toString().padLeft(1, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
 
   @override
   String toString() {

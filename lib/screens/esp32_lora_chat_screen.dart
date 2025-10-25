@@ -6,6 +6,9 @@ import '../constants/app_colors.dart';
 import '../constants/app_typography.dart';
 import '../services/simple_bluetooth_service.dart';
 import '../controllers/voice_controller.dart';
+import '../widgets/modern_message_bubble.dart';
+import '../widgets/voice_message_bubble.dart';
+import '../models/message_model.dart';
 
 /// ESP32 LoRa Chat Screen - Ultra Simple Version
 /// No animations, no pop-ups, no complex status tracking
@@ -147,6 +150,79 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen> {
   void _stopPTT() {
     _voiceController.stopPTT();
     HapticFeedback.lightImpact();
+  }
+
+  // Voice message recording methods
+  void _startVoiceMessageRecording() async {
+    print('[CHAT_ESP32] 🎤 Voice recording started');
+    
+    if (_isRecording) {
+      print('[CHAT_ESP32] ⚠️ Already recording, ignoring request');
+      return;
+    }
+    
+    HapticFeedback.lightImpact();
+    final filePath = await _voiceController.startVoiceMessageRecording();
+    if (filePath != null) {
+      print('[CHAT_ESP32] ✅ Voice recording started successfully');
+      setState(() {
+        _isRecording = true;
+      });
+    } else {
+      print('[CHAT_ESP32] ❌ Failed to start voice recording');
+    }
+  }
+
+  void _stopVoiceMessageRecording() async {
+    print('[CHAT_ESP32] 🛑 Voice recording stopped');
+    
+    if (!_isRecording) {
+      print('[CHAT_ESP32] ⚠️ Not recording, ignoring stop request');
+      return;
+    }
+    
+    HapticFeedback.lightImpact();
+    final filePath = await _voiceController.stopVoiceMessageRecording();
+    
+    setState(() {
+      _isRecording = false;
+    });
+    
+    if (filePath != null) {
+      print('[CHAT_ESP32] 📁 Voice recording saved to: $filePath');
+      
+      // Get duration of the recorded voice message
+      final duration = await _voiceController.getVoiceMessageDuration(filePath);
+      print('[CHAT_ESP32] ⏱️ Voice message duration: ${duration}s');
+      
+      if (duration > 0) {
+        print('[CHAT_ESP32] ✅ Creating voice message in chat');
+        // Create voice message and add to chat
+        final voiceMessage = {
+          'type': 'voice_message',
+          'sender_name': 'You',
+          'sender_id': 'me',
+          'receiver_id': 'all',
+          'message': 'Voice message',
+          'timestamp': DateTime.now().toString(),
+          'isLocal': true,
+          'voiceFilePath': filePath,
+          'voiceDuration': duration,
+        };
+        
+        setState(() {
+          _messages.add(voiceMessage);
+        });
+        
+        print('[CHAT_ESP32] 📝 Voice message added to chat');
+        _scrollToBottom();
+      } else {
+        print('[CHAT_ESP32] ⚠️ Recording too short (${duration}s)');
+        _showSimpleMessage('Recording too short');
+      }
+    } else {
+      print('[CHAT_ESP32] ❌ Failed to save voice recording');
+    }
   }
 
   Future<void> _sendMessage() async {
@@ -298,8 +374,40 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen> {
       padding: const EdgeInsets.all(16),
       itemCount: _messages.length,
       itemBuilder: (context, index) {
-        return _buildSimpleMessageBubble(_messages[index]);
+        return _buildMessageBubble(_messages[index]);
       },
+    );
+  }
+
+  Widget _buildMessageBubble(Map<String, dynamic> message) {
+    final isLocal = message['isLocal'] == true;
+    final senderName = message['sender_name'] ?? 'Unknown';
+    final messageText = message['message'] ?? '';
+    final timestamp = DateTime.tryParse(message['timestamp'] ?? '') ?? DateTime.now();
+    
+    // Check if this is a voice message
+    if (message['type'] == 'voice_message' && message['voiceFilePath'] != null) {
+      return VoiceMessageBubble(
+        voiceFilePath: message['voiceFilePath'],
+        duration: message['voiceDuration'] ?? 0,
+        senderName: senderName,
+        timestamp: timestamp,
+        isMe: isLocal,
+        isEmergency: message['isEmergency'] ?? false,
+        isRead: message['isRead'] ?? false,
+        voiceController: _voiceController,
+      );
+    }
+    
+    // Regular text message
+    return ModernMessageBubble(
+      text: messageText,
+      senderName: senderName,
+      timestamp: timestamp,
+      isMe: isLocal,
+      isEmergency: message['isEmergency'] ?? false,
+      isRead: message['isRead'] ?? false,
+      voiceController: _voiceController,
     );
   }
 
@@ -470,7 +578,7 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen> {
               // Input row
               Row(
                 children: [
-                  // PTT Button
+                  // PTT Button (for ESP32 streaming)
                   GestureDetector(
                     onTapDown: (_) => _startPTT(),
                     onTapUp: (_) => _stopPTT(),
@@ -479,7 +587,29 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen> {
                       width: 48,
                       height: 48,
                       decoration: BoxDecoration(
-                        color: _isRecording ? AppColors.error : AppColors.online,
+                        color: AppColors.online,
+                        borderRadius: BorderRadius.circular(24),
+                      ),
+                      child: const Icon(
+                        Icons.radio,
+                        color: Colors.white,
+                        size: 20,
+                      ),
+                    ),
+                  ),
+                  
+                  const SizedBox(width: 8),
+                  
+                  // Voice Message Button
+                  GestureDetector(
+                    onTapDown: (_) => _startVoiceMessageRecording(),
+                    onTapUp: (_) => _stopVoiceMessageRecording(),
+                    onTapCancel: () => _stopVoiceMessageRecording(),
+                    child: Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: _isRecording ? AppColors.error : AppColors.primaryRed,
                         borderRadius: BorderRadius.circular(24),
                         boxShadow: _isRecording ? [
                           BoxShadow(

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../constants/app_colors.dart';
+import '../models/message_model.dart';
+import 'voice_message_bubble.dart';
 
 class ModernMessageBubble extends StatefulWidget {
   final String text;
@@ -11,6 +13,8 @@ class ModernMessageBubble extends StatefulWidget {
   final bool isRead;
   final VoidCallback? onLongPress;
   final VoidCallback? onTap;
+  final MessageModel? message;
+  final dynamic voiceController;
 
   const ModernMessageBubble({
     super.key,
@@ -22,6 +26,8 @@ class ModernMessageBubble extends StatefulWidget {
     this.isRead = false,
     this.onLongPress,
     this.onTap,
+    this.message,
+    this.voiceController,
   });
 
   @override
@@ -74,6 +80,22 @@ class _ModernMessageBubbleState extends State<ModernMessageBubble>
 
   @override
   Widget build(BuildContext context) {
+    // Check if this is a voice message
+    if (widget.message?.isVoiceMessage == true && widget.message?.voiceFilePath != null) {
+      return VoiceMessageBubble(
+        voiceFilePath: widget.message!.voiceFilePath!,
+        duration: widget.message!.voiceDuration,
+        senderName: widget.senderName,
+        timestamp: widget.timestamp,
+        isMe: widget.isMe,
+        isEmergency: widget.isEmergency,
+        isRead: widget.isRead,
+        onLongPress: widget.onLongPress,
+        voiceController: widget.voiceController,
+      );
+    }
+
+    // Render regular text message
     return Container(
       margin: EdgeInsets.only(
         bottom: 8,
