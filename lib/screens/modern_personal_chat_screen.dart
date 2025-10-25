@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../constants/app_colors.dart';
 import '../utils/navigation_helper.dart';
 import '../utils/performance_optimizer.dart';
 import '../widgets/modern_message_bubble.dart';
+import '../widgets/voice_message_bubble.dart';
 import '../widgets/typing_indicator.dart';
+import '../controllers/voice_controller.dart';
+import '../models/message_model.dart';
 import 'private_call_screen.dart';
 
 class ModernPersonalChatScreen extends StatefulWidget {
@@ -27,7 +31,9 @@ class ModernPersonalChatScreen extends StatefulWidget {
 class _ModernPersonalChatScreenState extends State<ModernPersonalChatScreen> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  final VoiceController _voiceController = VoiceController();
   bool _isTyping = false;
+  bool _isRecording = false;
   bool _contactIsTyping = false;
   
   // Sample messages for this contact
@@ -36,6 +42,7 @@ class _ModernPersonalChatScreenState extends State<ModernPersonalChatScreen> {
   @override
   void initState() {
     super.initState();
+    _voiceController.initialize();
     _messages = [
       {
         'id': '1',
@@ -79,6 +86,7 @@ class _ModernPersonalChatScreenState extends State<ModernPersonalChatScreen> {
   void dispose() {
     _messageController.dispose();
     _scrollController.dispose();
+    _voiceController.dispose();
     super.dispose();
   }
 
@@ -173,6 +181,99 @@ class _ModernPersonalChatScreenState extends State<ModernPersonalChatScreen> {
         );
       }
     });
+  }
+
+  // Voice message recording methods
+  void _startVoiceMessageRecording() async {
+    print('[CHAT_PERSONAL] 🎤 Voice recording started');
+    
+    if (_isRecording) {
+      print('[CHAT_PERSONAL] ⚠️ Already recording, ignoring request');
+      return;
+    }
+    
+    HapticFeedback.lightImpact();
+    final filePath = await _voiceController.startVoiceMessageRecording();
+    if (filePath != null) {
+      print('[CHAT_PERSONAL] ✅ Voice recording started successfully');
+      setState(() {
+        _isRecording = true;
+      });
+    } else {
+      print('[CHAT_PERSONAL] ❌ Failed to start voice recording');
+    }
+  }
+
+  void _stopVoiceMessageRecording() async {
+    print('[CHAT_PERSONAL] 🛑 Voice recording stopped');
+    
+    if (!_isRecording) {
+      print('[CHAT_PERSONAL] ⚠️ Not recording, ignoring stop request');
+      return;
+    }
+    
+    HapticFeedback.lightImpact();
+    final filePath = await _voiceController.stopVoiceMessageRecording();
+    
+    setState(() {
+      _isRecording = false;
+    });
+    
+    if (filePath != null) {
+      print('[CHAT_PERSONAL] 📁 Voice recording saved to: $filePath');
+      
+      // Get duration of the recorded voice message
+      final duration = await _voiceController.getVoiceMessageDuration(filePath);
+      print('[CHAT_PERSONAL] ⏱️ Voice message duration: ${duration}s');
+      
+      if (duration > 0) {
+        print('[CHAT_PERSONAL] ✅ Creating voice message in chat');
+        // Create voice message and add to chat
+        final voiceMessage = {
+          'id': DateTime.now().millisecondsSinceEpoch.toString(),
+          'type': 'voice_message',
+          'text': 'Voice message',
+          'senderId': 'me',
+          'timestamp': DateTime.now(),
+          'isMe': true,
+          'isEmergency': false,
+          'isRead': false,
+          'voiceFilePath': filePath,
+          'voiceDuration': duration,
+        };
+        
+        setState(() {
+          _messages.add(voiceMessage);
+        });
+        
+        print('[CHAT_PERSONAL] 📝 Voice message added to chat');
+        
+        // Auto-scroll to bottom
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_scrollController.hasClients) {
+            _scrollController.animateTo(
+              _scrollController.position.maxScrollExtent,
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeOut,
+            );
+          }
+        });
+      } else {
+        print('[CHAT_PERSONAL] ⚠️ Recording too short (${duration}s)');
+        _showMessage('Recording too short');
+      }
+    } else {
+      print('[CHAT_PERSONAL] ❌ Failed to save voice recording');
+    }
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 
   void _showContactInfo() {
@@ -451,6 +552,7 @@ class _ModernPersonalChatScreenState extends State<ModernPersonalChatScreen> {
                     onLongPress: () {
                       _showMessageOptions(message);
                     },
+                    voiceController: _voiceController,
                   );
                 },
                 controller: _scrollController,
@@ -529,7 +631,41 @@ class _ModernPersonalChatScreenState extends State<ModernPersonalChatScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 8),
+                
+                // Voice message button
+                GestureDetector(
+                  onTapDown: (_) => _startVoiceMessageRecording(),
+                  onTapUp: (_) => _stopVoiceMessageRecording(),
+                  onTapCancel: () => _stopVoiceMessageRecording(),
+                  child: Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: _isRecording ? AppColors.error : AppColors.primaryRed,
+                      borderRadius: BorderRadius.circular(24),
+                      boxShadow: _isRecording ? [
+                        BoxShadow(
+                          color: AppColors.error.withOpacity(0.3),
+                          blurRadius: 8,
+                          spreadRadius: 2,
+                        ),
+                      ] : [
+                        BoxShadow(
+                          color: AppColors.primaryRed.withOpacity(0.3),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Icon(
+                      _isRecording ? Icons.mic : Icons.mic_none,
+                      color: AppColors.white,
+                      size: 20,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
                 
                 // Send button
                 Container(

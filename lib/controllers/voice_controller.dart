@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 import 'package:flutter_sound/flutter_sound.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:path_provider/path_provider.dart';
 
 /// Voice Controller for Push-To-Talk and Voice Playback
 /// Handles PCM16LE recording and playback with Base64 encoding
@@ -29,6 +31,14 @@ class VoiceController {
   // Real-time processing timer
   Timer? _processingTimer;
   
+  // Voice message recording
+  final List<int> _voiceMessageBuffer = [];
+  String? _currentVoiceFilePath;
+  DateTime? _voiceRecordingStartTime;
+  Timer? _voiceRecordingTimer;
+  StreamController<Uint8List>? _voiceMessageStreamController;
+  StreamSubscription<Uint8List>? _voiceMessageStreamSubscription;
+  
   // Stream controllers
   final StreamController<bool> _recordingController = 
       StreamController<bool>.broadcast();
@@ -38,12 +48,15 @@ class VoiceController {
       StreamController<Map<String, dynamic>>.broadcast();
   final StreamController<String> _errorController = 
       StreamController<String>.broadcast();
+  final StreamController<int> _voiceRecordingDurationController = 
+      StreamController<int>.broadcast();
 
   // Getters
   Stream<bool> get recordingStream => _recordingController.stream;
   Stream<bool> get playingStream => _playingController.stream;
   Stream<Map<String, dynamic>> get voiceFrameStream => _voiceFrameController.stream;
   Stream<String> get errorStream => _errorController.stream;
+  Stream<int> get voiceRecordingDurationStream => _voiceRecordingDurationController.stream;
   
   bool get isRecording => _isRecording;
   bool get isPlaying => _isPlaying;
@@ -215,7 +228,10 @@ class VoiceController {
 
   /// Play received PCM audio data
   Future<void> playPcm(Uint8List pcmData) async {
+    print('[VOICE_MSG] 🎵 Starting PCM playback (${pcmData.length} bytes)');
+    
     if (_isPlaying) {
+      print('[VOICE_MSG] ⏹️ Stopping current playback');
       // Stop current playback
       await _player!.stopPlayer();
     }
@@ -224,6 +240,7 @@ class VoiceController {
       _isPlaying = true;
       _playingController.add(true);
       
+      print('[VOICE_MSG] ▶️ Starting audio player...');
       // Play PCM data directly
       await _player!.startPlayer(
         fromDataBuffer: pcmData,
@@ -231,12 +248,14 @@ class VoiceController {
         sampleRate: sampleRate,
         numChannels: numChannels,
         whenFinished: () {
+          print('[VOICE_MSG] ✅ Playback finished');
           _isPlaying = false;
           _playingController.add(false);
         },
       );
       
     } catch (e) {
+      print('[VOICE_MSG] ❌ Playback failed: $e');
       _isPlaying = false;
       _playingController.add(false);
       _errorController.add("Playback failed: $e");
@@ -250,6 +269,207 @@ class VoiceController {
       await playPcm(pcmData);
     } catch (e) {
       _errorController.add("Base64 decode failed: $e");
+    }
+  }
+
+  /// Start recording a voice message (returns file path when complete)
+  Future<String?> startVoiceMessageRecording() async {
+    print('[VOICE_MSG] 🎤 Start recording requested');
+    
+    if (_isRecording) {
+      print('[VOICE_MSG] ⚠️ Already recording, ignoring request');
+      return null;
+    }
+    
+    try {
+      _isRecording = true;
+      _voiceRecordingStartTime = DateTime.now();
+      _recordingController.add(true);
+      
+      // Generate unique file path
+      final directory = await getApplicationDocumentsDirectory();
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final messageId = _generateMessageId();
+      _currentVoiceFilePath = '${directory.path}/voice_msg_${timestamp}_$messageId.pcm';
+      
+      print('[VOICE_MSG] 📁 Recording to: $_currentVoiceFilePath');
+      
+      // Clear buffer for new recording
+      _voiceMessageBuffer.clear();
+      
+      // Create stream controller for audio data
+      _voiceMessageStreamController = StreamController<Uint8List>();
+      
+      print('[VOICE_MSG] 📡 Setting up audio stream...');
+      
+      // Listen to the stream and collect data
+      _voiceMessageStreamSubscription = _voiceMessageStreamController!.stream.listen((buffer) {
+        _voiceMessageBuffer.addAll(buffer);
+        print('[VOICE_MSG] 📊 Captured ${buffer.length} bytes (Total: ${_voiceMessageBuffer.length} bytes)');
+      });
+      
+      // Start recording to stream (returns void)
+      await _recorder!.startRecorder(
+        toStream: _voiceMessageStreamController!.sink,
+        codec: Codec.pcm16,
+        sampleRate: sampleRate,
+        numChannels: numChannels,
+      );
+      
+      print('[VOICE_MSG] ✅ Recorder started successfully');
+      
+      // Start duration timer for UI updates
+      _voiceRecordingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        if (_voiceRecordingStartTime != null) {
+          final duration = DateTime.now().difference(_voiceRecordingStartTime!).inSeconds;
+          print('[VOICE_MSG] ⏱️ Recording duration: ${duration}s');
+          _voiceRecordingDurationController.add(duration);
+          
+          // Auto-stop at 60 seconds
+          if (duration >= 60) {
+            print('[VOICE_MSG] ⏰ Max duration reached, auto-stopping');
+            stopVoiceMessageRecording();
+          }
+        }
+      });
+      
+      return _currentVoiceFilePath;
+    } catch (e) {
+      print('[VOICE_MSG] ❌ Failed to start recording: $e');
+      _isRecording = false;
+      _recordingController.add(false);
+      _errorController.add("Failed to start voice recording: $e");
+      return null;
+    }
+  }
+
+  /// Stop recording voice message and return file path
+  Future<String?> stopVoiceMessageRecording() async {
+    print('[VOICE_MSG] 🛑 Stop recording requested');
+    
+    if (!_isRecording || _currentVoiceFilePath == null) {
+      print('[VOICE_MSG] ⚠️ Not recording or no file path');
+      return null;
+    }
+    
+    try {
+      // Stop duration timer
+      _voiceRecordingTimer?.cancel();
+      _voiceRecordingTimer = null;
+      
+      // Calculate recording duration before stopping
+      final recordingDuration = _voiceRecordingStartTime != null
+          ? DateTime.now().difference(_voiceRecordingStartTime!).inSeconds
+          : 0;
+      
+      print('[VOICE_MSG] 📊 Total recording duration: ${recordingDuration}s');
+      
+      // Stop recording
+      await _recorder!.stopRecorder();
+      
+      // Cancel stream subscription
+      await _voiceMessageStreamSubscription?.cancel();
+      _voiceMessageStreamSubscription = null;
+      
+      // Close stream controller
+      await _voiceMessageStreamController?.close();
+      _voiceMessageStreamController = null;
+      
+      _isRecording = false;
+      _recordingController.add(false);
+      
+      print('[VOICE_MSG] ✅ Recorder stopped');
+      print('[VOICE_MSG] 📦 Buffer size: ${_voiceMessageBuffer.length} bytes');
+      
+      // Write buffered data to file
+      if (_voiceMessageBuffer.isNotEmpty) {
+        try {
+          final file = File(_currentVoiceFilePath!);
+          final pcmData = Uint8List.fromList(_voiceMessageBuffer);
+          await file.writeAsBytes(pcmData);
+          print('[VOICE_MSG] 💾 Wrote ${pcmData.length} bytes to file');
+          
+          // Verify file was written
+          if (await file.exists()) {
+            final fileSize = await file.length();
+            print('[VOICE_MSG] ✅ File saved: $fileSize bytes');
+            
+            if (fileSize > 0) {
+              final filePath = _currentVoiceFilePath;
+              _currentVoiceFilePath = null;
+              _voiceRecordingStartTime = null;
+              _voiceMessageBuffer.clear();
+              return filePath;
+            }
+          }
+        } catch (e) {
+          print('[VOICE_MSG] ❌ Failed to write file: $e');
+        }
+      } else {
+        print('[VOICE_MSG] ⚠️ Buffer is empty, no data captured');
+      }
+      
+      _currentVoiceFilePath = null;
+      _voiceRecordingStartTime = null;
+      return null;
+    } catch (e) {
+      print('[VOICE_MSG] ❌ Failed to stop recording: $e');
+      _errorController.add("Failed to stop voice recording: $e");
+      return null;
+    }
+  }
+
+
+  /// Get duration of current voice recording
+  int getCurrentRecordingDuration() {
+    if (_voiceRecordingStartTime == null) return 0;
+    return DateTime.now().difference(_voiceRecordingStartTime!).inSeconds;
+  }
+
+  /// Get duration of a voice message file
+  Future<int> getVoiceMessageDuration(String filePath) async {
+    try {
+      final file = File(filePath);
+      if (!await file.exists()) return 0;
+      
+      final fileSize = await file.length();
+      // PCM16LE at 8kHz: 2 bytes per sample, 8000 samples per second
+      // Duration = fileSize / (2 * 8000) = fileSize / 16000
+      return (fileSize / 16000).round();
+    } catch (e) {
+      _errorController.add("Failed to get voice duration: $e");
+      return 0;
+    }
+  }
+
+  /// Play voice message from file
+  Future<void> playVoiceMessage(String filePath) async {
+    print('[VOICE_MSG] ▶️ Play request received for: $filePath');
+    
+    try {
+      final file = File(filePath);
+      if (!await file.exists()) {
+        print('[VOICE_MSG] ❌ File does not exist: $filePath');
+        _errorController.add("Voice message file not found");
+        return;
+      }
+      
+      final fileSize = await file.length();
+      print('[VOICE_MSG] 📦 File size: $fileSize bytes');
+      
+      if (fileSize == 0) {
+        print('[VOICE_MSG] ⚠️ File is empty');
+        _errorController.add("Voice message file is empty");
+        return;
+      }
+      
+      print('[VOICE_MSG] 🎵 Starting playback...');
+      final pcmData = await file.readAsBytes();
+      await playPcm(pcmData);
+      print('[VOICE_MSG] ✅ Playback completed');
+    } catch (e) {
+      print('[VOICE_MSG] ❌ Failed to play voice message: $e');
+      _errorController.add("Failed to play voice message: $e");
     }
   }
 
@@ -310,7 +530,10 @@ class VoiceController {
       await stopAll();
       
       _processingTimer?.cancel();
+      _voiceRecordingTimer?.cancel();
       _audioStreamSubscription?.cancel();
+      await _voiceMessageStreamSubscription?.cancel();
+      await _voiceMessageStreamController?.close();
       await _recorder?.closeRecorder();
       await _player?.closePlayer();
       
@@ -318,6 +541,7 @@ class VoiceController {
       _playingController.close();
       _voiceFrameController.close();
       _errorController.close();
+      _voiceRecordingDurationController.close();
     } catch (e) {
       // Ignore disposal errors
     }
