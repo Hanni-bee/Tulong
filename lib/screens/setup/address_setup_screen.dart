@@ -6,6 +6,7 @@ import '../../constants/app_typography.dart';
 import '../../models/user_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/firebase_service.dart';
+import '../../services/unified_data_service.dart';
 import '../../services/location_service.dart';
 import '../../widgets/custom_button.dart';
 import '../../widgets/custom_text_field.dart';
@@ -138,11 +139,23 @@ class _AddressSetupScreenState extends State<AddressSetupScreen> {
   Future<void> _saveAddress() async {
     if (!_formKey.currentState!.validate()) return;
 
+    // Validate required fields
+    if (_selectedRegion == null || _selectedProvince == null || 
+        _selectedCity == null || _selectedBarangay == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select all location fields'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     try {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      final firebaseService = FirebaseService();
+      final unifiedDataService = UnifiedDataService();
       
       // Find selected names from codes
       final regionName = _regions.firstWhere(
@@ -165,6 +178,46 @@ class _AddressSetupScreenState extends State<AddressSetupScreen> {
         orElse: () => {'brgy_name': _selectedBarangay ?? ''},
       )['brgy_name'] ?? _selectedBarangay ?? '';
       
+      // For Google users, we need to create/update their profile in SQLite first
+      final userEmail = authProvider.userEmail;
+      if (userEmail == null) {
+        throw Exception('User email not found');
+      }
+      
+      // Check if user exists in SQLite, if not create them
+      var sqliteUser = await unifiedDataService.getUserByEmail(userEmail);
+      if (sqliteUser == null) {
+        // Create user in SQLite for Google auth users
+        final userModel = authProvider.currentUserModel!;
+        sqliteUser = await unifiedDataService.createUser(
+          email: userEmail,
+          password: '', // Google users don't have password initially
+          firstName: userModel.name.split(' ').first,
+          lastName: userModel.name.split(' ').skip(1).join(' '),
+          street: _addressController.text.trim(),
+          region: regionName,
+          province: provinceName,
+          city: cityName,
+          barangay: barangayName,
+          zipCode: _zipCodeController.text.trim(),
+          isGoogleAuth: true,
+        );
+      } else {
+        // Update existing user profile
+        await unifiedDataService.updateUserProfileWithMap(userEmail, {
+          'street': _addressController.text.trim(),
+          'region': regionName,
+          'province': provinceName,
+          'city': cityName,
+          'barangay': barangayName,
+          'zip_code': _zipCodeController.text.trim(),
+        });
+      }
+      
+      // Mark address setup as completed
+      await unifiedDataService.markAddressSetupCompleted(userEmail);
+      
+      // Update local user model
       final updatedUser = authProvider.currentUserModel!.copyWith(
         street: _addressController.text.trim(),
         barangay: barangayName,
@@ -173,12 +226,7 @@ class _AddressSetupScreenState extends State<AddressSetupScreen> {
         zipCode: _zipCodeController.text.trim(),
         addressSetupCompleted: true,
       );
-
-      await firebaseService.updateUserModelProfile(updatedUser);
       authProvider.updateUser(updatedUser);
-      
-      // Mark address setup as completed
-      await authProvider.markAddressSetupCompleted();
 
       HapticFeedback.mediumImpact();
       

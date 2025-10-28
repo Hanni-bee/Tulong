@@ -30,6 +30,7 @@ import 'services/offline_auth_service.dart';
 import 'services/notification_service.dart';
 import 'services/offline_sync_service.dart';
 import 'services/philippine_location_service.dart';
+import 'services/app_initialization_service.dart';
 import 'config/page_transition_config.dart';
 
 void main() async {
@@ -38,6 +39,9 @@ void main() async {
   
   // Initialize Firebase
   await FirebaseService.initialize();
+  
+  // Initialize unified data service (SQLite + Firebase sync)
+  await AppInitializationService().initialize();
   
   // Initialize Offline Services
   await OfflineAuthService().initialize();

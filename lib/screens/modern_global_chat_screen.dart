@@ -209,7 +209,7 @@ class _ModernGlobalChatScreenState extends State<ModernGlobalChatScreen> {
               Navigator.pop(context);
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.error,
+              backgroundColor: AppColors.chatBubble,
               foregroundColor: AppColors.white,
             ),
             child: const Text('Clear'),

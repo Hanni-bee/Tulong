@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../constants/app_colors.dart';
 import '../../widgets/custom_button.dart';
@@ -25,6 +26,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   final _firstNameController = TextEditingController();
   final _lastNameController = TextEditingController();
   final _emailController = TextEditingController();
+  final _phoneController = TextEditingController();
   final _addressController = TextEditingController();
   final _zipCodeController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -158,7 +160,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Please accept the Terms and Conditions'),
-          backgroundColor: AppColors.error,
+          backgroundColor: AppColors.primary,
         ),
       );
       return;
@@ -179,44 +181,20 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
-      if (isOffline) {
-        // Strict offline signup
-        await authProvider.signupOffline(
-          email: email,
-          password: pwd,
-          firstName: first,
-          lastName: last,
-          address: _addressController.text.trim(),
-          region: _selectedRegion ?? '',
-          city: _selectedProvince ?? '',
-          barangay: _selectedBarangay ?? '',
-          zipCode: _zipCodeController.text.trim(),
-        );
-      } else {
-        // Online-first, then mirror to SQLite
-        await FirebaseService().signUpWithEmail(
-          email: email,
-          password: pwd,
-          firstName: first,
-          lastName: last,
-          address: _addressController.text.trim(),
-          region: _selectedRegion ?? '',
-          city: _selectedProvince ?? '',
-          barangay: _selectedBarangay ?? '',
-          zipCode: _zipCodeController.text.trim(),
-        );
-        await authProvider.signupOffline(
-          email: email,
-          password: pwd,
-          firstName: first,
-          lastName: last,
-          address: _addressController.text.trim(),
-          region: _selectedRegion ?? '',
-          city: _selectedProvince ?? '',
-          barangay: _selectedBarangay ?? '',
-          zipCode: _zipCodeController.text.trim(),
-        );
-      }
+      // Use unified signup method (SQLite first, Firebase sync when online)
+      await authProvider.signupOffline(
+        email: email,
+        password: pwd,
+        firstName: first,
+        lastName: last,
+        phone: _phoneController.text.trim(),
+        address: _addressController.text.trim(),
+        region: _selectedRegion ?? '',
+        province: _selectedProvince ?? '',
+        city: _selectedCity ?? '',
+        barangay: _selectedBarangay ?? '',
+        zipCode: _zipCodeController.text.trim(),
+      );
 
       if (!mounted) return;
       // Also register in AuthProvider demo registry + create session
@@ -246,7 +224,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Sign up failed: ${e.toString()}'),
-            backgroundColor: AppColors.error,
+            backgroundColor: AppColors.primary,
           ),
         );
       }
@@ -284,7 +262,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
         title: const Text(
           'Create Account',
           style: TextStyle(
-            color: AppColors.primaryRed,
+            color: AppColors.primary,
             fontWeight: FontWeight.bold,
           ),
         ),
@@ -323,7 +301,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
           width: 80,
           height: 80,
           decoration: BoxDecoration(
-            color: AppColors.primaryRed,
+            color: AppColors.primary,
             borderRadius: BorderRadius.circular(20),
             boxShadow: [
               BoxShadow(
@@ -356,7 +334,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
           style: TextStyle(
             fontSize: 32,
             fontWeight: FontWeight.bold,
-            color: AppColors.primaryRed,
+            color: AppColors.primary,
             letterSpacing: 2.0,
           ),
         )
@@ -477,6 +455,24 @@ class _SignUpScreenState extends State<SignUpScreen> {
           
           const SizedBox(height: 20),
           
+          // Phone Number field
+          CustomTextField(
+            controller: _phoneController,
+            label: 'Phone Number',
+            hint: '+63 912 345 6789',
+            keyboardType: TextInputType.phone,
+            prefixIcon: Icons.phone_outlined,
+            validator: (value) {
+              return InputValidator.validatePhilippinePhoneNumber(value);
+            },
+            inputFormatters: [
+              FilteringTextInputFormatter.allow(RegExp(r'[0-9+\s]')),
+              LengthLimitingTextInputFormatter(17), // +63 912 345 6789 = 17 chars max
+            ],
+          ),
+          
+          const SizedBox(height: 20),
+          
           // Address field
           CustomTextField(
             controller: _addressController,
@@ -525,6 +521,18 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   borderSide: BorderSide(color: AppColors.primaryRed, width: 2),
                 ),
                 contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                labelStyle: TextStyle(
+                  color: AppColors.primary,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.3,
+                ),
+                hintStyle: TextStyle(
+                  color: AppColors.mediumGray,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w500,
+                  letterSpacing: 0.2,
+                ),
               ),
               items: _regions.isEmpty 
                 ? [DropdownMenuItem<String>(
@@ -609,6 +617,18 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   borderSide: BorderSide(color: AppColors.primaryRed, width: 2),
                 ),
                 contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                labelStyle: TextStyle(
+                  color: AppColors.primary,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.3,
+                ),
+                hintStyle: TextStyle(
+                  color: AppColors.mediumGray,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w500,
+                  letterSpacing: 0.2,
+                ),
               ),
               items: _provinces.isEmpty 
                 ? [DropdownMenuItem<String>(
@@ -700,6 +720,18 @@ class _SignUpScreenState extends State<SignUpScreen> {
                     borderSide: BorderSide(color: AppColors.primaryRed, width: 2),
                   ),
                   contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  labelStyle: TextStyle(
+                    color: AppColors.primary,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.3,
+                  ),
+                  hintStyle: TextStyle(
+                    color: AppColors.mediumGray,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w500,
+                    letterSpacing: 0.2,
+                  ),
                 ),
                 items: _cities.isEmpty 
                   ? [DropdownMenuItem<String>(
@@ -782,6 +814,18 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   borderSide: BorderSide(color: AppColors.primaryRed, width: 2),
                 ),
                 contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                labelStyle: TextStyle(
+                  color: AppColors.primary,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.3,
+                ),
+                hintStyle: TextStyle(
+                  color: AppColors.mediumGray,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w500,
+                  letterSpacing: 0.2,
+                ),
               ),
               items: _barangays.isEmpty 
                 ? [DropdownMenuItem<String>(
@@ -1094,7 +1138,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
           child: const Text(
             'Sign In',
             style: TextStyle(
-              color: AppColors.primaryRed,
+              color: AppColors.primary,
               fontSize: 16,
               fontWeight: FontWeight.bold,
             ),

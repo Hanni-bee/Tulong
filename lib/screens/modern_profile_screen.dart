@@ -11,9 +11,9 @@ import '../widgets/theme_selection_modal.dart';
 import '../services/philippine_location_service.dart';
 import 'notification_settings_screen.dart';
 import '../constants/app_typography.dart';
-import '../widgets/enhanced_card.dart';
 import '../widgets/enhanced_button.dart';
 import '../widgets/polished_animations.dart';
+import 'user_info_screen.dart';
 
 class ModernProfileScreen extends StatefulWidget {
   const ModernProfileScreen({super.key});
@@ -146,7 +146,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: AppColors.primaryRed.withOpacity(0.1),
+              color: AppColors.info.withOpacity(0.1),
               borderRadius: BorderRadius.circular(16),
               boxShadow: [
                 BoxShadow(
@@ -163,7 +163,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
             ),
             child: const Icon(
               Icons.person,
-              color: AppColors.primaryRed,
+              color: AppColors.info,
               size: 24,
             ),
           ),
@@ -174,6 +174,37 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
           const Expanded(
             child: PageTitle('Profile'),
           ),
+
+          // User Info button
+          //IconButton(
+          //  onPressed: () => _viewUserInfo(context),
+          //  icon: Container(
+          //    padding: const EdgeInsets.all(12),
+          //    decoration: BoxDecoration(
+          //      color: AppColors.white,
+          //       borderRadius: BorderRadius.circular(16),
+          //       boxShadow: [
+          //         BoxShadow(
+          //           color: Colors.black.withOpacity(0.05),
+          //           blurRadius: 8,
+          //           offset: const Offset(0, 2),
+          //         ),
+          //         BoxShadow(
+          //           color: AppColors.white.withOpacity(0.8),
+          //           blurRadius: 8,
+          //           offset: const Offset(0, -2),
+          //         ),
+          //       ],
+          //     ),
+          //     child: const Icon(
+          //       Icons.info_outline,
+          //       color: AppColors.info,
+          //       size: 24,
+          //     ),
+          //   ),
+          // ),
+
+          // const SizedBox(width: 8),
 
           // Edit button
           IconButton(
@@ -198,7 +229,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
               ),
               child: const Icon(
                 Icons.edit,
-                color: AppColors.primaryRed,
+                color: AppColors.primary,
                 size: 24,
               ),
             ),
@@ -234,7 +265,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                     width: 120,
                     height: 120,
                     decoration: BoxDecoration(
-                      color: AppColors.primaryRed,
+                      color: AppColors.primary,
                       borderRadius: BorderRadius.circular(60),
                       boxShadow: [
                         BoxShadow(
@@ -252,10 +283,9 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                     child: Center(
                       child: Text(
                         _getInitials(userName),
-                        style: const TextStyle(
+                        style: AppTypography.displayLarge.copyWith(
                           color: AppColors.white,
                           fontSize: 42,
-                          fontWeight: FontWeight.bold,
                         ),
                       ),
                     ),
@@ -310,10 +340,9 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                         const SizedBox(width: 10),
                         Text(
                           _userProfile['status'],
-                          style: const TextStyle(
+                          style: AppTypography.bodyMedium.copyWith(
                             color: AppColors.success,
                             fontWeight: FontWeight.w700,
-                            fontSize: 14,
                           ),
                         ),
                       ],
@@ -522,7 +551,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                 ),
                 child: Icon(
                   icon,
-                  color: AppColors.primaryRed,
+                  color: AppColors.primary,
                   size: 20,
                 ),
               ),
@@ -594,10 +623,14 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
   // Action methods
   void _editProfile(BuildContext context) {
     HapticFeedback.lightImpact();
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Edit profile functionality'),
-        backgroundColor: AppColors.info,
+    Navigator.of(context).pushNamed('/update-profile');
+  }
+
+  void _viewUserInfo(BuildContext context) {
+    HapticFeedback.lightImpact();
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => const UserInfoScreen(),
       ),
     );
   }
@@ -615,6 +648,12 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
         text: auth.userEmail ?? _userProfile['email'] ?? 'john.doe@example.com');
     final TextEditingController addressCtrl =
         TextEditingController(text: _userProfile['address'] ?? '');
+    final TextEditingController phoneCtrl = TextEditingController(text: _userProfile['phone'] ?? '');
+    final TextEditingController zipCodeCtrl = TextEditingController(text: _userProfile['zipCode'] ?? '');
+    final TextEditingController regionCtrl = TextEditingController(text: _userProfile['region'] ?? '');
+    final TextEditingController provinceCtrl = TextEditingController(text: _userProfile['province'] ?? '');
+    final TextEditingController cityCtrl = TextEditingController(text: _userProfile['city'] ?? '');
+    final TextEditingController barangayCtrl = TextEditingController(text: _userProfile['barangay'] ?? '');
 
     // Form key for validation
     final _formKey = GlobalKey<FormState>();
@@ -656,7 +695,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                           children: [
                             Icon(
                               Icons.person,
-                              color: AppColors.primaryRed,
+                              color: AppColors.primary,
                               size: 24,
                             ),
                             SizedBox(width: 8),
@@ -741,6 +780,114 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                           validator: (value) {
                             if (value == null || value.trim().isEmpty) {
                               return 'Address is required';
+                            }
+                            return null;
+                          },
+                          autovalidateMode: AutovalidateMode.onUserInteraction,
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Phone
+                        TextFormField(
+                          controller: phoneCtrl,
+                          decoration: const InputDecoration(
+                            labelText: 'Phone',
+                            border: OutlineInputBorder(),
+                            hintText: 'Enter your phone number',
+                          ),
+                          validator: (value) {
+                            if (value == null || value.trim().isEmpty) {
+                              return 'Phone number is required';
+                            }
+                            return null;
+                          },
+                          autovalidateMode: AutovalidateMode.onUserInteraction,
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Zip Code
+                        TextFormField(
+                          controller: zipCodeCtrl,
+                          decoration: const InputDecoration(
+                            labelText: 'Zip Code',
+                            border: OutlineInputBorder(),
+                            hintText: 'Enter your zip code',
+                          ),
+                          validator: (value) {
+                            if (value == null || value.trim().isEmpty) {
+                              return 'Zip code is required';
+                            }
+                            return null;
+                          },
+                          autovalidateMode: AutovalidateMode.onUserInteraction,
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Region
+                        TextFormField(
+                          controller: regionCtrl,
+                          decoration: const InputDecoration(
+                            labelText: 'Region',
+                            border: OutlineInputBorder(),
+                            hintText: 'Select Region',
+                          ),
+                          validator: (value) {
+                            if (value == null || value.trim().isEmpty) {
+                              return 'Region is required';
+                            }
+                            return null;
+                          },
+                          autovalidateMode: AutovalidateMode.onUserInteraction,
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Province
+                        TextFormField(
+                          controller: provinceCtrl,
+                          decoration: const InputDecoration(
+                            labelText: 'Province',
+                            border: OutlineInputBorder(),
+                            hintText: 'Select Province',
+                          ),
+                          validator: (value) {
+                            if (value == null || value.trim().isEmpty) {
+                              return 'Province is required';
+                            }
+                            return null;
+                          },
+                          autovalidateMode: AutovalidateMode.onUserInteraction,
+                        ),
+                        const SizedBox(height: 16),
+
+                        // City
+                        TextFormField(
+                          controller: cityCtrl,
+                          decoration: const InputDecoration(
+                            labelText: 'City',
+                            border: OutlineInputBorder(),
+                            hintText: 'Select City',
+                          ),
+                          validator: (value) {
+                            if (value == null || value.trim().isEmpty) {
+                              return 'City is required';
+                            }
+                            return null;
+                          },
+                          autovalidateMode: AutovalidateMode.onUserInteraction,
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Barangay
+                        TextFormField(
+                          controller: barangayCtrl,   
+                          decoration: const InputDecoration(
+                            labelText: 'Barangay',
+                            border: OutlineInputBorder(),
+                            hintText: 'Select Barangay',
+                          ),
+                          validator: (value) {
+                            if (value == null || value.trim().isEmpty) {
+                              return 'Barangay is required';
                             }
                             return null;
                           },
@@ -930,6 +1077,9 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                                           region: selectedRegion ?? '',
                                           city: selectedProvince ?? '',
                                           barangay: selectedBarangay ?? '',
+                                          phone: phoneCtrl.text.trim(),
+                                          zipCode: zipCodeCtrl.text.trim(),
+                                          province: selectedProvince ?? '',
                                         );
 
                                         if (!mounted) return;
@@ -942,6 +1092,9 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                                            _userProfile['province'] = selectedProvince;
                                            _userProfile['city'] = selectedCity;
                                            _userProfile['barangay'] = selectedBarangay;
+                                           _userProfile['phone'] = phoneCtrl.text.trim();
+                                           _userProfile['zipCode'] = zipCodeCtrl.text.trim();
+                                           
                                         });
 
                                         Navigator.pop(context);
@@ -1068,7 +1221,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                       children: [
                         Icon(
                           isGmailSSO ? Icons.account_circle : Icons.security,
-                          color: AppColors.primaryRed,
+                          color: AppColors.primary,
                           size: 24,
                         ),
                         const SizedBox(width: 8),

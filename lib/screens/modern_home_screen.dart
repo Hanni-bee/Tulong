@@ -66,19 +66,19 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
     {
       'name': 'Mike Johnson',
       'icon': Icons.account_circle,
-      'color': AppColors.warning,
+      'color': AppColors.amber,
       'id': 'user3',
     },
     {
       'name': 'Sarah Wilson',
       'icon': Icons.person_pin,
-      'color': AppColors.error,
+      'color': AppColors.purple,
       'id': 'user4',
     },
     {
       'name': 'David Brown',
       'icon': Icons.face,
-      'color': Colors.purple,
+      'color': AppColors.teal,
       'id': 'user5',
     },
   ];
@@ -230,7 +230,7 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                         delay: const Duration(milliseconds: 500),
                         child: AccentCard(
                           margin: const EdgeInsets.symmetric(horizontal: 16),
-                          accentColor: AppColors.error,
+                          accentColor: AppColors.emergency,
                           child: _buildEmergencySection(),
                         ),
                       ),

@@ -9,7 +9,7 @@ class SQLiteService {
 
   static Database? _database;
   static const String _databaseName = 'tulong_offline.db';
-  static const int _databaseVersion = 1;
+  static const int _databaseVersion = 2;
 
   // Table names
   static const String _usersTable = 'users';
@@ -37,7 +37,7 @@ class SQLiteService {
 
   // Create tables
   Future<void> _onCreate(Database db, int version) async {
-    // Users table
+    // Users table - Updated with consistent snake_case naming
     await db.execute('''
       CREATE TABLE $_usersTable (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -45,17 +45,22 @@ class SQLiteService {
         first_name TEXT NOT NULL,
         last_name TEXT NOT NULL,
         email TEXT NOT NULL UNIQUE,
-        address TEXT NOT NULL,
-        region TEXT NOT NULL,
-        city TEXT NOT NULL,
-        barangay TEXT NOT NULL,
-        zip_code TEXT NOT NULL,
-        password TEXT NOT NULL,
+        phone TEXT,
+        street TEXT,
+        region TEXT,
+        province TEXT,
+        city TEXT,
+        barangay TEXT,
+        zip_code TEXT,
+        password TEXT,
         is_online INTEGER DEFAULT 0,
+        account_status TEXT DEFAULT 'active',
         created_at INTEGER NOT NULL,
         last_seen INTEGER,
         is_synced INTEGER DEFAULT 0,
-        sync_timestamp INTEGER
+        sync_timestamp INTEGER,
+        is_google_auth INTEGER DEFAULT 0,
+        address_setup_completed INTEGER DEFAULT 0
       )
     ''');
 
@@ -107,7 +112,20 @@ class SQLiteService {
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
-    // Handle database upgrades here
+    if (oldVersion < 2) {
+      // Add new columns to users table
+      await db.execute('ALTER TABLE $_usersTable ADD COLUMN phone TEXT');
+      await db.execute('ALTER TABLE $_usersTable ADD COLUMN street TEXT');
+      await db.execute('ALTER TABLE $_usersTable ADD COLUMN province TEXT');
+      await db.execute('ALTER TABLE $_usersTable ADD COLUMN account_status TEXT DEFAULT "active"');
+      await db.execute('ALTER TABLE $_usersTable ADD COLUMN is_google_auth INTEGER DEFAULT 0');
+      await db.execute('ALTER TABLE $_usersTable ADD COLUMN address_setup_completed INTEGER DEFAULT 0');
+      
+      // Update existing records to have default values
+      await db.execute('UPDATE $_usersTable SET account_status = "active" WHERE account_status IS NULL');
+      await db.execute('UPDATE $_usersTable SET is_google_auth = 0 WHERE is_google_auth IS NULL');
+      await db.execute('UPDATE $_usersTable SET address_setup_completed = 0 WHERE address_setup_completed IS NULL');
+    }
   }
 
   // User operations

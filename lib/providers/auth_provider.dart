@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'dart:io';
 import '../services/firebase_service.dart';
 import '../services/sqlite_service.dart';
+import '../services/unified_data_service.dart';
 import '../services/two_factor_auth_service.dart';
 import '../models/user_model.dart';
 
@@ -18,6 +19,7 @@ class AuthProvider extends ChangeNotifier {
   final Map<String, String> _registeredUsers = {}; // email -> password (demo)
   final TwoFactorAuthService _twoFactorService = TwoFactorAuthService();
   final SQLiteService _sqliteService = SQLiteService();
+  final UnifiedDataService _unifiedDataService = UnifiedDataService();
   
   bool get isAuthenticated => _isAuthenticated;
   String? get currentUser => _currentUser;
@@ -33,7 +35,124 @@ class AuthProvider extends ChangeNotifier {
     _currentUser = user.id;
     _userEmail = user.email;
     _userName = user.name;
+    
     notifyListeners();
+  }
+
+  // Method to load user data and create UserModel
+  Future<void> loadUserModel() async {
+    if (_userEmail == null) return;
+    
+    try {
+      print('Loading UserModel for: $_userEmail');
+      
+      // First try to get user data from SQLite
+      final sqliteUser = await _sqliteService.getUserByEmail(_userEmail!);
+      if (sqliteUser != null) {
+        print('Found user in SQLite: ${sqliteUser.toString()}');
+        
+        // Combine first and last name
+        final firstName = sqliteUser['first_name']?.toString() ?? '';
+        final lastName = sqliteUser['last_name']?.toString() ?? '';
+        final fullName = '$firstName $lastName'.trim();
+        
+        // Handle legacy data where province might be stored in city field
+        final province = sqliteUser['province']?.toString() ?? '';
+        final city = sqliteUser['city']?.toString() ?? '';
+        
+        // If province is empty but city has data, it might be legacy data
+        final finalProvince = province.isNotEmpty ? province : city;
+        final finalCity = city.isNotEmpty ? city : '';
+        
+        final userModel = UserModel(
+          id: sqliteUser['id']?.toString() ?? _userEmail!,
+          name: fullName.isNotEmpty ? fullName : (_userName ?? 'User'),
+          email: sqliteUser['email']?.toString() ?? _userEmail!,
+          phone: sqliteUser['phone']?.toString(),
+          street: sqliteUser['street']?.toString() ?? '', // Fixed: was 'address'
+          region: sqliteUser['region']?.toString() ?? '',
+          barangay: sqliteUser['barangay']?.toString() ?? '',
+          city: finalCity,
+          province: finalProvince,
+          zipCode: sqliteUser['zip_code']?.toString() ?? '',
+          addressSetupCompleted: (sqliteUser['address_setup_completed'] ?? 0) == 1,
+          isGoogleAuth: false,
+          isOnline: (sqliteUser['is_online'] ?? 0) == 1,
+          createdAt: sqliteUser['created_at']?.toInt() ?? 0,
+        );
+        
+        _currentUserModel = userModel;
+        print('UserModel created from SQLite data: ${userModel.toString()}');
+        notifyListeners();
+        return;
+      }
+      
+      // If not found in SQLite, try Firebase
+      final firebaseService = FirebaseService();
+      final userSnapshot = await firebaseService.database.ref('users').orderByChild('Email').equalTo(_userEmail!).get();
+      
+      if (userSnapshot.exists) {
+        print('Found user in Firebase');
+        final userData = userSnapshot.value as Map<dynamic, dynamic>;
+        final userEntry = userData.values.first as Map<dynamic, dynamic>;
+        
+        // Combine first and last name for Firebase
+        final firstName = userEntry['FirstName']?.toString() ?? '';
+        final lastName = userEntry['LastName']?.toString() ?? '';
+        final fullName = '$firstName $lastName'.trim();
+        
+        final userModel = UserModel(
+          id: userEntry['ID']?.toString() ?? _userEmail!,
+          name: fullName.isNotEmpty ? fullName : (userEntry['Name']?.toString() ?? _userName ?? 'User'),
+          email: userEntry['Email']?.toString() ?? _userEmail!,
+          phone: userEntry['Phone']?.toString(),
+          street: userEntry['Street']?.toString() ?? userEntry['Address']?.toString() ?? '',
+          region: userEntry['Region']?.toString() ?? '',
+          barangay: userEntry['Barangay']?.toString() ?? '',
+          city: userEntry['City']?.toString() ?? '',
+          province: userEntry['Province']?.toString() ?? '',
+          zipCode: userEntry['ZipCode']?.toString() ?? '',
+          addressSetupCompleted: userEntry['AddressSetupCompleted'] == true,
+          isGoogleAuth: userEntry['IsGoogleAuth'] == true,
+          isOnline: userEntry['IsOnline'] == true,
+          createdAt: userEntry['CreatedAt']?.toInt() ?? 0,
+        );
+        
+        _currentUserModel = userModel;
+        print('UserModel created from Firebase data: ${userModel.toString()}');
+        notifyListeners();
+        return;
+      }
+      
+      // If not found in either, create a basic UserModel with available data
+      print('User not found in SQLite or Firebase, creating basic UserModel');
+      final userModel = UserModel(
+        id: _userEmail!,
+        name: _userName ?? 'User',
+        email: _userEmail!,
+        isGoogleAuth: _userEmail!.contains('@gmail.com') || _userEmail!.contains('@googlemail.com'),
+        addressSetupCompleted: false,
+      );
+      
+      _currentUserModel = userModel;
+      print('Basic UserModel created: ${userModel.toString()}');
+      notifyListeners();
+      
+    } catch (e) {
+      print('Error loading UserModel: $e');
+      // Create a fallback UserModel
+      final userModel = UserModel(
+        id: _userEmail!,
+        name: _userName ?? 'User',
+        email: _userEmail!,
+        isGoogleAuth: _userEmail!.contains('@gmail.com') || _userEmail!.contains('@googlemail.com'),
+        addressSetupCompleted: false,
+      );
+      
+      _currentUserModel = userModel;
+      print('Fallback UserModel created: ${userModel.toString()}');
+      notifyListeners();
+    }
   }
 
   // Check if address setup is required for current user
@@ -58,19 +177,31 @@ class AuthProvider extends ChangeNotifier {
     print('Tutorial marked as completed for: $_userEmail');
   }
 
-  // Mark address setup as completed
+  // Mark address setup as completed using UnifiedDataService
   Future<void> markAddressSetupCompleted() async {
     if (_userEmail == null) return;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('address_setup_completed_$_userEmail', true);
     
-    // Update current user model
-    if (_currentUserModel != null) {
-      _currentUserModel = _currentUserModel!.copyWith(addressSetupCompleted: true);
-      notifyListeners();
+    try {
+      final success = await _unifiedDataService.markAddressSetupCompleted(_userEmail!);
+      
+      if (success) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('address_setup_completed_$_userEmail', true);
+        
+        // Update current user model
+        if (_currentUserModel != null) {
+          _currentUserModel = _currentUserModel!.copyWith(addressSetupCompleted: true);
+          notifyListeners();
+        }
+        
+        print('✅ Address setup marked as completed for: $_userEmail');
+      } else {
+        throw Exception('Failed to mark address setup as completed');
+      }
+    } catch (e) {
+      print('❌ Error marking address setup completed: $e');
+      throw Exception('Failed to mark address setup as completed: $e');
     }
-    
-    print('Address setup marked as completed for: $_userEmail');
   }
 
   // Helper method to update SQLite user password
@@ -166,6 +297,9 @@ class AuthProvider extends ChangeNotifier {
       }
       
       notifyListeners();
+      
+      // Load UserModel after setting basic session data
+      await loadUserModel();
     } else {
       print('No valid session found - user needs to sign in');
     }
@@ -264,6 +398,9 @@ class AuthProvider extends ChangeNotifier {
     await prefs.setString('session_email', _userEmail!);
     await prefs.setString('session_name', _userName!);
     notifyListeners();
+    
+    // Load UserModel after setting basic session data
+    await loadUserModel();
   }
   
   Future<void> signUp(String email, String password, String username) async {
@@ -277,6 +414,9 @@ class AuthProvider extends ChangeNotifier {
     await prefs.setString('session_email', _userEmail!);
     await prefs.setString('session_name', _userName!);
     notifyListeners();
+    
+    // Load UserModel after setting basic session data
+    await loadUserModel();
   }
   
   Future<void> signInWithGoogle() async {
@@ -385,6 +525,9 @@ class AuthProvider extends ChangeNotifier {
         await prefs.setString('session_name', _userName!);
         notifyListeners();
         
+        // Load UserModel after setting basic session data
+        await loadUserModel();
+        
         print('2FA Sign-In successful: $email');
       }
     } catch (e) {
@@ -407,6 +550,11 @@ class AuthProvider extends ChangeNotifier {
 
   Future<void> signOut() async {
     try {
+      // Use unified data service for logout
+      if (_isAuthenticated && _userEmail != null) {
+        await _unifiedDataService.logoutUser(_userEmail!);
+      }
+      
       // Sign out from Firebase/Google if authenticated
       if (_isAuthenticated) {
         final firebaseService = FirebaseService();
@@ -431,7 +579,7 @@ class AuthProvider extends ChangeNotifier {
     await prefs.remove('is_google_auth');
     await prefs.remove('address_setup_completed');
     
-    print('Sign out complete - session cleared, SQLite data preserved');
+    print('✅ Sign out complete - session cleared, SQLite data preserved');
     notifyListeners();
   }
   
@@ -493,52 +641,20 @@ class AuthProvider extends ChangeNotifier {
     }
   }
   
-  // Update password for sign-up accounts
+  // Update password using UnifiedDataService
   Future<void> updatePassword(String newPassword) async {
     if (_userEmail == null) return;
     
     try {
-      final hashedPassword = _hashPassword(newPassword);
-      final isOnline = await _isConnected();
+      final success = await _unifiedDataService.updatePassword(_userEmail!, newPassword);
       
-      // Update SQLite first (offline) - this always works
-      await _updateSQLiteUserPassword(_userEmail!, hashedPassword);
-      
-      // Try to update Firebase (online)
-      if (isOnline) {
-        try {
-          final firebaseService = FirebaseService();
-          final userSnapshot = await firebaseService.database.ref('users').orderByChild('Email').equalTo(_userEmail!).get();
-          
-          if (userSnapshot.exists) {
-            final users = userSnapshot.value as Map;
-            String? userKey;
-            
-            users.forEach((key, value) {
-              final user = value as Map;
-              if (user['Email'] == _userEmail) {
-                userKey = key;
-              }
-            });
-            
-            if (userKey != null) {
-              await firebaseService.database.ref('users/$userKey').update({
-                'Password': hashedPassword,
-              });
-              print('Password updated in Firebase for: $_userEmail');
-            }
-          }
-        } catch (firebaseError) {
-          print('Firebase update failed, but SQLite updated successfully: $firebaseError');
-          // Don't throw error here - SQLite update succeeded
-        }
+      if (success) {
+        print('✅ Password updated successfully: $_userEmail');
       } else {
-        print('Offline mode: Password updated in SQLite only');
+        throw Exception('Failed to update password');
       }
-      
-      print('Password updated successfully (SQLite confirmed)');
     } catch (e) {
-      print('Error updating password: $e');
+      print('❌ Error updating password: $e');
       throw Exception('Failed to update password: $e');
     }
   }
@@ -662,102 +778,80 @@ class AuthProvider extends ChangeNotifier {
     }
   }
   
-  // Offline login method
+  // Unified login method using UnifiedDataService
   Future<bool> loginOffline(String email, String password) async {
     try {
-      final hashedPassword = _hashPassword(password);
-      final sqliteUser = await _sqliteService.getUserByEmail(email);
+      final userData = await _unifiedDataService.authenticateUser(email, password);
       
-      if (sqliteUser != null && sqliteUser['password'] == hashedPassword) {
+      if (userData != null) {
         // Update user session
         _isAuthenticated = true;
         _userEmail = email;
-        _userName = '${sqliteUser['first_name']} ${sqliteUser['last_name']}'.trim();
-        
-        // Update last seen
-        await _sqliteService.updateUser(sqliteUser['id'], {
-          'last_seen': DateTime.now().millisecondsSinceEpoch,
-          'is_online': 1,
-        });
+        _userName = '${userData['first_name']} ${userData['last_name']}'.trim();
         
         // Save session
         await _saveSession(email, _userName!);
         
         notifyListeners();
-        print('Offline login successful for: $email');
+        print('✅ Login successful for: $email');
         return true;
       }
       
       return false;
     } catch (e) {
-      print('Offline login failed: $e');
+      print('❌ Login failed: $e');
       return false;
     }
   }
   
-  // Offline signup method
+  // Unified signup method using UnifiedDataService
   Future<Map<String, dynamic>?> signupOffline({
     required String email,
     required String password,
     required String firstName,
     required String lastName,
+    String? phone,
     required String address,
     required String region,
+    required String province,
     required String city,
     required String barangay,
     required String zipCode,
   }) async {
     try {
-      // Check if user already exists
-      final existingUser = await _sqliteService.getUserByEmail(email);
-      if (existingUser != null) {
-        throw Exception('User already exists');
+      // Use unified data service for consistent data handling
+      final userData = await _unifiedDataService.createUser(
+        email: email,
+        password: password,
+        firstName: firstName,
+        lastName: lastName,
+        phone: phone,
+        street: address,
+        region: region,
+        province: province,
+        city: city,
+        barangay: barangay,
+        zipCode: zipCode,
+      );
+      
+      if (userData != null) {
+        // Update user session
+        _isAuthenticated = true;
+        _userEmail = email;
+        _userName = '$firstName $lastName';
+        
+        // Save session
+        await _saveSession(email, _userName!);
+        
+        notifyListeners();
+        print('✅ Signup successful for: $email');
+        
+        return userData;
       }
       
-      final hashedPassword = _hashPassword(password);
-      
-      // Create user in SQLite
-      final userId = await _sqliteService.insertUser({
-        'email': email,
-        'first_name': firstName,
-        'last_name': lastName,
-        'password': hashedPassword,
-        'address': address,
-        'region': region,
-        'city': city,
-        'barangay': barangay,
-        'zip_code': zipCode,
-        'is_online': 1,
-        'created_at': DateTime.now().millisecondsSinceEpoch,
-        'last_seen': DateTime.now().millisecondsSinceEpoch,
-        'is_synced': 0, // Will sync when online
-      });
-      
-      // Update user session
-      _isAuthenticated = true;
-      _userEmail = email;
-      _userName = '$firstName $lastName';
-      
-      // Save session
-      await _saveSession(email, _userName!);
-      
-      notifyListeners();
-      print('Offline signup successful for: $email');
-      
-      // Return user data
-      return {
-        'id': userId,
-        'email': email,
-        'first_name': firstName,
-        'last_name': lastName,
-        'address': address,
-        'region': region,
-        'city': city,
-        'barangay': barangay,
-        'zip_code': zipCode,
-      };
+      return null;
     } catch (e) {
-      print('Offline signup failed: $e');
+      print('❌ Signup failed: $e');
       return null;
     }
   }
@@ -858,11 +952,14 @@ class AuthProvider extends ChangeNotifier {
     }
   }
   
-  // Update user profile in both Firebase and SQLite
+  // Update user profile using UnifiedDataService
   Future<void> updateUserProfile({
     required String firstName,
     required String lastName,
     required String address,
+    required String phone,
+    required String zipCode,
+    required String province,
     required String region,
     required String city,
     required String barangay,
@@ -872,52 +969,31 @@ class AuthProvider extends ChangeNotifier {
     try {
       final fullName = '$firstName $lastName';
       
-      // Update SQLite first (offline-first approach)
-      final sqliteUser = await _sqliteService.getUserByEmail(_userEmail!);
-      if (sqliteUser != null) {
-        await _sqliteService.updateUser(sqliteUser['id'], {
-          'first_name': firstName,
-          'last_name': lastName,
-          'address': address,
-          'region': region,
-          'city': city,
-          'barangay': barangay,
-          'last_seen': DateTime.now().millisecondsSinceEpoch,
-        });
-        print('✅ User profile updated in SQLite: $_userEmail');
-      }
+      // Use unified data service for consistent data handling
+      final success = await _unifiedDataService.updateUserProfile(
+        email: _userEmail!,
+        firstName: firstName,
+        lastName: lastName,
+        street: address,
+        region: region,
+        city: city,
+        barangay: barangay,
+        zipCode: zipCode,
+        province: province,
+        phone: phone,
+      );
       
-      // Update Firebase (online)
-      if (await _isConnected()) {
-        try {
-          final firebaseService = FirebaseService();
-          await firebaseService.updateUserProfile(
-            userId: sqliteUser?['firebase_uid'] ?? _userEmail!,
-            data: {
-              'FirstName': firstName,
-              'LastName': lastName,
-              'Address': address,
-              'Region': region,
-              'City': city,
-              'Barangay': barangay,
-              'lastSeen': DateTime.now().millisecondsSinceEpoch,
-            },
-          );
-          print('✅ User profile updated in Firebase: $_userEmail');
-        } catch (firebaseError) {
-          print('❌ Firebase update failed: $firebaseError');
-          // Don't throw error - SQLite update succeeded
-        }
+      if (success) {
+        // Update local state
+        _userName = fullName;
+        notifyListeners();
+        print('✅ Profile updated: $_userEmail');
       } else {
-        print('❌ Offline mode: Profile updated in SQLite only');
+        throw Exception('Failed to update profile');
       }
-      
-      // Update local state
-      _userName = fullName;
-      notifyListeners();
       
     } catch (e) {
-      print('Error updating user profile: $e');
+      print('❌ Error updating user profile: $e');
       throw Exception('Failed to update profile: $e');
     }
   }

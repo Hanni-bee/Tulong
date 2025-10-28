@@ -8,8 +8,9 @@ class UserModel {
   final String status;
   final String? phone;
   final String? location;
-  // Address fields
+  // Address fields - using snake_case for consistency
   final String street;
+  final String region;
   final String barangay;
   final String city;
   final String province;
@@ -17,6 +18,9 @@ class UserModel {
   // Setup completion
   final bool addressSetupCompleted;
   final bool isGoogleAuth;
+  // Additional fields for consistency
+  final String accountStatus;
+  final int createdAt;
 
   const UserModel({
     required this.id,
@@ -29,12 +33,15 @@ class UserModel {
     this.phone,
     this.location,
     this.street = '',
+    this.region = '',
     this.barangay = '',
     this.city = '',
     this.province = '',
     this.zipCode = '',
     this.addressSetupCompleted = false,
     this.isGoogleAuth = false,
+    this.accountStatus = 'active',
+    this.createdAt = 0,
   });
 
   factory UserModel.fromMap(Map<String, dynamic> map) {
@@ -49,12 +56,15 @@ class UserModel {
       phone: map['phone'],
       location: map['location'],
       street: map['street'] ?? '',
+      region: map['region'] ?? '',
       barangay: map['barangay'] ?? '',
       city: map['city'] ?? '',
       province: map['province'] ?? '',
       zipCode: map['zipCode'] ?? '',
       addressSetupCompleted: map['addressSetupCompleted'] ?? false,
       isGoogleAuth: map['isGoogleAuth'] ?? false,
+      accountStatus: map['accountStatus'] ?? 'active',
+      createdAt: map['createdAt'] ?? 0,
     );
   }
 
@@ -70,12 +80,15 @@ class UserModel {
       'phone': phone,
       'location': location,
       'street': street,
+      'region': region,
       'barangay': barangay,
       'city': city,
       'province': province,
       'zipCode': zipCode,
       'addressSetupCompleted': addressSetupCompleted,
       'isGoogleAuth': isGoogleAuth,
+      'accountStatus': accountStatus,
+      'createdAt': createdAt,
     };
   }
 
@@ -90,12 +103,15 @@ class UserModel {
     String? phone,
     String? location,
     String? street,
+    String? region,
     String? barangay,
     String? city,
     String? province,
     String? zipCode,
     bool? addressSetupCompleted,
     bool? isGoogleAuth,
+    String? accountStatus,
+    int? createdAt,
   }) {
     return UserModel(
       id: id ?? this.id,
@@ -108,12 +124,15 @@ class UserModel {
       phone: phone ?? this.phone,
       location: location ?? this.location,
       street: street ?? this.street,
+      region: region ?? this.region,
       barangay: barangay ?? this.barangay,
       city: city ?? this.city,
       province: province ?? this.province,
       zipCode: zipCode ?? this.zipCode,
       addressSetupCompleted: addressSetupCompleted ?? this.addressSetupCompleted,
       isGoogleAuth: isGoogleAuth ?? this.isGoogleAuth,
+      accountStatus: accountStatus ?? this.accountStatus,
+      createdAt: createdAt ?? this.createdAt,
     );
   }
 

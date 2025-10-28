@@ -209,11 +209,11 @@ class _ModernPersonalChatScreenState extends State<ModernPersonalChatScreen> {
                     width: 80,
                     height: 80,
                     decoration: BoxDecoration(
-                      color: AppColors.primaryGradient,
+                      color: AppColors.chatBubble,
                       borderRadius: BorderRadius.circular(40),
                       boxShadow: [
                         BoxShadow(
-                          color: AppColors.primaryRed.withOpacity(0.3),
+                          color: AppColors.chatBubble.withOpacity(0.3),
                           blurRadius: 20,
                           offset: const Offset(0, 10),
                         ),

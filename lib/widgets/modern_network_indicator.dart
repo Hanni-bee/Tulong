@@ -115,7 +115,7 @@ class _ModernNetworkIndicatorState extends State<ModernNetworkIndicator>
       case ConnectivityResult.ethernet:
         return AppColors.info;
       case ConnectivityResult.bluetooth:
-        return AppColors.primaryRed;
+        return AppColors.statusActive;
       case ConnectivityResult.vpn:
         return AppColors.mediumGray;
       case ConnectivityResult.other:

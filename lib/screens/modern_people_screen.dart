@@ -196,7 +196,7 @@ class _ModernPeopleScreenState extends State<ModernPeopleScreen>
             ),
             child: const Icon(
               Icons.people,
-              color: AppColors.primaryRed,
+              color: AppColors.primary,
               size: 24,
             ),
           ),
@@ -227,7 +227,7 @@ class _ModernPeopleScreenState extends State<ModernPeopleScreen>
               onPressed: () => _showSettings(context),
               icon: const Icon(
                 Icons.settings,
-                color: AppColors.primaryRed,
+                color: AppColors.primary,
                 size: 24,
               ),
             ),
@@ -283,10 +283,10 @@ class _ModernPeopleScreenState extends State<ModernPeopleScreen>
                     duration: const Duration(milliseconds: 200),
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     decoration: BoxDecoration(
-                      color: isSelected ? AppColors.primaryRed : AppColors.white,
+                      color: isSelected ? AppColors.primary : AppColors.white,
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
-                        color: isSelected ? AppColors.primaryRed : AppColors.lightGray,
+                        color: isSelected ? AppColors.primary : AppColors.lightGray,
                         width: 1.5,
                       ),
                       boxShadow: [
@@ -505,7 +505,7 @@ class _ModernPeopleScreenState extends State<ModernPeopleScreen>
                 _buildActionButton(
                   icon: Icons.message,
                   label: 'Message',
-                  color: AppColors.primaryRed,
+                  color: AppColors.primary,
                   onTap: () {
                     Navigator.pop(context);
                     _navigateToPrivateChat(context, user);

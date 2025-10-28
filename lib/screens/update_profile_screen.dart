@@ -3,11 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../constants/app_colors.dart';
-import '../constants/app_typography.dart';
 import '../models/user_model.dart';
 import '../providers/auth_provider.dart';
-import '../services/firebase_service.dart';
 import '../services/location_service.dart';
+import '../utils/input_validator.dart';
 import '../widgets/custom_button.dart';
 import '../widgets/custom_text_field.dart';
 
@@ -39,8 +38,6 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
   List<Map<String, dynamic>> _provinces = [];
   List<Map<String, dynamic>> _cities = [];
   List<Map<String, dynamic>> _barangays = [];
-  
-  bool _isLoadingLocations = false;
 
   @override
   void initState() {
@@ -52,34 +49,71 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
   void _loadUserData() async {
     setState(() => _isLoadingUserData = true);
     
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    final user = authProvider.currentUserModel;
-    
-    if (user != null) {
-      // Pre-fill basic info
-      _nameController.text = user.name;
-      _emailController.text = user.email;
-      if (user.phone != null && user.phone!.isNotEmpty) {
-        _phoneController.text = user.phone!;
-      }
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
       
-      // Pre-fill address info
-      if (user.street.isNotEmpty) _addressController.text = user.street;
-      if (user.zipCode.isNotEmpty) _zipCodeController.text = user.zipCode;
+      // Force refresh user data from SQLite to ensure we have the latest data
+      await authProvider.loadSession();
+      final user = authProvider.currentUserModel;
+      
+      if (user != null) {
+        print('✅ Loading user data for Update Profile:');
+        print('  - Name: ${user.name}');
+        print('  - Email: ${user.email}');
+        print('  - Phone: ${user.phone}');
+        print('  - Street: ${user.street}');
+        print('  - City: ${user.city}');
+        print('  - Province: ${user.province}');
+        print('  - Barangay: ${user.barangay}');
+        print('  - ZipCode: ${user.zipCode}');
+        
+        // Pre-fill basic info - ALWAYS set the text, even if empty
+        _nameController.text = user.name.isNotEmpty ? user.name : '';
+        _emailController.text = user.email.isNotEmpty ? user.email : '';
+        _phoneController.text = (user.phone != null && user.phone!.isNotEmpty) ? user.phone! : '';
+        
+        // Pre-fill address info - ALWAYS set the text, even if empty
+        _addressController.text = user.street.isNotEmpty ? user.street : '';
+        _zipCodeController.text = user.zipCode.isNotEmpty ? user.zipCode : '';
+        
+        print('✅ Controllers set:');
+        print('  - Name Controller: "${_nameController.text}"');
+        print('  - Email Controller: "${_emailController.text}"');
+        print('  - Phone Controller: "${_phoneController.text}"');
+        print('  - Address Controller: "${_addressController.text}"');
+        print('  - ZipCode Controller: "${_zipCodeController.text}"');
+      
+      // Load and pre-select location data
+      await _loadAndPreSelectLocation(user);
+      } else {
+        print('❌ No user data found in SQLite');
+      }
+    } catch (e) {
+      print('❌ Error loading user data: $e');
+    }
+    
+    setState(() => _isLoadingUserData = false);
+  }
+
+  Future<void> _loadAndPreSelectLocation(UserModel user) async {
+    try {
+      print('🌍 Loading and pre-selecting location data...');
       
       // Wait for regions to load first
       while (_regions.isEmpty) {
         await Future.delayed(const Duration(milliseconds: 100));
       }
+      print('✅ Regions loaded: ${_regions.length}');
       
-      // Pre-select Region
+      // Pre-select Region based on province
       if (user.province.isNotEmpty) {
-        // Find region code based on province name
+        print('🔍 Looking for region for province: ${user.province}');
         await _findAndSelectRegion(user.province);
       }
       
       // Pre-select Province
-      if (user.province.isNotEmpty) {
+      if (user.province.isNotEmpty && _selectedRegion != null) {
+        print('🔍 Looking for province: ${user.province}');
         // Wait for provinces to load
         while (_provinces.isEmpty) {
           await Future.delayed(const Duration(milliseconds: 100));
@@ -87,53 +121,60 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
         
         // Find province in the list
         final province = _provinces.firstWhere(
-          (p) => p['name'] == user.province,
+          (p) => p['province_name'] == user.province || p['name'] == user.province,
           orElse: () => {},
         );
         
         if (province.isNotEmpty) {
-          setState(() => _selectedProvince = province['code']);
-          await _loadCities(province['code']);
+          setState(() => _selectedProvince = province['province_code'] ?? province['code']);
+          print('✅ Province selected: ${province['province_name'] ?? province['name']}');
+          await _loadCities(province['province_code'] ?? province['code']);
         }
       }
       
       // Pre-select City
-      if (user.city.isNotEmpty) {
+      if (user.city.isNotEmpty && _selectedProvince != null) {
+        print('🔍 Looking for city: ${user.city}');
         // Wait for cities to load
         while (_cities.isEmpty) {
           await Future.delayed(const Duration(milliseconds: 100));
         }
         
         final city = _cities.firstWhere(
-          (c) => c['name'] == user.city,
+          (c) => c['city_name'] == user.city || c['name'] == user.city,
           orElse: () => {},
         );
         
         if (city.isNotEmpty) {
-          setState(() => _selectedCity = city['code']);
-          await _loadBarangays(city['code']);
+          setState(() => _selectedCity = city['city_code'] ?? city['code']);
+          print('✅ City selected: ${city['city_name'] ?? city['name']}');
+          await _loadBarangays(city['city_code'] ?? city['code']);
         }
       }
       
       // Pre-select Barangay
-      if (user.barangay.isNotEmpty) {
+      if (user.barangay.isNotEmpty && _selectedCity != null) {
+        print('🔍 Looking for barangay: ${user.barangay}');
         // Wait for barangays to load
         while (_barangays.isEmpty) {
           await Future.delayed(const Duration(milliseconds: 100));
         }
         
         final barangay = _barangays.firstWhere(
-          (b) => b['name'] == user.barangay,
+          (b) => b['brgy_name'] == user.barangay || b['name'] == user.barangay,
           orElse: () => {},
         );
         
         if (barangay.isNotEmpty) {
-          setState(() => _selectedBarangay = barangay['code']);
+          setState(() => _selectedBarangay = barangay['brgy_code'] ?? barangay['code']);
+          print('✅ Barangay selected: ${barangay['brgy_name'] ?? barangay['name']}');
         }
       }
+      
+      print('✅ Location pre-selection completed');
+    } catch (e) {
+      print('❌ Error in location pre-selection: $e');
     }
-    
-    setState(() => _isLoadingUserData = false);
   }
 
   Future<void> _findAndSelectRegion(String provinceName) async {
@@ -175,10 +216,6 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
   }
 
   Future<void> _loadRegions() async {
-    setState(() {
-      _isLoadingLocations = true;
-    });
-    
     try {
       final regions = await LocationService.getRegions();
       if (regions.isEmpty) {
@@ -189,17 +226,9 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
     } catch (e) {
       _regions = LocationService.getFallbackRegions();
     }
-    
-    setState(() {
-      _isLoadingLocations = false;
-    });
   }
 
   Future<void> _loadProvinces(String regionCode) async {
-    setState(() {
-      _isLoadingLocations = true;
-    });
-    
     try {
       _provinces = await LocationService.getProvinces(regionCode);
       if (_provinces.isEmpty) {
@@ -208,31 +237,17 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
     } catch (e) {
       _provinces = LocationService.getFallbackProvinces(regionCode);
     }
-    
-    setState(() {
-      _isLoadingLocations = false;
-    });
   }
 
   Future<void> _loadCities(String provinceCode) async {
-    setState(() {
-      _isLoadingLocations = true;
-    });
     try {
       _cities = await LocationService.getCities(provinceCode);
     } catch (e) {
       _cities = LocationService.getFallbackCities(provinceCode);
     }
-    setState(() {
-      _isLoadingLocations = false;
-    });
   }
 
   Future<void> _loadBarangays(String cityCode) async {
-    setState(() {
-      _isLoadingLocations = true;
-    });
-    
     try {
       _barangays = await LocationService.getBarangays(cityCode);
       if (_barangays.isEmpty) {
@@ -241,10 +256,6 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
     } catch (e) {
       _barangays = LocationService.getFallbackBarangays(cityCode);
     }
-    
-    setState(() {
-      _isLoadingLocations = false;
-    });
   }
 
   Future<void> _updateProfile() async {
@@ -254,7 +265,6 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
 
     try {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      final firebaseService = FirebaseService();
       
       // Find selected names from codes
       final regionName = _regions.firstWhere(
@@ -277,6 +287,20 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
         orElse: () => {'brgy_name': _selectedBarangay ?? ''},
       )['brgy_name'] ?? _selectedBarangay ?? '';
       
+      // Use unified data service for profile update
+      await authProvider.updateUserProfile(
+        firstName: _nameController.text.trim().split(' ').first,
+        lastName: _nameController.text.trim().split(' ').skip(1).join(' '),
+        address: _addressController.text.trim(),
+        phone: _phoneController.text.trim(),
+        zipCode: _zipCodeController.text.trim(),
+        province: provinceName,
+        region: regionName,
+        city: cityName,
+        barangay: barangayName,
+      );
+      
+      // Update local user model
       final updatedUser = authProvider.currentUserModel!.copyWith(
         name: _nameController.text.trim(),
         email: _emailController.text.trim(),
@@ -287,8 +311,6 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
         province: provinceName,
         zipCode: _zipCodeController.text.trim(),
       );
-
-      await firebaseService.updateUserModelProfile(updatedUser);
       authProvider.updateUser(updatedUser);
 
       HapticFeedback.mediumImpact();
@@ -415,7 +437,7 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
         ),
         body: const Center(
           child: CircularProgressIndicator(
-            color: AppColors.primaryRed,
+            color: AppColors.primary,
           ),
         ),
       );
@@ -468,12 +490,12 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: AppColors.primaryRed.withOpacity(0.1),
+                          color: AppColors.primary.withOpacity(0.1),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: const Icon(
                           Icons.person,
-                          color: AppColors.primaryRed,
+                          color: AppColors.primary,
                           size: 24,
                         ),
                       ),
@@ -505,12 +527,13 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
                 ),
                 const SizedBox(height: 16),
 
-                // Name
+                // Name (Read-only)
                 CustomTextField(
                   controller: _nameController,
                   label: 'Full Name',
-                  hint: 'Enter your full name',
+                  hint: 'Your full name',
                   prefixIcon: Icons.person_outline,
+                  enabled: false, // Make it read-only
                   validator: (value) {
                     if (value == null || value.trim().isEmpty) {
                       return 'Please enter your full name';
@@ -549,6 +572,13 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
                   hint: '+63 912 345 6789',
                   prefixIcon: Icons.phone_outlined,
                   keyboardType: TextInputType.phone,
+                  validator: (value) {
+                    return InputValidator.validatePhilippinePhoneNumber(value);
+                  },
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'[0-9+\s]')),
+                    LengthLimitingTextInputFormatter(17), // +63 912 345 6789 = 17 chars max
+                  ],
                 ),
 
                 const SizedBox(height: 32),
@@ -730,7 +760,7 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
                           hintStyle: TextStyle(
                             color: AppColors.textSecondary.withOpacity(0.6),
                           ),
-                          prefixIcon: const Icon(Icons.pin_drop, color: AppColors.primaryRed),
+                          prefixIcon: const Icon(Icons.pin_drop, color: AppColors.primary),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
                             borderSide: BorderSide.none,

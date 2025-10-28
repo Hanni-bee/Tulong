@@ -1,12 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:provider/provider.dart';
 import '../constants/app_colors.dart';
-import '../widgets/modern_floating_layout.dart';
 import '../widgets/enhanced_text_styles.dart';
 import '../widgets/enhanced_shadows.dart' as shadows;
-import '../services/hardware_service.dart';
-import '../widgets/hardware_status_widgets.dart';
 
 class WalkieTalkieScreen extends StatefulWidget {
   const WalkieTalkieScreen({super.key});
@@ -22,7 +18,6 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
   late AnimationController _voiceLevelController;
   late Animation<double> _pulseAnimation;
   late Animation<double> _recordingAnimation;
-  late Animation<double> _voiceLevelAnimation;
   
   bool _isTransmitting = false;
   bool _isListening = false;
@@ -111,14 +106,6 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
       curve: Curves.easeInOut,
     ));
     
-    _voiceLevelAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _voiceLevelController,
-      curve: Curves.easeInOut,
-    ));
-    
     _pulseController.repeat(reverse: true);
     _voiceLevelController.repeat(reverse: true);
   }
@@ -184,7 +171,7 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
             height: 80,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
             decoration: BoxDecoration(
-              color: AppColors.white,
+              color: AppColors.chatBackground,
               borderRadius: BorderRadius.circular(24),
               boxShadow: [
                 BoxShadow(
@@ -212,7 +199,7 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                     ),
                     child: const Icon(
                       Icons.radio,
-                      color: AppColors.primaryRed,
+                      color: const Color(0xFFE53935),
                       size: 24,
                     ),
                   ),
@@ -223,7 +210,7 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                     width: 48,
                     height: 48,
                     decoration: BoxDecoration(
-                      color: AppColors.primaryRed.withOpacity(0.1),
+                      color: const Color(0xFFE53935).withOpacity(0.1),
                       borderRadius: BorderRadius.circular(16),
                       boxShadow: [
                         BoxShadow(
@@ -262,7 +249,7 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
-                            color: AppColors.success,
+                            color: const Color(0xFF27AE60),
                           ),
                         ),
                       ],
@@ -286,23 +273,16 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
               Container(
                 height: 220, // Optimized height to fit all 4 users
                   margin: const EdgeInsets.fromLTRB(16, 8, 16, 6),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        AppColors.white,
-                        AppColors.white.withOpacity(0.95),
-                      ],
-                    ),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: AppColors.primaryRed.withOpacity(0.15),
-                      width: 1.5,
-                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: const Color(0xFFE53935).withOpacity(0.15),
+                        width: 1.5,
+                      ),
                     boxShadow: [
                       BoxShadow(
-                        color: AppColors.primaryRed.withOpacity(0.08),
+                        color: const Color(0xFFE53935).withOpacity(0.08),
                         blurRadius: 20,
                         spreadRadius: 2,
                         offset: const Offset(0, 4),
@@ -327,14 +307,7 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                         Container(
                           padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [
-                                AppColors.primaryRed.withOpacity(0.08),
-                                AppColors.primaryRed.withOpacity(0.03),
-                              ],
-                            ),
+                        color: const Color(0xFFE53935).withOpacity(0.08),
                             borderRadius: const BorderRadius.only(
                               topLeft: Radius.circular(20),
                               topRight: Radius.circular(20),
@@ -354,18 +327,11 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                                     width: 26,
                                     height: 26,
                                     decoration: BoxDecoration(
-                                      gradient: const LinearGradient(
-                                        begin: Alignment.topLeft,
-                                        end: Alignment.bottomRight,
-                                        colors: [
-                                          Color(0xFFE53935),
-                                          Color(0xFFD32F2F),
-                                        ],
-                                      ),
+                                      color: const Color(0xFFE53935),
                                       borderRadius: BorderRadius.circular(8),
                                       boxShadow: [
                                         BoxShadow(
-                                          color: AppColors.primaryRed.withOpacity(0.3),
+                                          color: const Color(0xFFE53935).withOpacity(0.3),
                                           blurRadius: 6,
                                           offset: const Offset(0, 2),
                                         ),
@@ -406,11 +372,11 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                                     width: 8,
                                     height: 8,
                                     decoration: BoxDecoration(
-                                      color: AppColors.success,
+                                      color: const Color(0xFF27AE60),
                                       shape: BoxShape.circle,
                                       boxShadow: [
                                         BoxShadow(
-                                          color: AppColors.success.withOpacity(0.5),
+                                          color: const Color(0xFF27AE60).withOpacity(0.5),
                                           blurRadius: 6,
                                           spreadRadius: 1,
                                         ),
@@ -435,41 +401,20 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                                 margin: const EdgeInsets.only(bottom: 6),
                                 padding: const EdgeInsets.all(8),
                                 decoration: BoxDecoration(
-                                  gradient: user['isSpeaking'] 
-                                      ? LinearGradient(
-                                          begin: Alignment.topLeft,
-                                          end: Alignment.bottomRight,
-                                          colors: [
-                                            AppColors.success.withOpacity(0.15),
-                                            AppColors.success.withOpacity(0.08),
-                                          ],
-                                        )
+                                  color: user['isSpeaking'] 
+                                      ? const Color(0xFF27AE60).withOpacity(0.15)
                                       : user['isActive'] 
-                                          ? LinearGradient(
-                                              begin: Alignment.topLeft,
-                                              end: Alignment.bottomRight,
-                                              colors: [
-                                                AppColors.white,
-                                                AppColors.white.withOpacity(0.98),
-                                              ],
-                                            )
-                                          : LinearGradient(
-                                              begin: Alignment.topLeft,
-                                              end: Alignment.bottomRight,
-                                              colors: [
-                                                AppColors.mediumGray.withOpacity(0.1),
-                                                AppColors.mediumGray.withOpacity(0.05),
-                                              ],
-                                            ),
+                                          ? AppColors.white
+                                          : const Color(0xFF7F8C8D).withOpacity(0.1),
                                   borderRadius: BorderRadius.circular(16),
                                   border: Border.all(
                                     color: user['isSpeaking'] 
-                                        ? AppColors.success
+                                        ? const Color(0xFF27AE60)
                                         : user['isMuted']
-                                            ? AppColors.error
+                                            ? const Color(0xFFE53935)
                                             : user['isActive']
-                                                ? AppColors.primaryRed.withOpacity(0.2)
-                                                : AppColors.mediumGray.withOpacity(0.5),
+                                                ? const Color(0xFFE53935).withOpacity(0.2)
+                                                : const Color(0xFF7F8C8D).withOpacity(0.5),
                                     width: user['isSpeaking'] || user['isMuted'] ? 2 : 1,
                                   ),
                                   boxShadow: [
@@ -481,14 +426,14 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                                     ),
                                     if (user['isSpeaking'])
                                       BoxShadow(
-                                        color: AppColors.success.withOpacity(0.3),
+                                        color: const Color(0xFF27AE60).withOpacity(0.3),
                                         blurRadius: 15,
                                         spreadRadius: 2,
                                         offset: const Offset(0, 0),
                                       ),
                                     if (user['isMuted'])
                                       BoxShadow(
-                                        color: AppColors.error.withOpacity(0.2),
+                                        color: const Color(0xFFE53935).withOpacity(0.2),
                                         blurRadius: 12,
                                         spreadRadius: 1,
                                         offset: const Offset(0, 0),
@@ -504,36 +449,22 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                                           width: 36,
                                           height: 36,
                                           decoration: BoxDecoration(
-                                            gradient: user['isActive'] 
-                                                ? const LinearGradient(
-                                                    begin: Alignment.topLeft,
-                                                    end: Alignment.bottomRight,
-                                                    colors: [
-                                                      Color(0xFFE53935),
-                                                      Color(0xFFD32F2F),
-                                                    ],
-                                                  )
-                                                : LinearGradient(
-                                                    begin: Alignment.topLeft,
-                                                    end: Alignment.bottomRight,
-                                                    colors: [
-                                                      AppColors.mediumGray,
-                                                      AppColors.mediumGray.withOpacity(0.8),
-                                                    ],
-                                                  ),
+                                            color: user['isActive'] 
+                                                ? const Color(0xFFE53935)
+                                                : const Color(0xFF7F8C8D),
                                             shape: BoxShape.circle,
                                             border: Border.all(
                                               color: user['isSpeaking'] 
-                                                  ? AppColors.success
+                                                  ? const Color(0xFF27AE60)
                                                   : user['isMuted']
-                                                      ? AppColors.error
+                                                      ? const Color(0xFFE53935)
                                                       : AppColors.white,
                                               width: 2,
                                             ),
                                             boxShadow: [
                                               BoxShadow(
                                                 color: user['isActive']
-                                                    ? AppColors.primaryRed.withOpacity(0.3)
+                                                    ? const Color(0xFFE53935).withOpacity(0.3)
                                                     : Colors.black.withOpacity(0.1),
                                                 blurRadius: 8,
                                                 spreadRadius: 1,
@@ -561,10 +492,10 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                                             height: 10,
                                             decoration: BoxDecoration(
                                               color: user['isSpeaking'] 
-                                                  ? AppColors.success
+                                                  ? const Color(0xFF27AE60)
                                                   : user['isMuted']
-                                                      ? AppColors.error
-                                                      : AppColors.online,
+                                                      ? const Color(0xFFE53935)
+                                                      : const Color(0xFF27AE60),
                                               shape: BoxShape.circle,
                                               border: Border.all(
                                                 color: AppColors.white,
@@ -573,10 +504,10 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                                               boxShadow: [
                                                 BoxShadow(
                                                   color: (user['isSpeaking'] 
-                                                      ? AppColors.success
+                                                      ? const Color(0xFF27AE60)
                                                       : user['isMuted']
-                                                          ? AppColors.error
-                                                          : AppColors.online).withOpacity(0.6),
+                                                          ? const Color(0xFFE53935)
+                                                          : const Color(0xFF27AE60)).withOpacity(0.6),
                                                   blurRadius: 4,
                                                   spreadRadius: 1,
                                                 ),
@@ -617,11 +548,11 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                                             style: TextStyle(
                                               fontSize: 10,
                                               fontWeight: FontWeight.w500,
-                                              color: user['isSpeaking'] 
-                                                  ? AppColors.success
-                                                  : user['isMuted']
-                                                      ? AppColors.error
-                                                      : AppColors.textSecondary,
+                                                  color: user['isSpeaking'] 
+                                                      ? const Color(0xFF27AE60)
+                                                      : user['isMuted']
+                                                          ? const Color(0xFFE53935)
+                                                          : AppColors.textSecondary,
                                             ),
                                           ),
                                         ],
@@ -634,17 +565,17 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                                       height: 28,
                                       decoration: BoxDecoration(
                                         color: user['isSpeaking'] 
-                                            ? AppColors.success.withOpacity(0.1)
+                                            ? const Color(0xFF27AE60).withOpacity(0.1)
                                             : user['isMuted']
-                                                ? AppColors.error.withOpacity(0.1)
-                                                : AppColors.primaryRed.withOpacity(0.1),
+                                                ? const Color(0xFFE53935).withOpacity(0.1)
+                                                : const Color(0xFFE53935).withOpacity(0.1),
                                         shape: BoxShape.circle,
                                         border: Border.all(
                                           color: user['isSpeaking'] 
-                                              ? AppColors.success
+                                              ? const Color(0xFF27AE60)
                                               : user['isMuted']
-                                                  ? AppColors.error
-                                                  : AppColors.primaryRed,
+                                                  ? const Color(0xFFE53935)
+                                                  : const Color(0xFFE53935),
                                           width: 1.5,
                                         ),
                                       ),
@@ -655,10 +586,10 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                                                 ? Icons.mic_off
                                                 : Icons.mic,
                                         color: user['isSpeaking'] 
-                                            ? AppColors.success
+                                            ? const Color(0xFF27AE60)
                                             : user['isMuted']
-                                                ? AppColors.error
-                                                  : AppColors.primaryRed,
+                                                ? const Color(0xFFE53935)
+                                                  : const Color(0xFFE53935),
                                         size: 14,
                                       ),
                                     ),
@@ -673,44 +604,36 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                   ),
                 ),
               
-              // Walkie-talkie controls - Polished design
+              // Walkie-talkie controls - Fixed height and no gradients
               Container(
-                height: 300, // Optimized height
                 margin: const EdgeInsets.fromLTRB(16, 6, 16, 12),
                 padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        AppColors.white,
-                        AppColors.white.withOpacity(0.96),
-                      ],
-                    ),
-                    borderRadius: BorderRadius.circular(24),
-                    border: Border.all(
-                      color: AppColors.primaryRed.withOpacity(0.15),
-                      width: 1.5,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.primaryRed.withOpacity(0.1),
-                        blurRadius: 24,
-                        spreadRadius: 2,
-                        offset: const Offset(0, 6),
-                      ),
-                      BoxShadow(
-                        color: Colors.white.withOpacity(0.8),
-                        blurRadius: 18,
-                        offset: const Offset(-3, -3),
-                      ),
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
-                        blurRadius: 10,
-                        offset: const Offset(3, 3),
-                      ),
-                    ],
+                decoration: BoxDecoration(
+                  color: AppColors.white,
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(
+                    color: const Color(0xFFE53935).withOpacity(0.15),
+                    width: 1.5,
                   ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFFE53935).withOpacity(0.1),
+                      blurRadius: 24,
+                      spreadRadius: 2,
+                      offset: const Offset(0, 6),
+                    ),
+                    BoxShadow(
+                      color: Colors.white.withOpacity(0.8),
+                      blurRadius: 18,
+                      offset: const Offset(-3, -3),
+                    ),
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      blurRadius: 10,
+                      offset: const Offset(3, 3),
+                    ),
+                  ],
+                ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -733,7 +656,7 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                             borderRadius: BorderRadius.circular(6),
                             boxShadow: [
                               BoxShadow(
-                                color: AppColors.primaryRed.withOpacity(0.3),
+                                color: const Color(0xFFE53935).withOpacity(0.3),
                                 blurRadius: 6,
                                 offset: const Offset(0, 2),
                               ),
@@ -782,21 +705,7 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                                 width: 95,
                                 height: 95,
                                 decoration: BoxDecoration(
-                                  gradient: _isTransmitting 
-                                      ? const RadialGradient(
-                                          colors: [
-                                            Color(0xFFFF5252),
-                                            Color(0xFFE53935),
-                                          ],
-                                          center: Alignment(-0.3, -0.3),
-                                        )
-                                      : const RadialGradient(
-                                          colors: [
-                                            Color(0xFFE53935),
-                                            Color(0xFFD32F2F),
-                                          ],
-                                          center: Alignment(-0.3, -0.3),
-                                        ),
+                                  color: const Color(0xFFE53935),
                                   shape: BoxShape.circle,
                                   border: Border.all(
                                     color: Colors.white.withOpacity(0.2),
@@ -804,13 +713,13 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                                   ),
                                   boxShadow: [
                                     BoxShadow(
-                                      color: (_isTransmitting ? AppColors.error : AppColors.primaryRed).withOpacity(0.5),
+                                      color: const Color(0xFFE53935).withOpacity(0.5),
                                       blurRadius: 20,
                                       spreadRadius: 5,
                                       offset: const Offset(0, 0),
                                     ),
                                     BoxShadow(
-                                      color: (_isTransmitting ? AppColors.error : AppColors.primaryRed).withOpacity(0.3),
+                                      color: const Color(0xFFE53935).withOpacity(0.3),
                                       blurRadius: 30,
                                       spreadRadius: 8,
                                       offset: const Offset(0, 6),
@@ -843,7 +752,7 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                                           ),
                                           child: const Icon(
                                             Icons.radio_button_checked,
-                                            color: AppColors.error,
+                                            color: const Color(0xFFE53935),
                                             size: 12,
                                           ),
                                         ),
@@ -873,23 +782,9 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                             width: 56,
                             height: 56,
                             decoration: BoxDecoration(
-                              gradient: _isListening 
-                                  ? const LinearGradient(
-                                      begin: Alignment.topLeft,
-                                      end: Alignment.bottomRight,
-                                      colors: [
-                                        Color(0xFF4CAF50),
-                                        Color(0xFF388E3C),
-                                      ],
-                                    )
-                                  : LinearGradient(
-                                      begin: Alignment.topLeft,
-                                      end: Alignment.bottomRight,
-                                      colors: [
-                                        AppColors.mediumGray,
-                                        AppColors.mediumGray.withOpacity(0.9),
-                                      ],
-                                    ),
+                              color: _isListening 
+                                  ? const Color(0xFF27AE60)
+                                  : const Color(0xFF7F8C8D),
                               shape: BoxShape.circle,
                               border: Border.all(
                                 color: Colors.white.withOpacity(0.3),
@@ -897,7 +792,7 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                               ),
                               boxShadow: [
                                 BoxShadow(
-                                  color: (_isListening ? AppColors.online : AppColors.mediumGray).withOpacity(0.4),
+                                  color: (_isListening ? const Color(0xFF27AE60) : const Color(0xFF7F8C8D)).withOpacity(0.4),
                                   blurRadius: 15,
                                   spreadRadius: 2,
                                   offset: const Offset(0, 4),
@@ -945,14 +840,7 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                             width: 56,
                             height: 56,
                             decoration: BoxDecoration(
-                              gradient: const LinearGradient(
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                                colors: [
-                                  Color(0xFFFF5252),
-                                  Color(0xFFE53935),
-                                ],
-                              ),
+                              color: const Color(0xFFE53935),
                               shape: BoxShape.circle,
                               border: Border.all(
                                 color: Colors.white.withOpacity(0.3),
@@ -960,7 +848,7 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                               ),
                               boxShadow: [
                                 BoxShadow(
-                                  color: AppColors.error.withOpacity(0.5),
+                                  color: const Color(0xFFE53935).withOpacity(0.5),
                                   blurRadius: 15,
                                   spreadRadius: 2,
                                   offset: const Offset(0, 4),
@@ -991,7 +879,7 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                         Text(
                           'Listen',
                           style: TextStyle(
-                            color: _isListening ? AppColors.online : AppColors.textSecondary,
+                            color: _isListening ? const Color(0xFF27AE60) : AppColors.textSecondary,
                             fontSize: 11,
                             fontWeight: FontWeight.w600,
                           ),
@@ -999,7 +887,7 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                         const Text(
                           'Emergency',
                           style: TextStyle(
-                            color: AppColors.error,
+                            color: Color(0xFFE53935),
                             fontSize: 11,
                             fontWeight: FontWeight.w600,
                           ),
@@ -1014,14 +902,10 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
                         decoration: BoxDecoration(
-                          color: _isTransmitting 
-                              ? AppColors.error.withOpacity(0.1)
-                              : AppColors.primaryRed.withOpacity(0.1),
+                          color: const Color(0xFFE53935).withOpacity(0.1),
                           borderRadius: BorderRadius.circular(16),
                           border: Border.all(
-                            color: _isTransmitting 
-                                ? AppColors.error.withOpacity(0.3)
-                                : AppColors.primaryRed.withOpacity(0.3),
+                            color: const Color(0xFFE53935).withOpacity(0.3),
                             width: 1.5,
                           ),
                         ),
@@ -1030,7 +914,7 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                           children: [
                             Icon(
                               _isTransmitting ? Icons.radio_button_checked : Icons.mic,
-                              color: _isTransmitting ? AppColors.error : AppColors.primaryRed,
+                              color: const Color(0xFFE53935),
                               size: 15,
                             ),
                             const SizedBox(width: 7),
@@ -1038,8 +922,8 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                               _isTransmitting 
                                   ? 'TRANSMITTING...'
                                   : 'Hold to transmit',
-                              style: TextStyle(
-                                color: _isTransmitting ? AppColors.error : AppColors.primaryRed,
+                              style: const TextStyle(
+                                color: Color(0xFFE53935),
                                 fontSize: 13,
                                 fontWeight: FontWeight.w700,
                                 letterSpacing: 0.5,
@@ -1056,10 +940,10 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                         margin: const EdgeInsets.only(top: 6),
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                         decoration: BoxDecoration(
-                          color: AppColors.error.withOpacity(0.05),
+                          color: const Color(0xFFE53935).withOpacity(0.05),
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                            color: AppColors.error.withOpacity(0.2),
+                            color: const Color(0xFFE53935).withOpacity(0.2),
                             width: 1,
                           ),
                         ),
@@ -1071,7 +955,7 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                               width: 5,
                               height: 5,
                               decoration: const BoxDecoration(
-                                color: AppColors.error,
+                                color: Color(0xFFE53935),
                                 shape: BoxShape.circle,
                               ),
                             ),
@@ -1079,7 +963,7 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                             Text(
                               '${_formatDuration(_transmissionTime)}',
                               style: const TextStyle(
-                                color: AppColors.error,
+                                color: Color(0xFFE53935),
                                 fontSize: 11,
                                 fontWeight: FontWeight.w600,
                               ),
@@ -1102,7 +986,7 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
       builder: (context) => AlertDialog(
         title: const Row(
           children: [
-            Icon(Icons.emergency, color: AppColors.error),
+            Icon(Icons.emergency, color: Color(0xFFE53935)),
             SizedBox(width: 8),
             Text('Emergency Alert'),
           ],
@@ -1121,12 +1005,12 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
                   content: Text('Emergency alert sent to all connected users'),
-                  backgroundColor: AppColors.error,
+                  backgroundColor: Color(0xFFE53935),
                 ),
               );
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.error,
+              backgroundColor: Color(0xFFE53935),
               foregroundColor: AppColors.white,
             ),
             child: const Text('Send Alert'),
@@ -1136,39 +1020,6 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
     );
   }
 
-  Widget _buildNeumorphicButton({
-    required IconData icon,
-    required VoidCallback onPressed,
-  }) {
-    return Container(
-      width: 48,
-      height: 48,
-      decoration: BoxDecoration(
-        color: AppColors.backgroundLight,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 8,
-            offset: const Offset(4, 4),
-          ),
-          BoxShadow(
-            color: Colors.white.withOpacity(0.8),
-            blurRadius: 8,
-            offset: const Offset(-4, -4),
-          ),
-        ],
-      ),
-      child: IconButton(
-        icon: Icon(
-          icon,
-          color: AppColors.primaryRed,
-          size: 20,
-        ),
-        onPressed: onPressed,
-      ),
-    );
-  }
 
   Widget _buildNeumorphicActionButton({
     required IconData icon,
@@ -1231,7 +1082,7 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                   _buildMenuOption(
                     icon: Icons.volume_up,
                     title: 'Audio Settings',
-                    color: AppColors.primaryRed,
+                    color: const Color(0xFFE53935),
                     onTap: () {
                       Navigator.pop(context);
                       _showAudioSettings();
@@ -1334,7 +1185,7 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('Audio settings coming soon!'),
-        backgroundColor: AppColors.primaryRed,
+        backgroundColor: const Color(0xFFE53935),
       ),
     );
   }
@@ -1344,7 +1195,7 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('Notification settings coming soon!'),
-        backgroundColor: AppColors.primaryRed,
+        backgroundColor: const Color(0xFFE53935),
       ),
     );
   }
@@ -1370,116 +1221,5 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
     );
   }
 
-  // Helper methods for enhanced functionality
-  Color _getConnectionQualityColor(String quality) {
-    switch (quality.toLowerCase()) {
-      case 'excellent':
-        return AppColors.success;
-      case 'good':
-        return AppColors.online;
-      case 'fair':
-        return AppColors.warning;
-      case 'poor':
-        return AppColors.error;
-      default:
-        return AppColors.mediumGray;
-    }
-  }
 
-  Widget _buildQuickActionButton({
-    required IconData icon,
-    required String label,
-    required VoidCallback onTap,
-    required Color color,
-  }) {
-    return GestureDetector(
-      onTap: () {
-        HapticFeedback.lightImpact();
-        onTap();
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: color.withOpacity(0.3),
-            width: 1,
-          ),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              icon,
-              color: color,
-              size: 14,
-            ),
-            const SizedBox(width: 5),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: color,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _unmuteAllUsers() {
-    setState(() {
-      for (var user in _connectedUsers) {
-        user['isMuted'] = false;
-      }
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('All users unmuted'),
-        backgroundColor: AppColors.success,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      ),
-    );
-  }
-
-  void _muteAllUsers() {
-    setState(() {
-      for (var user in _connectedUsers) {
-        user['isMuted'] = true;
-      }
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('All users muted'),
-        backgroundColor: AppColors.warning,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      ),
-    );
-  }
-
-  void _refreshUsers() {
-    HapticFeedback.mediumImpact();
-    // Simulate refreshing user list
-    setState(() {
-      // Update last seen times
-      for (var user in _connectedUsers) {
-        if (user['isActive']) {
-          user['lastSeen'] = DateTime.now();
-        }
-      }
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('User list refreshed'),
-        backgroundColor: AppColors.primaryRed,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      ),
-    );
-  }
 }

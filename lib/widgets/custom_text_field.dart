@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../constants/app_colors.dart';
 
 class CustomTextField extends StatelessWidget {
@@ -13,6 +14,7 @@ class CustomTextField extends StatelessWidget {
   final void Function(String)? onChanged;
   final int? maxLines;
   final bool enabled;
+  final List<TextInputFormatter>? inputFormatters;
 
   const CustomTextField({
     super.key,
@@ -27,6 +29,7 @@ class CustomTextField extends StatelessWidget {
     this.onChanged,
     this.maxLines = 1,
     this.enabled = true,
+    this.inputFormatters,
   });
 
   @override
@@ -55,6 +58,7 @@ class CustomTextField extends StatelessWidget {
         onChanged: onChanged,
         maxLines: maxLines,
         enabled: enabled,
+        inputFormatters: inputFormatters,
         style: const TextStyle(
           color: AppColors.textPrimary,
           fontSize: 17,
@@ -65,7 +69,7 @@ class CustomTextField extends StatelessWidget {
           labelText: label,
           hintText: hint,
           prefixIcon: prefixIcon != null
-              ? Icon(prefixIcon, color: AppColors.primaryRed)
+              ? Icon(prefixIcon, color: AppColors.primary)
               : null,
           suffixIcon: suffixIcon,
           border: OutlineInputBorder(
@@ -78,7 +82,7 @@ class CustomTextField extends StatelessWidget {
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: AppColors.primaryRed, width: 2),
+            borderSide: const BorderSide(color: AppColors.primary, width: 2),
           ),
           errorBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
@@ -92,7 +96,7 @@ class CustomTextField extends StatelessWidget {
           fillColor: Colors.transparent,
           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
           labelStyle: const TextStyle(
-            color: AppColors.primaryRed,
+            color: AppColors.primary,
             fontSize: 17,
             fontWeight: FontWeight.w700,
             letterSpacing: 0.3,

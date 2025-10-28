@@ -6,6 +6,41 @@ class InputValidator {
   static const int _maxEmailLength = 254;
   static const int _maxAddressLength = 200;
 
+  // Philippine phone number validation
+  static String? validatePhilippinePhoneNumber(String? phoneNumber) {
+    if (phoneNumber == null || phoneNumber.isEmpty) {
+      return 'Phone number is required';
+    }
+
+    // Remove all spaces and special characters except + and digits
+    String cleanedNumber = phoneNumber.replaceAll(RegExp(r'[^\d+]'), '');
+    
+    // Check if it starts with +63
+    if (!cleanedNumber.startsWith('+63')) {
+      return 'Phone number must start with +63';
+    }
+    
+    // Remove +63 to check the remaining digits
+    String digitsOnly = cleanedNumber.substring(3);
+    
+    // Check if it has exactly 10 digits after +63
+    if (digitsOnly.length != 10) {
+      return 'Phone number must have exactly 10 digits after +63';
+    }
+    
+    // Check if all remaining characters are digits
+    if (!RegExp(r'^\d{10}$').hasMatch(digitsOnly)) {
+      return 'Phone number must contain only digits after +63';
+    }
+    
+    // Check if the first digit after +63 is 9 (mobile numbers in Philippines)
+    if (!digitsOnly.startsWith('9')) {
+      return 'Philippine mobile numbers must start with 9';
+    }
+    
+    return null; // Valid
+  }
+
   // Email validation with comprehensive regex - EMOJIS ALLOWED
   static String? validateEmail(String? email) {
     if (email == null || email.isEmpty) {
