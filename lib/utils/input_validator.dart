@@ -6,39 +6,24 @@ class InputValidator {
   static const int _maxEmailLength = 254;
   static const int _maxAddressLength = 200;
 
-  // Philippine phone number validation
-  static String? validatePhilippinePhoneNumber(String? phoneNumber) {
-    if (phoneNumber == null || phoneNumber.isEmpty) {
+  // Philippine phone number validation for UI with fixed +63 prefix
+  // Expects only the 10-digit part entered by user (no +63 in value)
+  static String? validatePhilippinePhoneNumber(String? tenDigitNumber) {
+    if (tenDigitNumber == null || tenDigitNumber.isEmpty) {
       return 'Phone number is required';
     }
 
-    // Remove all spaces and special characters except + and digits
-    String cleanedNumber = phoneNumber.replaceAll(RegExp(r'[^\d+]'), '');
-    
-    // Check if it starts with +63
-    if (!cleanedNumber.startsWith('+63')) {
-      return 'Phone number must start with +63';
+    final digits = tenDigitNumber.replaceAll(RegExp(r'\D'), '');
+    if (digits.length != 10) {
+      return 'Please enter exactly 10 digits after +63';
     }
-    
-    // Remove +63 to check the remaining digits
-    String digitsOnly = cleanedNumber.substring(3);
-    
-    // Check if it has exactly 10 digits after +63
-    if (digitsOnly.length != 10) {
-      return 'Phone number must have exactly 10 digits after +63';
+    if (!RegExp(r'^\d{10}$').hasMatch(digits)) {
+      return 'Please enter only digits for the phone number';
     }
-    
-    // Check if all remaining characters are digits
-    if (!RegExp(r'^\d{10}$').hasMatch(digitsOnly)) {
-      return 'Phone number must contain only digits after +63';
+    if (!digits.startsWith('9')) {
+      return 'Please enter a valid phone number starting with 9.';
     }
-    
-    // Check if the first digit after +63 is 9 (mobile numbers in Philippines)
-    if (!digitsOnly.startsWith('9')) {
-      return 'Philippine mobile numbers must start with 9';
-    }
-    
-    return null; // Valid
+    return null;
   }
 
   // Email validation with comprehensive regex - EMOJIS ALLOWED
@@ -196,20 +181,7 @@ class InputValidator {
     return null;
   }
 
-  // Zip code validation (Philippine format)
-  static String? validateZipCode(String? zipCode) {
-    if (zipCode == null || zipCode.isEmpty) {
-      return 'Zip code is required';
-    }
-
-    // Philippine zip code format: 4 digits
-    final zipCodeRegex = RegExp(r'^\d{4}$');
-    if (!zipCodeRegex.hasMatch(zipCode)) {
-      return 'Zip code must be 4 digits';
-    }
-
-    return null;
-  }
+  // Zip code validation removed
 
   // Message validation
   static String? validateMessage(String? message, {int maxLength = 1000}) {
@@ -292,7 +264,6 @@ class InputValidator {
     required String region,
     required String city,
     required String barangay,
-    required String zipCode,
     String? phoneNumber,
   }) {
     return {
@@ -305,7 +276,6 @@ class InputValidator {
       'region': validateLocation(region, 'Region'),
       'city': validateLocation(city, 'City'),
       'barangay': validateLocation(barangay, 'Barangay'),
-      'zipCode': validateZipCode(zipCode),
       'phoneNumber': validatePhoneNumber(phoneNumber),
     };
   }

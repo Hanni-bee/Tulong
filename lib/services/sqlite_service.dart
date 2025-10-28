@@ -51,7 +51,7 @@ class SQLiteService {
         province TEXT,
         city TEXT,
         barangay TEXT,
-        zip_code TEXT,
+        
         password TEXT,
         is_online INTEGER DEFAULT 0,
         account_status TEXT DEFAULT 'active',

@@ -148,7 +148,7 @@ class UnifiedDataService {
       'Province': sqliteUser['province'],
       'City': sqliteUser['city'],
       'Barangay': sqliteUser['barangay'],
-      'ZipCode': sqliteUser['zip_code'],
+      
       'Password': sqliteUser['password'],
       'isOnline': sqliteUser['is_online'] == 1,
       'accountStatus': sqliteUser['account_status'],
@@ -171,7 +171,7 @@ class UnifiedDataService {
       'province': firebaseUser['Province'] ?? '',
       'city': firebaseUser['City'] ?? '',
       'barangay': firebaseUser['Barangay'] ?? '',
-      'zip_code': firebaseUser['ZipCode'] ?? '',
+      
       'password': firebaseUser['Password'],
       'is_online': (firebaseUser['isOnline'] ?? false) ? 1 : 0,
       'account_status': firebaseUser['accountStatus'] ?? 'active',
@@ -219,7 +219,6 @@ class UnifiedDataService {
     String? province,
     String? city,
     String? barangay,
-    String? zipCode,
     bool isGoogleAuth = false,
   }) async {
     try {
@@ -233,7 +232,6 @@ class UnifiedDataService {
           'province': province ?? '',
           'city': city ?? '',
           'barangay': barangay ?? '',
-          'zip_code': zipCode ?? '',
           'phone': phone,
         });
         return existingUser;
@@ -253,7 +251,6 @@ class UnifiedDataService {
         'province': province ?? '',
         'city': city ?? '',
         'barangay': barangay ?? '',
-        'zip_code': zipCode ?? '',
         'password': hashedPassword,
         'is_online': 1,
         'account_status': 'active',
@@ -336,7 +333,6 @@ class UnifiedDataService {
     String? province,
     String? city,
     String? barangay,
-    String? zipCode,
   }) async {
     try {
       // Get current user from SQLite
@@ -355,7 +351,6 @@ class UnifiedDataService {
         'province': province ?? '',
         'city': city ?? '',
         'barangay': barangay ?? '',
-        'zip_code': zipCode ?? '',
         'last_seen': DateTime.now().millisecondsSinceEpoch,
         'is_synced': 0, // Mark for sync
       };

@@ -23,7 +23,6 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
   final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
   final _addressController = TextEditingController();
-  final _zipCodeController = TextEditingController();
   
   bool _isLoading = false;
   bool _isLoadingUserData = true;
@@ -65,23 +64,28 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
         print('  - City: ${user.city}');
         print('  - Province: ${user.province}');
         print('  - Barangay: ${user.barangay}');
-        print('  - ZipCode: ${user.zipCode}');
         
         // Pre-fill basic info - ALWAYS set the text, even if empty
         _nameController.text = user.name.isNotEmpty ? user.name : '';
         _emailController.text = user.email.isNotEmpty ? user.email : '';
-        _phoneController.text = (user.phone != null && user.phone!.isNotEmpty) ? user.phone! : '';
+        // Show only the 10 digits starting with 9 (strip a leading 0 if present)
+        if (user.phone != null && user.phone!.isNotEmpty) {
+          final digits = user.phone!.replaceAll(RegExp(r'\D'), '');
+          _phoneController.text = digits.startsWith('0') && digits.length >= 11
+              ? digits.substring(1)
+              : digits;
+        } else {
+          _phoneController.text = '';
+        }
         
         // Pre-fill address info - ALWAYS set the text, even if empty
         _addressController.text = user.street.isNotEmpty ? user.street : '';
-        _zipCodeController.text = user.zipCode.isNotEmpty ? user.zipCode : '';
         
         print('✅ Controllers set:');
         print('  - Name Controller: "${_nameController.text}"');
         print('  - Email Controller: "${_emailController.text}"');
         print('  - Phone Controller: "${_phoneController.text}"');
         print('  - Address Controller: "${_addressController.text}"');
-        print('  - ZipCode Controller: "${_zipCodeController.text}"');
       
       // Load and pre-select location data
       await _loadAndPreSelectLocation(user);
@@ -211,7 +215,6 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
     _emailController.dispose();
     _phoneController.dispose();
     _addressController.dispose();
-    _zipCodeController.dispose();
     super.dispose();
   }
 
@@ -292,8 +295,8 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
         firstName: _nameController.text.trim().split(' ').first,
         lastName: _nameController.text.trim().split(' ').skip(1).join(' '),
         address: _addressController.text.trim(),
-        phone: _phoneController.text.trim(),
-        zipCode: _zipCodeController.text.trim(),
+        // Normalize phone: store as 0 + 10 digits
+        phone: (() { final d = _phoneController.text.replaceAll(RegExp(r'\\D'), ''); return d.isEmpty ? '' : ('0' + d); })(),
         province: provinceName,
         region: regionName,
         city: cityName,
@@ -304,12 +307,12 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
       final updatedUser = authProvider.currentUserModel!.copyWith(
         name: _nameController.text.trim(),
         email: _emailController.text.trim(),
-        phone: _phoneController.text.trim().isEmpty ? null : _phoneController.text.trim(),
+        // Normalize phone locally as well
+        phone: (() { final d = _phoneController.text.replaceAll(RegExp(r'\\D'), ''); return d.isEmpty ? null : ('0' + d); })(),
         street: _addressController.text.trim(),
         barangay: barangayName,
         city: cityName,
         province: provinceName,
-        zipCode: _zipCodeController.text.trim(),
       );
       authProvider.updateUser(updatedUser);
 
@@ -565,20 +568,20 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
 
                 const SizedBox(height: 16),
 
-                // Phone
+                // Phone (+63 prefix, 10 digits only) styled like others
                 CustomTextField(
                   controller: _phoneController,
                   label: 'Phone Number',
-                  hint: '+63 912 345 6789',
+                  hint: '9123456789',
+                  keyboardType: TextInputType.number,
                   prefixIcon: Icons.phone_outlined,
-                  keyboardType: TextInputType.phone,
-                  validator: (value) {
-                    return InputValidator.validatePhilippinePhoneNumber(value);
-                  },
+                  prefixText: '+63 ',
                   inputFormatters: [
-                    FilteringTextInputFormatter.allow(RegExp(r'[0-9+\s]')),
-                    LengthLimitingTextInputFormatter(17), // +63 912 345 6789 = 17 chars max
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(10),
                   ],
+                  validator: (value) => InputValidator.validatePhilippinePhoneNumber(value),
+                  autovalidateMode: AutovalidateMode.onUserInteraction,
                 ),
 
                 const SizedBox(height: 32),
@@ -719,67 +722,7 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
 
                 const SizedBox(height: 16),
 
-                // ZIP Code
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'ZIP Code',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: Colors.grey.shade300,
-                          width: 1.5,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.grey.withOpacity(0.1),
-                            blurRadius: 8,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: TextFormField(
-                        controller: _zipCodeController,
-                        keyboardType: TextInputType.number,
-                        inputFormatters: [
-                          FilteringTextInputFormatter.digitsOnly,
-                          LengthLimitingTextInputFormatter(4),
-                        ],
-                        decoration: InputDecoration(
-                          hintText: 'Enter ZIP code',
-                          hintStyle: TextStyle(
-                            color: AppColors.textSecondary.withOpacity(0.6),
-                          ),
-                          prefixIcon: const Icon(Icons.pin_drop, color: AppColors.primary),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide.none,
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                        ),
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return 'Please enter your ZIP code';
-                          }
-                          if (value.length < 4) {
-                            return 'ZIP code must be 4 digits';
-                          }
-                          return null;
-                        },
-                      ),
-                    ),
-                  ],
-                ),
+                // Zip code removed
 
                 const SizedBox(height: 32),
 

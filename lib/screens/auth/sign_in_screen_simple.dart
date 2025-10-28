@@ -123,7 +123,7 @@ class _SignInScreenState extends State<SignInScreen> {
         final updatedAuthProvider = Provider.of<AuthProvider>(context, listen: false);
 
         if (updatedAuthProvider.isAuthenticated && updatedAuthProvider.currentUser != null) {
-          // Navigate to splash screen to handle tutorial logic
+          // After SSO, go to tutorial first; it will handle fill form
           Navigator.of(context).pushReplacementNamed('/');
         } else {
           // User cancelled or sign-in failed - show a subtle message

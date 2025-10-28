@@ -21,7 +21,7 @@ class AppStrings {
   static const String bloodType = 'Blood Type (Optional)';
   static const String region = 'Region';
   static const String city = 'City';
-  static const String zipCode = 'Zip Code';
+  // Zip Code removed
   static const String phoneNumber = 'Phone Number';
   static const String address = 'Address';
   

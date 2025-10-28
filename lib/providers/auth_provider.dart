@@ -74,7 +74,6 @@ class AuthProvider extends ChangeNotifier {
           barangay: sqliteUser['barangay']?.toString() ?? '',
           city: finalCity,
           province: finalProvince,
-          zipCode: sqliteUser['zip_code']?.toString() ?? '',
           addressSetupCompleted: (sqliteUser['address_setup_completed'] ?? 0) == 1,
           isGoogleAuth: false,
           isOnline: (sqliteUser['is_online'] ?? 0) == 1,
@@ -111,7 +110,6 @@ class AuthProvider extends ChangeNotifier {
           barangay: userEntry['Barangay']?.toString() ?? '',
           city: userEntry['City']?.toString() ?? '',
           province: userEntry['Province']?.toString() ?? '',
-          zipCode: userEntry['ZipCode']?.toString() ?? '',
           addressSetupCompleted: userEntry['AddressSetupCompleted'] == true,
           isGoogleAuth: userEntry['IsGoogleAuth'] == true,
           isOnline: userEntry['IsOnline'] == true,
@@ -225,7 +223,7 @@ class AuthProvider extends ChangeNotifier {
           'region': '',
           'city': '',
           'barangay': '',
-          'zip_code': '',
+          
           'is_online': 1,
           'created_at': DateTime.now().millisecondsSinceEpoch,
           'last_seen': DateTime.now().millisecondsSinceEpoch,
@@ -816,7 +814,6 @@ class AuthProvider extends ChangeNotifier {
     required String province,
     required String city,
     required String barangay,
-    required String zipCode,
   }) async {
     try {
       // Use unified data service for consistent data handling
@@ -831,7 +828,7 @@ class AuthProvider extends ChangeNotifier {
         province: province,
         city: city,
         barangay: barangay,
-        zipCode: zipCode,
+        
       );
       
       if (userData != null) {
@@ -958,7 +955,6 @@ class AuthProvider extends ChangeNotifier {
     required String lastName,
     required String address,
     required String phone,
-    required String zipCode,
     required String province,
     required String region,
     required String city,
@@ -978,7 +974,6 @@ class AuthProvider extends ChangeNotifier {
         region: region,
         city: city,
         barangay: barangay,
-        zipCode: zipCode,
         province: province,
         phone: phone,
       );
@@ -1023,7 +1018,6 @@ class AuthProvider extends ChangeNotifier {
               'Region': user['region'],
               'City': user['city'],
               'Barangay': user['barangay'],
-              'ZipCode': user['zip_code'],
               'lastSeen': DateTime.now().millisecondsSinceEpoch,
             },
           );

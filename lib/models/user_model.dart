@@ -14,7 +14,6 @@ class UserModel {
   final String barangay;
   final String city;
   final String province;
-  final String zipCode;
   // Setup completion
   final bool addressSetupCompleted;
   final bool isGoogleAuth;
@@ -37,7 +36,6 @@ class UserModel {
     this.barangay = '',
     this.city = '',
     this.province = '',
-    this.zipCode = '',
     this.addressSetupCompleted = false,
     this.isGoogleAuth = false,
     this.accountStatus = 'active',
@@ -60,7 +58,6 @@ class UserModel {
       barangay: map['barangay'] ?? '',
       city: map['city'] ?? '',
       province: map['province'] ?? '',
-      zipCode: map['zipCode'] ?? '',
       addressSetupCompleted: map['addressSetupCompleted'] ?? false,
       isGoogleAuth: map['isGoogleAuth'] ?? false,
       accountStatus: map['accountStatus'] ?? 'active',
@@ -84,7 +81,6 @@ class UserModel {
       'barangay': barangay,
       'city': city,
       'province': province,
-      'zipCode': zipCode,
       'addressSetupCompleted': addressSetupCompleted,
       'isGoogleAuth': isGoogleAuth,
       'accountStatus': accountStatus,
@@ -107,7 +103,6 @@ class UserModel {
     String? barangay,
     String? city,
     String? province,
-    String? zipCode,
     bool? addressSetupCompleted,
     bool? isGoogleAuth,
     String? accountStatus,
@@ -128,7 +123,6 @@ class UserModel {
       barangay: barangay ?? this.barangay,
       city: city ?? this.city,
       province: province ?? this.province,
-      zipCode: zipCode ?? this.zipCode,
       addressSetupCompleted: addressSetupCompleted ?? this.addressSetupCompleted,
       isGoogleAuth: isGoogleAuth ?? this.isGoogleAuth,
       accountStatus: accountStatus ?? this.accountStatus,

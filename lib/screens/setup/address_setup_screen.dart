@@ -2,14 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../constants/app_colors.dart';
-import '../../constants/app_typography.dart';
-import '../../models/user_model.dart';
+// import '../../constants/app_typography.dart';
+// import '../../models/user_model.dart';
 import '../../providers/auth_provider.dart';
-import '../../services/firebase_service.dart';
+// import '../../services/firebase_service.dart';
 import '../../services/unified_data_service.dart';
 import '../../services/location_service.dart';
 import '../../widgets/custom_button.dart';
 import '../../widgets/custom_text_field.dart';
+import '../../utils/input_validator.dart';
 
 class AddressSetupScreen extends StatefulWidget {
   const AddressSetupScreen({super.key});
@@ -21,7 +22,7 @@ class AddressSetupScreen extends StatefulWidget {
 class _AddressSetupScreenState extends State<AddressSetupScreen> {
   final _formKey = GlobalKey<FormState>();
   final _addressController = TextEditingController();
-  final _zipCodeController = TextEditingController();
+  final TextEditingController _phoneController = TextEditingController();
   
   bool _isLoading = false;
   
@@ -52,14 +53,16 @@ class _AddressSetupScreenState extends State<AddressSetupScreen> {
     if (user != null) {
       // Pre-fill with existing data if available
       if (user.street.isNotEmpty) _addressController.text = user.street;
-      if (user.zipCode.isNotEmpty) _zipCodeController.text = user.zipCode;
+      if (user.phone != null && user.phone!.startsWith('0') && user.phone!.length == 11) {
+        _phoneController.text = user.phone!.substring(1);
+      }
     }
   }
 
   @override
   void dispose() {
     _addressController.dispose();
-    _zipCodeController.dispose();
+    _phoneController.dispose();
     super.dispose();
   }
 
@@ -189,28 +192,32 @@ class _AddressSetupScreenState extends State<AddressSetupScreen> {
       if (sqliteUser == null) {
         // Create user in SQLite for Google auth users
         final userModel = authProvider.currentUserModel!;
+        final digits = _phoneController.text.replaceAll(RegExp(r'\\D'), '');
+        final storedPhone = digits.isEmpty ? null : ('0' + digits);
         sqliteUser = await unifiedDataService.createUser(
           email: userEmail,
           password: '', // Google users don't have password initially
           firstName: userModel.name.split(' ').first,
           lastName: userModel.name.split(' ').skip(1).join(' '),
+          phone: storedPhone,
           street: _addressController.text.trim(),
           region: regionName,
           province: provinceName,
           city: cityName,
           barangay: barangayName,
-          zipCode: _zipCodeController.text.trim(),
           isGoogleAuth: true,
         );
       } else {
         // Update existing user profile
+        final digits = _phoneController.text.replaceAll(RegExp(r'\\D'), '');
+        final storedPhone = digits.isEmpty ? null : ('0' + digits);
         await unifiedDataService.updateUserProfileWithMap(userEmail, {
           'street': _addressController.text.trim(),
           'region': regionName,
           'province': provinceName,
           'city': cityName,
           'barangay': barangayName,
-          'zip_code': _zipCodeController.text.trim(),
+          'phone': storedPhone,
         });
       }
       
@@ -223,7 +230,7 @@ class _AddressSetupScreenState extends State<AddressSetupScreen> {
         barangay: barangayName,
         city: cityName,
         province: provinceName,
-        zipCode: _zipCodeController.text.trim(),
+        phone: (() { final d = _phoneController.text.replaceAll(RegExp(r'\\D'), ''); return d.isEmpty ? null : ('0' + d); })(),
         addressSetupCompleted: true,
       );
       authProvider.updateUser(updatedUser);
@@ -530,66 +537,50 @@ class _AddressSetupScreenState extends State<AddressSetupScreen> {
 
                 const SizedBox(height: 16),
 
-                // ZIP Code
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'ZIP Code',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: Colors.grey.shade300,
-                          width: 1.5,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.grey.withOpacity(0.1),
-                            blurRadius: 8,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: TextFormField(
-                        controller: _zipCodeController,
-                        keyboardType: TextInputType.number,
-                        inputFormatters: [
-                          FilteringTextInputFormatter.digitsOnly,
-                          LengthLimitingTextInputFormatter(4),
-                        ],
-                        decoration: InputDecoration(
-                          hintText: 'Enter ZIP code',
-                          hintStyle: TextStyle(
-                            color: AppColors.textSecondary.withOpacity(0.6),
-                          ),
-                          prefixIcon: const Icon(Icons.pin_drop, color: AppColors.primaryRed),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide.none,
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                        ),
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return 'Please enter your ZIP code';
-                          }
-                          if (value.length < 4) {
-                            return 'ZIP code must be 4 digits';
-                          }
-                          return null;
-                        },
-                      ),
-                    ),
+                // Phone number (+63 prefix, 10 digits only) - styled like street address
+                TextFormField(
+                  controller: _phoneController,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(10),
                   ],
+                  decoration: const InputDecoration(
+                    labelText: 'Phone Number',
+                    hintText: '9123456789',
+                    prefixText: '+63 ',
+                    prefixIcon: Icon(Icons.phone_outlined, color: AppColors.primaryRed),
+                    labelStyle: TextStyle(
+                      color: AppColors.primaryRed,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.all(Radius.circular(12)),
+                      borderSide: BorderSide(color: AppColors.primaryRed, width: 1.5),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.all(Radius.circular(12)),
+                      borderSide: BorderSide(color: AppColors.primaryRed, width: 1.5),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.all(Radius.circular(12)),
+                      borderSide: BorderSide(color: AppColors.primaryRed, width: 2),
+                    ),
+                    errorBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.all(Radius.circular(12)),
+                      borderSide: BorderSide(color: AppColors.error, width: 1.5),
+                    ),
+                    focusedErrorBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.all(Radius.circular(12)),
+                      borderSide: BorderSide(color: AppColors.error, width: 2),
+                    ),
+                    filled: true,
+                    fillColor: Colors.white,
+                    contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  ),
+                  validator: (value) => InputValidator.validatePhilippinePhoneNumber(value),
+                  autovalidateMode: AutovalidateMode.onUserInteraction,
                 ),
 
                 const SizedBox(height: 24),

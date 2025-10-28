@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../constants/app_colors.dart';
-import 'package:flutter_svg/flutter_svg.dart';
+// import removed
 import '../../providers/auth_provider.dart';
 import '../../widgets/modern_responsive_layout.dart';
 import 'sign_up_screen.dart';
@@ -57,7 +57,8 @@ class _SignInScreenState extends State<SignInScreen> {
       }
 
       if (mounted) {
-        Navigator.of(context).pushReplacementNamed('/main');
+        // Go to tutorial first; tutorial flow will route to fill form
+        Navigator.of(context).pushReplacementNamed('/');
       }
     } catch (e) {
       if (mounted) {
@@ -87,7 +88,8 @@ class _SignInScreenState extends State<SignInScreen> {
       await authProvider.signInWithGoogle();
 
       if (mounted) {
-        Navigator.of(context).pushReplacementNamed('/main');
+        // Go to tutorial first; tutorial flow will route to fill form
+        Navigator.of(context).pushReplacementNamed('/');
       }
     } catch (e) {
       if (mounted) {
@@ -319,55 +321,25 @@ class _SignInScreenState extends State<SignInScreen> {
           
           const SizedBox(height: 20),
           
-          // Google sign in button (high-visibility styled)
-          GestureDetector(
-            onTap: _isLoading ? null : _signInWithGoogle,
-            child: Container(
-              height: 56,
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: AppColors.white,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: AppColors.borderColor, width: 1.5),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.04),
-                    blurRadius: 10,
-                    offset: const Offset(0, 3),
-                  ),
-                  BoxShadow(
-                    color: AppColors.white.withOpacity(0.9),
-                    blurRadius: 6,
-                    offset: const Offset(0, -2),
-                  ),
-                ],
+          // Google sign in button (simplified)
+          SizedBox(
+            width: double.infinity,
+            height: 56,
+            child: OutlinedButton.icon(
+              onPressed: _isLoading ? null : _signInWithGoogle,
+              icon: const Icon(Icons.g_mobiledata, size: 24, color: AppColors.textPrimary),
+              label: const Text(
+                'Continue with Google',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textPrimary,
+                ),
               ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                   Container(
-                     width: 28,
-                     height: 28,
-                     padding: const EdgeInsets.all(2),
-                     decoration: BoxDecoration(
-                       color: Colors.white,
-                       borderRadius: BorderRadius.circular(6),
-                       border: Border.all(color: AppColors.borderColor),
-                     ),
-                     child: SvgPicture.string(
-                       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3c-1.6 4.6-6 8-11.3 8-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C33.9 6.5 29.2 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.7-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.2 16.2 18.7 12 24 12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C33.9 6.5 29.2 4 24 4 16.1 4 9.2 8.2 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.3l-6.2-5.1C29.1 35.5 26.7 36.5 24 36.5c-5.2 0-9.6-3.3-11.2-7.9l-6.6 5.1C9 39.7 16 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.7 2-2 3.7-3.7 5.1l6.2 5.1C39.8 40.2 44 34.8 44 27.5c0-1.3-.1-2.7-.4-3.5z"/></svg>',
-                     ),
-                   ),
-                  const SizedBox(width: 12),
-                  const Text(
-                    'Continue with Google',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                ],
+              style: OutlinedButton.styleFrom(
+                side: BorderSide(color: AppColors.borderColor, width: 1.5),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                backgroundColor: Colors.white,
               ),
             ),
           ),

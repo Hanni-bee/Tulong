@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../utils/input_validator.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../constants/app_colors.dart';
@@ -648,8 +649,13 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
         text: auth.userEmail ?? _userProfile['email'] ?? 'john.doe@example.com');
     final TextEditingController addressCtrl =
         TextEditingController(text: _userProfile['address'] ?? '');
-    final TextEditingController phoneCtrl = TextEditingController(text: _userProfile['phone'] ?? '');
-    final TextEditingController zipCodeCtrl = TextEditingController(text: _userProfile['zipCode'] ?? '');
+    // Initialize phone controller to show only the 10 digits (strip leading 0 if present)
+    final String _rawPhone = (_userProfile['phone'] ?? '').toString();
+    final String _digitsOnly = _rawPhone.replaceAll(RegExp(r'\D'), '');
+    final String _displayDigits = _digitsOnly.startsWith('0') && _digitsOnly.length >= 11
+        ? _digitsOnly.substring(1)
+        : _digitsOnly;
+    final TextEditingController phoneCtrl = TextEditingController(text: _displayDigits);
     final TextEditingController regionCtrl = TextEditingController(text: _userProfile['region'] ?? '');
     final TextEditingController provinceCtrl = TextEditingController(text: _userProfile['province'] ?? '');
     final TextEditingController cityCtrl = TextEditingController(text: _userProfile['city'] ?? '');
@@ -787,40 +793,26 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                         ),
                         const SizedBox(height: 16),
 
-                        // Phone
+                        // Phone (+63 prefix, 10 digits only) - styled consistently
                         TextFormField(
                           controller: phoneCtrl,
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                            LengthLimitingTextInputFormatter(10),
+                          ],
                           decoration: const InputDecoration(
-                            labelText: 'Phone',
+                            labelText: 'Phone Number',
+                            hintText: '9123456789',
                             border: OutlineInputBorder(),
-                            hintText: 'Enter your phone number',
+                            prefixText: '+63 ',
                           ),
-                          validator: (value) {
-                            if (value == null || value.trim().isEmpty) {
-                              return 'Phone number is required';
-                            }
-                            return null;
-                          },
+                          validator: (value) => InputValidator.validatePhilippinePhoneNumber(value),
                           autovalidateMode: AutovalidateMode.onUserInteraction,
                         ),
                         const SizedBox(height: 16),
 
-                        // Zip Code
-                        TextFormField(
-                          controller: zipCodeCtrl,
-                          decoration: const InputDecoration(
-                            labelText: 'Zip Code',
-                            border: OutlineInputBorder(),
-                            hintText: 'Enter your zip code',
-                          ),
-                          validator: (value) {
-                            if (value == null || value.trim().isEmpty) {
-                              return 'Zip code is required';
-                            }
-                            return null;
-                          },
-                          autovalidateMode: AutovalidateMode.onUserInteraction,
-                        ),
+                        // Zip code removed
                         const SizedBox(height: 16),
 
                         // Region
@@ -1077,8 +1069,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                                           region: selectedRegion ?? '',
                                           city: selectedProvince ?? '',
                                           barangay: selectedBarangay ?? '',
-                                          phone: phoneCtrl.text.trim(),
-                                          zipCode: zipCodeCtrl.text.trim(),
+                                          phone: (() { final d = phoneCtrl.text.replaceAll(RegExp(r'\\D'), ''); return d.isEmpty ? '' : ('0' + d); })(),
                                           province: selectedProvince ?? '',
                                         );
 
@@ -1092,8 +1083,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                                            _userProfile['province'] = selectedProvince;
                                            _userProfile['city'] = selectedCity;
                                            _userProfile['barangay'] = selectedBarangay;
-                                           _userProfile['phone'] = phoneCtrl.text.trim();
-                                           _userProfile['zipCode'] = zipCodeCtrl.text.trim();
+                                           _userProfile['phone'] = (() { final d = phoneCtrl.text.replaceAll(RegExp(r'\\D'), ''); return d.isEmpty ? '' : ('0' + d); })();
                                            
                                         });
 

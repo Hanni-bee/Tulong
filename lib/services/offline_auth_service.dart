@@ -40,7 +40,6 @@ class OfflineAuthService {
     required String region,
     required String city,
     required String barangay,
-    required String zipCode,
     required String password,
   }) async {
     try {
@@ -62,7 +61,6 @@ class OfflineAuthService {
         'region': region,
         'city': city,
         'barangay': barangay,
-        'zip_code': zipCode,
         'password': hashedPassword,
         'is_online': 0,
         'created_at': DateTime.now().millisecondsSinceEpoch,
@@ -225,7 +223,6 @@ class OfflineAuthService {
             'Region': user['region'],
             'City': user['city'],
             'Barangay': user['barangay'],
-            'ZipCode': user['zip_code'],
             'Password': user['password'],
             'createdAt': user['created_at'],
             'isOnline': user['is_online'] == 1,

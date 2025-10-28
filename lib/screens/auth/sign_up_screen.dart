@@ -7,7 +7,7 @@ import '../../widgets/custom_text_field.dart';
 import '../../widgets/password_strength_indicator.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
-import '../../services/firebase_service.dart';
+// import removed
 import '../../widgets/terms_conditions_modal.dart';
 import 'dart:io';
 import '../../services/location_service.dart';
@@ -28,7 +28,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
   final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
   final _addressController = TextEditingController();
-  final _zipCodeController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
   
@@ -65,7 +64,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
     _lastNameController.dispose();
     _emailController.dispose();
     _addressController.dispose();
-    _zipCodeController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();
@@ -172,7 +170,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
     try {
       // If device is offline, create the account locally only (no Firebase attempt)
-      final isOffline = await _isConnected().then((v) => !v);
+      await _isConnected();
 
       final first = _firstNameController.text.trim();
       final last = _lastNameController.text.trim();
@@ -182,18 +180,21 @@ class _SignUpScreenState extends State<SignUpScreen> {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
       // Use unified signup method (SQLite first, Firebase sync when online)
+      // Normalize phone for storage: 0 + 10 digits
+      final phoneDigits = _phoneController.text.replaceAll(RegExp(r'\D'), '');
+      final normalizedPhone = phoneDigits.isEmpty ? null : ('0' + phoneDigits);
+
       await authProvider.signupOffline(
         email: email,
         password: pwd,
         firstName: first,
         lastName: last,
-        phone: _phoneController.text.trim(),
+        phone: normalizedPhone,
         address: _addressController.text.trim(),
         region: _selectedRegion ?? '',
         province: _selectedProvince ?? '',
         city: _selectedCity ?? '',
         barangay: _selectedBarangay ?? '',
-        zipCode: _zipCodeController.text.trim(),
       );
 
       if (!mounted) return;
@@ -455,20 +456,20 @@ class _SignUpScreenState extends State<SignUpScreen> {
           
           const SizedBox(height: 20),
           
-          // Phone Number field
+          // Phone Number field (+63 prefix, 10 digits only, starts with 9)
           CustomTextField(
             controller: _phoneController,
             label: 'Phone Number',
-            hint: '+63 912 345 6789',
-            keyboardType: TextInputType.phone,
+            hint: '9123456789',
+            keyboardType: TextInputType.number,
             prefixIcon: Icons.phone_outlined,
-            validator: (value) {
-              return InputValidator.validatePhilippinePhoneNumber(value);
-            },
+            prefixText: '+63 ',
             inputFormatters: [
-              FilteringTextInputFormatter.allow(RegExp(r'[0-9+\s]')),
-              LengthLimitingTextInputFormatter(17), // +63 912 345 6789 = 17 chars max
+              FilteringTextInputFormatter.digitsOnly,
+              LengthLimitingTextInputFormatter(10),
             ],
+            validator: (value) => InputValidator.validatePhilippinePhoneNumber(value),
+            autovalidateMode: AutovalidateMode.onUserInteraction,
           ),
           
           const SizedBox(height: 20),
@@ -868,23 +869,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
           
           const SizedBox(height: 20),
           
-          // ZIP Code field (full width)
-          CustomTextField(
-            controller: _zipCodeController,
-            label: 'ZIP Code',
-            hint: 'Enter ZIP code (4 digits)',
-            keyboardType: TextInputType.number,
-            prefixIcon: Icons.local_post_office_outlined,
-            validator: (value) {
-              if (value == null || value.isEmpty) {
-                return 'Please enter ZIP code';
-              }
-              if (!RegExp(r'^\d{4}$').hasMatch(value)) {
-                return 'ZIP code must be 4 digits';
-              }
-              return null;
-            },
-          ),
+          // Zip code removed
           
           const SizedBox(height: 30),
           

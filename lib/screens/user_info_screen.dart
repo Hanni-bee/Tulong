@@ -130,7 +130,6 @@ class _UserInfoScreenState extends State<UserInfoScreen>
                 print('UserInfoScreen - User barangay: ${user?.barangay}');
                 print('UserInfoScreen - User city: ${user?.city}');
                 print('UserInfoScreen - User province: ${user?.province}');
-                print('UserInfoScreen - User zipCode: ${user?.zipCode}');
 
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -260,12 +259,7 @@ class _UserInfoScreenState extends State<UserInfoScreen>
 
                     const SizedBox(height: 16),
 
-                    _buildInfoCard(
-                      title: 'Zipcode',
-                      value: user?.zipCode ?? 'Not available',
-                      icon: Icons.pin_drop,
-                      color: AppColors.warning,
-                    ),
+                    // Zipcode removed
 
                     const SizedBox(height: 32),
 

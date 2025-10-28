@@ -160,8 +160,8 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
 
         if (updatedAuthProvider.isAuthenticated &&
             updatedAuthProvider.currentUser != null) {
-          // Success! Navigate to home
-          print('✅ Navigating to home...');
+          // After SSO, go to Tutorial first (splash handles next steps)
+          print('✅ Google Sign-In successful. Navigating to tutorial (/) ...');
           Navigator.of(context).pushReplacementNamed('/');
         } else {
           // User cancelled or failed

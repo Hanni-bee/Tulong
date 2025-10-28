@@ -167,7 +167,7 @@ class FirebaseService {
         region: '',
         city: '',
         barangay: '',
-        zipCode: '',
+        
         hashedPassword: hashedTempPassword, // Store the hashed temp password
         firebaseUid: user.uid,
       );
@@ -210,7 +210,6 @@ class FirebaseService {
     required String region,
     required String city,
     required String barangay,
-    required String zipCode,
     required String hashedPassword,
     String? firebaseUid,
   }) async {
@@ -228,7 +227,6 @@ class FirebaseService {
           'region': region,
           'city': city,
           'barangay': barangay,
-          'zip_code': zipCode,
           'password': hashedPassword,
           'is_online': 1,
           'last_seen': DateTime.now().millisecondsSinceEpoch,
@@ -247,7 +245,6 @@ class FirebaseService {
           'region': region,
           'city': city,
           'barangay': barangay,
-          'zip_code': zipCode,
           'password': hashedPassword,
           'is_online': 1,
           'created_at': DateTime.now().millisecondsSinceEpoch,
@@ -438,7 +435,7 @@ class FirebaseService {
         region: '',
         city: '',
         barangay: '',
-        zipCode: '',
+        
         hashedPassword: hashedPassword,
         firebaseUid: user.uid,
       );
@@ -479,7 +476,6 @@ class FirebaseService {
     required String region,
     required String city,
     required String barangay,
-    required String zipCode,
   }) async {
     try {
       // Validate all input data
@@ -493,7 +489,6 @@ class FirebaseService {
         region: region,
         city: city,
         barangay: barangay,
-        zipCode: zipCode,
       );
 
       // Check for validation errors
@@ -525,7 +520,7 @@ class FirebaseService {
           'Region': sanitizedRegion,
           'City': sanitizedCity,
           'Barangay': sanitizedBarangay,
-          'ZipCode': zipCode,
+          
           'Password': _hashPassword(password), // Hash passwords for security
           'createdAt': ServerValue.timestamp,
           'isOnline': true,
@@ -541,7 +536,7 @@ class FirebaseService {
           region: sanitizedRegion,
           city: sanitizedCity,
           barangay: sanitizedBarangay,
-          zipCode: zipCode,
+          
           hashedPassword: _hashPassword(password),
           firebaseUid: userCredential.user!.uid,
         );
@@ -682,7 +677,7 @@ class FirebaseService {
           region: finalUserData['Region'] ?? '',
           city: finalUserData['City'] ?? '',
           barangay: finalUserData['Barangay'] ?? '',
-          zipCode: finalUserData['ZipCode'] ?? '',
+          
           hashedPassword: newHashedPassword,
           firebaseUid: uid,
         );
