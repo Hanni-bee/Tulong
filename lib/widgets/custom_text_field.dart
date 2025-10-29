@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../constants/app_colors.dart';
+import '../constants/unified_typography.dart';
 
 class CustomTextField extends StatelessWidget {
   final TextEditingController? controller;
@@ -64,12 +65,7 @@ class CustomTextField extends StatelessWidget {
         maxLines: maxLines,
         enabled: enabled,
         inputFormatters: inputFormatters,
-        style: const TextStyle(
-          color: AppColors.textPrimary,
-          fontSize: 17,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 0.3,
-        ),
+        style: UnifiedTypography.formInput,
         decoration: InputDecoration(
           labelText: label,
           hintText: hint,
@@ -101,18 +97,8 @@ class CustomTextField extends StatelessWidget {
           filled: true,
           fillColor: Colors.transparent,
           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-          labelStyle: const TextStyle(
-            color: AppColors.primary,
-            fontSize: 17,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 0.3,
-          ),
-          hintStyle: const TextStyle(
-            color: AppColors.mediumGray,
-            fontSize: 17,
-            fontWeight: FontWeight.w500,
-            letterSpacing: 0.2,
-          ),
+          labelStyle: UnifiedTypography.formLabel,
+          hintStyle: UnifiedTypography.formHint,
         ),
       ),
     );

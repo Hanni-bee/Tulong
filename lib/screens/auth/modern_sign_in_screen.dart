@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../../constants/app_colors.dart';
+import '../../constants/unified_typography.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/firebase_service.dart';
 import '../../utils/neumorphic_utils.dart';
@@ -283,11 +284,9 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
                     const SizedBox(height: 32),
 
                     // Title
-                    const Text(
+                    Text(
                       'T.U.L.O.N.G',
-                      style: TextStyle(
-                        fontSize: 36,
-                        fontWeight: FontWeight.w900,
+                      style: UnifiedTypography.displayLarge.copyWith(
                         color: AppColors.primary,
                         letterSpacing: 2.0,
                       ),
@@ -295,11 +294,9 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
 
                     const SizedBox(height: 8),
 
-                    const Text(
+                    Text(
                       'Disaster-Ready Communication',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
+                      style: UnifiedTypography.bodyLarge.copyWith(
                         color: AppColors.textSecondary,
                         letterSpacing: 0.5,
                       ),
@@ -552,23 +549,17 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
         obscureText: obscureText,
         keyboardType: keyboardType,
         validator: validator,
-        style: const TextStyle(
-          fontSize: 15,
-          fontWeight: FontWeight.w600,
-          color: AppColors.textPrimary,
-        ),
+        style: UnifiedTypography.formInput,
         decoration: InputDecoration(
           labelText: label,
           hintText: hint,
           prefixIcon: Icon(icon, color: AppColors.primaryRed),
           suffixIcon: suffixIcon,
-          labelStyle: const TextStyle(
+          labelStyle: UnifiedTypography.formLabel.copyWith(
             color: AppColors.textSecondary,
-            fontWeight: FontWeight.w600,
           ),
-          hintStyle: TextStyle(
+          hintStyle: UnifiedTypography.formHint.copyWith(
             color: AppColors.textSecondary.withOpacity(0.5),
-            fontWeight: FontWeight.w500,
           ),
           filled: true,
           fillColor: AppColors.neumorphicBase,

@@ -37,9 +37,9 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
       color: AppColors.primaryRed,
     ),
     const NavigationItem(
-      icon: Icons.bluetooth_outlined,
-      activeIcon: Icons.bluetooth,
-      label: 'LoRa',
+      icon: Icons.message_outlined,
+      activeIcon: Icons.message,
+      label: 'Message',
       color: AppColors.online,
     ),
     const NavigationItem(

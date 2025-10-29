@@ -12,6 +12,7 @@ import '../widgets/micro_interactions.dart';
 import '../widgets/enhanced_icons.dart';
 import '../widgets/floating_background_elements.dart';
 import 'walkie_talkie_screen.dart';
+import '../constants/unified_typography.dart';
 
 class ModernGlobalChatScreen extends StatefulWidget {
   const ModernGlobalChatScreen({super.key});
@@ -776,11 +777,7 @@ class _ModernGlobalChatScreenState extends State<ModernGlobalChatScreen> {
             Expanded(
               child: Text(
                 title,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textPrimary,
-                ),
+                style: UnifiedTypography.titleLarge,
               ),
             ),
             Icon(

@@ -5,6 +5,7 @@ import '../constants/app_strings.dart';
 import '../providers/network_provider.dart';
 import '../widgets/connected_user_card.dart';
 import 'call_detail_screen.dart';
+import '../constants/unified_typography.dart';
 
 class CallsScreen extends StatefulWidget {
   const CallsScreen({super.key});
@@ -124,11 +125,7 @@ class _CallsScreenState extends State<CallsScreen> {
                         children: [
                           const Text(
                             'Mesh Network Status',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.textPrimary,
-                            ),
+                            style: UnifiedTypography.titleLarge,
                           ),
                           Text(
                             networkProvider.isConnected 

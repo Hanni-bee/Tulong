@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../constants/app_colors.dart';
+import '../../constants/unified_typography.dart';
 import '../../widgets/custom_button.dart';
 import '../../widgets/custom_text_field.dart';
 import '../../widgets/password_strength_indicator.dart';
@@ -330,11 +331,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
         
         const SizedBox(height: 20),
         
-        const Text(
+        Text(
           'T.U.L.O.N.G',
-          style: TextStyle(
-            fontSize: 32,
-            fontWeight: FontWeight.bold,
+          style: UnifiedTypography.displayLarge.copyWith(
             color: AppColors.primary,
             letterSpacing: 2.0,
           ),
@@ -354,11 +353,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
         
         const SizedBox(height: 8),
         
-        const Text(
+        Text(
           'Join the Disaster-Ready Community',
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w500,
+          style: UnifiedTypography.bodyLarge.copyWith(
             color: Colors.grey,
             letterSpacing: 0.5,
           ),
@@ -1065,9 +1062,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
       alignment: Alignment.centerLeft,
       child: Text(
         title,
-        style: const TextStyle(
-          fontSize: 18,
-          fontWeight: FontWeight.bold,
+        style: UnifiedTypography.headlineSmall.copyWith(
           color: AppColors.primaryRed,
         ),
       ),
@@ -1094,8 +1089,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
           Expanded(
             child: Text(
               message,
-              style: TextStyle(
-                fontSize: 12,
+              style: UnifiedTypography.errorText.copyWith(
                 color: Colors.red.shade600,
               ),
             ),
@@ -1109,22 +1103,20 @@ class _SignUpScreenState extends State<SignUpScreen> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        const Text(
+        Text(
           'Already have an account? ',
-          style: TextStyle(
+          style: UnifiedTypography.bodyLarge.copyWith(
             color: Colors.grey,
-            fontSize: 16,
           ),
         ),
         GestureDetector(
           onTap: () {
             Navigator.of(context).pop();
           },
-          child: const Text(
+          child: Text(
             'Sign In',
-            style: TextStyle(
+            style: UnifiedTypography.bodyLarge.copyWith(
               color: AppColors.primary,
-              fontSize: 16,
               fontWeight: FontWeight.bold,
             ),
           ),

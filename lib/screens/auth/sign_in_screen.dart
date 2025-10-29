@@ -8,6 +8,7 @@ import '../../widgets/modern_responsive_layout.dart';
 import 'sign_up_screen.dart';
 import '../../services/firebase_service.dart';
 import '../../services/offline_auth_service.dart';
+import '../constants/unified_typography.dart';
 
 class SignInScreen extends StatefulWidget {
   const SignInScreen({super.key});
@@ -180,12 +181,7 @@ class _SignInScreenState extends State<SignInScreen> {
         
         const Text(
           'T.U.L.O.N.G',
-          style: TextStyle(
-            fontSize: 32,
-            fontWeight: FontWeight.bold,
-            color: AppColors.primaryRed,
-            letterSpacing: 2.0,
-          ),
+          style: UnifiedTypography.displayLarge,
         )
             .animate()
             .fadeIn(
@@ -204,12 +200,7 @@ class _SignInScreenState extends State<SignInScreen> {
         
         const Text(
           'Disaster-Ready Communication',
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w500,
-            color: Colors.grey,
-            letterSpacing: 0.5,
-          ),
+          style: UnifiedTypography.buttonLarge,
         )
             .animate()
             .fadeIn(
@@ -330,11 +321,7 @@ class _SignInScreenState extends State<SignInScreen> {
               icon: const Icon(Icons.g_mobiledata, size: 24, color: AppColors.textPrimary),
               label: const Text(
                 'Continue with Google',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textPrimary,
-                ),
+                style: UnifiedTypography.titleLarge,
               ),
               style: OutlinedButton.styleFrom(
                 side: BorderSide(color: AppColors.borderColor, width: 1.5),
@@ -395,11 +382,7 @@ class _SignInScreenState extends State<SignInScreen> {
       children: [
         Text(
           label,
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            color: AppColors.textPrimary,
-          ),
+          style: const UnifiedTypography.titleLarge,
         ),
         const SizedBox(height: 8),
         Container(

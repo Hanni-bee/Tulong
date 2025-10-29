@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../constants/app_colors.dart';
+import '../constants/unified_typography.dart';
 import '../models/user_model.dart';
 import '../providers/auth_provider.dart';
 import '../services/location_service.dart';
@@ -358,9 +359,7 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
       children: [
         Text(
           label,
-          style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
+          style: UnifiedTypography.labelLarge.copyWith(
             color: AppColors.textPrimary,
           ),
         ),
@@ -503,13 +502,11 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
                         ),
                       ),
                       const SizedBox(width: 16),
-                      const Expanded(
+                      Expanded(
                         child: Text(
                           'Update your personal information and address details.',
-                          style: TextStyle(
-                            fontSize: 14,
+                          style: UnifiedTypography.bodyMedium.copyWith(
                             color: AppColors.textSecondary,
-                            height: 1.4,
                           ),
                         ),
                       ),
@@ -520,11 +517,9 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
                 const SizedBox(height: 24),
 
                 // Personal Information Section
-                const Text(
+                Text(
                   'Personal Information',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
+                  style: UnifiedTypography.titleLarge.copyWith(
                     color: AppColors.textPrimary,
                   ),
                 ),
@@ -587,11 +582,9 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
                 const SizedBox(height: 32),
 
                 // Address Information Section
-                const Text(
+                Text(
                   'Address Information',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
+                  style: UnifiedTypography.titleLarge.copyWith(
                     color: AppColors.textPrimary,
                   ),
                 ),

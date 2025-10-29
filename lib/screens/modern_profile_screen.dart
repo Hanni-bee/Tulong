@@ -1,20 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../utils/input_validator.dart';
 import 'package:provider/provider.dart';
-import '../providers/auth_provider.dart';
-import '../constants/app_colors.dart';
-import '../widgets/animated_neumorphic_card.dart';
-import '../widgets/modern_responsive_layout.dart';
-import '../widgets/modern_floating_layout.dart';
-import '../widgets/enhanced_text_styles.dart';
-import '../widgets/theme_selection_modal.dart';
-import '../services/philippine_location_service.dart';
-import 'notification_settings_screen.dart';
-import '../constants/app_typography.dart';
-import '../widgets/enhanced_button.dart';
-import '../widgets/polished_animations.dart';
-import 'user_info_screen.dart';
+import 'package:tulong_app/constants/app_colors.dart';
+import 'package:tulong_app/constants/unified_typography.dart';
+import 'package:tulong_app/providers/auth_provider.dart';
+import 'package:tulong_app/models/user_model.dart';
+import 'package:tulong_app/screens/notification_settings_screen.dart';
+import 'package:tulong_app/widgets/animated_neumorphic_card.dart';
+import 'package:tulong_app/widgets/unified_top_bar.dart';
 
 class ModernProfileScreen extends StatefulWidget {
   const ModernProfileScreen({super.key});
@@ -30,27 +23,15 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
 
-  // User profile data
-  final Map<String, dynamic> _userProfile = {
-    'name': 'John Doe',
-    'email': 'john.doe@example.com',
-    'phone': '+63 912 345 6789',
-    'location': 'Manila, Philippines',
-    'role': 'Emergency Coordinator',
-    'status': 'Connected',
-    'lastSeen': 'now',
-    'joinDate': 'January 2024',
-  };
+  // Dynamic user profile data will be fetched from AuthProvider
 
   @override
   void initState() {
     super.initState();
-
     _fadeController = AnimationController(
       duration: const Duration(milliseconds: 800),
       vsync: this,
     );
-
     _slideController = AnimationController(
       duration: const Duration(milliseconds: 600),
       vsync: this,
@@ -61,7 +42,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
       end: 1.0,
     ).animate(CurvedAnimation(
       parent: _fadeController,
-      curve: Curves.easeOutCubic,
+      curve: Curves.easeOut,
     ));
 
     _slideAnimation = Tween<Offset>(
@@ -85,245 +66,179 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
 
   @override
   Widget build(BuildContext context) {
-    return ModernFloatingLayout(
-      hasFloatingAppBar: false,
-      hasFloatingBottomBar: true,
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      body: SafeArea(
+            child: Column(
+              children: [
+            TopBarConfigs.profileTopBar(onEdit: () => _editProfile(context)),
+            
+            // Red line under top bar
+          Container(
+              height: 4,
+              margin: const EdgeInsets.symmetric(horizontal: 8),
+            decoration: BoxDecoration(
+                color: AppColors.primaryRed,
+                borderRadius: BorderRadius.circular(2),
+              boxShadow: [
+                BoxShadow(
+                    color: AppColors.primaryRed.withOpacity(0.35),
+                    blurRadius: 6,
+                    offset: const Offset(0, 3),
+                ),
+              ],
+            ),
+            ),
+            
+            Expanded(
       child: FadeTransition(
         opacity: _fadeAnimation,
         child: SlideTransition(
           position: _slideAnimation,
           child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(16),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Header
-                PolishedFadeIn(
-                  delay: const Duration(milliseconds: 100),
-                  child: _buildHeader(),
-                ),
-                const SizedBox(height: 24),
-
-                // Profile Info
-                PolishedFadeIn(
-                  delay: const Duration(milliseconds: 200),
-                  child: _buildProfileInfo(),
-                ),
-                const SizedBox(height: 24),
-
-                // Quick Stats
-                PolishedFadeIn(
-                  delay: const Duration(milliseconds: 300),
-                  child: _buildQuickStats(),
-                ),
-                const SizedBox(height: 24),
-
-                // Settings Sections
-                PolishedFadeIn(
-                  delay: const Duration(milliseconds: 400),
-                  child: _buildSettingsSections(),
-                ),
-                const SizedBox(height: 24),
-
-                // Action Buttons
-                PolishedFadeIn(
-                  delay: const Duration(milliseconds: 500),
-                  child: _buildActionButtons(),
-                ),
-                const SizedBox(height: 24),
-              ],
+                         _buildQuickStats(),
+                         const SizedBox(height: 20),
+                         _buildStatsSection(),
+                         const SizedBox(height: 20),
+                         _buildSettingsSections(),
+                         const SizedBox(height: 20),
+                         _buildActionButtons(),
+                       ],
+                     ),
+                  ),
+              ),
             ),
           ),
+        ],
         ),
       ),
     );
   }
 
-  Widget _buildHeader() {
-    return AnimatedNeumorphicCard(
-      padding: const EdgeInsets.all(24),
-      child: Row(
-        children: [
-          // Profile icon since this is a main tab (no back button needed)
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: AppColors.info.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-                BoxShadow(
-                  color: AppColors.white.withOpacity(0.8),
-                  blurRadius: 8,
-                  offset: const Offset(0, -2),
-                ),
-              ],
-            ),
-            child: const Icon(
-              Icons.person,
-              color: AppColors.info,
-              size: 24,
-            ),
-          ),
-
-          const SizedBox(width: 16),
-
-          // Title
-          const Expanded(
-            child: PageTitle('Profile'),
-          ),
-
-          // User Info button
-          //IconButton(
-          //  onPressed: () => _viewUserInfo(context),
-          //  icon: Container(
-          //    padding: const EdgeInsets.all(12),
-          //    decoration: BoxDecoration(
-          //      color: AppColors.white,
-          //       borderRadius: BorderRadius.circular(16),
-          //       boxShadow: [
-          //         BoxShadow(
-          //           color: Colors.black.withOpacity(0.05),
-          //           blurRadius: 8,
-          //           offset: const Offset(0, 2),
-          //         ),
-          //         BoxShadow(
-          //           color: AppColors.white.withOpacity(0.8),
-          //           blurRadius: 8,
-          //           offset: const Offset(0, -2),
-          //         ),
-          //       ],
-          //     ),
-          //     child: const Icon(
-          //       Icons.info_outline,
-          //       color: AppColors.info,
-          //       size: 24,
-          //     ),
-          //   ),
-          // ),
-
-          // const SizedBox(width: 8),
-
-          // Edit button
-          IconButton(
-            onPressed: () => _editProfile(context),
-            icon: Container(
-              padding: const EdgeInsets.all(12),
+  Widget _buildQuickStats() {
+    return Consumer<AuthProvider>(
+      builder: (context, auth, child) {
+        final userName = auth.userName ?? 'User';
+        final userEmail = auth.userEmail ?? 'user@example.com';
+        final userModel = auth.currentUserModel;
+        
+        
+        // Get additional user data from UserModel if available
+        final userLocation = userModel?.location ?? 'Location not set';
+        final userStatus = userModel?.status == 'Online' ? 'Connected' : 'Disconnected';
+        
+         return Container(
+           margin: const EdgeInsets.only(bottom: 24),
+           child: Container(
+             padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
                 color: AppColors.white,
-                borderRadius: BorderRadius.circular(16),
+               borderRadius: BorderRadius.circular(20),
+               border: Border.all(
+                 color: AppColors.primaryRed.withOpacity(0.3),
+                 width: 2,
+               ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
+                   color: AppColors.primaryRed.withOpacity(0.1),
                     blurRadius: 8,
                     offset: const Offset(0, 2),
                   ),
-                  BoxShadow(
-                    color: AppColors.white.withOpacity(0.8),
-                    blurRadius: 8,
-                    offset: const Offset(0, -2),
-                  ),
-                ],
-              ),
-              child: const Icon(
-                Icons.edit,
-                color: AppColors.primary,
-                size: 24,
+               ],
+             ),
+             child: Row(
+               children: [
+                 // Avatar with solid colors only - smaller to give more space to text
+                 CircleAvatar(
+                   radius: 28,
+                   backgroundColor: AppColors.primaryRed.withOpacity(0.1),
+                   child: Text(
+                     _getInitials(userName),
+                     style: const TextStyle(
+                       fontSize: 20,
+                       fontWeight: FontWeight.bold,
+                       color: AppColors.primaryRed,
               ),
             ),
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildProfileInfo() {
-    return Consumer<AuthProvider>(
-      builder: (context, authProvider, child) {
-        final userName = authProvider.userName ?? _userProfile['name'];
-
-        // Debug logging
-        print(
-            'Profile Screen - AuthProvider userName: ${authProvider.userName}');
-        print(
-            'Profile Screen - AuthProvider userEmail: ${authProvider.userEmail}');
-        print(
-            'Profile Screen - AuthProvider isAuthenticated: ${authProvider.isAuthenticated}');
-        print('Profile Screen - Final userName: $userName');
-
-        return Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 420),
-            child: AnimatedNeumorphicCard(
+                 const SizedBox(width: 14),
+                 // User Info Section with maximum space allocation
+                 Expanded(
               child: Column(
+                     crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  // Profile Avatar
+                       // User Name - ensure full display with maximum space
+                       Text(
+                         userName,
+                         style: const TextStyle(
+                           color: AppColors.textPrimary,
+                           fontWeight: FontWeight.bold,
+                           fontSize: 15,
+                           height: 1.2,
+                         ),
+                         maxLines: 2,
+                         overflow: TextOverflow.ellipsis,
+                       ),
+                       const SizedBox(height: 3),
+                       // Email - ensure full display with maximum space
+                       Text(
+                         userEmail,
+                         style: const TextStyle(
+                           color: AppColors.textSecondary,
+                           fontSize: 11,
+                           height: 1.3,
+                           fontWeight: FontWeight.w500,
+                         ),
+                         maxLines: 2,
+                         overflow: TextOverflow.ellipsis,
+                       ),
+                       if (userLocation != 'Location not set') ...[
+                         const SizedBox(height: 6),
+                         // Location with icon and proper horizontal display
+                         Row(
+                           children: [
+                             Icon(
+                               Icons.location_on_outlined,
+                               size: 14,
+                               color: AppColors.textSecondary.withOpacity(0.7),
+                             ),
+                             const SizedBox(width: 4),
+                             Expanded(
+                               child: Text(
+                                 userLocation,
+                                 style: const TextStyle(
+                                   color: AppColors.textSecondary,
+                                   fontSize: 12,
+                                   height: 1.2,
+                                   fontWeight: FontWeight.w500,
+                                 ),
+                                 maxLines: 1,
+                                 overflow: TextOverflow.ellipsis,
+                               ),
+                             ),
+                           ],
+                         ),
+                       ],
+                     ],
+                   ),
+                 ),
+                 const SizedBox(width: 8),
+                 // Status Indicator with solid colors only - ultra compact version
                   Container(
-                    width: 120,
-                    height: 120,
+                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                     decoration: BoxDecoration(
-                      color: AppColors.primary,
-                      borderRadius: BorderRadius.circular(60),
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppColors.primaryRed.withOpacity(0.4),
-                          blurRadius: 24,
-                          offset: const Offset(0, 10),
-                        ),
-                        BoxShadow(
-                          color: AppColors.white.withOpacity(0.8),
-                          blurRadius: 24,
-                          offset: const Offset(0, -10),
-                        ),
-                      ],
-                    ),
-                    child: Center(
-                      child: Text(
-                        _getInitials(userName),
-                        style: AppTypography.displayLarge.copyWith(
-                          color: AppColors.white,
-                          fontSize: 42,
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 24),
-
-                  // Name and Role
-                  Text(
-                    userName,
-                    style: AppTypography.displayMedium.copyWith(
-                      color: AppColors.textPrimary,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-
-                  const SizedBox(height: 8),
-
-                  Text(
-                    _userProfile['role'],
-                    style: AppTypography.titleMedium.copyWith(
-                      color: AppColors.textSecondary,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // Status
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: AppColors.success.withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(20),
+                     color: userStatus == 'Connected' 
+                         ? AppColors.success.withOpacity(0.15)
+                         : AppColors.textSecondary.withOpacity(0.08),
+                     borderRadius: BorderRadius.circular(8),
                       border: Border.all(
-                        color: AppColors.success.withOpacity(0.3),
+                       color: userStatus == 'Connected' 
+                           ? AppColors.success.withOpacity(0.3)
+                           : AppColors.textSecondary.withOpacity(0.2),
                         width: 1,
                       ),
                     ),
@@ -331,26 +246,30 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Container(
-                          width: 10,
-                          height: 10,
-                          decoration: const BoxDecoration(
-                            color: AppColors.success,
+                         width: 4,
+                         height: 4,
+                         decoration: BoxDecoration(
+                           color: userStatus == 'Connected' 
+                               ? AppColors.success
+                               : AppColors.textSecondary,
                             shape: BoxShape.circle,
                           ),
                         ),
-                        const SizedBox(width: 10),
+                       const SizedBox(width: 3),
                         Text(
-                          _userProfile['status'],
-                          style: AppTypography.bodyMedium.copyWith(
-                            color: AppColors.success,
-                            fontWeight: FontWeight.w700,
+                         userStatus,
+                         style: TextStyle(
+                           color: userStatus == 'Connected' 
+                               ? AppColors.success
+                               : AppColors.textSecondary,
+                           fontWeight: FontWeight.w600,
+                           fontSize: 9,
                           ),
                         ),
                       ],
                     ),
                   ),
                 ],
-              ),
             ),
           ),
         );
@@ -358,42 +277,60 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
     );
   }
 
-  String _getInitials(String? name) {
-    if (name == null || name.trim().isEmpty) return 'JD';
-    final parts = name.trim().split(RegExp(r"\s+"));
-    if (parts.length == 1) return parts.first.substring(0, 1).toUpperCase();
-    return (parts[0].isNotEmpty ? parts[0][0] : '') +
-        (parts.length > 1 && parts[1].isNotEmpty ? parts[1][0] : '');
-  }
-
-  Widget _buildQuickStats() {
-    return ModernResponsiveGrid(
+  Widget _buildStatsSection() {
+    return Consumer<AuthProvider>(
+      builder: (context, auth, child) {
+        final userModel = auth.currentUserModel;
+        
+        return Column(
       children: [
-        _buildStatCard(
+            // Enhanced Stats Section with better spacing
+            Row(
+              children: [
+                Expanded(
+                  child: _buildStatCard(
           title: 'Messages Sent',
-          value: '1,234',
-          icon: Icons.message,
-          color: AppColors.info,
-        ),
-        _buildStatCard(
+                    value: _getMessagesCount(userModel),
+                    icon: Icons.message_outlined,
+                    color: AppColors.primaryRed,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: _buildStatCard(
           title: 'Emergency Alerts',
-          value: '12',
-          icon: Icons.emergency,
-          color: AppColors.error,
-        ),
-        _buildStatCard(
+                    value: _getEmergencyAlertsCount(userModel),
+                    icon: Icons.warning_amber_outlined,
+                    color: AppColors.warning,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildStatCard(
           title: 'Calls Made',
-          value: '89',
-          icon: Icons.call,
+                    value: _getCallsCount(userModel),
+                    icon: Icons.phone_outlined,
           color: AppColors.success,
         ),
-        _buildStatCard(
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: _buildStatCard(
           title: 'Days Active',
-          value: '45',
-          icon: Icons.calendar_today,
-          color: AppColors.warning,
-        ),
-      ],
+                    value: _getDaysActiveCount(userModel),
+                    icon: Icons.calendar_today_outlined,
+                    color: AppColors.info,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -404,39 +341,57 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
     required Color color,
   }) {
     return AnimatedNeumorphicCard(
+       child: Padding(
+         padding: const EdgeInsets.all(20),
       child: Column(
         children: [
+             // Enhanced icon with background circle
           Container(
-            width: 40,
-            height: 40,
+               padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: color.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(12),
+                 shape: BoxShape.circle,
+                 boxShadow: [
+                   BoxShadow(
+                     color: color.withOpacity(0.2),
+                     blurRadius: 8,
+                     offset: const Offset(0, 2),
+                   ),
+                 ],
             ),
             child: Icon(
               icon,
               color: color,
-              size: 20,
+                 size: 22,
             ),
           ),
-          const SizedBox(height: 8),
+             const SizedBox(height: 12),
+             // Enhanced value text
           Text(
             value,
-            style: TextStyle(
-              fontSize: 20,
+               style: UnifiedTypography.titleLarge.copyWith(
+                 color: AppColors.textPrimary,
               fontWeight: FontWeight.bold,
-              color: color,
+                 fontSize: 20,
+                 height: 1.1,
             ),
           ),
+             const SizedBox(height: 6),
+             // Enhanced title text
           Text(
             title,
-            style: const TextStyle(
-              fontSize: 12,
+               style: UnifiedTypography.bodySmall.copyWith(
               color: AppColors.textSecondary,
+                 fontSize: 12,
+                 fontWeight: FontWeight.w500,
+                 height: 1.2,
             ),
             textAlign: TextAlign.center,
+               maxLines: 2,
+               overflow: TextOverflow.ellipsis,
           ),
         ],
+         ),
       ),
     );
   }
@@ -451,15 +406,12 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
               icon: Icons.person,
               title: 'Personal Information',
               subtitle: 'Update your personal details',
-              onTap: () {
-                HapticFeedback.mediumImpact();
-                Navigator.of(context).pushNamed('/update-profile');
-              },
+              onTap: () => _editProfile(context),
             ),
             _buildSettingsItem(
               icon: Icons.security,
               title: 'Security',
-              subtitle: 'Password and authentication',
+              subtitle: 'Password and security settings',
               onTap: () => _openSecurity(context),
             ),
             _buildSettingsItem(
@@ -472,25 +424,19 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
         ),
         const SizedBox(height: 16),
         _buildSettingsSection(
-          title: 'App Settings',
+          title: 'Support',
           items: [
             _buildSettingsItem(
-              icon: Icons.palette,
-              title: 'Theme',
-              subtitle: 'Light, Dark, or Auto',
-              onTap: () => _openTheme(context),
+              icon: Icons.help,
+              title: 'Help Center',
+              subtitle: 'Get help and support',
+              onTap: () {},
             ),
             _buildSettingsItem(
-              icon: Icons.language,
-              title: 'Language',
-              subtitle: 'English',
-              onTap: () => _openLanguage(context),
-            ),
-            _buildSettingsItem(
-              icon: Icons.privacy_tip,
-              title: 'Privacy',
-              subtitle: 'Privacy and data settings',
-              onTap: () => _openPrivacy(context),
+              icon: Icons.info,
+              title: 'About',
+              subtitle: 'App version and information',
+              onTap: () {},
             ),
           ],
         ),
@@ -507,13 +453,12 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.only(bottom: 16),
+            padding: const EdgeInsets.all(16),
             child: Text(
               title,
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
+              style: UnifiedTypography.titleMedium.copyWith(
                 color: AppColors.textPrimary,
+                fontWeight: FontWeight.bold,
               ),
             ),
           ),
@@ -532,27 +477,21 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: () {
-          HapticFeedback.lightImpact();
-          onTap();
-        },
+        onTap: onTap,
         borderRadius: BorderRadius.circular(12),
-        splashColor: AppColors.primaryRed.withOpacity(0.1),
-        highlightColor: AppColors.primaryRed.withOpacity(0.05),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           child: Row(
             children: [
               Container(
-                width: 40,
-                height: 40,
+                padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
                   color: AppColors.primaryRed.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(
                   icon,
-                  color: AppColors.primary,
+                  color: AppColors.primaryRed,
                   size: 20,
                 ),
               ),
@@ -563,14 +502,15 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                   children: [
                     Text(
                       title,
-                      style: AppTypography.titleSmall.copyWith(
+                      style: UnifiedTypography.bodyLarge.copyWith(
                         color: AppColors.textPrimary,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
-                    SizedBox(height: 2),
+                    const SizedBox(height: 2),
                     Text(
                       subtitle,
-                      style: AppTypography.bodySmall.copyWith(
+                      style: UnifiedTypography.bodySmall.copyWith(
                         color: AppColors.textSecondary,
                       ),
                     ),
@@ -578,9 +518,9 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                 ),
               ),
               Icon(
-                Icons.chevron_right,
-                color: AppColors.mediumGray,
-                size: 20,
+                Icons.arrow_forward_ios,
+                color: AppColors.textSecondary,
+                size: 16,
               ),
             ],
           ),
@@ -590,32 +530,113 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
   }
 
   Widget _buildActionButtons() {
-    return Column(
+    return Row(
       children: [
-        // Sign Out Button
-        EnhancedButton(
-          text: 'Sign Out',
-          variant: ButtonVariant.danger,
-          size: ButtonSize.large,
-          icon: Icons.logout,
-          fullWidth: true,
-          onPressed: () {
-            _signOut(context);
-          },
+        Expanded(
+          child: Container(
+            decoration: BoxDecoration(
+              color: AppColors.primaryRed,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.primaryRed.withOpacity(0.3),
+                  blurRadius: 8,
+                  offset: const Offset(0, 4),
+                ),
+                BoxShadow(
+                  color: AppColors.white.withOpacity(0.8),
+                  blurRadius: 8,
+                  offset: const Offset(0, -4),
+                ),
+              ],
+            ),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () => _signOut(context),
+                borderRadius: BorderRadius.circular(12),
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                        Icons.logout,
+                        color: AppColors.white,
+                        size: 20,
+                            ),
+                            SizedBox(width: 8),
+                      Text(
+                        'Sign Out',
+                                style: TextStyle(
+                          color: AppColors.white,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                              ),
+                            ),
+                          ],
+                        ),
+                ),
+              ),
+            ),
+          ),
         ),
-
-        const SizedBox(height: 16),
-
-        // Delete Account Button
-        EnhancedButton(
-          text: 'Delete Account',
-          variant: ButtonVariant.secondary,
-          size: ButtonSize.large,
-          icon: Icons.delete_forever,
-          fullWidth: true,
-          onPressed: () {
-            _deleteAccount(context);
-          },
+        const SizedBox(width: 12),
+        Expanded(
+          child: Container(
+            decoration: BoxDecoration(
+              color: AppColors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: AppColors.error.withOpacity(0.3),
+                width: 1,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.error.withOpacity(0.1),
+                  blurRadius: 8,
+                  offset: const Offset(0, 4),
+                ),
+                BoxShadow(
+                  color: AppColors.white.withOpacity(0.8),
+                  blurRadius: 8,
+                  offset: const Offset(0, -4),
+                ),
+              ],
+            ),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () => _deleteAccount(context),
+                borderRadius: BorderRadius.circular(12),
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 16, horizontal: 8),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.delete_forever,
+                        color: AppColors.error,
+                        size: 18,
+                      ),
+                      SizedBox(width: 6),
+                      Flexible(
+                        child: Text(
+                          'Delete Account',
+                          style: TextStyle(
+                            color: AppColors.error,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
         ),
       ],
     );
@@ -625,554 +646,6 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
   void _editProfile(BuildContext context) {
     HapticFeedback.lightImpact();
     Navigator.of(context).pushNamed('/update-profile');
-  }
-
-  void _viewUserInfo(BuildContext context) {
-    HapticFeedback.lightImpact();
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => const UserInfoScreen(),
-      ),
-    );
-  }
-
-  void _editPersonalInfo(BuildContext context) {
-    HapticFeedback.lightImpact();
-    final auth = context.read<AuthProvider>();
-
-    // Initialize controllers with current user data
-    final TextEditingController firstNameCtrl =
-        TextEditingController(text: auth.userName?.split(' ').first ?? '');
-    final TextEditingController lastNameCtrl = TextEditingController(
-        text: auth.userName?.split(' ').skip(1).join(' ') ?? '');
-    final TextEditingController emailCtrl = TextEditingController(
-        text: auth.userEmail ?? _userProfile['email'] ?? 'john.doe@example.com');
-    final TextEditingController addressCtrl =
-        TextEditingController(text: _userProfile['address'] ?? '');
-    // Initialize phone controller to show only the 10 digits (strip leading 0 if present)
-    final String _rawPhone = (_userProfile['phone'] ?? '').toString();
-    final String _digitsOnly = _rawPhone.replaceAll(RegExp(r'\D'), '');
-    final String _displayDigits = _digitsOnly.startsWith('0') && _digitsOnly.length >= 11
-        ? _digitsOnly.substring(1)
-        : _digitsOnly;
-    final TextEditingController phoneCtrl = TextEditingController(text: _displayDigits);
-    final TextEditingController regionCtrl = TextEditingController(text: _userProfile['region'] ?? '');
-    final TextEditingController provinceCtrl = TextEditingController(text: _userProfile['province'] ?? '');
-    final TextEditingController cityCtrl = TextEditingController(text: _userProfile['city'] ?? '');
-    final TextEditingController barangayCtrl = TextEditingController(text: _userProfile['barangay'] ?? '');
-
-    // Form key for validation
-    final _formKey = GlobalKey<FormState>();
-
-    // Location data - use pre-loaded singleton
-    String? selectedRegion;
-    String? selectedProvince;
-    String? selectedCity;
-    String? selectedBarangay;
-
-    bool _isLoading = false;
-
-    // Initialize with current user data if it exists
-    selectedRegion = _userProfile['region'];
-    selectedProvince = _userProfile['province'];
-    selectedCity = _userProfile['city'];
-    selectedBarangay = _userProfile['barangay'];
-    
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setState) {
-            return Padding(
-              padding: EdgeInsets.only(
-                  bottom: MediaQuery.of(context).viewInsets.bottom),
-              child: AnimatedNeumorphicCard(
-                margin: const EdgeInsets.all(16),
-                child: SingleChildScrollView(
-                  child: Form(
-                    key: _formKey,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Row(
-                          children: [
-                            Icon(
-                              Icons.person,
-                              color: AppColors.primary,
-                              size: 24,
-                            ),
-                            SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                'Update Profile',
-                                style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                    color: AppColors.textPrimary),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 24),
-
-                        // First Name
-                        TextFormField(
-                          controller: firstNameCtrl,
-                          decoration: const InputDecoration(
-                            labelText: 'First Name',
-                            border: OutlineInputBorder(),
-                            hintText: 'Enter your first name',
-                          ),
-                          validator: (value) {
-                            if (value == null || value.trim().isEmpty) {
-                              return 'First name is required';
-                            }
-                            if (value.contains(RegExp(r'[0-9]'))) {
-                              return 'First name cannot contain numbers';
-                            }
-                            return null;
-                          },
-                          autovalidateMode: AutovalidateMode.onUserInteraction,
-                        ),
-                        const SizedBox(height: 16),
-
-                        // Last Name
-                        TextFormField(
-                          controller: lastNameCtrl,
-                          decoration: const InputDecoration(
-                            labelText: 'Last Name',
-                            border: OutlineInputBorder(),
-                            hintText: 'Enter your last name',
-                          ),
-                          validator: (value) {
-                            if (value == null || value.trim().isEmpty) {
-                              return 'Last name is required';
-                            }
-                            if (value.contains(RegExp(r'[0-9]'))) {
-                              return 'Last name cannot contain numbers';
-                            }
-                            return null;
-                          },
-                          autovalidateMode: AutovalidateMode.onUserInteraction,
-                        ),
-                        const SizedBox(height: 16),
-
-                        // Email (Read-only)
-                        TextFormField(
-                          controller: emailCtrl,
-                          enabled: false, // Make email read-only
-                          decoration: const InputDecoration(
-                            labelText: 'Email',
-                            border: OutlineInputBorder(),
-                            hintText: 'Email cannot be changed',
-                            filled: true,
-                            fillColor: AppColors.lightGray,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-
-                        // Address
-                        TextFormField(
-                          controller: addressCtrl,
-                          decoration: const InputDecoration(
-                            labelText: 'Address',
-                            border: OutlineInputBorder(),
-                            hintText: 'Enter your complete address',
-                          ),
-                          maxLines: 2,
-                          validator: (value) {
-                            if (value == null || value.trim().isEmpty) {
-                              return 'Address is required';
-                            }
-                            return null;
-                          },
-                          autovalidateMode: AutovalidateMode.onUserInteraction,
-                        ),
-                        const SizedBox(height: 16),
-
-                        // Phone (+63 prefix, 10 digits only) - styled consistently
-                        TextFormField(
-                          controller: phoneCtrl,
-                          keyboardType: TextInputType.number,
-                          inputFormatters: [
-                            FilteringTextInputFormatter.digitsOnly,
-                            LengthLimitingTextInputFormatter(10),
-                          ],
-                          decoration: const InputDecoration(
-                            labelText: 'Phone Number',
-                            hintText: '9123456789',
-                            border: OutlineInputBorder(),
-                            prefixText: '+63 ',
-                          ),
-                          validator: (value) => InputValidator.validatePhilippinePhoneNumber(value),
-                          autovalidateMode: AutovalidateMode.onUserInteraction,
-                        ),
-                        const SizedBox(height: 16),
-
-                        // Zip code removed
-                        const SizedBox(height: 16),
-
-                        // Region
-                        TextFormField(
-                          controller: regionCtrl,
-                          decoration: const InputDecoration(
-                            labelText: 'Region',
-                            border: OutlineInputBorder(),
-                            hintText: 'Select Region',
-                          ),
-                          validator: (value) {
-                            if (value == null || value.trim().isEmpty) {
-                              return 'Region is required';
-                            }
-                            return null;
-                          },
-                          autovalidateMode: AutovalidateMode.onUserInteraction,
-                        ),
-                        const SizedBox(height: 16),
-
-                        // Province
-                        TextFormField(
-                          controller: provinceCtrl,
-                          decoration: const InputDecoration(
-                            labelText: 'Province',
-                            border: OutlineInputBorder(),
-                            hintText: 'Select Province',
-                          ),
-                          validator: (value) {
-                            if (value == null || value.trim().isEmpty) {
-                              return 'Province is required';
-                            }
-                            return null;
-                          },
-                          autovalidateMode: AutovalidateMode.onUserInteraction,
-                        ),
-                        const SizedBox(height: 16),
-
-                        // City
-                        TextFormField(
-                          controller: cityCtrl,
-                          decoration: const InputDecoration(
-                            labelText: 'City',
-                            border: OutlineInputBorder(),
-                            hintText: 'Select City',
-                          ),
-                          validator: (value) {
-                            if (value == null || value.trim().isEmpty) {
-                              return 'City is required';
-                            }
-                            return null;
-                          },
-                          autovalidateMode: AutovalidateMode.onUserInteraction,
-                        ),
-                        const SizedBox(height: 16),
-
-                        // Barangay
-                        TextFormField(
-                          controller: barangayCtrl,   
-                          decoration: const InputDecoration(
-                            labelText: 'Barangay',
-                            border: OutlineInputBorder(),
-                            hintText: 'Select Barangay',
-                          ),
-                          validator: (value) {
-                            if (value == null || value.trim().isEmpty) {
-                              return 'Barangay is required';
-                            }
-                            return null;
-                          },
-                          autovalidateMode: AutovalidateMode.onUserInteraction,
-                        ),
-                        const SizedBox(height: 16),
-
-                        // Region Dropdown
-                        DropdownButtonFormField<String>(
-                          value: selectedRegion,
-                          decoration: const InputDecoration(
-                            labelText: 'Region',
-                            border: OutlineInputBorder(),
-                            hintText: 'Select Region',
-                          ),
-                          items: PhilippineLocationService.instance
-                              .getRegions()
-                              .map((region) {
-                            return DropdownMenuItem<String>(
-                              value: region,
-                              child: Text(region),
-                            );
-                          }).toList(),
-                          onChanged: (value) {
-                            setState(() {
-                              selectedRegion = value;
-                              // Reset dependent dropdowns
-                              selectedProvince = null;
-                              selectedCity = null;
-                              selectedBarangay = null;
-                            });
-                          },
-                          validator: (value) {
-                            if (value == null || value.isEmpty) {
-                              return 'Region is required';
-                            }
-                            return null;
-                          },
-                        ),
-                        const SizedBox(height: 16),
-
-                        // Province Dropdown
-                        DropdownButtonFormField<String>(
-                          value: selectedProvince,
-                          decoration: const InputDecoration(
-                            labelText: 'Province',
-                            border: OutlineInputBorder(),
-                            hintText: 'Select Province',
-                          ),
-                          items: selectedRegion != null
-                              ? PhilippineLocationService.instance
-                                  .getProvincesForRegion(selectedRegion!)
-                                  .map((province) {
-                                return DropdownMenuItem<String>(
-                                  value: province,
-                                  child: Text(province),
-                                );
-                              }).toList()
-                              : [const DropdownMenuItem<String>(
-                                  value: '',
-                                  child: Text('Please select Region first'),
-                                )],
-                          onChanged: (value) {
-                            if (value != null && value.isNotEmpty) {
-                              setState(() {
-                                selectedProvince = value;
-                                // Reset dependent dropdowns
-                                selectedCity = null;
-                                selectedBarangay = null;
-                              });
-                            }
-                          },
-                          validator: (value) {
-                            if (value == null || value.isEmpty) {
-                              return 'Province is required';
-                            }
-                            return null;
-                          },
-                        ),
-
-                        const SizedBox(height: 16),
-
-                        // City/Municipality Dropdown
-                        DropdownButtonFormField<String>(
-                          value: selectedCity,
-                          decoration: const InputDecoration(
-                            labelText: 'City/Municipality',
-                            border: OutlineInputBorder(),
-                            hintText: 'Select City/Municipality',
-                          ),
-                          items: selectedProvince != null
-                              ? PhilippineLocationService.instance
-                                  .getCitiesForProvince(
-                                      selectedRegion!, selectedProvince!)
-                                  .map((city) {
-                                return DropdownMenuItem<String>(
-                                  value: city,
-                                  child: Text(city),
-                                );
-                              }).toList()
-                              : [const DropdownMenuItem<String>(
-                                  value: '',
-                                  child: Text('Please select Province first'),
-                                )],
-                          onChanged: (value) {
-                            if (value != null && value.isNotEmpty) {
-                              setState(() {
-                                selectedCity = value;
-                                // Reset dependent dropdowns
-                                selectedBarangay = null;
-                              });
-                            }
-                          },
-                          validator: (value) {
-                            if (value == null || value.isEmpty) {
-                              return 'City/Municipality is required';
-                            }
-                            return null;
-                          },
-                        ),
-                        const SizedBox(height: 16),
-
-                        // Barangay Dropdown
-                        DropdownButtonFormField<String>(
-                          value: selectedBarangay,
-                          decoration: const InputDecoration(
-                            labelText: 'Barangay',
-                            border: OutlineInputBorder(),
-                            hintText: 'Select Barangay',
-                          ),
-                          items: selectedCity != null
-                              ? PhilippineLocationService.instance
-                                  .getBarangaysForCity(selectedRegion!,
-                                      selectedProvince!, selectedCity!)
-                                  .map((barangay) {
-                                return DropdownMenuItem<String>(
-                                  value: barangay,
-                                  child: Text(barangay),
-                                );
-                              }).toList()
-                              : [const DropdownMenuItem<String>(
-                                  value: '',
-                                  child: Text('Please select City first'),
-                                )],
-                          onChanged: (value) {
-                            if (value != null && value.isNotEmpty) {
-                              setState(() {
-                                selectedBarangay = value;
-                              });
-                            }
-                          },
-                          validator: (value) {
-                            if (value == null || value.isEmpty) {
-                              return 'Barangay is required';
-                            }
-                            return null;
-                          },
-                        ),
-                        const SizedBox(height: 20),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(context),
-                              child: const Text('Cancel'),
-                            ),
-                            const SizedBox(width: 8),
-                            ElevatedButton(
-                              onPressed: _isLoading
-                                  ? null
-                                  : () async {
-                                      if (!_formKey.currentState!
-                                          .validate()) {
-                                        return;
-                                      }
-                                      
-                                      setState(() {
-                                        _isLoading = true;
-                                      });
-
-                                      try {
-                                        // Update AuthProvider 
-                                        await auth.updateUserProfile(
-                                          firstName: firstNameCtrl.text.trim(),
-                                          lastName: lastNameCtrl.text.trim(),
-                                          address: addressCtrl.text.trim(),
-                                          region: selectedRegion ?? '',
-                                          city: selectedProvince ?? '',
-                                          barangay: selectedBarangay ?? '',
-                                          phone: (() { final d = phoneCtrl.text.replaceAll(RegExp(r'\\D'), ''); return d.isEmpty ? '' : ('0' + d); })(),
-                                          province: selectedProvince ?? '',
-                                        );
-
-                                        if (!mounted) return;
-
-                                        // Update local state in the main profile screen
-                                        this.setState(() {
-                                           _userProfile['name'] = '${firstNameCtrl.text.trim()} ${lastNameCtrl.text.trim()}';
-                                           _userProfile['address'] = addressCtrl.text.trim();
-                                           _userProfile['region'] = selectedRegion;
-                                           _userProfile['province'] = selectedProvince;
-                                           _userProfile['city'] = selectedCity;
-                                           _userProfile['barangay'] = selectedBarangay;
-                                           _userProfile['phone'] = (() { final d = phoneCtrl.text.replaceAll(RegExp(r'\\D'), ''); return d.isEmpty ? '' : ('0' + d); })();
-                                           
-                                        });
-
-                                        Navigator.pop(context);
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          const SnackBar(
-                                              content: Text('Profile updated successfully'),
-                                              backgroundColor: AppColors.success),
-                                        );
-                                      } catch (e) {
-                                        if (!mounted) return;
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(
-                                              content: Text('Error updating profile: $e'),
-                                              backgroundColor: AppColors.error),
-                                        );
-                                      } finally {
-                                        if (mounted) {
-                                          setState(() {
-                                            _isLoading = false;
-                                          });
-                                        }
-                                      }
-                                    },
-                              style: ElevatedButton.styleFrom(
-                                  backgroundColor: AppColors.primaryRed,
-                                  foregroundColor: AppColors.white),
-                              child: _isLoading
-                                  ? const SizedBox(
-                                      width: 20,
-                                      height: 20,
-                                      child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          color: Colors.white),
-                                    )
-                                  : const Text('Save'),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  // **FIX**: Restored the missing _openNotifications method
-  void _openNotifications(BuildContext context) {
-    HapticFeedback.lightImpact();
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => const NotificationSettingsScreen(),
-      ),
-    );
-  }
-
-  void _openTheme(BuildContext context) {
-    HapticFeedback.lightImpact();
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => const ThemeSelectionModal(),
-    );
-  }
-
-  void _openLanguage(BuildContext context) {
-    HapticFeedback.lightImpact();
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Language settings'),
-        backgroundColor: AppColors.info,
-      ),
-    );
-  }
-
-  void _openPrivacy(BuildContext context) {
-    HapticFeedback.lightImpact();
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Privacy settings'),
-        backgroundColor: AppColors.info,
-      ),
-    );
   }
 
   void _openSecurity(BuildContext context) {
@@ -1227,19 +700,29 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                         if (isGmailSSO)
                           Container(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 4),
+                                horizontal: 12, vertical: 6),
                             decoration: BoxDecoration(
-                              color: AppColors.info.withOpacity(0.1),
+                              color: AppColors.white,
                               borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                  color: AppColors.info.withOpacity(0.3)),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: AppColors.info.withOpacity(0.1),
+                                  blurRadius: 4,
+                                  offset: const Offset(2, 2),
+                                ),
+                                BoxShadow(
+                                  color: AppColors.white.withOpacity(0.8),
+                                  blurRadius: 4,
+                                  offset: const Offset(-2, -2),
+                                ),
+                              ],
                             ),
                             child: const Text(
                               'Google Account',
                               style: TextStyle(
                                 fontSize: 12,
                                 color: AppColors.info,
-                                fontWeight: FontWeight.w500,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
                           ),
@@ -1248,13 +731,35 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                     const SizedBox(height: 16),
                     if (!isGmailSSO) ...[
                       // Current Password (only for sign-up accounts)
-                      TextField(
+                      Container(
+                        decoration: BoxDecoration(
+                          color: AppColors.white,
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppColors.primaryRed.withOpacity(0.05),
+                              blurRadius: 4,
+                              offset: const Offset(2, 2),
+                            ),
+                            BoxShadow(
+                              color: AppColors.white.withOpacity(0.8),
+                              blurRadius: 4,
+                              offset: const Offset(-2, -2),
+                            ),
+                          ],
+                        ),
+                        child: TextField(
                         controller: currentCtrl,
                         obscureText: obscureCurrent,
                         decoration: InputDecoration(
                           labelText: 'Current Password',
-                          border: const OutlineInputBorder(),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide.none,
+                            ),
                           hintText: 'Enter your current password',
+                            filled: true,
+                            fillColor: Colors.transparent,
                           suffixIcon: IconButton(
                             icon: Icon(obscureCurrent
                                 ? Icons.visibility
@@ -1264,6 +769,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                                 obscureCurrent = !obscureCurrent;
                               });
                             },
+                            ),
                           ),
                         ),
                       ),
@@ -1271,13 +777,35 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                     ],
 
                     // New Password
-                    TextField(
+                    Container(
+                      decoration: BoxDecoration(
+                        color: AppColors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppColors.primaryRed.withOpacity(0.05),
+                            blurRadius: 4,
+                            offset: const Offset(2, 2),
+                          ),
+                          BoxShadow(
+                            color: AppColors.white.withOpacity(0.8),
+                            blurRadius: 4,
+                            offset: const Offset(-2, -2),
+                          ),
+                        ],
+                      ),
+                      child: TextField(
                       controller: newCtrl,
                       obscureText: obscureNew,
                       decoration: InputDecoration(
                         labelText: isGmailSSO ? 'New or Create Password' : 'New Password',
-                        border: const OutlineInputBorder(),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
                         hintText: isGmailSSO ? 'Enter a password to enable email login' : 'Enter your new password',
+                          filled: true,
+                          fillColor: Colors.transparent,
                         suffixIcon: IconButton(
                           icon: Icon(obscureNew
                               ? Icons.visibility
@@ -1287,19 +815,42 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                               obscureNew = !obscureNew;
                             });
                           },
+                          ),
                         ),
                       ),
                     ),
                     const SizedBox(height: 12),
 
                     // Confirm Password
-                    TextField(
+                    Container(
+                      decoration: BoxDecoration(
+                        color: AppColors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppColors.primaryRed.withOpacity(0.05),
+                            blurRadius: 4,
+                            offset: const Offset(2, 2),
+                          ),
+                          BoxShadow(
+                            color: AppColors.white.withOpacity(0.8),
+                            blurRadius: 4,
+                            offset: const Offset(-2, -2),
+                          ),
+                        ],
+                      ),
+                      child: TextField(
                       controller: confirmCtrl,
                       obscureText: obscureConfirm,
                       decoration: InputDecoration(
                         labelText: 'Confirm Password',
-                        border: const OutlineInputBorder(),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
                         hintText: 'Confirm your new password',
+                          filled: true,
+                          fillColor: Colors.transparent,
                         suffixIcon: IconButton(
                           icon: Icon(obscureConfirm
                               ? Icons.visibility
@@ -1309,6 +860,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                               obscureConfirm = !obscureConfirm;
                             });
                           },
+                          ),
                         ),
                       ),
                     ),
@@ -1317,10 +869,20 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
+                          color: AppColors.white,
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: [
+                            BoxShadow(
                           color: AppColors.info.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                              color: AppColors.info.withOpacity(0.3)),
+                              blurRadius: 4,
+                              offset: const Offset(2, 2),
+                            ),
+                            BoxShadow(
+                              color: AppColors.white.withOpacity(0.8),
+                              blurRadius: 4,
+                              offset: const Offset(-2, -2),
+                            ),
+                          ],
                         ),
                         child: const Row(
                           children: [
@@ -1333,6 +895,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                                 style: TextStyle(
                                   fontSize: 12,
                                   color: AppColors.info,
+                                  fontWeight: FontWeight.w500,
                                 ),
                               ),
                             ),
@@ -1345,12 +908,59 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                     Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
-                        TextButton(
+                        Container(
+                          decoration: BoxDecoration(
+                            color: AppColors.white,
+                            borderRadius: BorderRadius.circular(12),
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppColors.primaryRed.withOpacity(0.05),
+                                blurRadius: 4,
+                                offset: const Offset(2, 2),
+                              ),
+                              BoxShadow(
+                                color: AppColors.white.withOpacity(0.8),
+                                blurRadius: 4,
+                                offset: const Offset(-2, -2),
+                              ),
+                            ],
+                          ),
+                          child: TextButton(
                           onPressed: () => Navigator.pop(context),
-                          child: const Text('Cancel'),
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            child: const Text(
+                              'Cancel',
+                              style: TextStyle(
+                                color: AppColors.textSecondary,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
                         ),
-                        const SizedBox(width: 8),
-                        ElevatedButton(
+                        const SizedBox(width: 12),
+                        Container(
+                          decoration: BoxDecoration(
+                            color: AppColors.primaryRed,
+                            borderRadius: BorderRadius.circular(12),
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppColors.primaryRed.withOpacity(0.2),
+                                blurRadius: 6,
+                                offset: const Offset(3, 3),
+                              ),
+                              BoxShadow(
+                                color: AppColors.white.withOpacity(0.3),
+                                blurRadius: 6,
+                                offset: const Offset(-3, -3),
+                              ),
+                            ],
+                          ),
+                          child: ElevatedButton(
                           onPressed: () async {
                             if (newCtrl.text.isEmpty || confirmCtrl.text.isEmpty) {
                                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please fill out all password fields.'), backgroundColor: AppColors.error));
@@ -1397,9 +1007,22 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                             }
                           },
                           style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.primaryRed,
-                              foregroundColor: AppColors.white),
-                          child: const Text('Update'),
+                              backgroundColor: Colors.transparent,
+                              foregroundColor: AppColors.white,
+                              elevation: 0,
+                              shadowColor: Colors.transparent,
+                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            child: const Text(
+                              'Update',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
                         ),
                       ],
                     ),
@@ -1413,8 +1036,17 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
     );
   }
 
+  void _openNotifications(BuildContext context) {
+    HapticFeedback.lightImpact();
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => const NotificationSettingsScreen(),
+      ),
+    );
+  }
+
   void _signOut(BuildContext context) {
-    HapticFeedback.heavyImpact();
+    HapticFeedback.lightImpact();
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -1427,16 +1059,11 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
           ),
           ElevatedButton(
             onPressed: () {
-              final authProvider = context.read<AuthProvider>();
-              final navigator = Navigator.of(context);
-
-              navigator.pop(context); // Close the dialog first
-
-              authProvider.signOut();
-              navigator.pushNamedAndRemoveUntil('/signin', (route) => false);
+              Navigator.pop(context);
+              context.read<AuthProvider>().signOut();
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.error,
+              backgroundColor: AppColors.primaryRed,
               foregroundColor: AppColors.white,
             ),
             child: const Text('Sign Out'),
@@ -1447,13 +1074,12 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
   }
 
   void _deleteAccount(BuildContext context) {
-    HapticFeedback.heavyImpact();
+    HapticFeedback.lightImpact();
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Delete Account'),
-        content: const Text(
-            'This action cannot be undone. Are you sure you want to delete your account?'),
+        content: const Text('Are you sure you want to delete your account? This action cannot be undone.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -1462,12 +1088,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
           ElevatedButton(
             onPressed: () {
               Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Account deletion requested'),
-                  backgroundColor: AppColors.error,
-                ),
-              );
+              // TODO: Implement account deletion
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.error,
@@ -1478,5 +1099,46 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
         ],
       ),
     );
+  }
+
+  String _getInitials(String? name) {
+    if (name == null || name.isEmpty) return 'U';
+    List<String> parts = name.split(' ');
+    return (parts[0].isNotEmpty ? parts[0][0] : '') +
+        (parts.length > 1 && parts[1].isNotEmpty ? parts[1][0] : '');
+  }
+
+  // Dynamic stats calculation methods using real data
+  String _getMessagesCount(UserModel? userModel) {
+    if (userModel == null) return '0';
+    // This would query the actual messages table for the user
+    // For now, return a placeholder that can be updated with real data
+    return '0'; // TODO: Implement real message count query
+  }
+
+  String _getEmergencyAlertsCount(UserModel? userModel) {
+    if (userModel == null) return '0';
+    // This would query the actual emergency alerts table
+    // For now, return a placeholder that can be updated with real data
+    return '0'; // TODO: Implement real emergency alerts count query
+  }
+
+  String _getCallsCount(UserModel? userModel) {
+    if (userModel == null) return '0';
+    // This would query the actual calls/voice messages table
+    // For now, return a placeholder that can be updated with real data
+    return '0'; // TODO: Implement real calls count query
+  }
+
+  String _getDaysActiveCount(UserModel? userModel) {
+    if (userModel == null) return '0';
+    // Calculate days since user joined using real data
+    if (userModel.createdAt > 0) {
+      final daysSinceJoin = DateTime.now().difference(
+        DateTime.fromMillisecondsSinceEpoch(userModel.createdAt)
+      ).inDays;
+      return daysSinceJoin.toString();
+    }
+    return '0';
   }
 }

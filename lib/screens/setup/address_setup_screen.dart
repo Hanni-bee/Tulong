@@ -2,10 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../constants/app_colors.dart';
-// import '../../constants/app_typography.dart';
-// import '../../models/user_model.dart';
+import '../../constants/unified_typography.dart';
 import '../../providers/auth_provider.dart';
-// import '../../services/firebase_service.dart';
 import '../../services/unified_data_service.dart';
 import '../../services/location_service.dart';
 import '../../widgets/custom_button.dart';
@@ -275,11 +273,7 @@ class _AddressSetupScreenState extends State<AddressSetupScreen> {
       children: [
         Text(
           label,
-          style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: AppColors.textPrimary,
-          ),
+          style: UnifiedTypography.titleMedium,
         ),
         const SizedBox(height: 8),
         Container(
@@ -397,12 +391,10 @@ class _AddressSetupScreenState extends State<AddressSetupScreen> {
                       ),
                       const SizedBox(width: 16),
                       Expanded(
-                        child: Text(
+                        child:                         Text(
                           'We need your address for emergency response and location-based features.',
-                          style: TextStyle(
-                            fontSize: 14,
+                          style: UnifiedTypography.bodyMedium.copyWith(
                             color: AppColors.textSecondary,
-                            height: 1.4,
                           ),
                         ),
                       ),

@@ -6,6 +6,7 @@ import '../constants/app_colors.dart';
 import '../constants/app_typography.dart';
 import '../services/simple_bluetooth_service.dart';
 import '../controllers/voice_controller.dart';
+import '../widgets/unified_top_bar.dart';
 
 /// ESP32 LoRa Chat Screen - Ultra Simple Version
 /// No animations, no pop-ups, no complex status tracking
@@ -209,9 +210,37 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
-      appBar: _buildSimpleAppBar(),
       body: Column(
         children: [
+          // Unified top bar
+          Consumer<SimpleBluetoothService>(
+            builder: (context, esp32Service, child) {
+              return TopBarConfigs.loraTopBar(
+                status: esp32Service.isConnected ? 'Connected' : 'Disconnected',
+                onBluetoothTap: () {
+                  Navigator.of(context).pushNamed('/esp32-scanner');
+                },
+              );
+            },
+          ),
+          
+          // Red line under top bar
+          Container(
+            height: 4,
+            margin: const EdgeInsets.symmetric(horizontal: 8),
+            decoration: BoxDecoration(
+              color: AppColors.primaryRed,
+              borderRadius: BorderRadius.circular(2),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.primaryRed.withOpacity(0.35),
+                  blurRadius: 6,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
+          ),
+          
           Expanded(child: _buildMessagesList()),
           _buildSimpleMessageInput(),
         ],
@@ -219,49 +248,6 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen> {
     );
   }
 
-  PreferredSizeWidget _buildSimpleAppBar() {
-    return AppBar(
-      backgroundColor: const Color(0xFFF8F9FA),
-      elevation: 0,
-      title: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'ESP32 LoRa Chat',
-            style: AppTypography.titleLarge.copyWith(
-              color: AppColors.darkGray,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          Consumer<SimpleBluetoothService>(
-            builder: (context, esp32Service, child) {
-              return Text(
-                esp32Service.isConnected ? 'Connected' : 'Disconnected',
-                style: AppTypography.bodySmall.copyWith(
-                  color: esp32Service.isConnected ? AppColors.success : AppColors.error,
-                ),
-              );
-            },
-          ),
-        ],
-      ),
-      actions: [
-        Consumer<SimpleBluetoothService>(
-          builder: (context, esp32Service, child) {
-            return IconButton(
-              onPressed: () {
-                Navigator.of(context).pushNamed('/esp32-scanner');
-              },
-              icon: Icon(
-                esp32Service.isConnected ? Icons.bluetooth_connected : Icons.bluetooth,
-                color: esp32Service.isConnected ? AppColors.success : AppColors.online,
-              ),
-            );
-          },
-        ),
-      ],
-    );
-  }
 
   Widget _buildMessagesList() {
     if (_messages.isEmpty) {

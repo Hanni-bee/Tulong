@@ -14,20 +14,15 @@ import '../widgets/emergency_alert_widget.dart';
 import '../widgets/enhanced_text_styles.dart';
 import '../widgets/enhanced_shadows.dart' as shadows;
 import '../widgets/micro_interactions.dart';
-import '../widgets/interactive_gestures.dart';
 import '../widgets/enhanced_card.dart';
-import '../widgets/enhanced_button.dart';
-import '../widgets/polished_shimmer.dart';
 import '../widgets/polished_animations.dart';
 import '../utils/page_transitions.dart';
 import '../utils/phone_responsive_helper.dart';
 import '../config/page_transition_config.dart';
-import 'modern_global_chat_screen.dart';
 import 'enhanced_global_chat_screen.dart';
 import 'walkie_talkie_screen.dart';
 import 'modern_people_screen.dart';
 import 'modern_profile_screen.dart';
-import 'modern_personal_chat_screen.dart';
 import 'disaster_demo_screen.dart';
 
 class ModernHomeScreen extends StatefulWidget {
@@ -49,39 +44,6 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
   bool _isInitializing = true;
   bool _showWelcome = false;
 
-  // Sample contacts data
-  final List<Map<String, dynamic>> _sampleContacts = [
-    {
-      'name': 'John Doe',
-      'icon': Icons.person,
-      'color': AppColors.info,
-      'id': 'user1',
-    },
-    {
-      'name': 'Jane Smith',
-      'icon': Icons.person_outline,
-      'color': AppColors.success,
-      'id': 'user2',
-    },
-    {
-      'name': 'Mike Johnson',
-      'icon': Icons.account_circle,
-      'color': AppColors.amber,
-      'id': 'user3',
-    },
-    {
-      'name': 'Sarah Wilson',
-      'icon': Icons.person_pin,
-      'color': AppColors.purple,
-      'id': 'user4',
-    },
-    {
-      'name': 'David Brown',
-      'icon': Icons.face,
-      'color': AppColors.teal,
-      'id': 'user5',
-    },
-  ];
 
   @override
   void initState() {
@@ -193,7 +155,7 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                         delay: const Duration(milliseconds: 100),
                         child: _buildHeader(),
                       ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 12),
                       
                       // Quick Actions
                       PolishedFadeIn(
@@ -203,7 +165,7 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                           child: _buildQuickActions(),
                         ),
                       ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 12),
                       
                       // Recent Activity
                       PolishedFadeIn(
@@ -215,19 +177,9 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                       ),
                       const SizedBox(height: 12),
                       
-                      // Contacts Section
-                      PolishedFadeIn(
-                        delay: const Duration(milliseconds: 400),
-                        child: PrimaryCard(
-                          margin: const EdgeInsets.symmetric(horizontal: 16),
-                          child: _buildContactsSection(),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      
                       // Emergency Section
                       PolishedFadeIn(
-                        delay: const Duration(milliseconds: 500),
+                        delay: const Duration(milliseconds: 400),
                         child: AccentCard(
                           margin: const EdgeInsets.symmetric(horizontal: 16),
                           accentColor: AppColors.emergency,
@@ -235,11 +187,11 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                         ),
                       ),
                       
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 16),
                       
                       // Sample Emergency Alert with GIF
                       PolishedFadeIn(
-                        delay: const Duration(milliseconds: 600),
+                        delay: const Duration(milliseconds: 500),
                         child: _buildSampleEmergencyAlert(),
                       ),
                     ],
@@ -356,7 +308,7 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                         const Text(
                           'Initializing T.U.L.O.N.G...',
                           style: TextStyle(
-                            color: AppColors.textPrimary,
+                            color: AppColors.primaryRed,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -375,92 +327,83 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Card with beautiful red accent border and gradient background
+        // Compact header card
         Container(
+          margin: const EdgeInsets.symmetric(horizontal: 16),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(16),
             color: AppColors.white,
             border: Border.all(
-              color: AppColors.primaryRed.withOpacity(0.04),
+              color: AppColors.primaryRed.withOpacity(0.08),
               width: 1,
             ),
             boxShadow: [
               BoxShadow(
-                color: AppColors.primaryRed.withOpacity(0.04),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
+                color: AppColors.primaryRed.withOpacity(0.06),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
               ),
             ],
           ),
-          child: ModernNeumorphicCard(
-            padding: const EdgeInsets.all(28),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
               children: [
-          // Top row with logo and notifications
-          Row(
-            children: [
-              // App Logo - Larger and more prominent
-              Container(
-                width: 80,
-                height: 80,
-                decoration: BoxDecoration(
-                  color: AppColors.primaryRed,
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.primaryRed.withOpacity(0.4),
-                      blurRadius: 16,
-                      offset: const Offset(0, 6),
+                // App Logo - Compact size
+                Container(
+                  width: 60,
+                  height: 60,
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryRed,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.primaryRed.withOpacity(0.3),
+                        blurRadius: 8,
+                        offset: const Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: Image.asset(
+                      'assets/images/app_logo (3).png',
+                      width: 60,
+                      height: 60,
+                      fit: BoxFit.contain,
                     ),
-                    BoxShadow(
-                      color: AppColors.white.withOpacity(0.9),
-                      blurRadius: 12,
-                      offset: const Offset(0, -4),
-                    ),
-                  ],
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(20),
-                  child: Image.asset(
-                    'assets/images/app_logo (3).png',
-                    width: 80,
-                    height: 80,
-                    fit: BoxFit.contain,
                   ),
                 ),
-              ),
-              
-            ],
-          ),
-          
-          const SizedBox(height: 20),
-          
-          // App Info - Better typography hierarchy
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Welcome to T.U.L.O.N.G',
-                style: AppTypography.appTitle.copyWith(
-                  color: AppColors.textPrimary,
+                
+                const SizedBox(width: 16),
+                
+                // App Info - Compact layout
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'T.U.L.O.N.G',
+                        style: AppTypography.titleLarge.copyWith(
+                          color: AppColors.primaryRed,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Emergency Communication',
+                        style: AppTypography.bodyMedium.copyWith(
+                          color: AppColors.mediumGray,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Your emergency communication network',
-                style: AppTypography.bodyLarge.copyWith(
-                  color: AppColors.mediumGray,
-                ),
-              ),
-            ],
-          ),
               ],
             ),
           ),
         ),
-        const SizedBox(height: 8),
-        // Red accent bar under the card to clearly separate from the next section
+        const SizedBox(height: 12),
         Container(
           height: 4,
           margin: const EdgeInsets.symmetric(horizontal: 8),
@@ -524,12 +467,12 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                   ),
                 ],
               ),
-              SizedBox(height: PhoneResponsiveHelper.getPhoneSpacing(context)),
+              const SizedBox(height: 12),
               SizedBox(
-                height: 120, // Fixed height to accommodate larger buttons
+                height: 100, // Reduced height for more compact layout
                 child: ListView(
                   scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: 8), // Add padding for better spacing
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
                   children: [
                     _buildUniformActionButton(
                       onPressed: () => _showEmergencyDialog(context),
@@ -538,7 +481,7 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                       title: 'Emergency',
                       subtitle: 'Alert',
                     ),
-                    const SizedBox(width: 12), // Fixed spacing between buttons
+                    const SizedBox(width: 8), // Reduced spacing between buttons
                     _buildUniformActionButton(
                       onPressed: () => _navigateToChat(context),
                       backgroundColor: AppColors.info,
@@ -546,15 +489,7 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                       title: 'Send',
                       subtitle: 'Message',
                     ),
-                    const SizedBox(width: 12), // Fixed spacing between buttons
-                    _buildUniformActionButton(
-                      onPressed: () => _navigateToContacts(context),
-                      backgroundColor: Colors.green,
-                      icon: Icons.person_add,
-                      title: 'Message',
-                      subtitle: 'Contact',
-                    ),
-                    const SizedBox(width: 12), // Fixed spacing between buttons
+                    const SizedBox(width: 8), // Reduced spacing between buttons
                     _buildUniformActionButton(
                       onPressed: () => _navigateToWalkieTalkie(context),
                       backgroundColor: AppColors.success,
@@ -562,7 +497,7 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                       title: 'Voice',
                       subtitle: 'Call',
                     ),
-                    const SizedBox(width: 12), // Fixed spacing between buttons
+                    const SizedBox(width: 8), // Reduced spacing between buttons
                     _buildUniformActionButton(
                       onPressed: () => _navigateToPeople(context),
                       backgroundColor: AppColors.warning,
@@ -570,7 +505,7 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                       title: 'People',
                       subtitle: 'Contacts',
                     ),
-                    const SizedBox(width: 12), // Fixed spacing between buttons
+                    const SizedBox(width: 8), // Reduced spacing between buttons
                     _buildUniformActionButton(
                       onPressed: () => _navigateToProfile(context),
                       backgroundColor: AppColors.primaryRed,
@@ -578,7 +513,7 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                       title: 'Profile',
                       subtitle: 'Settings',
                     ),
-                    const SizedBox(width: 12), // Fixed spacing between buttons
+                    const SizedBox(width: 8), // Reduced spacing between buttons
                     _buildUniformActionButton(
                       onPressed: () => _navigateToDisasterDemo(context),
                       backgroundColor: Colors.purple,
@@ -608,37 +543,39 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
         return InteractiveButton(
           onPressed: onPressed,
           backgroundColor: backgroundColor,
-          padding: const EdgeInsets.all(16), // Increased padding for better touch
-          borderRadius: BorderRadius.circular(16), // Fixed border radius
+          padding: const EdgeInsets.all(12),
+          borderRadius: BorderRadius.circular(12),
           shadows: shadows.EnhancedShadows.buttonMedium,
           child: SizedBox(
-            width: 100, // Fixed width - larger than before
-            height: 100, // Fixed height for consistent sizing
+            width: 80, // More compact width
+            height: 80, // More compact height
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(
                   icon, 
                   color: AppColors.white, 
-                  size: 28, // Increased icon size for better visibility
+                  size: 24, // Slightly smaller icon
                 ),
-                const SizedBox(height: 8), // Fixed spacing
+                const SizedBox(height: 6), // Reduced spacing
                 Text(
                   title,
                   style: AppTypography.buttonLabel.copyWith(
                     color: AppColors.white,
                     fontWeight: FontWeight.w700,
+                    fontSize: 12, // Smaller font size
                   ),
                   textAlign: TextAlign.center,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(height: 2), // Small spacing
+                const SizedBox(height: 1), // Minimal spacing
                 Text(
                   subtitle,
                   style: AppTypography.captionText.copyWith(
                     color: AppColors.white,
                     fontWeight: FontWeight.w500,
+                    fontSize: 10, // Smaller font size
                   ),
                   textAlign: TextAlign.center,
                   maxLines: 1,
@@ -752,163 +689,6 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
     );
   }
 
-  Widget _buildContactsSection() {
-    return PhoneResponsiveBuilder(
-      builder: (context, screenSize) {
-        return Container(
-          padding: PhoneResponsiveHelper.getPhonePadding(context),
-          decoration: BoxDecoration(
-            color: AppColors.white,
-            borderRadius: BorderRadius.circular(PhoneResponsiveHelper.getPhoneBorderRadius(context)),
-            border: Border.all(
-              color: AppColors.primaryRed.withOpacity(0.05),
-              width: 1,
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: PhoneResponsiveHelper.getPhoneSpacing(context) * 0.5,
-                      vertical: PhoneResponsiveHelper.getPhoneSpacing(context) * 0.25,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppColors.primaryRed.withOpacity(0.04),
-                      borderRadius: BorderRadius.circular(PhoneResponsiveHelper.getPhoneBorderRadius(context) * 0.5),
-                    ),
-                    child: PhoneResponsiveText(
-                      'Contacts',
-                      textSize: PhoneTextSize.subtitle,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.primaryRed,
-                      ),
-                    ),
-                  ),
-                  const Spacer(),
-                  TextButton(
-                    onPressed: () => _navigateToPeople(context),
-                    child: PhoneResponsiveText(
-                      'View All',
-                      textSize: PhoneTextSize.body,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.primaryRed,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              SizedBox(height: PhoneResponsiveHelper.getPhoneSpacing(context)),
-              SizedBox(
-                height: PhoneResponsiveHelper.getPhoneContactCardWidth(context) + 40,
-                child: ListView.builder(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: _sampleContacts.length,
-                  itemBuilder: (context, index) {
-                    final contact = _sampleContacts[index];
-                    return Container(
-                      width: PhoneResponsiveHelper.getPhoneContactCardWidth(context),
-                      margin: EdgeInsets.only(right: PhoneResponsiveHelper.getPhoneSpacing(context)),
-                      child: Column(
-                        children: [
-                          // Contact Avatar
-                          GestureDetector(
-                            onTap: () => _startPrivateChat(context, contact),
-                            child: Container(
-                              width: PhoneResponsiveHelper.getPhoneContactAvatarSize(context),
-                              height: PhoneResponsiveHelper.getPhoneContactAvatarSize(context),
-                              decoration: BoxDecoration(
-                                color: contact['color'].withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(PhoneResponsiveHelper.getPhoneBorderRadius(context)),
-                                border: Border.all(
-                                  color: contact['color'].withOpacity(0.3),
-                                  width: 2,
-                                ),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: contact['color'].withOpacity(0.2),
-                                    blurRadius: 8,
-                                    offset: const Offset(0, 4),
-                                  ),
-                                ],
-                              ),
-                              child: Icon(
-                                contact['icon'],
-                                color: contact['color'],
-                                size: PhoneResponsiveHelper.getPhoneIconSize(context, small: 24, medium: 26, large: 28, extraLarge: 30),
-                              ),
-                            ),
-                          ),
-                          SizedBox(height: PhoneResponsiveHelper.getPhoneSpacing(context) * 0.5),
-                          // Contact Name
-                          PhoneResponsiveText(
-                            contact['name'],
-                            textSize: PhoneTextSize.caption,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.textPrimary,
-                            ),
-                            textAlign: TextAlign.center,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          SizedBox(height: PhoneResponsiveHelper.getPhoneSpacing(context) * 0.25),
-                          // Message Button
-                          GestureDetector(
-                            onTap: () => _startPrivateChat(context, contact),
-                            child: Container(
-                              padding: EdgeInsets.symmetric(
-                                horizontal: PhoneResponsiveHelper.getPhoneSpacing(context) * 0.5,
-                                vertical: PhoneResponsiveHelper.getPhoneSpacing(context) * 0.25,
-                              ),
-                              decoration: BoxDecoration(
-                                color: AppColors.primaryRed,
-                                borderRadius: BorderRadius.circular(PhoneResponsiveHelper.getPhoneBorderRadius(context) * 0.75),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: AppColors.primaryRed.withOpacity(0.3),
-                                    blurRadius: 4,
-                                    offset: const Offset(0, 2),
-                                  ),
-                                ],
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    Icons.message,
-                                    color: AppColors.white,
-                                    size: PhoneResponsiveHelper.getPhoneIconSize(context, small: 10, medium: 12, large: 14, extraLarge: 16),
-                                  ),
-                                  SizedBox(width: PhoneResponsiveHelper.getPhoneSpacing(context) * 0.25),
-                                  PhoneResponsiveText(
-                                    'Message',
-                                    textSize: PhoneTextSize.caption,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                      color: AppColors.white,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
 
   Widget _buildEmergencySection() {
     return Container(
@@ -1055,23 +835,6 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
     Navigator.of(context).pushNamed('/disaster-demo');
   }
 
-  void _navigateToContacts(BuildContext context) {
-    HapticFeedback.mediumImpact();
-    context.pushPage(const ModernPeopleScreen());
-  }
-
-  void _startPrivateChat(BuildContext context, Map<String, dynamic> contact) {
-    HapticFeedback.lightImpact();
-    Navigator.of(context).push(
-      ModernPageRoute(
-        child: ModernPersonalChatScreen(
-          contactName: contact['name'],
-          contactId: contact['id'],
-        ),
-        transitionType: ModernTransitionType.slideAndFade,
-      ),
-    );
-  }
 
   void _showEmergencyDialog(BuildContext context) {
     HapticFeedback.heavyImpact();

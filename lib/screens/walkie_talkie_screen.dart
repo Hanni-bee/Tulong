@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../constants/app_colors.dart';
-import '../widgets/enhanced_text_styles.dart';
-import '../widgets/enhanced_shadows.dart' as shadows;
+import '../widgets/unified_top_bar.dart';
 
 class WalkieTalkieScreen extends StatefulWidget {
   const WalkieTalkieScreen({super.key});
@@ -151,6 +150,29 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
     });
   }
 
+  void _refreshConnections() {
+    // Refresh connected users
+    setState(() {
+      // Simulate refresh - in real app, this would fetch from service
+    });
+  }
+
+  void _showSettingsDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Settings'),
+        content: const Text('Settings options will be implemented here.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _pulseController.dispose();
@@ -163,112 +185,37 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(100),
-        child: SafeArea(
-          child: Container(
-            margin: const EdgeInsets.all(16),
-            height: 80,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      body: Column(
+        children: [
+          // Unified top bar
+          TopBarConfigs.callsTopBar(
+            status: _isTransmitting ? 'Transmitting...' : null,
+            onRefresh: _refreshConnections,
+            onSettings: _showSettingsDialog,
+          ),
+          
+          // Red line under top bar
+          Container(
+            height: 4,
+            margin: const EdgeInsets.symmetric(horizontal: 8),
             decoration: BoxDecoration(
-              color: AppColors.chatBackground,
-              borderRadius: BorderRadius.circular(24),
+              color: AppColors.primaryRed,
+              borderRadius: BorderRadius.circular(2),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.06),
-                  blurRadius: 20,
-                  offset: const Offset(8, 8),
-                ),
-                BoxShadow(
-                  color: Colors.white.withOpacity(0.9),
-                  blurRadius: 20,
-                  offset: const Offset(-8, -8),
+                  color: AppColors.primaryRed.withOpacity(0.35),
+                  blurRadius: 6,
+                  offset: const Offset(0, 3),
                 ),
               ],
             ),
-            child: Row(
+          ),
+          
+          // Main content
+          Expanded(
+            child: SafeArea(
+              child: Column(
                 children: [
-                  // Radio icon (consistent with other screens)
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: AppColors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: shadows.EnhancedShadows.buttonLight,
-                    ),
-                    child: const Icon(
-                      Icons.radio,
-                      color: const Color(0xFFE53935),
-                      size: 24,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  
-                  // App logo
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFE53935).withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.1),
-                          blurRadius: 8,
-                          offset: const Offset(4, 4),
-                        ),
-                        BoxShadow(
-                          color: Colors.white.withOpacity(0.8),
-                          blurRadius: 8,
-                          offset: const Offset(-4, -4),
-                        ),
-                      ],
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(16),
-                      child: Image.asset(
-                        'assets/images/app_logo (3).png',
-                        width: 32,
-                        height: 32,
-                        fit: BoxFit.contain,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  
-                  // Title and status
-                  const Expanded(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        SectionTitle('Walkie Talkie'),
-                        SizedBox(height: 4),
-                        Text(
-                          'Ready',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: const Color(0xFF27AE60),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  
-                  // Settings button
-                  _buildNeumorphicActionButton(
-                    icon: Icons.settings,
-                    onPressed: () => _showSettings(context),
-                  ),
-                ],
-              ),
-            ),
-      ),
-      ),
-      body: SafeArea(
-        child: Column(
-          children: [
               // Connected users list - Polished design
               Container(
                 height: 220, // Optimized height to fit all 4 users
@@ -974,8 +921,11 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                   ],
                 ),
               ),
-            ],
-        ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1021,205 +971,7 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
   }
 
 
-  Widget _buildNeumorphicActionButton({
-    required IconData icon,
-    required VoidCallback onPressed,
-  }) {
-    return Container(
-      width: 40,
-      height: 40,
-      decoration: BoxDecoration(
-        color: AppColors.backgroundLight,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 6,
-            offset: const Offset(3, 3),
-          ),
-          BoxShadow(
-            color: Colors.white.withOpacity(0.8),
-            blurRadius: 6,
-            offset: const Offset(-3, -3),
-          ),
-        ],
-      ),
-      child: IconButton(
-        icon: Icon(
-          icon,
-          color: AppColors.textPrimary,
-          size: 18,
-        ),
-        onPressed: onPressed,
-      ),
-    );
-  }
 
-  void _showSettings(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        margin: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: AppColors.white,
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.1),
-              blurRadius: 20,
-              offset: const Offset(0, 8),
-            ),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                children: [
-                  _buildMenuOption(
-                    icon: Icons.volume_up,
-                    title: 'Audio Settings',
-                    color: const Color(0xFFE53935),
-                    onTap: () {
-                      Navigator.pop(context);
-                      _showAudioSettings();
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  _buildMenuOption(
-                    icon: Icons.notifications,
-                    title: 'Notification Settings',
-                    color: AppColors.textSecondary,
-                    onTap: () {
-                      Navigator.pop(context);
-                      _showNotificationSettings();
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  _buildMenuOption(
-                    icon: Icons.info_outline,
-                    title: 'About Walkie Talkie',
-                    color: AppColors.textSecondary,
-                    onTap: () {
-                      Navigator.pop(context);
-                      _showAboutDialog(context);
-                    },
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMenuOption({
-    required IconData icon,
-    required String title,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: AppColors.backgroundLight,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 8,
-              offset: const Offset(2, 2),
-            ),
-            BoxShadow(
-              color: Colors.white.withOpacity(0.8),
-              blurRadius: 8,
-              offset: const Offset(-2, -2),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(
-                icon,
-                color: color,
-                size: 20,
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-            ),
-            Icon(
-              Icons.arrow_forward_ios,
-              color: AppColors.textSecondary,
-              size: 16,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showAudioSettings() {
-    // TODO: Implement audio settings
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Audio settings coming soon!'),
-        backgroundColor: const Color(0xFFE53935),
-      ),
-    );
-  }
-
-  void _showNotificationSettings() {
-    // TODO: Implement notification settings
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Notification settings coming soon!'),
-        backgroundColor: const Color(0xFFE53935),
-      ),
-    );
-  }
-
-  void _showAboutDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
-        title: const Text('About Walkie Talkie'),
-        content: const Text(
-          'Walkie Talkie allows you to communicate with other users in real-time using voice messages. Hold the talk button to transmit your message.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
-  }
 
 
 }

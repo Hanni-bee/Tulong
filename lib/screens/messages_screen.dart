@@ -7,6 +7,7 @@ import '../widgets/chat_card.dart';
 import '../widgets/search_bar.dart';
 import 'message_detail_screen.dart';
 import 'calls_screen.dart';
+import '../constants/unified_typography.dart';
 
 class MessagesScreen extends StatefulWidget {
   const MessagesScreen({super.key});

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 import '../constants/app_colors.dart';
+import '../services/sqlite_service.dart';
 import '../widgets/animated_neumorphic_card.dart';
 import '../widgets/modern_user_card.dart';
 import '../widgets/modern_responsive_layout.dart';
@@ -8,6 +10,7 @@ import '../widgets/modern_floating_layout.dart';
 import '../widgets/enhanced_text_styles.dart';
 import '../widgets/enhanced_shadows.dart' as shadows;
 import 'private_chat_screen.dart';
+import '../constants/unified_typography.dart';
 
 class ModernPeopleScreen extends StatefulWidget {
   const ModernPeopleScreen({super.key});
@@ -27,54 +30,9 @@ class _ModernPeopleScreenState extends State<ModernPeopleScreen>
   String _searchQuery = '';
   String _selectedFilter = 'All';
 
-  // Sample users data
-  final List<Map<String, dynamic>> _users = [
-    {
-      'id': '1',
-      'name': 'John Doe',
-      'status': 'Emergency Coordinator',
-      'isOnline': true,
-      'lastSeen': 'now',
-      'role': 'admin',
-      'location': 'Manila',
-    },
-    {
-      'id': '2',
-      'name': 'Jane Smith',
-      'status': 'First Responder',
-      'isOnline': true,
-      'lastSeen': '2 minutes ago',
-      'role': 'moderator',
-      'location': 'Quezon City',
-    },
-    {
-      'id': '3',
-      'name': 'Mike Johnson',
-      'status': 'Volunteer',
-      'isOnline': false,
-      'lastSeen': '1 hour ago',
-      'role': 'user',
-      'location': 'Makati',
-    },
-    {
-      'id': '4',
-      'name': 'Sarah Wilson',
-      'status': 'Medical Team',
-      'isOnline': true,
-      'lastSeen': '5 minutes ago',
-      'role': 'moderator',
-      'location': 'Taguig',
-    },
-    {
-      'id': '5',
-      'name': 'David Brown',
-      'status': 'Security Team',
-      'isOnline': false,
-      'lastSeen': '30 minutes ago',
-      'role': 'user',
-      'location': 'Pasig',
-    },
-  ];
+  // Dynamic users data
+  List<Map<String, dynamic>> _users = [];
+  bool _isLoading = true;
 
   @override
   void initState() {
@@ -108,6 +66,76 @@ class _ModernPeopleScreenState extends State<ModernPeopleScreen>
 
     _fadeController.forward();
     _slideController.forward();
+    
+    // Load users from database
+    _loadUsers();
+  }
+
+  Future<void> _loadUsers() async {
+    try {
+      final sqliteService = Provider.of<SQLiteService>(context, listen: false);
+      final users = await sqliteService.getAllUsers();
+      
+      // Transform database users to display format
+      final transformedUsers = users.map((user) {
+        return {
+          'id': user['id'].toString(),
+          'name': user['name'] ?? 'Unknown User',
+          'status': user['role'] ?? 'User',
+          'isOnline': (user['is_online'] ?? 0) == 1,
+          'lastSeen': _formatLastSeen(user['last_seen']),
+          'role': _getRoleFromDatabase(user['role']),
+          'location': user['location'] ?? 'Unknown',
+        };
+      }).toList();
+      
+      if (mounted) {
+        setState(() {
+          _users = transformedUsers;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      print('Error loading users: $e');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  String _formatLastSeen(dynamic lastSeen) {
+    if (lastSeen == null) return 'Unknown';
+    
+    try {
+      final lastSeenTime = DateTime.fromMillisecondsSinceEpoch(lastSeen * 1000);
+      final now = DateTime.now();
+      final difference = now.difference(lastSeenTime);
+      
+      if (difference.inMinutes < 1) {
+        return 'now';
+      } else if (difference.inMinutes < 60) {
+        return '${difference.inMinutes} minutes ago';
+      } else if (difference.inHours < 24) {
+        return '${difference.inHours} hours ago';
+      } else {
+        return '${difference.inDays} days ago';
+      }
+    } catch (e) {
+      return 'Unknown';
+    }
+  }
+
+  String _getRoleFromDatabase(String? role) {
+    switch (role?.toLowerCase()) {
+      case 'admin':
+        return 'admin';
+      case 'moderator':
+        return 'moderator';
+      default:
+        return 'user';
+    }
   }
 
   @override
@@ -126,7 +154,7 @@ class _ModernPeopleScreenState extends State<ModernPeopleScreen>
       
       final matchesFilter = _selectedFilter == 'All' || 
                            (_selectedFilter == 'Connected' && user['isOnline']) ||
-                           (_selectedFilter == 'Offline' && !user['isOnline']) ||
+                           (_selectedFilter == 'Disconnected' && !user['isOnline']) ||
                            (_selectedFilter == 'Admins' && user['role'] == 'admin') ||
                            (_selectedFilter == 'Moderators' && user['role'] == 'moderator');
       
@@ -270,7 +298,7 @@ class _ModernPeopleScreenState extends State<ModernPeopleScreen>
           height: 40,
           child: ListView(
             scrollDirection: Axis.horizontal,
-            children: ['All', 'Connected', 'Offline', 'Admins', 'Moderators'].map((filter) {
+            children: ['All', 'Connected', 'Disconnected', 'Admins', 'Moderators'].map((filter) {
               final isSelected = _selectedFilter == filter;
               return Padding(
                 padding: const EdgeInsets.only(right: 8),
@@ -289,13 +317,7 @@ class _ModernPeopleScreenState extends State<ModernPeopleScreen>
                         color: isSelected ? AppColors.primary : AppColors.lightGray,
                         width: 1.5,
                       ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.05),
-                          blurRadius: 4,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
+                      boxShadow: shadows.EnhancedShadows.cardLight,
                     ),
                     child: Row(
                       children: [
@@ -390,12 +412,7 @@ class _ModernPeopleScreenState extends State<ModernPeopleScreen>
           const SizedBox(height: 8),
           Text(
             value,
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: color,
-              letterSpacing: -0.5,
-            ),
+            style: UnifiedTypography.displaySmall,
           ),
           Text(
             title,
@@ -411,7 +428,44 @@ class _ModernPeopleScreenState extends State<ModernPeopleScreen>
   }
 
   Widget _buildUsersList() {
+    if (_isLoading) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(32.0),
+          child: CircularProgressIndicator(
+            color: AppColors.primaryRed,
+          ),
+        ),
+      );
+    }
+    
     final filteredUsers = _filteredUsers;
+    
+    if (filteredUsers.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(32.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.people_outline,
+                size: 64,
+                color: AppColors.lightGray,
+              ),
+              SizedBox(height: 16),
+              Text(
+                'No users found',
+                style: TextStyle(
+                  fontSize: 18,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     
     return ModernResponsiveList(
       shrinkWrap: true,
@@ -473,11 +527,7 @@ class _ModernPeopleScreenState extends State<ModernPeopleScreen>
             // User info
             Text(
               user['name'],
-              style: const TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: AppColors.textPrimary,
-              ),
+              style: UnifiedTypography.displaySmall,
             ),
             
             Text(

@@ -1,0 +1,10 @@
+[33m755fda7[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mno-zipcode-phone-implementation[m[33m, [m[1;31morigin/no-zipcode-phone-implementation[m[33m)[m No Zipcode + Phone Number Implementation
+[33m9147e5d[m[33m ([m[1;31morigin/user-info-data-fixes[m[33m, [m[1;32muser-info-data-fixes[m[33m)[m User info screen + data pipeline fixes: added region field, corrected province mapping, loadUserModel population from SQLite/Firebase, update profile params, and release builds.
+[33mff98b22[m[33m ([m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m, [m[1;32mmain[m[33m)[m Complete LoRa + Bluetooth + ADPCM Voice Bridge Implementation
+[33mabab29f[m feat: implement real-time voice streaming with clean data chunking
+[33m28ce318[m Realtime chat fixed-10-21-2025
+[33mb3f7657[m Add diagnostic guides and UI improvements for Walkie Talkie screen
+[33m01657c0[m Add complete two-way LoRa communication guide and firmware updates
+[33md52a7fd[m Add complete Bluetooth authentication and ESP32 integration
+[33m0990f3c[m Update theme_selection_modal.dart with minor adjustments
+[33m04da8f9[m Add ESP32 + SX1278 hardware integration

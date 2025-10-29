@@ -5,6 +5,7 @@ import '../../constants/app_colors.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/firebase_service.dart';
 import 'sign_up_screen.dart';
+import '../../constants/unified_typography.dart';
 
 class SignInScreen extends StatefulWidget {
   const SignInScreen({super.key});
@@ -201,25 +202,16 @@ class _SignInScreenState extends State<SignInScreen> {
               
               const SizedBox(height: 20),
               
-              const Text(
+              Text(
                 'T.U.L.O.N.G',
-                style: TextStyle(
-                  fontSize: 32,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.primaryRed,
-                  letterSpacing: 2.0,
-                ),
+                style: UnifiedTypography.displayLarge,
               ),
               
               const SizedBox(height: 8),
               
-              const Text(
+              Text(
                 'Disaster-Ready Communication',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w500,
-                  color: Colors.grey,
-                ),
+                style: UnifiedTypography.buttonLarge,
               ),
               
               const SizedBox(height: 40),
@@ -333,10 +325,7 @@ class _SignInScreenState extends State<SignInScreen> {
                               : const Icon(Icons.login, color: Colors.white),
                           label: Text(
                             _isLoading ? 'Signing In...' : 'Sign In',
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                            ),
+                            style: UnifiedTypography.titleLarge,
                           ),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppColors.primaryRed,
@@ -383,13 +372,9 @@ class _SignInScreenState extends State<SignInScreen> {
                                 ),
                               ),
                               const SizedBox(width: 12),
-                              const Text(
+                              Text(
                                 'Continue with Google',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.black87,
-                                ),
+                                style: UnifiedTypography.titleLarge,
                               ),
                             ],
                           ),

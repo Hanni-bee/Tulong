@@ -5,6 +5,7 @@ import '../widgets/notification_card.dart';
 import '../constants/app_typography.dart';
 import '../widgets/modern_empty_state.dart';
 import 'package:flutter/services.dart';
+import '../constants/unified_typography.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -140,11 +141,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     children: [
                       Text(
                         'You have $unreadCount unread notifications',
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.textPrimary,
-                        ),
+                        style: const UnifiedTypography.titleLarge,
                       ),
                       const SizedBox(height: 4),
                       Text(
