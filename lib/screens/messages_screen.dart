@@ -223,7 +223,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
   void _showOptionsMenu(BuildContext context) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.transparent,
+      backgroundColor: Colors.white,
       builder: (context) => Container(
         decoration: const BoxDecoration(
           color: AppColors.white,

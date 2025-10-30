@@ -113,6 +113,7 @@ class PermissionHelper {
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
         title: const Text('Permissions Required'),
         content: const Text(
           'TULONG needs the following permissions to work properly:\n\n'
@@ -144,6 +145,7 @@ class PermissionHelper {
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
         title: const Row(
           children: [
             Icon(Icons.bluetooth, color: Colors.blue),
@@ -176,6 +178,7 @@ class PermissionHelper {
     await showDialog(
       context: context,
       builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
         title: const Text('Permissions Denied'),
         content: const Text(
           'Some permissions were denied. You can grant them later in:\n\n'

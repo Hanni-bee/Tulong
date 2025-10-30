@@ -37,6 +37,9 @@ class _WalkieTalkieScreenV2State extends State<WalkieTalkieScreenV2>
 
   bool _isTransmitting = false;
   bool _isListening = false;
+  bool _usersExpanded = false;
+  late final AnimationController _usersController = AnimationController(vsync: this, duration: const Duration(milliseconds: 350))..value = 0.0;
+  late final Animation<double> _usersExpandAnim = CurvedAnimation(parent: _usersController, curve: Curves.easeInOutCubic);
 
   @override
   Widget build(BuildContext context) {
@@ -68,18 +71,6 @@ class _WalkieTalkieScreenV2State extends State<WalkieTalkieScreenV2>
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.06),
-            blurRadius: 20,
-            offset: const Offset(8, 8),
-          ),
-          BoxShadow(
-            color: Colors.white.withOpacity(0.9),
-            blurRadius: 20,
-            offset: const Offset(-8, -8),
-          ),
-        ],
       ),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       child: Row(
@@ -90,7 +81,6 @@ class _WalkieTalkieScreenV2State extends State<WalkieTalkieScreenV2>
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(12),
-              boxShadow: shadows.EnhancedShadows.buttonLight,
             ),
             child: const Icon(Icons.radio, color: AppColors.primaryRed, size: 24),
           ),
@@ -101,18 +91,6 @@ class _WalkieTalkieScreenV2State extends State<WalkieTalkieScreenV2>
             decoration: BoxDecoration(
               color: AppColors.primaryRed.withOpacity(0.1),
               borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.1),
-                  blurRadius: 8,
-                  offset: const Offset(4, 4),
-                ),
-                BoxShadow(
-                  color: Colors.white.withOpacity(0.8),
-                  blurRadius: 8,
-                  offset: const Offset(-4, -4),
-                ),
-              ],
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(16),
@@ -154,80 +132,147 @@ class _WalkieTalkieScreenV2State extends State<WalkieTalkieScreenV2>
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: AppColors.primaryRed.withOpacity(0.15)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.06),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
-            child: Row(
-              children: [
-                Container(
-                  width: 28,
-                  height: 28,
-                  decoration: BoxDecoration(
-                    color: AppColors.primaryRed,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(Icons.people, color: Colors.white, size: 16),
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(20),
+              splashColor: AppColors.primaryRed.withOpacity(0.12),
+              highlightColor: AppColors.primaryRed.withOpacity(0.06),
+              onTap: () {
+                setState(() {
+                  _usersExpanded = !_usersExpanded;
+                  if (_usersExpanded) {
+                    _usersController.forward();
+                  } else {
+                    _usersController.reverse();
+                  }
+                });
+              },
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 28,
+                      height: 28,
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryRed,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.wifi_tethering, color: Colors.white, size: 16),
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      'Users (${_connectedUsers.length}/4)',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.primaryRed.withOpacity(0.3))),
+                      child: const Text('Emergency', style: TextStyle(color: AppColors.primaryRed, fontWeight: FontWeight.w700, fontSize: 12)),
+                    ),
+                    const Spacer(),
+                    AnimatedRotation(
+                      duration: const Duration(milliseconds: 250),
+                      turns: _usersExpanded ? 0.0 : 0.5,
+                      child: const Icon(Icons.expand_more, color: AppColors.textSecondary),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 10),
-                Text(
-                  'Connected Users (${_connectedUsers.length}/4)',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
           const Divider(height: 1),
-          SizedBox(
-            height: 120,
-            child: ListView.builder(
-              physics: const ClampingScrollPhysics(),
+          SizeTransition(
+            sizeFactor: _usersExpandAnim,
+            axisAlignment: -1.0,
+            child: ListView.separated(
+              physics: const NeverScrollableScrollPhysics(),
+              shrinkWrap: true,
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               itemCount: _connectedUsers.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 8),
               itemBuilder: (context, i) {
                 final u = _connectedUsers[i];
-                return ListTile(
-                  dense: true,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 8),
-                  leading: CircleAvatar(
-                    backgroundColor: u['isActive'] ? AppColors.primaryRed : AppColors.mediumGray,
-                    child: Text(
-                      u['name']
-                          .toString()
-                          .split(' ')
-                          .map((n) => n.isNotEmpty ? n[0] : '')
-                          .take(2)
-                          .join(),
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+                return AnimatedBuilder(
+                  animation: _usersController,
+                  builder: (context, child) {
+                    final t = _usersExpandAnim.value;
+                    final delay = (i * 0.08).clamp(0.0, 0.9);
+                    final effective = (t - delay).clamp(0.0, 1.0);
+                    return Opacity(
+                      opacity: effective,
+                      child: Transform.scale(
+                        scale: 0.98 + 0.02 * effective,
+                        child: Transform.translate(
+                          offset: Offset(0, (1 - effective) * 8),
+                          child: Stack(
+                            children: [
+                              IgnorePointer(
+                                ignoring: true,
+                                child: Container(
+                                  height: 56,
+                                  margin: const EdgeInsets.symmetric(horizontal: 4),
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(12),
+                                    gradient: RadialGradient(
+                                      center: const Alignment(-0.95, 0.0),
+                                      radius: 0.8 + 0.4 * effective,
+                                      colors: [
+                                        AppColors.primaryRed.withOpacity(0.10 * effective),
+                                        Colors.transparent,
+                                      ],
+                                      stops: const [0.0, 1.0],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              child!,
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                  child: ListTile(
+                    dense: true,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                    leading: CircleAvatar(
+                      backgroundColor: u['isActive'] ? AppColors.primaryRed : AppColors.mediumGray,
+                      child: Text(
+                        u['name']
+                            .toString()
+                            .split(' ')
+                            .map((n) => n.isNotEmpty ? n[0] : '')
+                            .take(2)
+                            .join(),
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+                      ),
                     ),
-                  ),
-                  title: Text(
-                    u['name'],
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textPrimary,
+                    title: Text(
+                      u['name'],
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
+                      ),
                     ),
-                  ),
-                  subtitle: Text(
-                    u['isMuted'] ? 'Muted' : (u['isSpeaking'] ? 'Speaking' : 'Idle'),
-                    style: const TextStyle(color: AppColors.textSecondary),
-                  ),
-                  trailing: Icon(
-                    u['isMuted'] ? Icons.volume_off : Icons.volume_up,
-                    color: u['isMuted'] ? AppColors.error : AppColors.online,
+                    subtitle: Text(
+                      u['isMuted'] ? 'Muted' : (u['isSpeaking'] ? 'Speaking' : 'Idle'),
+                      style: const TextStyle(color: AppColors.textSecondary),
+                    ),
+                    trailing: Icon(
+                      u['isMuted'] ? Icons.volume_off : Icons.volume_up,
+                      color: u['isMuted'] ? AppColors.error : AppColors.online,
+                    ),
                   ),
                 );
               },
@@ -244,13 +289,6 @@ class _WalkieTalkieScreenV2State extends State<WalkieTalkieScreenV2>
         color: Colors.white,
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: AppColors.primaryRed.withOpacity(0.18)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 14,
-            offset: const Offset(0, 6),
-          ),
-        ],
       ),
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
       child: Column(
@@ -282,15 +320,6 @@ class _WalkieTalkieScreenV2State extends State<WalkieTalkieScreenV2>
                   decoration: BoxDecoration(
                     color: _isTransmitting ? AppColors.error : AppColors.primaryRed,
                     shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: (_isTransmitting ? AppColors.error : AppColors.primaryRed)
-                            .withOpacity(0.35),
-                        blurRadius: 14,
-                        spreadRadius: 4,
-                        offset: const Offset(0, 6),
-                      ),
-                    ],
                   ),
                   child: const Icon(Icons.mic, color: Colors.white, size: 34),
                 ),
@@ -327,9 +356,6 @@ class _WalkieTalkieScreenV2State extends State<WalkieTalkieScreenV2>
         decoration: BoxDecoration(
           color: color,
           shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(color: color.withOpacity(0.25), blurRadius: 10, offset: const Offset(0, 4)),
-          ],
         ),
         child: Icon(icon, color: Colors.white, size: 22),
       ),

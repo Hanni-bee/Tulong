@@ -10,83 +10,24 @@ class NeumorphicUtils {
     Color? baseColor,
   }) {
     
-    if (isPressed) {
-      return [
-        BoxShadow(
-          color: AppColors.neumorphicDark.withOpacity(0.5),
-          offset: Offset(depth * 0.25, depth * 0.25),
-          blurRadius: depth,
-          spreadRadius: 0,
-        ),
-        BoxShadow(
-          color: AppColors.neumorphicLight.withOpacity(0.8),
-          offset: Offset(-depth * 0.25, -depth * 0.25),
-          blurRadius: depth,
-          spreadRadius: 0,
-        ),
-      ];
-    }
-    
-    return [
-      BoxShadow(
-        color: AppColors.neumorphicDark.withOpacity(0.3),
-        offset: Offset(depth, depth),
-        blurRadius: depth * 2,
-        spreadRadius: 0,
-      ),
-      BoxShadow(
-        color: AppColors.neumorphicLight.withOpacity(0.9),
-        offset: Offset(-depth * 0.5, -depth * 0.5),
-        blurRadius: depth * 1.5,
-        spreadRadius: 0,
-      ),
-    ];
+    // Solid design: no outer shadows
+    return [];
   }
 
   // Neumorphic inner shadow (for pressed states)
   static List<BoxShadow> getInnerShadow({
     double depth = 4.0,
   }) {
-    return [
-      BoxShadow(
-        color: AppColors.neumorphicDark.withOpacity(0.4),
-        offset: Offset(depth, depth),
-        blurRadius: depth * 2,
-        spreadRadius: -depth,
-      ),
-      BoxShadow(
-        color: AppColors.neumorphicLight.withOpacity(0.6),
-        offset: Offset(-depth * 0.5, -depth * 0.5),
-        blurRadius: depth * 1.5,
-        spreadRadius: -depth * 0.5,
-      ),
-    ];
+    // Solid design: no inner shadows
+    return [];
   }
 
   // Elevated neumorphic shadow (for floating elements)
   static List<BoxShadow> getElevatedShadow({
     double elevation = 12.0,
   }) {
-    return [
-      BoxShadow(
-        color: AppColors.neumorphicDark.withOpacity(0.4),
-        offset: Offset(elevation * 0.8, elevation),
-        blurRadius: elevation * 3,
-        spreadRadius: 0,
-      ),
-      BoxShadow(
-        color: Colors.black.withOpacity(0.1),
-        offset: Offset(0, elevation * 0.5),
-        blurRadius: elevation * 2,
-        spreadRadius: 0,
-      ),
-      BoxShadow(
-        color: AppColors.neumorphicLight.withOpacity(0.8),
-        offset: Offset(-elevation * 0.3, -elevation * 0.5),
-        blurRadius: elevation * 1.5,
-        spreadRadius: 0,
-      ),
-    ];
+    // Solid design: no elevated shadows
+    return [];
   }
 
   // Neumorphic gradient background
@@ -97,22 +38,11 @@ class NeumorphicUtils {
   }) {
     final base = baseColor ?? AppColors.neumorphicBase;
     
+    // Solid design: plain color, no gradient/shadow
     return BoxDecoration(
-      gradient: LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [
-          base.withOpacity(0.95),
-          base,
-          base.withOpacity(0.98),
-        ],
-        stops: const [0.0, 0.5, 1.0],
-      ),
+      color: base,
       borderRadius: BorderRadius.circular(borderRadius),
-      boxShadow: getNeumorphicShadow(
-        isPressed: isPressed,
-        baseColor: base,
-      ),
+      boxShadow: const [],
     );
   }
 
@@ -123,27 +53,14 @@ class NeumorphicUtils {
     double opacity = 0.1,
     double blur = 10.0,
   }) {
+    // Solid design: single tint color, no shadow
     return BoxDecoration(
-      gradient: LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [
-          (tintColor ?? Colors.white).withOpacity(opacity + 0.05),
-          (tintColor ?? Colors.white).withOpacity(opacity),
-        ],
-      ),
+      color: (tintColor ?? Colors.white).withOpacity(opacity),
       borderRadius: BorderRadius.circular(borderRadius),
       border: Border.all(
         color: Colors.white.withOpacity(0.2),
         width: 1.5,
       ),
-      boxShadow: [
-        BoxShadow(
-          color: Colors.black.withOpacity(0.1),
-          blurRadius: blur * 2,
-          offset: Offset(0, blur),
-        ),
-      ],
     );
   }
 
@@ -186,16 +103,8 @@ class NeumorphicUtils {
     required double animationValue,
     double maxRadius = 20.0,
   }) {
-    final radius = maxRadius * animationValue;
-    final opacity = 0.6 * (1.0 - animationValue);
-    
-    return [
-      BoxShadow(
-        color: color.withOpacity(opacity),
-        blurRadius: radius,
-        spreadRadius: radius * 0.5,
-      ),
-    ];
+    // Solid design: no glow
+    return [];
   }
 
   // Text shadow for better readability
@@ -228,60 +137,20 @@ class NeumorphicUtils {
     double borderRadius = 16.0,
     double glowIntensity = 0.5,
   }) {
+    // Solid design: border only, no glow
     return BoxDecoration(
       borderRadius: BorderRadius.circular(borderRadius),
       border: Border.all(
         color: color.withOpacity(0.3),
         width: 2,
       ),
-      boxShadow: [
-        BoxShadow(
-          color: color.withOpacity(glowIntensity * 0.3),
-          blurRadius: 12,
-          spreadRadius: 2,
-        ),
-      ],
     );
   }
 
   // Card elevation levels
   static List<BoxShadow> getCardElevation(int level) {
-    switch (level) {
-      case 1:
-        return [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ];
-      case 2:
-        return [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.08),
-            blurRadius: 8,
-            offset: const Offset(0, 4),
-          ),
-        ];
-      case 3:
-        return [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.12),
-            blurRadius: 16,
-            offset: const Offset(0, 8),
-          ),
-        ];
-      case 4:
-        return [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.16),
-            blurRadius: 24,
-            offset: const Offset(0, 12),
-          ),
-        ];
-      default:
-        return [];
-    }
+    // Solid design: no elevations
+    return [];
   }
 }
 

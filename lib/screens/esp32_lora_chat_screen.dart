@@ -223,23 +223,7 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen> {
               );
             },
           ),
-          
-          // Red line under top bar
-          Container(
-            height: 4,
-            margin: const EdgeInsets.symmetric(horizontal: 8),
-            decoration: BoxDecoration(
-              color: AppColors.primaryRed,
-              borderRadius: BorderRadius.circular(2),
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.primaryRed.withOpacity(0.35),
-                  blurRadius: 6,
-                  offset: const Offset(0, 3),
-                ),
-              ],
-            ),
-          ),
+          // Accent line handled by UnifiedTopBar; remove local duplicate
           
           Expanded(child: _buildMessagesList()),
           _buildSimpleMessageInput(),

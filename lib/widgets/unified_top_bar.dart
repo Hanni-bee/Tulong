@@ -33,70 +33,29 @@ class UnifiedTopBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return PolishedFadeIn(
       delay: const Duration(milliseconds: 100),
-      child: Container(
-        margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-        height: 88,
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-        decoration: BoxDecoration(
-          color: backgroundColor,
-          borderRadius: BorderRadius.circular(28),
-          border: Border.all(
-            color: AppColors.lightGray.withOpacity(0.15),
-            width: 1.5,
-          ),
-          boxShadow: [
-            // Enhanced layered shadows for premium neumorphic effect
-            BoxShadow(
-              color: AppColors.primaryRed.withOpacity(0.08),
-              blurRadius: 20,
-              offset: const Offset(0, 6),
-              spreadRadius: 0,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            height: 88,
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+            decoration: BoxDecoration(
+              color: backgroundColor,
+              borderRadius: BorderRadius.circular(28),
+              border: Border.all(
+                color: AppColors.lightGray.withOpacity(0.15),
+                width: 1.5,
+              ),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x1A000000), // subtle shadow (6% black)
+                  blurRadius: 8,
+                  offset: Offset(0, 3),
+                ),
+              ],
             ),
-            BoxShadow(
-              color: Colors.black.withOpacity(0.06),
-              blurRadius: 32,
-              offset: const Offset(0, 12),
-              spreadRadius: 0,
-            ),
-            BoxShadow(
-              color: Colors.black.withOpacity(0.03),
-              blurRadius: 48,
-              offset: const Offset(0, 16),
-              spreadRadius: 0,
-            ),
-            // Enhanced highlight for neumorphic effect
-            BoxShadow(
-              color: Colors.white.withOpacity(0.95),
-              blurRadius: 12,
-              offset: const Offset(-3, -3),
-              spreadRadius: 0,
-            ),
-            BoxShadow(
-              color: Colors.white.withOpacity(0.7),
-              blurRadius: 6,
-              offset: const Offset(-1, -1),
-              spreadRadius: 0,
-            ),
-            // Soft ambient shadows
-            BoxShadow(
-              color: Colors.black.withOpacity(0.015),
-              blurRadius: 24,
-              offset: const Offset(0, 4),
-              spreadRadius: 0,
-            ),
-          ],
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              AppColors.white,
-              AppColors.ultraLightGray.withOpacity(0.8),
-              AppColors.white.withOpacity(0.9),
-            ],
-            stops: const [0.0, 0.5, 1.0],
-          ),
-        ),
-        child: Row(
+            child: Row(
           children: [
             // Enhanced back button (if needed)
             if (showBackButton) ...[
@@ -112,18 +71,6 @@ class UnifiedTopBar extends StatelessWidget {
                       color: AppColors.lightGray.withOpacity(0.2),
                       width: 1,
                     ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.primaryRed.withOpacity(0.1),
-                        blurRadius: 8,
-                        offset: const Offset(0, 3),
-                      ),
-                      BoxShadow(
-                        color: Colors.white.withOpacity(0.8),
-                        blurRadius: 6,
-                        offset: const Offset(-2, -2),
-                      ),
-                    ],
                   ),
                   child: const Icon(
                     Icons.arrow_back_ios_new,
@@ -148,23 +95,6 @@ class UnifiedTopBar extends StatelessWidget {
                     color: iconColor.withOpacity(0.2),
                     width: 1.5,
                   ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: iconColor.withOpacity(0.15),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
-                    ),
-                    BoxShadow(
-                      color: Colors.white.withOpacity(0.9),
-                      blurRadius: 8,
-                      offset: const Offset(-2, -2),
-                    ),
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.05),
-                      blurRadius: 16,
-                      offset: const Offset(0, 6),
-                    ),
-                  ],
                 ),
                 child: Icon(
                   icon,
@@ -231,7 +161,15 @@ class UnifiedTopBar extends StatelessWidget {
               ...actions!,
             ],
           ],
-        ),
+            ),
+          ),
+          // Unified solid accent line below top bar
+          Container(
+            height: 3,
+            margin: const EdgeInsets.symmetric(horizontal: 16),
+            color: AppColors.primaryRed,
+          ),
+        ],
       ),
     );
   }
@@ -246,7 +184,7 @@ class TopBarConfigs {
     List<Widget>? additionalActions,
   }) {
     return UnifiedTopBar(
-      title: 'Messages',
+      title: 'Local Chat',
       subtitle: status,
       icon: Icons.bluetooth,
       iconColor: status.toLowerCase().contains('connected') 
@@ -264,7 +202,7 @@ class TopBarConfigs {
     List<Widget>? additionalActions,
   }) {
     return UnifiedTopBar(
-      title: 'Walkie Talkie',
+      title: 'Calls',
       subtitle: status,
       icon: Icons.radio,
       iconColor: AppColors.warning, // Using app's warning color instead of hardcoded
@@ -286,21 +224,14 @@ class TopBarConfigs {
   }
 
   static Widget profileTopBar({
-    required VoidCallback onEdit,
+    VoidCallback? onEdit, // kept for backward compat, unused
     List<Widget>? additionalActions,
   }) {
     return UnifiedTopBar(
       title: 'Profile',
       icon: Icons.person,
       iconColor: AppColors.info,
-      actions: [
-        _buildActionButton(
-          icon: Icons.edit,
-          onPressed: onEdit,
-          color: AppColors.info,
-        ),
-        if (additionalActions != null) ...additionalActions,
-      ],
+      actions: additionalActions, // no edit action
     );
   }
 
@@ -322,23 +253,6 @@ class TopBarConfigs {
             color: color.withOpacity(0.2),
             width: 1.5,
           ),
-          boxShadow: [
-            BoxShadow(
-              color: color.withOpacity(0.12),
-              blurRadius: 10,
-              offset: const Offset(0, 3),
-            ),
-            BoxShadow(
-              color: Colors.white.withOpacity(0.9),
-              blurRadius: 6,
-              offset: const Offset(-2, -2),
-            ),
-            BoxShadow(
-              color: Colors.black.withOpacity(0.04),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
         ),
         child: Icon(
           icon,

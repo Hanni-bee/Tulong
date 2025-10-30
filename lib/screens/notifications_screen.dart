@@ -256,7 +256,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   void _showNotificationSettings(BuildContext context) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.transparent,
+      backgroundColor: Colors.white,
       builder: (context) => Container(
         decoration: const BoxDecoration(
           color: AppColors.white,

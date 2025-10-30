@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 import '../constants/app_colors.dart';
 import '../constants/app_strings.dart';
 import '../providers/network_provider.dart';
-import '../widgets/connected_user_card.dart';
 import 'call_detail_screen.dart';
 import '../constants/unified_typography.dart';
 
@@ -14,10 +13,33 @@ class CallsScreen extends StatefulWidget {
   State<CallsScreen> createState() => _CallsScreenState();
 }
 
-class _CallsScreenState extends State<CallsScreen> {
+class _CallsScreenState extends State<CallsScreen> with SingleTickerProviderStateMixin {
   bool _isCallActive = false;
   bool _isMuted = false;
   bool _isSpeakerOn = false;
+
+  // UI state
+  final TextEditingController _searchController = TextEditingController();
+  String _query = '';
+  String _activeFilter = 'All'; // All, Online, Offline
+  bool _usersExpanded = false;
+
+  late final AnimationController _usersController;
+  late final Animation<double> _usersExpandAnim;
+
+  @override
+  void initState() {
+    super.initState();
+    _usersController = AnimationController(vsync: this, duration: const Duration(milliseconds: 350));
+    _usersExpandAnim = CurvedAnimation(parent: _usersController, curve: Curves.easeInOutCubic);
+    _usersController.value = 0.0; // start collapsed by default
+  }
+
+  @override
+  void dispose() {
+    _usersController.dispose();
+    super.dispose();
+  }
 
   // Sample connected users data
   final List<Map<String, dynamic>> _connectedUsers = [
@@ -27,6 +49,7 @@ class _CallsScreenState extends State<CallsScreen> {
       'isOnline': true,
       'signalStrength': 4,
       'batteryLevel': 85,
+      'isMuted': false,
     },
     {
       'id': '2',
@@ -34,6 +57,7 @@ class _CallsScreenState extends State<CallsScreen> {
       'isOnline': true,
       'signalStrength': 3,
       'batteryLevel': 72,
+      'isMuted': true,
     },
     {
       'id': '3',
@@ -41,6 +65,7 @@ class _CallsScreenState extends State<CallsScreen> {
       'isOnline': true,
       'signalStrength': 5,
       'batteryLevel': 95,
+      'isMuted': false,
     },
     {
       'id': '4',
@@ -48,6 +73,7 @@ class _CallsScreenState extends State<CallsScreen> {
       'isOnline': false,
       'signalStrength': 0,
       'batteryLevel': 0,
+      'isMuted': false,
     },
     {
       'id': '5',
@@ -55,6 +81,7 @@ class _CallsScreenState extends State<CallsScreen> {
       'isOnline': true,
       'signalStrength': 2,
       'batteryLevel': 45,
+      'isMuted': false,
     },
   ];
 
@@ -101,13 +128,6 @@ class _CallsScreenState extends State<CallsScreen> {
                         : AppColors.mediumGray,
                     width: 2,
                   ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.05),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
                 ),
                 child: Row(
                   children: [
@@ -123,7 +143,7 @@ class _CallsScreenState extends State<CallsScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
+                          Text(
                             'Mesh Network Status',
                             style: UnifiedTypography.titleLarge,
                           ),
@@ -164,28 +184,104 @@ class _CallsScreenState extends State<CallsScreen> {
             },
           ),
 
-          // Connected users list
-          Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              itemCount: _connectedUsers.length,
-              itemBuilder: (context, index) {
-                final user = _connectedUsers[index];
-                return ConnectedUserCard(
-                  name: user['name'],
-                  isOnline: user['isOnline'],
-                  signalStrength: user['signalStrength'],
-                  batteryLevel: user['batteryLevel'],
-                  onCall: () {
-                    _initiateCall(context, user);
-                  },
-                  onDisconnect: () {
-                    _disconnectUser(context, user);
-                  },
-                );
-              },
+          // Filters & search (compact)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Column(
+              children: [
+                _buildFilters(),
+                const SizedBox(height: 8),
+                _buildSearchField(),
+              ],
             ),
           ),
+
+          // Users drawer + list (non-scrollable, always shows all users)
+          Builder(builder: (context) {
+            final filtered = _connectedUsers.where((u) {
+              final matchesFilter = _activeFilter == 'All'
+                  ? true
+                  : (_activeFilter == 'Online' ? u['isOnline'] == true : u['isOnline'] != true);
+              final matchesQuery = _query.isEmpty ||
+                  (u['name'] as String).toLowerCase().contains(_query.toLowerCase());
+              return matchesFilter && matchesQuery;
+            }).toList();
+
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _buildUsersDrawerHeader(
+                    total: _connectedUsers.length,
+                    visible: filtered.length,
+                  ),
+                  SizeTransition(
+                    sizeFactor: _usersExpandAnim,
+                    axisAlignment: -1.0,
+                    child: filtered.isEmpty
+                        ? const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 40),
+                            child: Center(
+                              child: Text('No users found', style: TextStyle(color: AppColors.textSecondary)),
+                            ),
+                          )
+                        : Column(
+                            children: [
+                              for (int index = 0; index < filtered.length; index++) ...[
+                                AnimatedBuilder(
+                                  animation: _usersController,
+                                  builder: (context, child) {
+                                    final t = _usersExpandAnim.value;
+                                    final delay = (index * 0.06).clamp(0.0, 0.9);
+                                    final effective = (t - delay).clamp(0.0, 1.0);
+                                    return Opacity(
+                                      opacity: effective,
+                                      child: Transform.scale(
+                                        scale: 0.98 + 0.02 * effective,
+                                        child: Transform.translate(
+                                          offset: Offset(0, (1 - effective) * 6),
+                                          child: Stack(
+                                            children: [
+                                              // Ripple glow background expanding from the avatar side
+                                              IgnorePointer(
+                                                ignoring: true,
+                                                child: Container(
+                                                  height: 56,
+                                                  margin: const EdgeInsets.symmetric(horizontal: 4),
+                                                  decoration: BoxDecoration(
+                                                    borderRadius: BorderRadius.circular(12),
+                                                    gradient: RadialGradient(
+                                                      center: const Alignment(-0.95, 0.0),
+                                                      radius: 0.8 + 0.4 * effective,
+                                                      colors: [
+                                                        AppColors.primaryRed.withOpacity(0.10 * effective),
+                                                        Colors.transparent,
+                                                      ],
+                                                      stops: const [0.0, 1.0],
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                              child!,
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                  child: _buildUserTile(filtered[index]),
+                                ),
+                                if (index != filtered.length - 1)
+                                  const Divider(height: 1, thickness: 0.7, color: Color(0x11000000)),
+                              ]
+                            ],
+                          ),
+                  ),
+                ],
+              ),
+            );
+          }),
 
           // Call controls (if call is active)
           if (_isCallActive) _buildCallControls(),
@@ -211,6 +307,247 @@ class _CallsScreenState extends State<CallsScreen> {
         },
       ),
     );
+  }
+
+  // Compact user tile with status dot and trailing actions
+  Widget _buildUserTile(Map<String, dynamic> user) {
+    final bool isOnline = user['isOnline'] == true;
+    final bool isMuted = user['isMuted'] == true;
+    final String name = user['name'] as String;
+    final int battery = user['batteryLevel'] as int;
+    final int signal = user['signalStrength'] as int;
+
+    // Style like the mock: white card by default, red-tinted when muted, green-tinted when idle/ok
+    final bool idleGood = isOnline && !isMuted && signal >= 4;
+    final Color bgColor = isMuted
+        ? const Color(0xFFFFF1F1)
+        : (idleGood ? const Color(0xFFF1FFF6) : Colors.white);
+    final Color borderColor = isMuted
+        ? const Color(0xFFFFCACA)
+        : (idleGood ? const Color(0xFFC6F3D8) : const Color(0xFFE6E8EC));
+
+    return InkWell(
+      onTap: () => _initiateCall(context, user),
+      borderRadius: BorderRadius.circular(14),
+          child: Container(
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: borderColor),
+        ),
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 10),
+        child: Row(
+          children: [
+            // Avatar + status dot
+            Stack(
+              children: [
+                CircleAvatar(
+                  radius: 16,
+                  backgroundColor: Colors.white,
+                  child: Text(
+                    _initials(name),
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.primaryRed,
+                    ),
+                  ),
+                ),
+                Positioned(
+                  right: 0,
+                  bottom: 0,
+                  child: Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: isOnline ? AppColors.online : AppColors.mediumGray,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 1.5),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(width: 12),
+            // Name and meta
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Row(
+                    children: [
+                      Icon(
+                        isOnline ? Icons.check_circle : Icons.remove_circle,
+                        size: 14,
+                        color: isOnline ? AppColors.online : AppColors.mediumGray,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        isOnline ? 'Active' : 'Idle',
+                        style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                      ),
+                      const SizedBox(width: 10),
+                      const Icon(Icons.network_cell, size: 12, color: AppColors.textSecondary),
+                      const SizedBox(width: 2),
+                      Text('$signal', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                      const SizedBox(width: 10),
+                      const Icon(Icons.battery_full, size: 12, color: AppColors.textSecondary),
+                      const SizedBox(width: 2),
+                      Text('$battery%', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            // Trailing small action (alert when muted, chevron for idle/ok, call otherwise)
+            Container(
+              width: 32,
+              height: 32,
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+              ),
+              child: Center(
+                child: Icon(
+                  isMuted
+                      ? Icons.error_outline
+                      : (idleGood ? Icons.expand_less : Icons.call),
+                  size: 18,
+                  color: isMuted
+                      ? AppColors.primaryRed
+                      : (idleGood ? AppColors.mediumGray : AppColors.primaryRed),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Drawer header with ripple splash and chevron
+  Widget _buildUsersDrawerHeader({int? total, int? visible}) {
+    final countText = (total != null && visible != null) ? 'Users ($visible/$total)' : 'Users';
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          setState(() {
+            _usersExpanded = !_usersExpanded;
+            if (_usersExpanded) {
+              _usersController.forward();
+            } else {
+              _usersController.reverse();
+            }
+          });
+        },
+        borderRadius: BorderRadius.circular(20),
+        splashColor: AppColors.primaryRed.withOpacity(0.12),
+        highlightColor: AppColors.primaryRed.withOpacity(0.06),
+        child: Container(
+          decoration: BoxDecoration(
+            color: AppColors.error.withOpacity(0.06),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: AppColors.primaryRed,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.wifi_tethering, color: Colors.white, size: 18),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                countText,
+                style: const TextStyle(fontWeight: FontWeight.w800, color: AppColors.textPrimary, fontSize: 16),
+              ),
+              const SizedBox(width: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
+                child: const Text('Emergency', style: TextStyle(color: AppColors.primaryRed, fontWeight: FontWeight.w700, fontSize: 12)),
+              ),
+              const Spacer(),
+              AnimatedRotation(
+                duration: const Duration(milliseconds: 250),
+                curve: Curves.easeInOut,
+                turns: _usersExpanded ? 0.0 : 0.5,
+                child: const Icon(Icons.expand_more, color: AppColors.textSecondary),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFilters() {
+    final filters = ['All', 'Online', 'Offline'];
+    return SizedBox(
+      height: 36,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: filters.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (context, index) {
+          final label = filters[index];
+          final bool selected = _activeFilter == label;
+          return ChoiceChip(
+            label: Text(label, style: TextStyle(fontWeight: FontWeight.w700, color: selected ? Colors.white : AppColors.textPrimary)),
+            selected: selected,
+            onSelected: (_) => setState(() => _activeFilter = label),
+            selectedColor: AppColors.primaryRed,
+            backgroundColor: Colors.white,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: BorderSide(color: selected ? AppColors.primaryRed : AppColors.lightGray.withOpacity(0.6))),
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            visualDensity: const VisualDensity(horizontal: -2, vertical: -2),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildSearchField() {
+    return TextField(
+      controller: _searchController,
+      onChanged: (v) => setState(() => _query = v.trim()),
+      decoration: InputDecoration(
+        hintText: 'Search users...',
+        prefixIcon: const Icon(Icons.search, color: AppColors.mediumGray),
+        filled: true,
+        fillColor: Colors.white,
+        contentPadding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppColors.lightGray.withOpacity(0.6))),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppColors.lightGray.withOpacity(0.6))),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.primaryRed, width: 1.5)),
+      ),
+      style: const TextStyle(fontSize: 14),
+    );
+  }
+
+  String _initials(String name) {
+    final parts = name.trim().split(' ');
+    if (parts.isEmpty) return '';
+    final first = parts.first.isNotEmpty ? parts.first[0] : '';
+    final second = parts.length > 1 && parts[1].isNotEmpty ? parts[1][0] : '';
+    return (first + second).toUpperCase();
   }
 
   Widget _buildCallControls() {

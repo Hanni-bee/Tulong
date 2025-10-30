@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:provider/provider.dart';
 import '../constants/app_colors.dart';
 import '../constants/app_typography.dart';
 import 'package:lottie/lottie.dart';
 import '../widgets/modern_neumorphic_card.dart';
-import '../widgets/modern_emergency_button.dart';
 import '../widgets/modern_responsive_layout.dart';
 import '../widgets/modern_toast.dart';
 import '../widgets/modern_network_indicator.dart';
@@ -19,6 +19,8 @@ import '../widgets/polished_animations.dart';
 import '../utils/page_transitions.dart';
 import '../utils/phone_responsive_helper.dart';
 import '../config/page_transition_config.dart';
+import '../providers/auth_provider.dart';
+import '../services/offline_messaging_service.dart';
 import 'enhanced_global_chat_screen.dart';
 import 'walkie_talkie_screen.dart';
 import 'modern_people_screen.dart';
@@ -37,12 +39,14 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
   late AnimationController _fadeController;
   late AnimationController _slideController;
   late AnimationController _welcomeController;
+  late AnimationController _emergencyHoldController;
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
   late Animation<double> _welcomeAnimation;
   
   bool _isInitializing = true;
   bool _showWelcome = false;
+  bool _isEmergencyHolding = false;
 
 
   @override
@@ -63,6 +67,20 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
       duration: const Duration(milliseconds: 2000),
       vsync: this,
     );
+    
+    _emergencyHoldController = AnimationController(
+      duration: const Duration(milliseconds: 1200),
+      vsync: this,
+    )..addStatusListener((status) {
+        if (status == AnimationStatus.completed) {
+          HapticFeedback.heavyImpact();
+          setState(() {
+            _isEmergencyHolding = false;
+          });
+          _emergencyHoldController.reset();
+          _showEmergencyDialog(context);
+        }
+      });
     
     _fadeAnimation = Tween<double>(
       begin: 0.0,
@@ -131,6 +149,7 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
     _fadeController.dispose();
     _slideController.dispose();
     _welcomeController.dispose();
+    _emergencyHoldController.dispose();
     super.dispose();
   }
 
@@ -405,18 +424,11 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
         ),
         const SizedBox(height: 12),
         Container(
-          height: 4,
-          margin: const EdgeInsets.symmetric(horizontal: 8),
+          height: 3,
+          margin: const EdgeInsets.symmetric(horizontal: 16),
           decoration: BoxDecoration(
             color: AppColors.primaryRed,
             borderRadius: BorderRadius.circular(2),
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.primaryRed.withOpacity(0.35),
-                blurRadius: 6,
-                offset: const Offset(0, 3),
-              ),
-            ],
           ),
         ),
       ],
@@ -690,6 +702,67 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
   }
 
 
+  Widget _buildEmergencyButton() {
+    const double btnSize = 80.0;
+    
+    return GestureDetector(
+      onLongPressStart: (_) {
+        HapticFeedback.selectionClick();
+        setState(() => _isEmergencyHolding = true);
+        _emergencyHoldController.forward(from: 0);
+      },
+      onLongPressEnd: (_) {
+        if (_emergencyHoldController.status != AnimationStatus.completed) {
+          _emergencyHoldController.reverse(from: _emergencyHoldController.value);
+        }
+        setState(() => _isEmergencyHolding = false);
+      },
+      onLongPressCancel: () {
+        _emergencyHoldController.reverse(from: _emergencyHoldController.value);
+        setState(() => _isEmergencyHolding = false);
+      },
+      child: SizedBox(
+        width: btnSize + 18,
+        height: btnSize + 18,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            SizedBox(
+              width: btnSize + 12,
+              height: btnSize + 12,
+              child: AnimatedBuilder(
+                animation: _emergencyHoldController,
+                builder: (context, _) => CircularProgressIndicator(
+                  value: _isEmergencyHolding ? _emergencyHoldController.value : 0,
+                  strokeWidth: 6,
+                  backgroundColor: const Color(0xFFE53935).withOpacity(0.12),
+                  valueColor: const AlwaysStoppedAnimation(Color(0xFFE53935)),
+                ),
+              ),
+            ),
+            Container(
+              width: btnSize,
+              height: btnSize,
+              decoration: BoxDecoration(
+                color: const Color(0xFFE53935),
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: Colors.white.withOpacity(0.3),
+                  width: 2,
+                ),
+              ),
+              child: const Icon(
+                Icons.emergency,
+                color: AppColors.white,
+                size: 22,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildEmergencySection() {
     return Container(
       padding: const EdgeInsets.all(8),
@@ -733,11 +806,7 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
           ),
         const SizedBox(height: 20),
         Center(
-          child: ModernEmergencyFAB(
-            onPressed: () => _showEmergencyDialog(context),
-            isActive: true,
-            showPulse: true,
-          ),
+          child: _buildEmergencyButton(),
         ),
         const SizedBox(height: 20),
         const ModernResponsiveText(
@@ -836,16 +905,97 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
   }
 
 
+  Future<void> _sendEmergencyAlertDirectly(BuildContext context, String emergencyMessage) async {
+    try {
+      final authProvider = context.read<AuthProvider>();
+      final user = authProvider.currentUserModel;
+      final userId = authProvider.currentUser ?? authProvider.userEmail ?? 'unknown';
+      
+      // Build location string from user's address data
+      String location = 'Unknown Location';
+      if (user != null) {
+        final locationParts = <String>[];
+        if (user.street.isNotEmpty) locationParts.add(user.street);
+        if (user.barangay.isNotEmpty) locationParts.add(user.barangay);
+        if (user.city.isNotEmpty) locationParts.add(user.city);
+        if (user.province.isNotEmpty) locationParts.add(user.province);
+        if (user.region.isNotEmpty) locationParts.add(user.region);
+        
+        if (locationParts.isNotEmpty) {
+          location = locationParts.join(', ');
+        } else {
+          location = 'Location not set';
+        }
+      }
+      
+      HapticFeedback.heavyImpact();
+      
+      // Send emergency alert using OfflineMessagingService
+      final messagingService = OfflineMessagingService();
+      await messagingService.sendEmergencyAlert(
+        message: emergencyMessage,
+        location: location,
+        userId: userId,
+      );
+      
+      if (context.mounted) {
+        ModernToastManager.showSuccess(
+          context,
+          'Emergency alert sent: "$emergencyMessage"',
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ModernToastManager.showError(
+          context,
+          'Failed to send emergency alert: ${e.toString()}',
+        );
+      }
+    }
+  }
+
   void _showEmergencyDialog(BuildContext context) {
     HapticFeedback.heavyImpact();
+    final authProvider = context.read<AuthProvider>();
+    
+    // Get emergency message from profile (from AuthProvider)
+    String emergencyMessage;
+    if (authProvider.emergencyMessage != null && authProvider.emergencyMessage!.isNotEmpty) {
+      emergencyMessage = authProvider.emergencyMessage!;
+    } else if (authProvider.emergencyMessages.isNotEmpty) {
+      final defaultIndex = authProvider.defaultEmergencyMessageIndex ?? 0;
+      if (defaultIndex >= 0 && defaultIndex < authProvider.emergencyMessages.length) {
+        emergencyMessage = authProvider.emergencyMessages[defaultIndex];
+      } else {
+        emergencyMessage = authProvider.emergencyMessages[0];
+      }
+    } else {
+      emergencyMessage = 'Emergency! Please help and contact me immediately.';
+    }
+    
     showDialog(
       context: context,
-      builder: (BuildContext context) {
+      builder: (BuildContext dialogContext) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             bool isSending = false;
             
+            Widget buildSendButtonChild() {
+              if (isSending) {
+                return const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    color: AppColors.white,
+                    strokeWidth: 2,
+                  ),
+                );
+              }
+              return const Text('Send Alert');
+            }
+            
             return AlertDialog(
+              backgroundColor: Colors.white,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),
               ),
@@ -873,60 +1023,84 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                   ),
                 ],
               ),
-              content: const Text(
-                'This will send an emergency alert to all connected users in your network. Are you sure you want to proceed?',
-                style: TextStyle(
-                  color: AppColors.textSecondary,
-                  fontSize: 16,
-                ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'This will send an emergency alert to all connected users in your network.',
+                    style: TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 16,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Message to send:',
+                    style: TextStyle(
+                      color: AppColors.textPrimary,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: AppColors.backgroundLight.withOpacity(0.5),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.borderColor),
+                    ),
+                    child: Text(
+                      emergencyMessage,
+                      style: const TextStyle(
+                        color: AppColors.textPrimary,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
               ),
               actions: [
-                TextButton(
-                  onPressed: isSending ? null : () => Navigator.of(context).pop(),
-                  child: const Text(
-                    'Cancel',
-                    style: TextStyle(
-                      color: AppColors.mediumGray,
-                      fontWeight: FontWeight.w600,
+                if (!isSending)
+                  TextButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(),
+                    child: const Text(
+                      'Cancel',
+                      style: TextStyle(
+                        color: AppColors.mediumGray,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
-                ),
-                ElevatedButton(
-                  onPressed: isSending ? null : () async {
-                    setDialogState(() {
-                      isSending = true;
-                    });
-                    
-                    HapticFeedback.heavyImpact();
-                    
-                    // Simulate sending emergency alert
-                    await Future.delayed(const Duration(seconds: 2));
-                    
-                    if (context.mounted) {
-                      Navigator.of(context).pop();
-                      ModernToastManager.showSuccess(
-                        context,
-                        'Emergency alert sent successfully!',
-                      );
-                    }
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.error,
-                    foregroundColor: AppColors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                AbsorbPointer(
+                  absorbing: isSending,
+                  child: ElevatedButton(
+                    onPressed: () async {
+                      setDialogState(() {
+                        isSending = true;
+                      });
+                      
+                      HapticFeedback.heavyImpact();
+                      
+                      // Use the direct send method with the message from profile
+                      await _sendEmergencyAlertDirectly(context, emergencyMessage);
+                      
+                      if (dialogContext.mounted) {
+                        Navigator.of(dialogContext).pop();
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.error,
+                      foregroundColor: AppColors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
+                    child: buildSendButtonChild(),
                   ),
-                  child: isSending
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            color: AppColors.white,
-                            strokeWidth: 2,
-                          ),
-                        )
-                      : const Text('Send Alert'),
                 ),
               ],
             );

@@ -16,6 +16,9 @@ class AuthProvider extends ChangeNotifier {
   String? _userName;
   bool _twoFactorEnabled = false;
   UserModel? _currentUserModel;
+  String? _emergencyMessage;
+  List<String> _emergencyMessages = [];
+  int? _defaultEmergencyMessageIndex;
   final Map<String, String> _registeredUsers = {}; // email -> password (demo)
   final TwoFactorAuthService _twoFactorService = TwoFactorAuthService();
   final SQLiteService _sqliteService = SQLiteService();
@@ -28,6 +31,9 @@ class AuthProvider extends ChangeNotifier {
   UserModel? get currentUserModel => _currentUserModel;
   bool get hasSession => _isAuthenticated && _userEmail != null;
   bool get twoFactorEnabled => _twoFactorEnabled;
+  String? get emergencyMessage => _emergencyMessage;
+  List<String> get emergencyMessages => List.unmodifiable(_emergencyMessages);
+  int? get defaultEmergencyMessageIndex => _defaultEmergencyMessageIndex;
 
   // Method to update current user model
   void updateUser(UserModel user) {
@@ -81,6 +87,10 @@ class AuthProvider extends ChangeNotifier {
         );
         
         _currentUserModel = userModel;
+        if (sqliteUser.containsKey('emergency_message') &&
+            (sqliteUser['emergency_message']?.toString().isNotEmpty ?? false)) {
+          _emergencyMessage = sqliteUser['emergency_message'].toString();
+        }
         print('UserModel created from SQLite data: ${userModel.toString()}');
         notifyListeners();
         return;
@@ -294,12 +304,112 @@ class AuthProvider extends ChangeNotifier {
         }
       }
       
+      // Load emergency message(s) scoped to this user after we have _userEmail
+      try {
+        if (_userEmail != null) {
+          _emergencyMessage = prefs.getString('emergency_message_${_userEmail!}');
+          // Load multiple messages list (JSON-encoded list)
+          final rawList = prefs.getString('emergency_messages_${_userEmail!}');
+          if (rawList != null && rawList.isNotEmpty) {
+            final decoded = jsonDecode(rawList);
+            if (decoded is List) {
+              _emergencyMessages = decoded.map((e) => e.toString()).toList();
+            }
+          }
+          _defaultEmergencyMessageIndex = prefs.getInt('emergency_message_default_index_${_userEmail!}');
+          // Ensure default exists
+          if (_defaultEmergencyMessageIndex != null && (_defaultEmergencyMessageIndex! < 0 || _defaultEmergencyMessageIndex! >= _emergencyMessages.length)) {
+            _defaultEmergencyMessageIndex = null;
+          }
+        }
+      } catch (_) {}
+
       notifyListeners();
       
       // Load UserModel after setting basic session data
       await loadUserModel();
     } else {
       print('No valid session found - user needs to sign in');
+    }
+  }
+
+  // Emergency message persistence
+  Future<void> setEmergencyMessage(String message) async {
+    _emergencyMessage = message;
+    final prefs = await SharedPreferences.getInstance();
+    if (_userEmail != null) {
+      await prefs.setString('emergency_message_${_userEmail!}', message);
+    }
+    if (_userEmail != null) {
+      try {
+        await _unifiedDataService.updateUserProfileWithMap(_userEmail!, {
+          'emergency_message': message,
+        });
+      } catch (_) {}
+    }
+    notifyListeners();
+  }
+
+  // Multiple emergency messages CRUD (per-user)
+  Future<void> addEmergencyMessage(String message, {bool makeDefault = false}) async {
+    if (message.trim().isEmpty) return;
+    _emergencyMessages.add(message.trim());
+    if (makeDefault || _defaultEmergencyMessageIndex == null) {
+      _defaultEmergencyMessageIndex = _emergencyMessages.length - 1;
+      _emergencyMessage = _emergencyMessages[_defaultEmergencyMessageIndex!];
+    }
+    await _persistEmergencyMessages();
+    notifyListeners();
+  }
+
+  Future<void> updateEmergencyMessage(int index, String message) async {
+    if (index < 0 || index >= _emergencyMessages.length) return;
+    _emergencyMessages[index] = message.trim();
+    if (_defaultEmergencyMessageIndex == index) {
+      _emergencyMessage = _emergencyMessages[index];
+    }
+    await _persistEmergencyMessages();
+    notifyListeners();
+  }
+
+  Future<void> deleteEmergencyMessage(int index) async {
+    if (index < 0 || index >= _emergencyMessages.length) return;
+    _emergencyMessages.removeAt(index);
+    if (_defaultEmergencyMessageIndex != null) {
+      if (_emergencyMessages.isEmpty) {
+        _defaultEmergencyMessageIndex = null;
+        _emergencyMessage = null;
+      } else if (index <= _defaultEmergencyMessageIndex!) {
+        _defaultEmergencyMessageIndex = (_defaultEmergencyMessageIndex! - 1).clamp(0, _emergencyMessages.length - 1);
+        _emergencyMessage = _emergencyMessages[_defaultEmergencyMessageIndex!];
+      }
+    }
+    await _persistEmergencyMessages();
+    notifyListeners();
+  }
+
+  Future<void> setDefaultEmergencyMessage(int index) async {
+    if (index < 0 || index >= _emergencyMessages.length) return;
+    _defaultEmergencyMessageIndex = index;
+    _emergencyMessage = _emergencyMessages[index];
+    await _persistEmergencyMessages();
+    notifyListeners();
+  }
+
+  Future<void> _persistEmergencyMessages() async {
+    if (_userEmail == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('emergency_messages_${_userEmail!}', jsonEncode(_emergencyMessages));
+    if (_defaultEmergencyMessageIndex != null) {
+      await prefs.setInt('emergency_message_default_index_${_userEmail!}', _defaultEmergencyMessageIndex!);
+    } else {
+      await prefs.remove('emergency_message_default_index_${_userEmail!}');
+    }
+    // Keep single message key in sync for legacy readers
+    if (_emergencyMessage != null) {
+      await prefs.setString('emergency_message_${_userEmail!}', _emergencyMessage!);
+    } else {
+      await prefs.remove('emergency_message_${_userEmail!}');
     }
   }
 
@@ -568,6 +678,7 @@ class AuthProvider extends ChangeNotifier {
     _currentUser = null;
     _userEmail = null;
     _userName = null;
+    _emergencyMessage = null;
     
     // Clear only session preferences, keep SQLite data intact
     final prefs = await SharedPreferences.getInstance();

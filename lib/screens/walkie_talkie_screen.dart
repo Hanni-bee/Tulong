@@ -17,6 +17,12 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
   late AnimationController _voiceLevelController;
   late Animation<double> _pulseAnimation;
   late Animation<double> _recordingAnimation;
+  // Users drawer state
+  bool _usersExpanded = false;
+  late final AnimationController _usersController = AnimationController(vsync: this, duration: const Duration(milliseconds: 350))..value = 0.0;
+  late final Animation<double> _usersExpandAnim = CurvedAnimation(parent: _usersController, curve: Curves.easeInOutCubic);
+  late AnimationController _emergencyHoldController;
+  bool _isEmergencyHolding = false;
   
   bool _isTransmitting = false;
   bool _isListening = false;
@@ -88,6 +94,17 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
       duration: const Duration(milliseconds: 300),
       vsync: this,
     );
+    _emergencyHoldController = AnimationController(
+      duration: const Duration(milliseconds: 1200),
+      vsync: this,
+    )..addStatusListener((status) {
+        if (status == AnimationStatus.completed) {
+          HapticFeedback.heavyImpact();
+          _isEmergencyHolding = false;
+          _emergencyHoldController.reset();
+          _sendEmergencyAlert();
+        }
+      });
     
     _pulseAnimation = Tween<double>(
       begin: 1.0,
@@ -178,6 +195,8 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
     _pulseController.dispose();
     _recordingController.dispose();
     _voiceLevelController.dispose();
+    _usersController.dispose();
+    _emergencyHoldController.dispose();
     super.dispose();
   }
 
@@ -193,169 +212,161 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
             onRefresh: _refreshConnections,
             onSettings: _showSettingsDialog,
           ),
-          
-          // Red line under top bar
-          Container(
-            height: 4,
-            margin: const EdgeInsets.symmetric(horizontal: 8),
-            decoration: BoxDecoration(
-              color: AppColors.primaryRed,
-              borderRadius: BorderRadius.circular(2),
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.primaryRed.withOpacity(0.35),
-                  blurRadius: 6,
-                  offset: const Offset(0, 3),
-                ),
-              ],
-            ),
-          ),
-          
-          // Main content
+          // Accent line provided by UnifiedTopBar; removed duplicate here
+
+          // Main content (non-scrollable; uses Flexible/Expanded to adapt)
           Expanded(
             child: SafeArea(
               child: Column(
                 children: [
-              // Connected users list - Polished design
-              Container(
-                height: 220, // Optimized height to fit all 4 users
-                  margin: const EdgeInsets.fromLTRB(16, 8, 16, 6),
-                    decoration: BoxDecoration(
-                      color: AppColors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: const Color(0xFFE53935).withOpacity(0.15),
-                        width: 1.5,
-                      ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFFE53935).withOpacity(0.08),
-                        blurRadius: 20,
-                        spreadRadius: 2,
-                        offset: const Offset(0, 4),
-                      ),
-                      BoxShadow(
-                        color: Colors.white.withOpacity(0.8),
-                        blurRadius: 15,
-                        offset: const Offset(-2, -2),
-                      ),
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.04),
-                        blurRadius: 8,
-                        offset: const Offset(2, 2),
-                      ),
-                    ],
+              // Connected users list - Collapsible, auto-height
+              AnimatedSize(
+                duration: const Duration(milliseconds: 280),
+                curve: Curves.easeInOutCubic,
+                alignment: Alignment.topCenter,
+                child: Container(
+                margin: const EdgeInsets.fromLTRB(16, 8, 16, 6),
+                decoration: BoxDecoration(
+                  color: AppColors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: const Color(0xFFE53935).withOpacity(0.15),
+                    width: 1.5,
                   ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(20),
-                    child: Column(
-                      children: [
-                        // Header for users list with polished gradient
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                        color: const Color(0xFFE53935).withOpacity(0.08),
-                            borderRadius: const BorderRadius.only(
-                              topLeft: Radius.circular(20),
-                              topRight: Radius.circular(20),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: Column(
+                    children: [
+                      // Tap header to expand/collapse
+                      Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: () {
+                            setState(() {
+                              _usersExpanded = !_usersExpanded;
+                              if (_usersExpanded) {
+                                _usersController.forward();
+                              } else {
+                                _usersController.reverse();
+                              }
+                            });
+                          },
+                          splashColor: const Color(0xFFE53935).withOpacity(0.12),
+                          highlightColor: const Color(0xFFE53935).withOpacity(0.06),
+                          child: Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: const BoxDecoration(
+                              color: Color(0xFFE53935), // solid red header
                             ),
-                            border: const Border(
-                              bottom: BorderSide(
-                                color: Color(0x10E53935),
-                                width: 1,
-                              ),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 26,
+                                  height: 26,
+                                  decoration: BoxDecoration(
+                                    color: AppColors.white, // white container
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Icon(Icons.people, color: Color(0xFFE53935), size: 15),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              'Users (${_connectedUsers.where((u) => u['isActive']).length}/${_connectedUsers.length})',
+                                              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.white),
+                                            ),
+                                            const Text('Emergency', style: TextStyle(fontSize: 11, color: AppColors.white)),
+                                          ],
+                                        ),
+                                      ),
+                                      AnimatedRotation(
+                                        duration: const Duration(milliseconds: 250),
+                                        turns: _usersExpanded ? 0.0 : 0.5,
+                                        child: const Icon(Icons.expand_more, color: AppColors.white),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
                             ),
-                          ),
-                          child: Column(
-                            children: [
-                              Row(
-                                children: [
-                                  Container(
-                                    width: 26,
-                                    height: 26,
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFFE53935),
-                                      borderRadius: BorderRadius.circular(8),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: const Color(0xFFE53935).withOpacity(0.3),
-                                          blurRadius: 6,
-                                          offset: const Offset(0, 2),
-                                        ),
-                                      ],
-                                    ),
-                                    child: const Icon(
-                                      Icons.people,
-                                      color: AppColors.white,
-                                      size: 15,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          'Users (${_connectedUsers.where((u) => u['isActive']).length}/${_connectedUsers.length})',
-                                          style: const TextStyle(
-                                            fontSize: 14,
-                                            fontWeight: FontWeight.w700,
-                                            color: AppColors.textPrimary,
-                                          ),
-                                        ),
-                                        Text(
-                                          'Emergency',
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w500,
-                                            color: AppColors.textSecondary,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  // Connection quality indicator - Polished with glow
-                                  Container(
-                                    width: 8,
-                                    height: 8,
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFF27AE60),
-                                      shape: BoxShape.circle,
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: const Color(0xFF27AE60).withOpacity(0.5),
-                                          blurRadius: 6,
-                                          spreadRadius: 1,
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
                           ),
                         ),
-                        // Users list - Fixed height, scrollable
-                        SizedBox(
-                          height: 155,
-                          child: ListView.builder(
-                            physics: const BouncingScrollPhysics(),
-                            padding: const EdgeInsets.fromLTRB(10, 5, 10, 5),
-                            itemCount: _connectedUsers.length,
-                            itemBuilder: (context, index) {
-                              final user = _connectedUsers[index];
-                              return Container(
-                                margin: const EdgeInsets.only(bottom: 6),
+                      ),
+                      // Collapsible list with staggered ripple (capped height for safety)
+                      SizeTransition(
+                        sizeFactor: _usersExpandAnim,
+                        axisAlignment: -1.0,
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            // Cap max height to keep controls visible on small screens
+                            maxHeight: MediaQuery.of(context).size.height * 0.38,
+                          ),
+                          child: ListView.separated(
+                          physics: const NeverScrollableScrollPhysics(),
+                          shrinkWrap: true,
+                          padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+                          itemCount: _connectedUsers.length,
+                          separatorBuilder: (_, __) => const SizedBox(height: 6),
+                          itemBuilder: (context, index) {
+                            final user = _connectedUsers[index];
+                            return AnimatedBuilder(
+                              animation: _usersController,
+                              builder: (context, child) {
+                                final t = _usersExpandAnim.value;
+                                final delay = (index * 0.08).clamp(0.0, 0.9);
+                                final effective = (t - delay).clamp(0.0, 1.0);
+                                return Opacity(
+                                  opacity: effective,
+                                  child: Transform.scale(
+                                    scale: 0.98 + 0.02 * effective,
+                                    child: Transform.translate(
+                                      offset: Offset(0, (1 - effective) * 8),
+                                      child: Stack(
+                                        children: [
+                                          IgnorePointer(
+                                            ignoring: true,
+                                            child: Container(
+                                              height: 56,
+                                              margin: const EdgeInsets.symmetric(horizontal: 2),
+                                              decoration: BoxDecoration(
+                                                borderRadius: BorderRadius.circular(12),
+                                                gradient: RadialGradient(
+                                                  center: const Alignment(-0.95, 0.0),
+                                                  radius: 0.8 + 0.4 * effective,
+                                                  colors: [
+                                                    const Color(0xFFE53935).withOpacity(0.10 * effective),
+                                                    Colors.transparent,
+                                                  ],
+                                                  stops: const [0.0, 1.0],
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                          child!,
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
+                              child: Container(
                                 padding: const EdgeInsets.all(8),
                                 decoration: BoxDecoration(
-                                  color: user['isSpeaking'] 
+                                  color: user['isSpeaking']
                                       ? const Color(0xFF27AE60).withOpacity(0.15)
-                                      : user['isActive'] 
+                                      : user['isActive']
                                           ? AppColors.white
                                           : const Color(0xFF7F8C8D).withOpacity(0.1),
                                   borderRadius: BorderRadius.circular(16),
                                   border: Border.all(
-                                    color: user['isSpeaking'] 
+                                    color: user['isSpeaking']
                                         ? const Color(0xFF27AE60)
                                         : user['isMuted']
                                             ? const Color(0xFFE53935)
@@ -364,28 +375,6 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                                                 : const Color(0xFF7F8C8D).withOpacity(0.5),
                                     width: user['isSpeaking'] || user['isMuted'] ? 2 : 1,
                                   ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withOpacity(0.04),
-                                      blurRadius: 10,
-                                      spreadRadius: 1,
-                                      offset: const Offset(0, 2),
-                                    ),
-                                    if (user['isSpeaking'])
-                                      BoxShadow(
-                                        color: const Color(0xFF27AE60).withOpacity(0.3),
-                                        blurRadius: 15,
-                                        spreadRadius: 2,
-                                        offset: const Offset(0, 0),
-                                      ),
-                                    if (user['isMuted'])
-                                      BoxShadow(
-                                        color: const Color(0xFFE53935).withOpacity(0.2),
-                                        blurRadius: 12,
-                                        spreadRadius: 1,
-                                        offset: const Offset(0, 0),
-                                      ),
-                                  ],
                                 ),
                                 child: Row(
                                   children: [
@@ -408,16 +397,6 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                                                       : AppColors.white,
                                               width: 2,
                                             ),
-                                            boxShadow: [
-                                              BoxShadow(
-                                                color: user['isActive']
-                                                    ? const Color(0xFFE53935).withOpacity(0.3)
-                                                    : Colors.black.withOpacity(0.1),
-                                                blurRadius: 8,
-                                                spreadRadius: 1,
-                                                offset: const Offset(0, 2),
-                                              ),
-                                            ],
                                           ),
                                           child: Center(
                                             child: Text(
@@ -448,17 +427,7 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                                                 color: AppColors.white,
                                                 width: 2,
                                               ),
-                                              boxShadow: [
-                                                BoxShadow(
-                                                  color: (user['isSpeaking'] 
-                                                      ? const Color(0xFF27AE60)
-                                                      : user['isMuted']
-                                                          ? const Color(0xFFE53935)
-                                                          : const Color(0xFF27AE60)).withOpacity(0.6),
-                                                  blurRadius: 4,
-                                                  spreadRadius: 1,
-                                                ),
-                                              ],
+                                              boxShadow: const [],
                                             ),
                                           ),
                                         ),
@@ -542,48 +511,38 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                                     ),
                                   ],
                                 ),
-                              );
-                            },
-                          ),
+                              ),
+                            );
+                          },
                         ),
-                      ],
-                    ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
+              ),
+              ),
               
-              // Walkie-talkie controls - Fixed height and no gradients
-              Container(
-                margin: const EdgeInsets.fromLTRB(16, 6, 16, 12),
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: AppColors.white,
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(
-                    color: const Color(0xFFE53935).withOpacity(0.15),
-                    width: 1.5,
+              // Walkie-talkie controls - adapts to remaining space
+              Expanded(
+                child: Container(
+                  margin: const EdgeInsets.fromLTRB(16, 6, 16, 12),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: AppColors.white,
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(
+                      color: const Color(0xFFE53935).withOpacity(0.15),
+                      width: 1.5,
+                    ),
                   ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFFE53935).withOpacity(0.1),
-                      blurRadius: 24,
-                      spreadRadius: 2,
-                      offset: const Offset(0, 6),
-                    ),
-                    BoxShadow(
-                      color: Colors.white.withOpacity(0.8),
-                      blurRadius: 18,
-                      offset: const Offset(-3, -3),
-                    ),
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.05),
-                      blurRadius: 10,
-                      offset: const Offset(3, 3),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final double _micSize = (constraints.maxHeight * 0.36).clamp(68.0, 95.0);
+                      final double _btnSize = (constraints.maxHeight * 0.16).clamp(36.0, 56.0);
+                      return Column(
+                        mainAxisSize: MainAxisSize.max,
+                        children: [
                     // Header for controls - Polished
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -626,89 +585,70 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                         ),
                       ],
                     ),
-                    const SizedBox(height: 14),
-                    
-                    // Main transmit button - Enhanced with better feedback
-                    Center(
-                      child: GestureDetector(
-                        onTapDown: (_) {
-                          HapticFeedback.mediumImpact();
-                          _startTransmission();
-                        },
-                        onTapUp: (_) {
-                          HapticFeedback.lightImpact();
-                          _stopTransmission();
-                        },
-                        onTapCancel: () {
-                          HapticFeedback.lightImpact();
-                          _stopTransmission();
-                        },
-                        child: AnimatedBuilder(
-                          animation: _pulseAnimation,
-                          builder: (context, child) {
-                            return Transform.scale(
-                              scale: _isTransmitting ? _recordingAnimation.value : _pulseAnimation.value,
-                              child: Container(
-                                width: 95,
-                                height: 95,
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFE53935),
-                                  shape: BoxShape.circle,
-                                  border: Border.all(
-                                    color: Colors.white.withOpacity(0.2),
-                                    width: 2,
-                                  ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: const Color(0xFFE53935).withOpacity(0.5),
-                                      blurRadius: 20,
-                                      spreadRadius: 5,
-                                      offset: const Offset(0, 0),
-                                    ),
-                                    BoxShadow(
-                                      color: const Color(0xFFE53935).withOpacity(0.3),
-                                      blurRadius: 30,
-                                      spreadRadius: 8,
-                                      offset: const Offset(0, 6),
-                                    ),
-                                    BoxShadow(
-                                      color: Colors.black.withOpacity(0.15),
-                                      blurRadius: 10,
-                                      offset: const Offset(0, 8),
-                                    ),
-                                  ],
-                                ),
-                                child: Stack(
-                                  alignment: Alignment.center,
-                                  children: [
-                                    const Icon(
-                                      Icons.mic,
-                                      color: AppColors.white,
-                                      size: 33,
-                                    ),
-                                    if (_isTransmitting)
-                                      Positioned(
-                                        top: 20,
-                                        right: 20,
-                                        child: Container(
-                                          width: 16,
-                                          height: 16,
-                                          decoration: const BoxDecoration(
-                                            color: AppColors.white,
-                                            shape: BoxShape.circle,
-                                          ),
-                                          child: const Icon(
-                                            Icons.radio_button_checked,
-                                            color: const Color(0xFFE53935),
-                                            size: 12,
-                                          ),
-                                        ),
+                    const SizedBox(height: 8),
+                    // Main transmit button - Responsive
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Center(
+                        child: SizedBox(
+                          width: _micSize,
+                          height: _micSize,
+                          child: GestureDetector(
+                            onTapDown: (_) {
+                              HapticFeedback.mediumImpact();
+                              _startTransmission();
+                            },
+                            onTapUp: (_) {
+                              HapticFeedback.lightImpact();
+                              _stopTransmission();
+                            },
+                            onTapCancel: () {
+                              HapticFeedback.lightImpact();
+                              _stopTransmission();
+                            },
+                            child: AnimatedBuilder(
+                              animation: _pulseAnimation,
+                              builder: (context, child) {
+                                return Transform.scale(
+                                  scale: _isTransmitting ? _recordingAnimation.value : _pulseAnimation.value,
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFE53935),
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: Colors.white.withOpacity(0.2),
+                                        width: 2,
                                       ),
-                                  ],
-                                ),
-                              ),
-                            );
-                          },
+                                    ),
+                                    child: Stack(
+                                      alignment: Alignment.center,
+                                      children: [
+                                        Icon(Icons.mic, color: AppColors.white, size: _micSize * 0.34),
+                                        if (_isTransmitting)
+                                          Positioned(
+                                            top: 20,
+                                            right: 20,
+                                            child: Container(
+                                              width: 16,
+                                              height: 16,
+                                              decoration: const BoxDecoration(
+                                                color: AppColors.white,
+                                                shape: BoxShape.circle,
+                                              ),
+                                              child: const Icon(
+                                                Icons.radio_button_checked,
+                                                color: Color(0xFFE53935),
+                                                size: 12,
+                                              ),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -726,8 +666,8 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                             _toggleListening();
                           },
                           child: Container(
-                            width: 56,
-                            height: 56,
+                            width: _btnSize,
+                            height: _btnSize,
                             decoration: BoxDecoration(
                               color: _isListening 
                                   ? const Color(0xFF27AE60)
@@ -737,19 +677,6 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                                 color: Colors.white.withOpacity(0.3),
                                 width: 2,
                               ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: (_isListening ? const Color(0xFF27AE60) : const Color(0xFF7F8C8D)).withOpacity(0.4),
-                                  blurRadius: 15,
-                                  spreadRadius: 2,
-                                  offset: const Offset(0, 4),
-                                ),
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.1),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 6),
-                                ),
-                              ],
                             ),
                             child: Stack(
                               alignment: Alignment.center,
@@ -777,40 +704,60 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                           ),
                         ),
                         
-                        // Emergency button - Polished
+                        // Emergency button - Hold to confirm with centered ring
                         GestureDetector(
-                          onTap: () {
-                            HapticFeedback.heavyImpact();
-                            _sendEmergencyAlert();
+                          onLongPressStart: (_) {
+                            HapticFeedback.selectionClick();
+                            setState(() => _isEmergencyHolding = true);
+                            _emergencyHoldController.forward(from: 0);
                           },
-                          child: Container(
-                            width: 56,
-                            height: 56,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFE53935),
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: Colors.white.withOpacity(0.3),
-                                width: 2,
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: const Color(0xFFE53935).withOpacity(0.5),
-                                  blurRadius: 15,
-                                  spreadRadius: 2,
-                                  offset: const Offset(0, 4),
+                          onLongPressEnd: (_) {
+                            if (_emergencyHoldController.status != AnimationStatus.completed) {
+                              _emergencyHoldController.reverse(from: _emergencyHoldController.value);
+                            }
+                            setState(() => _isEmergencyHolding = false);
+                          },
+                          onLongPressCancel: () {
+                            _emergencyHoldController.reverse(from: _emergencyHoldController.value);
+                            setState(() => _isEmergencyHolding = false);
+                          },
+                          child: SizedBox(
+                            width: _btnSize + 18,
+                            height: _btnSize + 18,
+                            child: Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                SizedBox(
+                                  width: _btnSize + 12,
+                                  height: _btnSize + 12,
+                                  child: AnimatedBuilder(
+                                    animation: _emergencyHoldController,
+                                    builder: (context, _) => CircularProgressIndicator(
+                                      value: _isEmergencyHolding ? _emergencyHoldController.value : 0,
+                                      strokeWidth: 6,
+                                      backgroundColor: const Color(0xFFE53935).withOpacity(0.12),
+                                      valueColor: const AlwaysStoppedAnimation(Color(0xFFE53935)),
+                                    ),
+                                  ),
                                 ),
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.1),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 6),
+                                Container(
+                                  width: _btnSize,
+                                  height: _btnSize,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFE53935),
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: Colors.white.withOpacity(0.3),
+                                      width: 2,
+                                    ),
+                                  ),
+                                  child: const Icon(
+                                    Icons.emergency,
+                                    color: AppColors.white,
+                                    size: 22,
+                                  ),
                                 ),
                               ],
-                            ),
-                            child: const Icon(
-                              Icons.emergency,
-                              color: AppColors.white,
-                              size: 22,
                             ),
                           ),
                         ),
@@ -866,9 +813,7 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                             ),
                             const SizedBox(width: 7),
                             Text(
-                              _isTransmitting 
-                                  ? 'TRANSMITTING...'
-                                  : 'Hold to transmit',
+                              _isTransmitting ? 'TRANSMITTING...' : 'Hold to transmit',
                               style: const TextStyle(
                                 color: Color(0xFFE53935),
                                 fontSize: 13,
@@ -882,8 +827,9 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                     ),
                     
                     // Transmission timer - Optimized
-                    if (_isTransmitting)
-                      Container(
+                    Visibility(
+                      visible: _isTransmitting,
+                      child: Container(
                         margin: const EdgeInsets.only(top: 6),
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                         decoration: BoxDecoration(
@@ -918,9 +864,13 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                           ],
                         ),
                       ),
+                    ),
                   ],
-                ),
-              ),
+                );
+              },
+            ),
+          ),
+        ),
                 ],
               ),
             ),

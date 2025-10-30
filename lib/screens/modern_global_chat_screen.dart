@@ -673,7 +673,7 @@ class _ModernGlobalChatScreenState extends State<ModernGlobalChatScreen> {
   void _showActionMenu(BuildContext context) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.transparent,
+      backgroundColor: Colors.white,
       builder: (context) => Container(
         margin: const EdgeInsets.all(16),
         decoration: BoxDecoration(

@@ -349,7 +349,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void _showSettingsDialog(BuildContext context) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.transparent,
+      backgroundColor: Colors.white,
       builder: (context) => Container(
         decoration: const BoxDecoration(
           color: AppColors.white,

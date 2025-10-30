@@ -366,7 +366,7 @@ class _HardwareScreenState extends State<HardwareScreen> {
   void _showConnectionOptions() {
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.transparent,
+      backgroundColor: Colors.white,
       builder: (context) => Container(
         padding: const EdgeInsets.all(20),
         decoration: const BoxDecoration(

@@ -72,23 +72,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
             child: Column(
               children: [
             TopBarConfigs.profileTopBar(onEdit: () => _editProfile(context)),
-            
-            // Red line under top bar
-          Container(
-              height: 4,
-              margin: const EdgeInsets.symmetric(horizontal: 8),
-            decoration: BoxDecoration(
-                color: AppColors.primaryRed,
-                borderRadius: BorderRadius.circular(2),
-              boxShadow: [
-                BoxShadow(
-                    color: AppColors.primaryRed.withOpacity(0.35),
-                    blurRadius: 6,
-                    offset: const Offset(0, 3),
-                ),
-              ],
-            ),
-            ),
+            // Accent line handled by UnifiedTopBar; remove local duplicate
             
             Expanded(
       child: FadeTransition(
@@ -125,152 +109,189 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
         final userEmail = auth.userEmail ?? 'user@example.com';
         final userModel = auth.currentUserModel;
         
-        
-        // Get additional user data from UserModel if available
-        final userLocation = userModel?.location ?? 'Location not set';
-        final userStatus = userModel?.status == 'Online' ? 'Connected' : 'Disconnected';
+        // Compose location string from model fields
+        final location = [
+          if ((userModel?.city ?? '').isNotEmpty) userModel!.city,
+          if ((userModel?.province ?? '').isNotEmpty) userModel!.province,
+        ].join(', ');
         
          return Container(
-           margin: const EdgeInsets.only(bottom: 24),
-           child: Container(
-             padding: const EdgeInsets.all(20),
+          margin: const EdgeInsets.only(bottom: 16),
               decoration: BoxDecoration(
-                color: AppColors.white,
-               borderRadius: BorderRadius.circular(20),
-               border: Border.all(
-                 color: AppColors.primaryRed.withOpacity(0.3),
-                 width: 2,
-               ),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [AppColors.primaryRed, AppColors.primaryRed.withOpacity(0.85)],
+            ),
+            borderRadius: BorderRadius.circular(24),
                 boxShadow: [
                   BoxShadow(
-                   color: AppColors.primaryRed.withOpacity(0.1),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
+                color: AppColors.primaryRed.withOpacity(0.25),
+                blurRadius: 24,
+                offset: const Offset(0, 12),
                   ),
                ],
              ),
-             child: Row(
+          child: Stack(
                children: [
-                 // Avatar with solid colors only - smaller to give more space to text
-                 CircleAvatar(
-                   radius: 28,
-                   backgroundColor: AppColors.primaryRed.withOpacity(0.1),
+              // Decorative circles (mock-style)
+              Positioned(
+                top: -22,
+                right: -18,
+                child: Container(
+                  width: 140,
+                  height: 140,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.15),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+              Positioned(
+                top: 6,
+                right: 38,
+                child: Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.18),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+              Positioned(
+                bottom: -28,
+                left: -24,
+                child: Container(
+                  width: 120,
+                  height: 120,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.08),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+
+              // Content
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 64,
+                      height: 64,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.white.withOpacity(0.35), width: 1.2),
+                      ),
+                      child: Center(
                    child: Text(
                      _getInitials(userName),
                      style: const TextStyle(
-                       fontSize: 20,
-                       fontWeight: FontWeight.bold,
-                       color: AppColors.primaryRed,
+                            color: Colors.white,
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
+                          ),
               ),
             ),
           ),
                  const SizedBox(width: 14),
-                 // User Info Section with maximum space allocation
                  Expanded(
               child: Column(
                      crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                       // User Name - ensure full display with maximum space
                        Text(
                          userName,
-                         style: const TextStyle(
-                           color: AppColors.textPrimary,
-                           fontWeight: FontWeight.bold,
-                           fontSize: 15,
-                           height: 1.2,
-                         ),
-                         maxLines: 2,
+                            maxLines: 1,
                          overflow: TextOverflow.ellipsis,
-                       ),
-                       const SizedBox(height: 3),
-                       // Email - ensure full display with maximum space
-                       Text(
-                         userEmail,
-                         style: const TextStyle(
-                           color: AppColors.textSecondary,
-                           fontSize: 11,
-                           height: 1.3,
-                           fontWeight: FontWeight.w500,
-                         ),
-                         maxLines: 2,
-                         overflow: TextOverflow.ellipsis,
-                       ),
-                       if (userLocation != 'Location not set') ...[
-                         const SizedBox(height: 6),
-                         // Location with icon and proper horizontal display
+                            style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800),
+                          ),
+                          const SizedBox(height: 6),
+                          Row(
+                            children: const [
+                              Icon(Icons.circle, color: Colors.greenAccent, size: 10),
+                              SizedBox(width: 6),
+                              Text('Active', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    InkWell(
+                      onTap: () => _editProfile(context),
+                      borderRadius: BorderRadius.circular(14),
+                      child: Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white.withOpacity(0.4)),
+                        ),
+                        child: const Icon(Icons.edit, color: Colors.white, size: 18),
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 16),
+                Container(height: 1, color: Colors.white.withOpacity(0.25)),
+                const SizedBox(height: 12),
+
                          Row(
                            children: [
-                             Icon(
-                               Icons.location_on_outlined,
-                               size: 14,
-                               color: AppColors.textSecondary.withOpacity(0.7),
-                             ),
-                             const SizedBox(width: 4),
+                    const Icon(Icons.mail_outline, color: Colors.white, size: 18),
+                    const SizedBox(width: 10),
                              Expanded(
                                child: Text(
-                                 userLocation,
-                                 style: const TextStyle(
-                                   color: AppColors.textSecondary,
-                                   fontSize: 12,
-                                   height: 1.2,
-                                   fontWeight: FontWeight.w500,
-                                 ),
+                        userEmail,
+                        style: const TextStyle(color: Colors.white),
                                  maxLines: 1,
                                  overflow: TextOverflow.ellipsis,
                                ),
                              ),
                            ],
                          ),
-                       ],
-                     ],
-                   ),
-                 ),
-                 const SizedBox(width: 8),
-                 // Status Indicator with solid colors only - ultra compact version
-                  Container(
-                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                    decoration: BoxDecoration(
-                     color: userStatus == 'Connected' 
-                         ? AppColors.success.withOpacity(0.15)
-                         : AppColors.textSecondary.withOpacity(0.08),
-                     borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                       color: userStatus == 'Connected' 
-                           ? AppColors.success.withOpacity(0.3)
-                           : AppColors.textSecondary.withOpacity(0.2),
-                        width: 1,
+                const SizedBox(height: 8),
+                if ((userModel?.phone ?? '').isNotEmpty) Row(
+                  children: [
+                    const Icon(Icons.call, color: Colors.white, size: 18),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        userModel!.phone!,
+                        style: const TextStyle(color: Colors.white),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
+                  ],
+                ),
+                if ((userModel?.phone ?? '').isNotEmpty) const SizedBox(height: 8),
+                if (location.isNotEmpty) Row(
                       children: [
-                        Container(
-                         width: 4,
-                         height: 4,
-                         decoration: BoxDecoration(
-                           color: userStatus == 'Connected' 
-                               ? AppColors.success
-                               : AppColors.textSecondary,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                       const SizedBox(width: 3),
-                        Text(
-                         userStatus,
-                         style: TextStyle(
-                           color: userStatus == 'Connected' 
-                               ? AppColors.success
-                               : AppColors.textSecondary,
-                           fontWeight: FontWeight.w600,
-                           fontSize: 9,
-                          ),
+                    const Icon(Icons.location_on_outlined, color: Colors.white, size: 18),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        location,
+                        style: const TextStyle(color: Colors.white),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
                         ),
                       ],
                     ),
                   ),
+          // end of Padding
                 ],
-            ),
           ),
         );
       },
@@ -349,15 +370,8 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
           Container(
                padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
+              color: color.withOpacity(0.12),
                  shape: BoxShape.circle,
-                 boxShadow: [
-                   BoxShadow(
-                     color: color.withOpacity(0.2),
-                     blurRadius: 8,
-                     offset: const Offset(0, 2),
-                   ),
-                 ],
             ),
             child: Icon(
               icon,
@@ -407,6 +421,12 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
               title: 'Personal Information',
               subtitle: 'Update your personal details',
               onTap: () => _editProfile(context),
+            ),
+            _buildSettingsItem(
+              icon: Icons.sms_failed_outlined,
+              title: 'Emergency Message',
+              subtitle: 'Set the message sent during emergency',
+              onTap: () => _editEmergencyMessage(context),
             ),
             _buildSettingsItem(
               icon: Icons.security,
@@ -667,7 +687,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.transparent,
+      backgroundColor: Colors.white,
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setModalState) {
@@ -1045,31 +1065,267 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
     );
   }
 
+  void _editEmergencyMessage(BuildContext context) {
+    HapticFeedback.lightImpact();
+    final auth = context.read<AuthProvider>();
+    final TextEditingController controller = TextEditingController(text: auth.emergencyMessage ?? 'I need help. Please contact me immediately.');
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+          child: AnimatedNeumorphicCard(
+            margin: const EdgeInsets.all(16),
+            child: StatefulBuilder(
+              builder: (context, setStateSheet) {
+                final messages = context.read<AuthProvider>().emergencyMessages;
+                final defaultIndex = context.read<AuthProvider>().defaultEmergencyMessageIndex;
+                return Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  child: Text(
+                        'Emergency Messages',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                ),
+                    // Current list
+                    if (messages.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: ListView.separated(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: messages.length,
+                          separatorBuilder: (_, __) => const SizedBox(height: 8),
+                          itemBuilder: (context, index) {
+                            final isDefault = defaultIndex == index;
+                            return Container(
+                              decoration: BoxDecoration(
+                                color: isDefault ? AppColors.primaryRed.withOpacity(0.06) : AppColors.white,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: isDefault ? AppColors.primaryRed.withOpacity(0.4) : AppColors.lightGray.withOpacity(0.6)),
+                              ),
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      messages[index],
+                                      style: const TextStyle(color: AppColors.textPrimary, fontSize: 14, height: 1.3),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  IconButton(
+                                    tooltip: 'Set default',
+                                    icon: Icon(isDefault ? Icons.star : Icons.star_border, color: isDefault ? AppColors.primaryRed : AppColors.mediumGray),
+                                    onPressed: () async {
+                                      await context.read<AuthProvider>().setDefaultEmergencyMessage(index);
+                                      setStateSheet(() {});
+                                    },
+                                  ),
+                                  IconButton(
+                                    tooltip: 'Edit',
+                                    icon: const Icon(Icons.edit_outlined, color: AppColors.mediumGray),
+                                    onPressed: () async {
+                                      final editController = TextEditingController(text: messages[index]);
+                                      await showDialog(
+                                        context: context,
+                                        builder: (_) => AlertDialog(
+                                          title: const Text('Edit Message'),
+                                          content: TextField(
+                                            controller: editController,
+                                            maxLines: 4,
+                                            decoration: const InputDecoration(border: OutlineInputBorder()),
+                                          ),
+                                          actions: [
+                                            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+                                            ElevatedButton(
+                                              onPressed: () async {
+                                                final newText = editController.text.trim();
+                                                if (newText.isEmpty) return;
+                                                await context.read<AuthProvider>().updateEmergencyMessage(index, newText);
+                                                if (!context.mounted) return;
+                                                Navigator.pop(context);
+                                                setStateSheet(() {});
+                                              },
+                                              style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryRed, foregroundColor: AppColors.white),
+                                              child: const Text('Save'),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                  IconButton(
+                                    tooltip: 'Delete',
+                                    icon: const Icon(Icons.delete_outline, color: AppColors.error),
+                                    onPressed: () async {
+                                      await context.read<AuthProvider>().deleteEmergencyMessage(index);
+                                      setStateSheet(() {});
+                                    },
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                      )
+                    else
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                        child: Text('No saved messages yet. Add one below.', style: TextStyle(color: AppColors.textSecondary)),
+                      ),
+
+                    const SizedBox(height: 12),
+                    // Add new
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: TextField(
+                    controller: controller,
+                    maxLines: 3,
+                    decoration: InputDecoration(
+                          hintText: 'Type a new emergency message to save...',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                      filled: true,
+                      fillColor: AppColors.white,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                          child: const Text('Close'),
+                    ),
+                    const SizedBox(width: 8),
+                        ElevatedButton.icon(
+                      onPressed: () async {
+                        final text = controller.text.trim();
+                        if (text.isEmpty) return;
+                            await context.read<AuthProvider>().addEmergencyMessage(text, makeDefault: messages.isEmpty);
+                            controller.clear();
+                            setStateSheet(() {});
+                        if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Message saved'), backgroundColor: AppColors.success));
+                      },
+                          icon: const Icon(Icons.add, size: 18),
+                          label: const Text('Add'),
+                      style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryRed, foregroundColor: AppColors.white),
+                    ),
+                    const SizedBox(width: 12),
+                  ],
+                ),
+                const SizedBox(height: 8),
+              ],
+                );
+              },
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   void _signOut(BuildContext context) {
     HapticFeedback.lightImpact();
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Sign Out'),
-        content: const Text('Are you sure you want to sign out?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              context.read<AuthProvider>().signOut();
+    final rootContext = context; // preserve parent context for navigation
+    showModalBottomSheet(
+      context: rootContext,
+      backgroundColor: Colors.white,
+      isScrollControlled: false,
+      builder: (sheetContext) {
+        return Padding(
+          padding: const EdgeInsets.all(16),
+          child: AnimatedNeumorphicCard(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                const SizedBox(height: 12),
+                Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryRed.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.logout, color: AppColors.primaryRed, size: 28),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Sign out of T.U.L.O.N.G?',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.textPrimary,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16),
+                  child: Text(
+                    'You\'ll be returned to the login screen. Your offline data remains saved on this device.',
+                    style: TextStyle(color: AppColors.textSecondary, height: 1.3),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(sheetContext),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.textPrimary,
+                          side: BorderSide(color: AppColors.lightGray.withOpacity(0.6), width: 1.4),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                        ),
+                        child: const Text('Cancel', style: TextStyle(fontWeight: FontWeight.w700)),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () async {
+                          Navigator.pop(sheetContext);
+                          await rootContext.read<AuthProvider>().signOut();
+                          if (!mounted) return;
+                          Navigator.of(rootContext).pushNamedAndRemoveUntil('/signin', (route) => false);
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.primaryRed,
-              foregroundColor: AppColors.white,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          elevation: 6,
+                          shadowColor: AppColors.primaryRed.withOpacity(0.35),
+                        ),
+                        child: const Text('Sign Out', style: TextStyle(fontWeight: FontWeight.w800)),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+              ],
             ),
-            child: const Text('Sign Out'),
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 

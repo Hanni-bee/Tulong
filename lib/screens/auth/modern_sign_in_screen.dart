@@ -7,7 +7,6 @@ import '../../constants/unified_typography.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/firebase_service.dart';
 import '../../utils/neumorphic_utils.dart';
-import '../../widgets/modern_gradient_button.dart';
 import '../../widgets/enhanced_neumorphic_card.dart';
 import 'sign_up_screen.dart';
 
@@ -211,49 +210,105 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
     return GestureDetector(
       onTap: _signInWithGoogle,
       child: Container(
+          height: 56,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: const Color(0xFFDADCE0),
+              width: 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1),
+                blurRadius: 4,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // Google Logo - Local SVG for offline support
+              Container(
+                width: 20,
+                height: 20,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(4),
+                  color: Colors.white,
+                  border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
+                ),
+                child: SvgPicture.string(
+                  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>',
+                  width: 20,
+                  height: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Text(
+                'Continue with Google',
+                style: TextStyle(
+                  color: Color(0xFF3C4043),
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+      ),
+    );
+  }
+
+  Widget _buildEmailSignInButton() {
+    return GestureDetector(
+      onTap: _isLoading ? null : _signIn,
+      child: Container(
         height: 56,
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: AppColors.primaryRed,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: const Color(0xFFDADCE0),
-            width: 1,
-          ),
           boxShadow: [
             BoxShadow(
+              color: AppColors.primaryRed.withOpacity(0.35),
+              blurRadius: 16,
+              offset: const Offset(0, 8),
+            ),
+            BoxShadow(
               color: Colors.black.withOpacity(0.1),
-              blurRadius: 4,
-              offset: const Offset(0, 2),
+              blurRadius: 8,
+              offset: const Offset(0, 4),
             ),
           ],
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Google Logo - Local SVG for offline support
-            Container(
-              width: 20,
-              height: 20,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(4),
-                color: Colors.white,
-                border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
-              ),
-              child: SvgPicture.string(
-                '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>',
-                width: 20,
-                height: 20,
-              ),
+            const Icon(
+              Icons.login,
+              size: 22,
+              color: Colors.white,
             ),
             const SizedBox(width: 12),
-            const Text(
-              'Continue with Google',
-              style: TextStyle(
-                color: Color(0xFF3C4043),
-                fontSize: 16,
-                fontWeight: FontWeight.w500,
+            if (_isLoading)
+              const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.5,
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    Colors.white,
+                  ),
+                ),
+              )
+            else
+              const Text(
+                'Sign In',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
-            ),
           ],
         ),
       ),
@@ -266,7 +321,7 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
       backgroundColor: AppColors.neumorphicBase,
       body: SafeArea(
         child: SingleChildScrollView(
-          physics: const BouncingScrollPhysics(),
+          physics: const NeverScrollableScrollPhysics(),
           child: Padding(
             padding: const EdgeInsets.all(24.0),
             child: FadeTransition(
@@ -387,14 +442,10 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
 
                             const SizedBox(height: 24),
 
-                            // Sign In Button
-                            ModernGradientButton(
-                              text: 'Sign In',
-                              icon: Icons.login,
-                              onPressed: _isLoading ? null : _signIn,
-                              isLoading: _isLoading,
-                              height: 56,
-                              borderRadius: 16,
+                            // Sign In Button (same design and size as Google button)
+                            Align(
+                              alignment: Alignment.center,
+                              child: _buildEmailSignInButton(),
                             ),
 
                             const SizedBox(height: 20),

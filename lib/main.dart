@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'constants/app_typography.dart';
 import 'screens/enhanced_splash_screen.dart';
 import 'screens/splash_screen.dart';
@@ -15,7 +14,6 @@ import 'screens/tutorial_walkthrough_screen.dart';
 import 'screens/disaster_demo_screen.dart';
 import 'screens/setup/address_setup_screen.dart';
 import 'screens/update_profile_screen.dart';
-import 'screens/esp32_test_screen.dart';
 import 'screens/esp32_auth_screen.dart';
 import 'screens/esp32_device_scanner.dart';
 import 'screens/main_navigation.dart';
@@ -138,8 +136,8 @@ class TulongApp extends StatelessWidget {
                 borderRadius: BorderRadius.circular(16),
               ),
               padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 24),
-              elevation: 8,
-              shadowColor: const Color(0xFFD32F2F).withOpacity(0.4),
+              elevation: 0,
+              shadowColor: Colors.transparent,
             ),
           ),
           inputDecorationTheme: InputDecorationTheme(
@@ -175,7 +173,11 @@ class TulongApp extends StatelessWidget {
           floatingActionButtonTheme: const FloatingActionButtonThemeData(
             backgroundColor: Color(0xFFD32F2F),
             foregroundColor: Colors.white,
-            elevation: 8,
+            elevation: 0,
+          ),
+          dialogBackgroundColor: Colors.white,
+          bottomSheetTheme: const BottomSheetThemeData(
+            backgroundColor: Colors.white,
           ),
         ),
         home: const EnhancedSplashScreen(),
@@ -200,7 +202,6 @@ class TulongApp extends StatelessWidget {
           '/update-profile': (context) => const UpdateProfileScreen(), // Update profile with address
           '/esp32-auth': (context) => const ESP32AuthScreen(), // ESP32 Bluetooth authentication
           '/esp32-scanner': (context) => const ESP32DeviceScanner(), // ESP32 device scanner with pairing
-          '/esp32-test': (context) => const ESP32TestScreen(), // ESP32 debug console
           '/disaster-demo': (context) => const DisasterDemoScreen(),
           '/main': (context) => const MainNavigation(),
         },

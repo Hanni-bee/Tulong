@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'dart:async';
 import '../constants/app_colors.dart';
 
 class ModernEmergencyButton extends StatefulWidget {
@@ -209,11 +210,13 @@ class _ModernEmergencyButtonState extends State<ModernEmergencyButton>
   }
 }
 
-class ModernEmergencyFAB extends StatelessWidget {
+class ModernEmergencyFAB extends StatefulWidget {
   final VoidCallback? onPressed;
   final String? label;
   final bool isActive;
   final bool showPulse;
+  final bool requireHold; // if true, trigger only on long-press
+  final Duration holdDuration;
 
   const ModernEmergencyFAB({
     super.key,
@@ -221,14 +224,92 @@ class ModernEmergencyFAB extends StatelessWidget {
     this.label,
     this.isActive = false,
     this.showPulse = true,
+    this.requireHold = false,
+    this.holdDuration = const Duration(milliseconds: 800),
   });
 
   @override
+  State<ModernEmergencyFAB> createState() => _ModernEmergencyFABState();
+}
+
+class _ModernEmergencyFABState extends State<ModernEmergencyFAB>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _holdController;
+  Timer? _holdTimer;
+  bool _isHolding = false;
+  int _holdSequence = 0; // Increment to invalidate delayed callbacks
+
+  @override
+  void initState() {
+    super.initState();
+    _holdController = AnimationController(vsync: this, duration: widget.holdDuration);
+  }
+
+  @override
+  void didUpdateWidget(covariant ModernEmergencyFAB oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.holdDuration != widget.holdDuration) {
+      _holdController.duration = widget.holdDuration;
+    }
+  }
+
+  @override
+  void dispose() {
+    _holdTimer?.cancel();
+    _holdController.dispose();
+    super.dispose();
+  }
+
+  void _startHold() {
+    if (!widget.requireHold) return;
+    _isHolding = true;
+    _holdSequence++; // Increment sequence to invalidate any previous delayed callbacks
+    final currentSequence = _holdSequence;
+    HapticFeedback.mediumImpact();
+    _holdController
+      ..reset()
+      ..forward();
+    _holdTimer?.cancel();
+    _holdTimer = Timer(widget.holdDuration, () {
+      if (!mounted || !_isHolding) return;
+      if (currentSequence != _holdSequence) return; // Hold was cancelled and restarted
+      
+      if (_isHolding) {
+        // Wait for animation to visually complete (ensure the ring is fully filled)
+        // Add a small delay to ensure smooth visual transition before showing modal
+        Future.delayed(const Duration(milliseconds: 150), () {
+          // Check if still holding and sequence matches (user didn't cancel)
+          if (!mounted || !_isHolding || currentSequence != _holdSequence) return;
+          
+          HapticFeedback.heavyImpact();
+          widget.onPressed?.call();
+          _isHolding = false;
+          // Keep animation at completed state briefly before resetting
+          Future.delayed(const Duration(milliseconds: 100), () {
+            if (mounted && currentSequence == _holdSequence) {
+              _holdController.reset();
+            }
+          });
+        });
+      }
+    });
+  }
+
+  void _cancelHold() {
+    if (!widget.requireHold) return;
+    _isHolding = false;
+    _holdSequence++; // Invalidate any pending delayed callbacks
+    _holdTimer?.cancel();
+    _holdTimer = null;
+    _holdController.reverse();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Stack(
+    final coreButton = Stack(
       children: [
         // Pulse ring effect
-        if (showPulse && isActive)
+        if (widget.showPulse && widget.isActive)
           TweenAnimationBuilder<double>(
             duration: const Duration(seconds: 2),
             tween: Tween(begin: 0.0, end: 1.0),
@@ -253,15 +334,43 @@ class ModernEmergencyFAB extends StatelessWidget {
             },
           ),
         
+        // Hold progress ring
+        if (widget.requireHold)
+          AnimatedBuilder(
+            animation: _holdController,
+            builder: (context, _) {
+              return SizedBox(
+                width: 88,
+                height: 88,
+                child: CircularProgressIndicator(
+                  value: _isHolding ? _holdController.value : 0,
+                  strokeWidth: 5,
+                  valueColor: const AlwaysStoppedAnimation<Color>(AppColors.error),
+                  backgroundColor: AppColors.error.withOpacity(0.1),
+                ),
+              );
+            },
+          ),
+
         // Main button
         ModernEmergencyButton(
-          onPressed: onPressed,
-          label: label,
-          isActive: isActive,
-          showPulse: showPulse,
+          onPressed: widget.requireHold ? null : widget.onPressed,
+          label: widget.label,
+          isActive: widget.isActive,
+          showPulse: widget.showPulse,
           size: 80,
         ),
       ],
+    );
+
+    if (!widget.requireHold) return coreButton;
+
+    return GestureDetector(
+      onLongPressStart: (_) => _startHold(),
+      onLongPressEnd: (_) => _cancelHold(),
+      onLongPressCancel: _cancelHold,
+      behavior: HitTestBehavior.opaque,
+      child: coreButton,
     );
   }
 }

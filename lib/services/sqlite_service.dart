@@ -9,7 +9,7 @@ class SQLiteService {
 
   static Database? _database;
   static const String _databaseName = 'tulong_offline.db';
-  static const int _databaseVersion = 2;
+  static const int _databaseVersion = 3;
 
   // Table names
   static const String _usersTable = 'users';
@@ -51,6 +51,7 @@ class SQLiteService {
         province TEXT,
         city TEXT,
         barangay TEXT,
+        emergency_message TEXT,
         
         password TEXT,
         is_online INTEGER DEFAULT 0,
@@ -125,6 +126,10 @@ class SQLiteService {
       await db.execute('UPDATE $_usersTable SET account_status = "active" WHERE account_status IS NULL');
       await db.execute('UPDATE $_usersTable SET is_google_auth = 0 WHERE is_google_auth IS NULL');
       await db.execute('UPDATE $_usersTable SET address_setup_completed = 0 WHERE address_setup_completed IS NULL');
+    }
+    if (oldVersion < 3) {
+      // Add emergency_message column
+      await db.execute('ALTER TABLE $_usersTable ADD COLUMN emergency_message TEXT');
     }
   }
 
