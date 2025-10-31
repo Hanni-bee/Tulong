@@ -83,9 +83,14 @@ class _SuccessAnimationState extends State<SuccessAnimation>
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
-                      color: AppColors.success.withOpacity(0.4),
-                      blurRadius: 30,
-                      spreadRadius: 10,
+                      color: AppColors.success.withOpacity(0.3),
+                      blurRadius: 20,
+                      spreadRadius: 5,
+                    ),
+                    BoxShadow(
+                      color: Colors.white.withOpacity(0.5),
+                      blurRadius: 10,
+                      offset: const Offset(-2, -2),
                     ),
                   ],
                 ),

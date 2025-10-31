@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../constants/app_colors.dart';
+import '../constants/soft_ui_design.dart';
 import '../providers/network_provider.dart';
+import '../widgets/solid_badge.dart';
 import 'modern_home_screen.dart';
 import 'esp32_lora_chat_screen.dart';
 import 'walkie_talkie_screen.dart';
@@ -22,6 +24,10 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
   late AnimationController _animationController;
   late AnimationController _iconAnimationController;
   late Animation<double> _iconScaleAnimation;
+  
+  // Badge counts - can be updated from providers/state later
+  int _messagesUnreadCount = 0; // Example: will be connected to real data
+  int _callsActiveCount = 0; // Example: active calls or emergency alerts
   
   final List<Widget> _screens = [
     const ModernHomeScreen(),
@@ -147,13 +153,7 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
             color: AppColors.lightGray.withOpacity(0.35), // subtle ring to distinguish
             width: 1.2,
           ),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x1A000000), // gentle shadow
-              blurRadius: 12,
-              offset: Offset(0, 6),
-            ),
-          ], // outside stays transparent
+          boxShadow: SoftUIDesign.getCardShadow(elevation: 6.0), // Soft UI shadow for nav bar
         ),
         child: SafeArea(
           top: false,
@@ -216,25 +216,9 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
             borderRadius: BorderRadius.circular(20),
             boxShadow: isSelected
                 ? [
-                    // Enhanced shadow system for depth
-                    BoxShadow(
-                      color: item.color.withOpacity(0.15),
-                      offset: const Offset(0, 6),
-                      blurRadius: 16,
-                      spreadRadius: 0,
-                    ),
-                    BoxShadow(
-                      color: AppColors.neumorphicDark.withOpacity(0.1),
-                      offset: const Offset(0, 2),
-                      blurRadius: 8,
-                      spreadRadius: 0,
-                    ),
-                    BoxShadow(
-                      color: Colors.white.withOpacity(0.8),
-                      offset: const Offset(-2, -2),
-                      blurRadius: 8,
-                      spreadRadius: 0,
-                    ),
+                    ...SoftUIDesign.getSoftShadow(elevation: 3.0, shadowColor: item.color.withOpacity(0.2)),
+                    // Subtle glow overlay for active items
+                    ...SoftUIDesign.getGlowOverlay(color: item.color, intensity: 0.08, blur: 6.0),
                   ]
                 : [
                     // Subtle shadow for unselected items
@@ -250,73 +234,62 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
             mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Enhanced icon with multiple animations
-              AnimatedBuilder(
-                animation: _iconScaleAnimation,
-                builder: (context, child) {
-                  final scale = isSelected ? _iconScaleAnimation.value : 1.0;
-                  return AnimatedContainer(
-                    duration: const Duration(milliseconds: 320),
-                    curve: Curves.easeInOutCubic,
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      gradient: isSelected
-                          ? LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [
-                                item.color,
-                                item.color.withOpacity(0.85),
-                              ],
-                              stops: const [0.0, 1.0],
-                            )
-                          : null,
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: isSelected
-                          ? [
-                              BoxShadow(
-                                color: item.color.withOpacity(0.22),
-                                blurRadius: 12,
-                                offset: const Offset(0, 4),
-                                spreadRadius: 0,
+              // Enhanced icon with multiple animations and badge
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  AnimatedBuilder(
+                    animation: _iconScaleAnimation,
+                    builder: (context, child) {
+                      final scale = isSelected ? _iconScaleAnimation.value : 1.0;
+                      return AnimatedContainer(
+                        duration: const Duration(milliseconds: 320),
+                        curve: Curves.easeInOutCubic,
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: isSelected ? item.color : Colors.transparent,
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 220),
+                          switchInCurve: Curves.easeOutCubic,
+                          switchOutCurve: Curves.easeInCubic,
+                          transitionBuilder: (child, animation) {
+                            return FadeTransition(
+                              opacity: animation,
+                              child: ScaleTransition(
+                                scale: Tween<double>(begin: 0.98, end: scale).animate(animation),
+                                child: SlideTransition(
+                                  position: Tween<Offset>(
+                                    begin: const Offset(0, 0.06),
+                                    end: const Offset(0, 0),
+                                  ).animate(animation),
+                                  child: child,
+                                ),
                               ),
-                              BoxShadow(
-                                color: Colors.white.withOpacity(0.9),
-                                blurRadius: 6,
-                                offset: const Offset(-1, -1),
-                                spreadRadius: 0,
-                              ),
-                            ]
-                          : null,
-                    ),
-                    child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 220),
-                      switchInCurve: Curves.easeOutCubic,
-                      switchOutCurve: Curves.easeInCubic,
-                      transitionBuilder: (child, animation) {
-                        return FadeTransition(
-                          opacity: animation,
-                          child: ScaleTransition(
-                            scale: Tween<double>(begin: 0.98, end: scale).animate(animation),
-                            child: SlideTransition(
-                              position: Tween<Offset>(
-                                begin: const Offset(0, 0.06),
-                                end: const Offset(0, 0),
-                              ).animate(animation),
-                              child: child,
-                            ),
+                            );
+                          },
+                          child: Icon(
+                            isSelected ? item.activeIcon : item.icon,
+                            key: ValueKey(isSelected),
+                            color: isSelected ? Colors.white : AppColors.mediumGray,
+                            size: 24,
                           ),
-                        );
-                      },
-                      child: Icon(
-                        isSelected ? item.activeIcon : item.icon,
-                        key: ValueKey(isSelected),
-                        color: isSelected ? Colors.white : AppColors.mediumGray,
-                        size: 24,
+                        ),
+                      );
+                    },
+                  ),
+                  // Badge counter - positioned top-right of icon
+                  if (_shouldShowBadge(index))
+                    Positioned(
+                      right: -2,
+                      top: -2,
+                      child: SolidBadge(
+                        count: _getBadgeCount(index),
+                        backgroundColor: AppColors.primaryRed,
                       ),
                     ),
-                  );
-                },
+                ],
               ),
               const SizedBox(height: 6),
               // Enhanced label with smooth transitions
@@ -363,6 +336,19 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
         ),
       ),
     );
+  }
+
+  bool _shouldShowBadge(int index) {
+    // Show badge for Messages (index 1) and Calls (index 2)
+    if (index == 1) return _messagesUnreadCount > 0;
+    if (index == 2) return _callsActiveCount > 0;
+    return false;
+  }
+
+  int _getBadgeCount(int index) {
+    if (index == 1) return _messagesUnreadCount;
+    if (index == 2) return _callsActiveCount;
+    return 0;
   }
 }
 

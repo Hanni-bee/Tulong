@@ -95,14 +95,19 @@ class _ModernEmptyStateState extends State<ModernEmptyState>
                       height: 120,
                       decoration: BoxDecoration(
                         color: (widget.iconColor ?? AppColors.primaryRed)
-                            .withOpacity(0.1),
+                            .withOpacity(0.08),
                         shape: BoxShape.circle,
                         boxShadow: [
                           BoxShadow(
                             color: (widget.iconColor ?? AppColors.primaryRed)
-                                .withOpacity(0.2),
-                            blurRadius: 20,
-                            offset: const Offset(0, 10),
+                                .withOpacity(0.15),
+                            blurRadius: 16,
+                            offset: const Offset(0, 4),
+                          ),
+                          BoxShadow(
+                            color: Colors.white.withOpacity(0.5),
+                            blurRadius: 8,
+                            offset: const Offset(0, -2),
                           ),
                         ],
                       ),
@@ -164,10 +169,10 @@ class _ModernEmptyStateState extends State<ModernEmptyState>
                             vertical: 16,
                           ),
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
+                            borderRadius: BorderRadius.circular(12),
                           ),
-                          elevation: 4,
-                          shadowColor: AppColors.primaryRed.withOpacity(0.3),
+                          elevation: 0,
+                          shadowColor: Colors.transparent,
                         ),
                         child: Text(
                           widget.actionLabel!,

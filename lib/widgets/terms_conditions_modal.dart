@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
+import '../constants/soft_ui_design.dart';
 
 class TermsConditionsModal extends StatelessWidget {
   const TermsConditionsModal({super.key});
@@ -9,7 +10,7 @@ class TermsConditionsModal extends StatelessWidget {
     return Dialog(
       backgroundColor: Colors.white,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(SoftUIDesign.cardBorderRadius),
       ),
       child: Container(
         constraints: const BoxConstraints(maxHeight: 600),

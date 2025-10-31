@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../constants/app_colors.dart';
 import '../constants/app_typography.dart';
+import '../constants/soft_ui_design.dart';
 
 enum ButtonVariant {
   primary,
@@ -169,14 +170,7 @@ class _EnhancedButtonState extends State<EnhancedButton>
   }
 
   double _getBorderRadius() {
-    switch (widget.size) {
-      case ButtonSize.small:
-        return 8;
-      case ButtonSize.medium:
-        return 12;
-      case ButtonSize.large:
-        return 16;
-    }
+    return SoftUIDesign.buttonBorderRadius; // Consistent soft UI border radius
   }
 
   List<BoxShadow> _getShadows() {
@@ -186,20 +180,7 @@ class _EnhancedButtonState extends State<EnhancedButton>
     }
 
     final color = _getBackgroundColor();
-    return [
-      BoxShadow(
-        color: color.withOpacity(0.3),
-        blurRadius: 8,
-        offset: const Offset(0, 4),
-        spreadRadius: 0,
-      ),
-      BoxShadow(
-        color: color.withOpacity(0.1),
-        blurRadius: 16,
-        offset: const Offset(0, 8),
-        spreadRadius: 0,
-      ),
-    ];
+    return SoftUIDesign.getButtonShadow(color: color);
   }
 
   @override

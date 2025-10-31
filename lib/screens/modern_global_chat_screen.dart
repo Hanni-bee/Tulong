@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../constants/app_colors.dart';
+import '../constants/soft_ui_design.dart';
 import '../utils/navigation_helper.dart';
 import '../utils/performance_optimizer.dart';
 import '../widgets/modern_message_bubble.dart';
@@ -429,18 +430,12 @@ class _ModernGlobalChatScreenState extends State<ModernGlobalChatScreen> {
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: AppColors.white,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.06),
-                  blurRadius: 12,
-                  offset: const Offset(0, -4),
+              border: Border(
+                top: BorderSide(
+                  color: AppColors.lightGray.withOpacity(0.3),
+                  width: 1.5,
                 ),
-                BoxShadow(
-                  color: AppColors.white.withOpacity(0.9),
-                  blurRadius: 8,
-                  offset: const Offset(0, -2),
-                ),
-              ],
+              ),
             ),
             child: Row(
               children: [
@@ -451,18 +446,10 @@ class _ModernGlobalChatScreenState extends State<ModernGlobalChatScreen> {
                   decoration: BoxDecoration(
                     color: AppColors.error,
                     borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.error.withOpacity(0.25),
-                        blurRadius: 10,
-                        offset: const Offset(0, 4),
-                      ),
-                      BoxShadow(
-                        color: AppColors.white.withOpacity(0.8),
-                        blurRadius: 8,
-                        offset: const Offset(0, -2),
-                      ),
-                    ],
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.3),
+                      width: 1.5,
+                    ),
                   ),
                   child: IconButton(
                     icon: const Icon(Icons.warning, color: AppColors.white),
@@ -477,21 +464,9 @@ class _ModernGlobalChatScreenState extends State<ModernGlobalChatScreen> {
                     decoration: BoxDecoration(
                       color: AppColors.white,
                       borderRadius: BorderRadius.circular(28),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.05),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
-                        ),
-                        BoxShadow(
-                          color: AppColors.white.withOpacity(0.8),
-                          blurRadius: 8,
-                          offset: const Offset(0, -2),
-                        ),
-                      ],
                       border: Border.all(
-                        color: AppColors.lightGray.withOpacity(0.3),
-                        width: 1,
+                        color: AppColors.lightGray.withOpacity(0.5),
+                        width: 1.5,
                       ),
                     ),
                     child: TextField(
@@ -526,18 +501,10 @@ class _ModernGlobalChatScreenState extends State<ModernGlobalChatScreen> {
                   decoration: BoxDecoration(
                     color: AppColors.primaryRed,
                     borderRadius: BorderRadius.circular(18),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.primaryRed.withOpacity(0.35),
-                        blurRadius: 14,
-                        offset: const Offset(0, 6),
-                      ),
-                      BoxShadow(
-                        color: AppColors.white.withOpacity(0.85),
-                        blurRadius: 10,
-                        offset: const Offset(0, -3),
-                      ),
-                    ],
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.3),
+                      width: 1.5,
+                    ),
                   ),
                   child: IconButton(
                     icon: const Icon(Icons.send_rounded, color: AppColors.white, size: 24),
@@ -676,16 +643,12 @@ class _ModernGlobalChatScreenState extends State<ModernGlobalChatScreen> {
       backgroundColor: Colors.white,
       builder: (context) => Container(
         margin: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: AppColors.white,
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.1),
-              blurRadius: 20,
-              offset: const Offset(0, 8),
-            ),
-          ],
+        decoration: SoftUIDesign.cardDecoration(
+          backgroundColor: AppColors.white,
+          borderRadius: SoftUIDesign.cardBorderRadius,
+          elevation: 6.0,
+          borderColor: AppColors.lightGray.withOpacity(0.3),
+          showBorder: true,
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:tulong_app/constants/app_colors.dart';
 import 'package:tulong_app/constants/unified_typography.dart';
+import 'package:tulong_app/constants/soft_ui_design.dart';
 import 'package:tulong_app/providers/auth_provider.dart';
 import 'package:tulong_app/models/user_model.dart';
 import 'package:tulong_app/screens/notification_settings_screen.dart';
@@ -118,59 +119,18 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
          return Container(
           margin: const EdgeInsets.only(bottom: 16),
               decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [AppColors.primaryRed, AppColors.primaryRed.withOpacity(0.85)],
+            color: AppColors.primaryRed, // Solid color instead of gradient
+            borderRadius: BorderRadius.circular(SoftUIDesign.cardBorderRadius),
+            boxShadow: SoftUIDesign.getCardShadow(elevation: 6.0),
+            border: Border.all(
+              color: Colors.white.withOpacity(0.2),
+              width: 1.0,
             ),
-            borderRadius: BorderRadius.circular(24),
-                boxShadow: [
-                  BoxShadow(
-                color: AppColors.primaryRed.withOpacity(0.25),
-                blurRadius: 24,
-                offset: const Offset(0, 12),
-                  ),
-               ],
              ),
           child: Stack(
                children: [
-              // Decorative circles (mock-style)
-              Positioned(
-                top: -22,
-                right: -18,
-                child: Container(
-                  width: 140,
-                  height: 140,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.15),
-                    shape: BoxShape.circle,
-                  ),
-                ),
-              ),
-              Positioned(
-                top: 6,
-                right: 38,
-                child: Container(
-                  width: 56,
-                  height: 56,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.18),
-                    shape: BoxShape.circle,
-                  ),
-                ),
-              ),
-              Positioned(
-                bottom: -28,
-                left: -24,
-                child: Container(
-                  width: 120,
-                  height: 120,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.08),
-                    shape: BoxShape.circle,
-                  ),
-                ),
-              ),
+              // Decorative overlays using SoftUI system
+              ...SoftUIDesign.buildProfileHeaderOverlays(),
 
               // Content
               Padding(
@@ -362,51 +322,81 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
     required Color color,
   }) {
     return AnimatedNeumorphicCard(
-       child: Padding(
-         padding: const EdgeInsets.all(20),
-      child: Column(
-        children: [
-             // Enhanced icon with background circle
-          Container(
-               padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.12),
-                 shape: BoxShape.circle,
-            ),
-            child: Icon(
-              icon,
-              color: color,
-                 size: 22,
-            ),
-          ),
-             const SizedBox(height: 12),
-             // Enhanced value text
-          Text(
-            value,
-               style: UnifiedTypography.titleLarge.copyWith(
-                 color: AppColors.textPrimary,
-              fontWeight: FontWeight.bold,
-                 fontSize: 20,
-                 height: 1.1,
-            ),
-          ),
-             const SizedBox(height: 6),
-             // Enhanced title text
-          Text(
-            title,
-               style: UnifiedTypography.bodySmall.copyWith(
-              color: AppColors.textSecondary,
-                 fontSize: 12,
-                 fontWeight: FontWeight.w500,
-                 height: 1.2,
-            ),
-            textAlign: TextAlign.center,
-               maxLines: 2,
-               overflow: TextOverflow.ellipsis,
-          ),
-        ],
-         ),
-      ),
+       child: Stack(
+         children: [
+           // Subtle radial overlay for depth
+           SoftUIDesign.buildRadialOverlay(
+             color: color,
+             opacity: 0.04,
+             alignment: Alignment.topLeft,
+           ),
+           // Center everything perfectly
+           Center(
+             child: Padding(
+               padding: const EdgeInsets.all(20),
+               child: Column(
+                 mainAxisAlignment: MainAxisAlignment.center,
+                 crossAxisAlignment: CrossAxisAlignment.center,
+                 mainAxisSize: MainAxisSize.min,
+                 children: [
+                   // Icon with background circle - Centered
+                   Center(
+                     child: Container(
+                       width: 48,
+                       height: 48,
+                       margin: const EdgeInsets.only(bottom: 12),
+                       decoration: BoxDecoration(
+                         color: color.withOpacity(0.12),
+                         shape: BoxShape.circle,
+                         boxShadow: SoftUIDesign.getGlowOverlay(
+                           color: color,
+                           intensity: 0.12,
+                           blur: 8.0,
+                         ),
+                       ),
+                       alignment: Alignment.center,
+                       child: Icon(
+                         icon,
+                         color: color,
+                         size: 22,
+                       ),
+                     ),
+                   ),
+                   // Value text - Centered
+                   Center(
+                     child: Text(
+                       value,
+                       textAlign: TextAlign.center,
+                       style: UnifiedTypography.titleLarge.copyWith(
+                         color: AppColors.textPrimary,
+                         fontWeight: FontWeight.bold,
+                         fontSize: 20,
+                         height: 1.1,
+                       ),
+                     ),
+                   ),
+                   const SizedBox(height: 6),
+                   // Title text - Centered
+                   Center(
+                     child: Text(
+                       title,
+                       textAlign: TextAlign.center,
+                       style: UnifiedTypography.bodySmall.copyWith(
+                         color: AppColors.textSecondary,
+                         fontSize: 12,
+                         fontWeight: FontWeight.w500,
+                         height: 1.2,
+                       ),
+                       maxLines: 2,
+                       overflow: TextOverflow.ellipsis,
+                     ),
+                   ),
+                 ],
+               ),
+             ),
+           ),
+         ],
+       ),
     );
   }
 
@@ -506,8 +496,12 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: AppColors.primaryRed.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
+                  color: AppColors.primaryRed.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(SoftUIDesign.buttonBorderRadius),
+                  border: Border.all(
+                    color: AppColors.primaryRed.withOpacity(0.2),
+                    width: 1.0,
+                  ),
                 ),
                 child: Icon(
                   icon,
@@ -554,21 +548,10 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
       children: [
         Expanded(
           child: Container(
-            decoration: BoxDecoration(
-              color: AppColors.primaryRed,
-              borderRadius: BorderRadius.circular(12),
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.primaryRed.withOpacity(0.3),
-                  blurRadius: 8,
-                  offset: const Offset(0, 4),
-                ),
-                BoxShadow(
-                  color: AppColors.white.withOpacity(0.8),
-                  blurRadius: 8,
-                  offset: const Offset(0, -4),
-                ),
-              ],
+            decoration: SoftUIDesign.buttonDecoration(
+              backgroundColor: AppColors.primaryRed,
+              borderRadius: SoftUIDesign.buttonBorderRadius,
+              shadowColor: AppColors.primaryRed,
             ),
             child: Material(
               color: Colors.transparent,
@@ -604,25 +587,12 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
         const SizedBox(width: 12),
         Expanded(
           child: Container(
-            decoration: BoxDecoration(
-              color: AppColors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: AppColors.error.withOpacity(0.3),
-                width: 1,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.error.withOpacity(0.1),
-                  blurRadius: 8,
-                  offset: const Offset(0, 4),
-                ),
-                BoxShadow(
-                  color: AppColors.white.withOpacity(0.8),
-                  blurRadius: 8,
-                  offset: const Offset(0, -4),
-                ),
-              ],
+            decoration: SoftUIDesign.cardDecoration(
+              backgroundColor: AppColors.white,
+              borderRadius: SoftUIDesign.buttonBorderRadius,
+              elevation: 3.0,
+              borderColor: AppColors.error.withOpacity(0.3),
+              showBorder: true,
             ),
             child: Material(
               color: Colors.transparent,
@@ -721,21 +691,12 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                           Container(
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 12, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: AppColors.white,
-                              borderRadius: BorderRadius.circular(12),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: AppColors.info.withOpacity(0.1),
-                                  blurRadius: 4,
-                                  offset: const Offset(2, 2),
-                                ),
-                                BoxShadow(
-                                  color: AppColors.white.withOpacity(0.8),
-                                  blurRadius: 4,
-                                  offset: const Offset(-2, -2),
-                                ),
-                              ],
+                            decoration: SoftUIDesign.cardDecoration(
+                              backgroundColor: AppColors.white,
+                              borderRadius: SoftUIDesign.buttonBorderRadius,
+                              elevation: 2.0,
+                              borderColor: AppColors.info.withOpacity(0.3),
+                              showBorder: true,
                             ),
                             child: const Text(
                               'Google Account',
@@ -752,21 +713,12 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                     if (!isGmailSSO) ...[
                       // Current Password (only for sign-up accounts)
                       Container(
-                        decoration: BoxDecoration(
-                          color: AppColors.white,
-                          borderRadius: BorderRadius.circular(12),
-                          boxShadow: [
-                            BoxShadow(
-                              color: AppColors.primaryRed.withOpacity(0.05),
-                              blurRadius: 4,
-                              offset: const Offset(2, 2),
-                            ),
-                            BoxShadow(
-                              color: AppColors.white.withOpacity(0.8),
-                              blurRadius: 4,
-                              offset: const Offset(-2, -2),
-                            ),
-                          ],
+                        decoration: SoftUIDesign.cardDecoration(
+                          backgroundColor: AppColors.white,
+                          borderRadius: SoftUIDesign.inputBorderRadius,
+                          elevation: 2.0,
+                          borderColor: AppColors.lightGray.withOpacity(0.3),
+                          showBorder: true,
                         ),
                         child: TextField(
                         controller: currentCtrl,
@@ -1110,10 +1062,12 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                           itemBuilder: (context, index) {
                             final isDefault = defaultIndex == index;
                             return Container(
-                              decoration: BoxDecoration(
-                                color: isDefault ? AppColors.primaryRed.withOpacity(0.06) : AppColors.white,
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: isDefault ? AppColors.primaryRed.withOpacity(0.4) : AppColors.lightGray.withOpacity(0.6)),
+                              decoration: SoftUIDesign.cardDecoration(
+                                backgroundColor: isDefault ? AppColors.primaryRed.withOpacity(0.06) : AppColors.white,
+                                borderRadius: SoftUIDesign.buttonBorderRadius,
+                                elevation: isDefault ? 3.0 : 2.0,
+                                borderColor: isDefault ? AppColors.primaryRed.withOpacity(0.4) : AppColors.lightGray.withOpacity(0.3),
+                                showBorder: true,
                               ),
                               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                               child: Row(
@@ -1142,11 +1096,17 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                                       await showDialog(
                                         context: context,
                                         builder: (_) => AlertDialog(
+                                          backgroundColor: Colors.white,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(SoftUIDesign.cardBorderRadius),
+                                          ),
                                           title: const Text('Edit Message'),
                                           content: TextField(
                                             controller: editController,
                                             maxLines: 4,
-                                            decoration: const InputDecoration(border: OutlineInputBorder()),
+                                            decoration: SoftUIDesign.inputDecoration(
+                                              hintText: 'Enter message',
+                                            ),
                                           ),
                                           actions: [
                                             TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),

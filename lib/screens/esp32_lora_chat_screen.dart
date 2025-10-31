@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../constants/app_colors.dart';
 import '../constants/app_typography.dart';
+import '../constants/soft_ui_design.dart';
 import '../services/simple_bluetooth_service.dart';
 import '../controllers/voice_controller.dart';
 import '../widgets/unified_top_bar.dart';
@@ -310,13 +311,12 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen> {
                   bottomLeft: isLocal ? const Radius.circular(20) : const Radius.circular(4),
                   bottomRight: isLocal ? const Radius.circular(4) : const Radius.circular(20),
                 ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 4,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
+                border: Border.all(
+                  color: isLocal 
+                      ? Colors.white.withOpacity(0.2)
+                      : AppColors.lightGray.withOpacity(0.5),
+                  width: 1.5,
+                ),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -388,15 +388,14 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen> {
 
   Widget _buildSimpleMessageInput() {
     return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 4,
-            offset: const Offset(0, -2),
-          ),
-        ],
+      decoration: SoftUIDesign.cardDecoration(
+        backgroundColor: Colors.white,
+        borderRadius: 0,
+        elevation: 3.0,
+        borderColor: AppColors.lightGray.withOpacity(0.3),
+        showBorder: true,
+      ).copyWith(
+        borderRadius: null, // Remove top border radius for seamless connection
       ),
       child: SafeArea(
         child: Padding(
@@ -409,13 +408,12 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen> {
                   width: double.infinity,
                   padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
                   margin: const EdgeInsets.only(bottom: 12),
-                  decoration: BoxDecoration(
-                    color: _isRecording ? AppColors.error.withOpacity(0.1) : AppColors.success.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: _isRecording ? AppColors.error : AppColors.success,
-                      width: 1,
-                    ),
+                  decoration: SoftUIDesign.cardDecoration(
+                    backgroundColor: _isRecording ? AppColors.error.withOpacity(0.08) : AppColors.success.withOpacity(0.08),
+                    borderRadius: SoftUIDesign.buttonBorderRadius,
+                    elevation: 2.0,
+                    borderColor: _isRecording ? AppColors.error.withOpacity(0.3) : AppColors.success.withOpacity(0.3),
+                    showBorder: true,
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -448,16 +446,10 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen> {
                     child: Container(
                       width: 48,
                       height: 48,
-                      decoration: BoxDecoration(
-                        color: _isRecording ? AppColors.error : AppColors.online,
-                        borderRadius: BorderRadius.circular(24),
-                        boxShadow: _isRecording ? [
-                          BoxShadow(
-                            color: AppColors.error.withOpacity(0.3),
-                            blurRadius: 8,
-                            spreadRadius: 2,
-                          ),
-                        ] : null,
+                      decoration: SoftUIDesign.buttonDecoration(
+                        backgroundColor: _isRecording ? AppColors.error : AppColors.online,
+                        borderRadius: 24.0,
+                        shadowColor: _isRecording ? AppColors.error : AppColors.online,
                       ),
                       child: Icon(
                         _isRecording ? Icons.mic : Icons.mic_none,
@@ -472,12 +464,12 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen> {
                   // Text input
                   Expanded(
                     child: Container(
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF8F9FA),
-                        borderRadius: BorderRadius.circular(24),
-                        border: Border.all(
-                          color: AppColors.lightGray.withOpacity(0.3),
-                        ),
+                      decoration: SoftUIDesign.cardDecoration(
+                        backgroundColor: AppColors.white,
+                        borderRadius: 24.0,
+                        elevation: 2.0,
+                        borderColor: AppColors.lightGray.withOpacity(0.3),
+                        showBorder: true,
                       ),
                       child: TextField(
                         controller: _messageController,

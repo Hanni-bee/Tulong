@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../constants/app_colors.dart';
 import '../constants/unified_typography.dart';
+import '../constants/soft_ui_design.dart';
 
 class CustomTextField extends StatelessWidget {
   final TextEditingController? controller;
@@ -40,20 +41,12 @@ class CustomTextField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: Colors.grey.shade300,
-          width: 1.5,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
+      decoration: SoftUIDesign.cardDecoration(
+        backgroundColor: Colors.white,
+        borderRadius: SoftUIDesign.inputBorderRadius,
+        elevation: 2.0,
+        borderColor: AppColors.lightGray.withOpacity(0.3),
+        showBorder: true,
       ),
       child: TextFormField(
         controller: controller,
@@ -75,24 +68,30 @@ class CustomTextField extends StatelessWidget {
               : null,
           suffixIcon: suffixIcon,
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide.none,
+            borderRadius: BorderRadius.circular(SoftUIDesign.inputBorderRadius),
+            borderSide: BorderSide(
+              color: AppColors.lightGray.withOpacity(0.3),
+              width: 1.0,
+            ),
           ),
           enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide.none,
+            borderRadius: BorderRadius.circular(SoftUIDesign.inputBorderRadius),
+            borderSide: BorderSide(
+              color: AppColors.lightGray.withOpacity(0.3),
+              width: 1.0,
+            ),
           ),
           focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: AppColors.primary, width: 2),
+            borderRadius: BorderRadius.circular(SoftUIDesign.inputBorderRadius),
+            borderSide: const BorderSide(color: AppColors.primaryRed, width: 2.0),
           ),
           errorBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: AppColors.error, width: 2),
+            borderRadius: BorderRadius.circular(SoftUIDesign.inputBorderRadius),
+            borderSide: const BorderSide(color: AppColors.error, width: 2.0),
           ),
           focusedErrorBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: AppColors.error, width: 2),
+            borderRadius: BorderRadius.circular(SoftUIDesign.inputBorderRadius),
+            borderSide: const BorderSide(color: AppColors.error, width: 2.0),
           ),
           filled: true,
           fillColor: Colors.transparent,

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../constants/app_colors.dart';
+import '../constants/soft_ui_design.dart';
 
 class EnhancedCard extends StatefulWidget {
   final Widget child;
@@ -92,63 +93,41 @@ class _EnhancedCardState extends State<EnhancedCard>
 
   @override
   Widget build(BuildContext context) {
-    final card = Container(
-      margin: widget.margin ?? const EdgeInsets.all(8),
-      padding: widget.padding ?? const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-        color: widget.backgroundColor ?? Colors.white,
-        borderRadius: BorderRadius.circular(widget.borderRadius ?? 16),
-        border: widget.showBorder
-            ? Border.all(
-                color: widget.borderColor ?? AppColors.primaryRed.withOpacity(0.2),
-                width: widget.borderWidth ?? 1.5,
-              )
-            : null,
-        boxShadow: widget.showShadow
-            ? [
-                // Primary shadow for depth
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.06),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
-                  spreadRadius: 0,
-                ),
-                // Secondary shadow for softness
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.04),
-                  blurRadius: 24,
-                  offset: const Offset(0, 8),
-                  spreadRadius: 0,
-                ),
-                // Highlight for neumorphic effect
-                BoxShadow(
-                  color: Colors.white.withOpacity(0.9),
-                  blurRadius: 12,
-                  offset: const Offset(-2, -2),
-                  spreadRadius: 0,
-                ),
-                // Ambient shadow for atmosphere
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.02),
-                  blurRadius: 32,
-                  offset: const Offset(0, 12),
-                  spreadRadius: 0,
-                ),
-              ]
-            : null,
-        gradient: widget.backgroundColor == null
-            ? LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Colors.white,
-                  Colors.grey.shade50,
-                ],
-                stops: const [0.0, 1.0],
-              )
-            : null,
-      ),
-      child: widget.child,
+    final baseDecoration = BoxDecoration(
+      color: widget.backgroundColor ?? Colors.white,
+      borderRadius: BorderRadius.circular(widget.borderRadius ?? 16),
+      border: widget.showBorder
+          ? Border.all(
+              color: widget.borderColor ?? AppColors.primaryRed.withOpacity(0.2),
+              width: widget.borderWidth ?? 1.5,
+            )
+          : null,
+      boxShadow: widget.showShadow
+          ? SoftUIDesign.getCardShadow(elevation: 4.0)
+          : null,
+    );
+    
+    final card = AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return Container(
+          margin: widget.margin ?? const EdgeInsets.all(8),
+          padding: widget.padding ?? const EdgeInsets.all(16),
+          decoration: baseDecoration,
+          child: Stack(
+            children: [
+              // Depth overlay for elevated cards
+              if (widget.showShadow && (widget.borderRadius ?? 16) >= 12)
+                SoftUIDesign.buildDepthOverlay(
+                  accentColor: AppColors.primaryRed,
+                  elevation: 4.0,
+                ) ?? const SizedBox.shrink(),
+              // Content
+              widget.child,
+            ],
+          ),
+        );
+      },
     );
 
     if (widget.onTap != null || widget.interactive) {
@@ -226,14 +205,14 @@ class SecondaryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return EnhancedCard(
-      padding: padding ?? const EdgeInsets.all(16),
-      margin: margin ?? const EdgeInsets.all(8),
-      backgroundColor: AppColors.ultraLightGray,
-      borderRadius: 16,
-      showShadow: false,
+      padding: padding ?? const EdgeInsets.all(SoftUIDesign.cardPadding),
+      margin: margin ?? const EdgeInsets.all(SoftUIDesign.cardMargin),
+      backgroundColor: AppColors.white,
+      borderRadius: SoftUIDesign.cardBorderRadius,
+      showShadow: true, // Soft UI shadow
       showBorder: true,
-      borderColor: AppColors.primaryRed.withOpacity(0.25),
-      borderWidth: 1.5,
+      borderColor: AppColors.lightGray.withOpacity(0.3),
+      borderWidth: 1.0,
       onTap: onTap,
       interactive: onTap != null,
       child: child,
@@ -260,13 +239,13 @@ class AccentCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return EnhancedCard(
-      padding: padding ?? const EdgeInsets.all(18),
-      margin: margin ?? const EdgeInsets.all(10),
-      backgroundColor: accentColor.withOpacity(0.05),
-      borderRadius: 18,
-      showShadow: true,
+      padding: padding ?? const EdgeInsets.all(SoftUIDesign.cardPadding),
+      margin: margin ?? const EdgeInsets.all(SoftUIDesign.cardMargin),
+      backgroundColor: AppColors.white,
+      borderRadius: SoftUIDesign.cardBorderRadius,
+      showShadow: true, // Soft UI shadow for elevation
       showBorder: true,
-      borderColor: accentColor.withOpacity(0.4),
+      borderColor: accentColor,
       borderWidth: 2.0,
       onTap: onTap,
       interactive: onTap != null,

@@ -32,22 +32,21 @@ class _ModernMessageBubbleState extends State<ModernMessageBubble>
     with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
   late Animation<double> _scaleAnimation;
-  bool _isPressed = false;
 
   @override
   void initState() {
     super.initState();
     _animationController = AnimationController(
-      duration: const Duration(milliseconds: 100),
+      duration: const Duration(milliseconds: 150), // Standardized with PolishedBounce
       vsync: this,
     );
     
     _scaleAnimation = Tween<double>(
       begin: 1.0,
-      end: 0.98,
+      end: 0.95, // Consistent with PolishedBounce scale
     ).animate(CurvedAnimation(
       parent: _animationController,
-      curve: Curves.easeInOut,
+      curve: Curves.easeInOut, // Consistent with PolishedBounce
     ));
   }
 
@@ -58,17 +57,14 @@ class _ModernMessageBubbleState extends State<ModernMessageBubble>
   }
 
   void _handleTapDown(TapDownDetails details) {
-    setState(() => _isPressed = true);
     _animationController.forward();
   }
 
   void _handleTapUp(TapUpDetails details) {
-    setState(() => _isPressed = false);
     _animationController.reverse();
   }
 
   void _handleTapCancel() {
-    setState(() => _isPressed = false);
     _animationController.reverse();
   }
 
@@ -92,14 +88,10 @@ class _ModernMessageBubbleState extends State<ModernMessageBubble>
               decoration: BoxDecoration(
                 color: widget.isEmergency ? AppColors.error : AppColors.primaryRed,
                 borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: (widget.isEmergency ? AppColors.error : AppColors.primaryRed)
-                        .withOpacity(0.3),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
+                border: Border.all(
+                  color: AppColors.white.withOpacity(0.3),
+                  width: 1.5,
+                ),
               ),
               child: Center(
                 child: Text(
@@ -140,34 +132,14 @@ class _ModernMessageBubbleState extends State<ModernMessageBubble>
                           bottomLeft: widget.isMe ? const Radius.circular(20) : const Radius.circular(4),
                           bottomRight: widget.isMe ? const Radius.circular(4) : const Radius.circular(20),
                         ),
-                        border: widget.isEmergency 
-                            ? Border.all(color: AppColors.error, width: 2)
-                            : null,
-                        boxShadow: _isPressed
-                            ? [
-                                // Pressed state - reduced shadow
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.05),
-                                  blurRadius: 2,
-                                  offset: const Offset(0, 1),
-                                ),
-                              ]
-                            : [
-                                // Normal state - raised shadow
-                                BoxShadow(
-                                  color: widget.isMe 
-                                      ? (widget.isEmergency ? AppColors.error : AppColors.primaryRed)
-                                          .withOpacity(0.2)
-                                      : Colors.black.withOpacity(0.08),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 2),
-                                ),
-                                BoxShadow(
-                                  color: Colors.white.withOpacity(0.8),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, -2),
-                                ),
-                              ],
+                        border: Border.all(
+                          color: widget.isEmergency 
+                              ? AppColors.error 
+                              : widget.isMe 
+                                  ? Colors.white.withOpacity(0.2)
+                                  : AppColors.lightGray.withOpacity(0.5),
+                          width: widget.isEmergency ? 2 : 1.5,
+                        ),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -251,13 +223,10 @@ class _ModernMessageBubbleState extends State<ModernMessageBubble>
               decoration: BoxDecoration(
                 color: AppColors.primaryRed,
                 borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.primaryRed.withOpacity(0.3),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
+                border: Border.all(
+                  color: AppColors.white.withOpacity(0.3),
+                  width: 1.5,
+                ),
               ),
               child: const Center(
                 child: Text(
@@ -274,11 +243,11 @@ class _ModernMessageBubbleState extends State<ModernMessageBubble>
         ],
       ),
     ).animate()
-      .fadeIn(duration: 300.ms)
+      .fadeIn(duration: 400.ms, curve: Curves.easeOutCubic) // Standardized duration
       .slideX(
-        begin: widget.isMe ? 0.3 : -0.3,
+        begin: widget.isMe ? 0.2 : -0.2, // Reduced slide distance for subtlety
         end: 0,
-        duration: 300.ms,
+        duration: 400.ms,
         curve: Curves.easeOutCubic,
       );
   }

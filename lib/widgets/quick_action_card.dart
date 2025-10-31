@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../constants/app_colors.dart';
+import '../constants/soft_ui_design.dart';
 
 class QuickActionCard extends StatefulWidget {
   final String title;
@@ -66,20 +67,12 @@ class _QuickActionCardState extends State<QuickActionCard>
               width: 120,
               height: 100,
               margin: const EdgeInsets.only(right: 12),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: widget.color.withOpacity(0.3),
-                  width: 1,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.08),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
+              decoration: SoftUIDesign.cardDecoration(
+                backgroundColor: AppColors.white,
+                borderRadius: SoftUIDesign.cardBorderRadius,
+                elevation: 3.0,
+                borderColor: widget.color.withOpacity(0.25),
+                showBorder: true,
               ),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -90,6 +83,10 @@ class _QuickActionCardState extends State<QuickActionCard>
                     decoration: BoxDecoration(
                       color: widget.color,
                       borderRadius: BorderRadius.circular(12),
+                      boxShadow: SoftUIDesign.getSoftShadow(
+                        elevation: 2.0,
+                        shadowColor: widget.color.withOpacity(0.3),
+                      ),
                     ),
                     child: Icon(
                       widget.icon,

@@ -15,6 +15,8 @@ class UnifiedTopBar extends StatelessWidget {
   final VoidCallback? onIconTap;
   final bool showBackButton;
   final VoidCallback? onBackPressed;
+  final bool compact; // NEW: compact variant
+  final List<Widget>? statusBadges; // NEW: optional status badges
 
   const UnifiedTopBar({
     super.key,
@@ -27,10 +29,20 @@ class UnifiedTopBar extends StatelessWidget {
     this.onIconTap,
     this.showBackButton = false,
     this.onBackPressed,
+    this.compact = false,
+    this.statusBadges,
   });
 
   @override
   Widget build(BuildContext context) {
+    final double containerHeight = compact ? 64 : 88;
+    final EdgeInsetsGeometry containerPadding = compact
+        ? const EdgeInsets.symmetric(horizontal: 16, vertical: 10)
+        : const EdgeInsets.symmetric(horizontal: 24, vertical: 16);
+    final double iconBoxSize = compact ? 40 : 52;
+    final double iconSize = compact ? 20 : 26;
+    final double titleFontSize = compact ? 16 : 20;
+
     return PolishedFadeIn(
       delay: const Duration(milliseconds: 100),
       child: Column(
@@ -38,8 +50,8 @@ class UnifiedTopBar extends StatelessWidget {
         children: [
           Container(
             margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-            height: 88,
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+            height: containerHeight,
+            padding: containerPadding,
             decoration: BoxDecoration(
               color: backgroundColor,
               borderRadius: BorderRadius.circular(28),
@@ -56,114 +68,135 @@ class UnifiedTopBar extends StatelessWidget {
               ],
             ),
             child: Row(
-          children: [
-            // Enhanced back button (if needed)
-            if (showBackButton) ...[
-              PolishedBounce(
-                onTap: onBackPressed ?? () => Navigator.of(context).pop(),
-                child: Container(
-                  width: 52,
-                  height: 52,
-                  decoration: BoxDecoration(
-                    color: AppColors.white,
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(
-                      color: AppColors.lightGray.withOpacity(0.2),
-                      width: 1,
-                    ),
-                  ),
-                  child: const Icon(
-                    Icons.arrow_back_ios_new,
-                    color: AppColors.primary,
-                    size: 22,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 18),
-            ],
-
-            // Enhanced main icon with premium styling
-            PolishedBounce(
-              onTap: onIconTap,
-              child: Container(
-                width: 52,
-                height: 52,
-                decoration: BoxDecoration(
-                  color: AppColors.white,
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(
-                    color: iconColor.withOpacity(0.2),
-                    width: 1.5,
-                  ),
-                ),
-                child: Icon(
-                  icon,
-                  color: iconColor,
-                  size: 26,
-                ),
-              ),
-            ),
-            
-            const SizedBox(width: 20),
-            
-            // Enhanced title and subtitle with better typography
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    title,
-                    style: UnifiedTypography.appBarTitle.copyWith(
-                      color: AppColors.textPrimary,
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      height: 1.2,
-                      letterSpacing: 0.2,
-                    ),
-                  ),
-                  if (subtitle != null) ...[
-                    const SizedBox(height: 4),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              children: [
+                if (showBackButton) ...[
+                  PolishedBounce(
+                    onTap: onBackPressed ?? () => Navigator.of(context).pop(),
+                    child: Container(
+                      width: iconBoxSize,
+                      height: iconBoxSize,
                       decoration: BoxDecoration(
-                        color: subtitle!.toLowerCase().contains('connected') 
-                            ? AppColors.success.withOpacity(0.1)
-                            : AppColors.warning.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(8),
+                        color: AppColors.white,
+                        borderRadius: BorderRadius.circular(18),
                         border: Border.all(
-                          color: subtitle!.toLowerCase().contains('connected') 
-                              ? AppColors.success.withOpacity(0.3)
-                              : AppColors.warning.withOpacity(0.3),
+                          color: AppColors.lightGray.withOpacity(0.2),
                           width: 1,
                         ),
                       ),
-                      child: Text(
-                        subtitle!,
-                        style: UnifiedTypography.appBarSubtitle.copyWith(
-                          color: subtitle!.toLowerCase().contains('connected') 
-                              ? AppColors.success
-                              : AppColors.warning,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          height: 1.1,
-                        ),
+                      child: Icon(
+                        Icons.arrow_back_ios_new,
+                        color: AppColors.primary,
+                        size: compact ? 18 : 22,
                       ),
                     ),
-                  ],
+                  ),
+                  const SizedBox(width: 12),
                 ],
-              ),
-            ),
-            
-            // Enhanced actions with better spacing
-            if (actions != null) ...[
-              const SizedBox(width: 16),
-              ...actions!,
-            ],
-          ],
+
+                // Main icon
+                PolishedBounce(
+                  onTap: onIconTap,
+                  child: Container(
+                    width: iconBoxSize,
+                    height: iconBoxSize,
+                    decoration: BoxDecoration(
+                      color: AppColors.white,
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(
+                        color: iconColor.withOpacity(0.2),
+                        width: 1.5,
+                      ),
+                    ),
+                    child: Icon(
+                      icon,
+                      color: iconColor,
+                      size: iconSize,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 14),
+
+                // Title, subtitle, and badges
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              title,
+                              overflow: TextOverflow.ellipsis,
+                              style: UnifiedTypography.appBarTitle.copyWith(
+                                color: AppColors.textPrimary,
+                                fontSize: titleFontSize,
+                                fontWeight: FontWeight.bold,
+                                height: 1.2,
+                                letterSpacing: 0.2,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if ((subtitle != null && subtitle!.isNotEmpty) || (statusBadges != null && statusBadges!.isNotEmpty)) ...[
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            if (subtitle != null && subtitle!.isNotEmpty)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: subtitle!.toLowerCase().contains('connected')
+                                      ? AppColors.success.withOpacity(0.1)
+                                      : AppColors.warning.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: subtitle!.toLowerCase().contains('connected')
+                                        ? AppColors.success.withOpacity(0.3)
+                                        : AppColors.warning.withOpacity(0.3),
+                                    width: 1,
+                                  ),
+                                ),
+                                child: Text(
+                                  subtitle!,
+                                  style: UnifiedTypography.appBarSubtitle.copyWith(
+                                    color: subtitle!.toLowerCase().contains('connected')
+                                        ? AppColors.success
+                                        : AppColors.warning,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    height: 1.1,
+                                  ),
+                                ),
+                              ),
+                            if (subtitle != null && subtitle!.isNotEmpty && statusBadges != null && statusBadges!.isNotEmpty)
+                              const SizedBox(width: 6),
+                            if (statusBadges != null && statusBadges!.isNotEmpty)
+                              Flexible(
+                                child: SingleChildScrollView(
+                                  scrollDirection: Axis.horizontal,
+                                  child: Row(
+                                    children: [
+                                      ...statusBadges!.expand((w) => [w, const SizedBox(width: 6)]).toList()..removeLast(),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+
+                if (actions != null) ...[
+                  const SizedBox(width: 12),
+                  ...actions!,
+                ],
+              ],
             ),
           ),
-          // Unified solid accent line below top bar
           Container(
             height: 3,
             margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -182,16 +215,20 @@ class TopBarConfigs {
     required String status,
     required VoidCallback onBluetoothTap,
     List<Widget>? additionalActions,
+    bool compact = false,
+    List<Widget>? badges,
   }) {
     return UnifiedTopBar(
       title: 'Local Chat',
       subtitle: status,
       icon: Icons.bluetooth,
-      iconColor: status.toLowerCase().contains('connected') 
-          ? AppColors.success 
+      iconColor: status.toLowerCase().contains('connected')
+          ? AppColors.success
           : AppColors.warning,
       onIconTap: onBluetoothTap,
       actions: additionalActions,
+      compact: compact,
+      statusBadges: badges,
     );
   }
 
@@ -200,12 +237,14 @@ class TopBarConfigs {
     required VoidCallback onRefresh,
     required VoidCallback onSettings,
     List<Widget>? additionalActions,
+    bool compact = false,
+    List<Widget>? badges,
   }) {
     return UnifiedTopBar(
       title: 'Calls',
       subtitle: status,
       icon: Icons.radio,
-      iconColor: AppColors.warning, // Using app's warning color instead of hardcoded
+      iconColor: AppColors.warning,
       actions: [
         _buildActionButton(
           icon: Icons.refresh,
@@ -220,18 +259,24 @@ class TopBarConfigs {
         ),
         if (additionalActions != null) ...additionalActions,
       ],
+      compact: compact,
+      statusBadges: badges,
     );
   }
 
   static Widget profileTopBar({
-    VoidCallback? onEdit, // kept for backward compat, unused
+    VoidCallback? onEdit,
     List<Widget>? additionalActions,
+    bool compact = false,
+    List<Widget>? badges,
   }) {
     return UnifiedTopBar(
       title: 'Profile',
       icon: Icons.person,
       iconColor: AppColors.info,
-      actions: additionalActions, // no edit action
+      actions: additionalActions,
+      compact: compact,
+      statusBadges: badges,
     );
   }
 

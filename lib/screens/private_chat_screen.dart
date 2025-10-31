@@ -395,13 +395,12 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                   bottomLeft: Radius.circular(message.isMe ? 20 : 4),
                   bottomRight: Radius.circular(message.isMe ? 4 : 20),
                 ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
+                border: Border.all(
+                  color: message.isMe 
+                      ? Colors.white.withOpacity(0.2)
+                      : AppColors.lightGray.withOpacity(0.5),
+                  width: 1.5,
+                ),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,

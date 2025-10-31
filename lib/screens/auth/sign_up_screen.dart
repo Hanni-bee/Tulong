@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/unified_typography.dart';
+import '../../constants/soft_ui_design.dart';
 import '../../widgets/custom_button.dart';
 import '../../widgets/custom_text_field.dart';
 import '../../widgets/password_strength_indicator.dart';
@@ -254,43 +255,59 @@ class _SignUpScreenState extends State<SignUpScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppColors.primaryRed),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        title: const Text(
-          'Create Account',
-          style: TextStyle(
-            color: AppColors.primary,
-            fontWeight: FontWeight.bold,
+      body: Stack(
+        children: [
+          // Subtle background overlay
+          SoftUIDesign.buildScreenBackgroundOverlay(
+            accentColor: AppColors.primaryRed,
+            intensity: 0.01,
           ),
-        ),
-      ),
-      body: SingleChildScrollView(
-        padding: ResponsiveSpacing.getResponsivePadding(context, horizontal: 16, vertical: 0),
-        child: Column(
-          children: [
-            SizedBox(height: ResponsiveSpacing.getResponsiveSpacing(context, xs: 16, sm: 18, md: 20)),
-            
-            // Disaster-focused header
-            _buildDisasterHeader(),
-            
-            SizedBox(height: ResponsiveSpacing.getResponsiveSpacing(context, xs: 30, sm: 35, md: 40)),
-            
-            // Sign up form
-            _buildSignUpForm(),
-            
-            SizedBox(height: ResponsiveSpacing.getResponsiveSpacing(context, xs: 20, sm: 25, md: 30)),
-            
-            // Sign in link
-            _buildSignInLink(),
-            
-            SizedBox(height: ResponsiveSpacing.getResponsiveSpacing(context, xs: 16, sm: 18, md: 20)),
-          ],
-        ),
+          
+          Column(
+            children: [
+              AppBar(
+                backgroundColor: Colors.white,
+                elevation: 0,
+                leading: IconButton(
+                  icon: const Icon(Icons.arrow_back, color: AppColors.primaryRed),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+                title: const Text(
+                  'Create Account',
+                  style: TextStyle(
+                    color: AppColors.primary,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: ResponsiveSpacing.getResponsivePadding(context, horizontal: 16, vertical: 0),
+                  child: Column(
+                    children: [
+                      SizedBox(height: ResponsiveSpacing.getResponsiveSpacing(context, xs: 16, sm: 18, md: 20)),
+                      
+                      // Disaster-focused header
+                      _buildDisasterHeader(),
+                      
+                      SizedBox(height: ResponsiveSpacing.getResponsiveSpacing(context, xs: 30, sm: 35, md: 40)),
+                      
+                      // Sign up form
+                      _buildSignUpForm(),
+                      
+                      SizedBox(height: ResponsiveSpacing.getResponsiveSpacing(context, xs: 20, sm: 25, md: 30)),
+                      
+                      // Sign in link
+                      _buildSignInLink(),
+                      
+                      SizedBox(height: ResponsiveSpacing.getResponsiveSpacing(context, xs: 16, sm: 18, md: 20)),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -302,16 +319,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
         Container(
           width: 80,
           height: 80,
-          decoration: BoxDecoration(
-            color: AppColors.primary,
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.primaryRed.withOpacity(0.3),
-                blurRadius: 20,
-                offset: const Offset(0, 8),
-              ),
-            ],
+          decoration: SoftUIDesign.cardDecoration(
+            backgroundColor: AppColors.white,
+            borderRadius: 20,
+            elevation: 6.0,
+            borderColor: AppColors.primaryRed.withOpacity(0.2),
+            showBorder: true,
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(20),
@@ -380,16 +393,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
+      decoration: SoftUIDesign.cardDecoration(
+        backgroundColor: Colors.white,
+        borderRadius: SoftUIDesign.cardBorderRadius,
+        elevation: 4.0,
+        borderColor: AppColors.lightGray.withOpacity(0.3),
+        showBorder: true,
       ),
       child: Form(
         key: _formKey,
@@ -486,20 +495,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
           
           // Region dropdown
           Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: Colors.grey.shade300,
-                width: 1.5,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.grey.withOpacity(0.1),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
+            decoration: SoftUIDesign.cardDecoration(
+              backgroundColor: Colors.white,
+              borderRadius: SoftUIDesign.cardBorderRadius,
+              elevation: 2.0,
+              borderColor: AppColors.lightGray.withOpacity(0.3),
+              showBorder: true,
             ),
             child: DropdownButtonFormField<String>(
               initialValue: _selectedRegion,
@@ -582,20 +583,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
           
           // Province or City (for NCR) dropdown
           Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: Colors.grey.shade300,
-                width: 1.5,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.grey.withOpacity(0.1),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
+            decoration: SoftUIDesign.cardDecoration(
+              backgroundColor: Colors.white,
+              borderRadius: SoftUIDesign.cardBorderRadius,
+              elevation: 2.0,
+              borderColor: AppColors.lightGray.withOpacity(0.3),
+              showBorder: true,
             ),
             child: DropdownButtonFormField<String>(
               initialValue: _selectedProvince,
@@ -779,20 +772,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
           
           // Barangay dropdown (full width)
           Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: Colors.grey.shade300,
-                width: 1.5,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.grey.withOpacity(0.1),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
+            decoration: SoftUIDesign.cardDecoration(
+              backgroundColor: Colors.white,
+              borderRadius: SoftUIDesign.cardBorderRadius,
+              elevation: 2.0,
+              borderColor: AppColors.lightGray.withOpacity(0.3),
+              showBorder: true,
             ),
             child: DropdownButtonFormField<String>(
               initialValue: _selectedBarangay,

@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../constants/app_colors.dart';
+import '../constants/soft_ui_design.dart';
 import '../widgets/unified_top_bar.dart';
+import '../widgets/solid_modal_header.dart';
+import '../widgets/solid_divider.dart';
 
 class WalkieTalkieScreen extends StatefulWidget {
   const WalkieTalkieScreen({super.key});
@@ -19,6 +22,7 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
   late Animation<double> _recordingAnimation;
   // Users drawer state
   bool _usersExpanded = false;
+  String _userFilter = 'All'; // All, Online, Muted
   late final AnimationController _usersController = AnimationController(vsync: this, duration: const Duration(milliseconds: 350))..value = 0.0;
   late final Animation<double> _usersExpandAnim = CurvedAnimation(parent: _usersController, curve: Curves.easeInOutCubic);
   late AnimationController _emergencyHoldController;
@@ -226,13 +230,12 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                 alignment: Alignment.topCenter,
                 child: Container(
                 margin: const EdgeInsets.fromLTRB(16, 8, 16, 6),
-                decoration: BoxDecoration(
-                  color: AppColors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: const Color(0xFFE53935).withOpacity(0.15),
-                    width: 1.5,
-                  ),
+                decoration: SoftUIDesign.cardDecoration(
+                  backgroundColor: AppColors.white,
+                  borderRadius: SoftUIDesign.cardBorderRadius,
+                  elevation: 4.0,
+                  borderColor: AppColors.primaryRed.withOpacity(0.2),
+                  showBorder: true,
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(20),
@@ -299,6 +302,26 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                           ),
                         ),
                       ),
+                      // Filter chips
+                      if (_usersExpanded)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+                          child: Row(
+                            children: [
+                              _buildFilterChip('All', _userFilter == 'All', () {
+                                setState(() => _userFilter = 'All');
+                              }),
+                              const SizedBox(width: 8),
+                              _buildFilterChip('Online', _userFilter == 'Online', () {
+                                setState(() => _userFilter = 'Online');
+                              }),
+                              const SizedBox(width: 8),
+                              _buildFilterChip('Muted', _userFilter == 'Muted', () {
+                                setState(() => _userFilter = 'Muted');
+                              }),
+                            ],
+                          ),
+                        ),
                       // Collapsible list with staggered ripple (capped height for safety)
                       SizeTransition(
                         sizeFactor: _usersExpandAnim,
@@ -312,10 +335,10 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                           physics: const NeverScrollableScrollPhysics(),
                           shrinkWrap: true,
                           padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
-                          itemCount: _connectedUsers.length,
-                          separatorBuilder: (_, __) => const SizedBox(height: 6),
+                          itemCount: _getFilteredUsers().length,
+                          separatorBuilder: (_, __) => const SolidDivider(indent: 12, endIndent: 12),
                           itemBuilder: (context, index) {
-                            final user = _connectedUsers[index];
+                            final user = _getFilteredUsers()[index];
                             return AnimatedBuilder(
                               animation: _usersController,
                               builder: (context, child) {
@@ -481,17 +504,17 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                                       height: 28,
                                       decoration: BoxDecoration(
                                         color: user['isSpeaking'] 
-                                            ? const Color(0xFF27AE60).withOpacity(0.1)
+                                            ? const Color(0xFF27AE60).withOpacity(0.08)
                                             : user['isMuted']
-                                                ? const Color(0xFFE53935).withOpacity(0.1)
-                                                : const Color(0xFFE53935).withOpacity(0.1),
+                                                ? const Color(0xFFE53935).withOpacity(0.08)
+                                                : const Color(0xFFE53935).withOpacity(0.08),
                                         shape: BoxShape.circle,
                                         border: Border.all(
                                           color: user['isSpeaking'] 
-                                              ? const Color(0xFF27AE60)
+                                              ? const Color(0xFF27AE60).withOpacity(0.3)
                                               : user['isMuted']
-                                                  ? const Color(0xFFE53935)
-                                                  : const Color(0xFFE53935),
+                                                  ? const Color(0xFFE53935).withOpacity(0.3)
+                                                  : const Color(0xFFE53935).withOpacity(0.3),
                                           width: 1.5,
                                         ),
                                       ),
@@ -528,13 +551,12 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                 child: Container(
                   margin: const EdgeInsets.fromLTRB(16, 6, 16, 12),
                   padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: AppColors.white,
-                    borderRadius: BorderRadius.circular(24),
-                    border: Border.all(
-                      color: const Color(0xFFE53935).withOpacity(0.15),
-                      width: 1.5,
-                    ),
+                  decoration: SoftUIDesign.cardDecoration(
+                    backgroundColor: AppColors.white,
+                    borderRadius: SoftUIDesign.cardBorderRadius,
+                    elevation: 4.0,
+                    borderColor: AppColors.primaryRed.withOpacity(0.2),
+                    showBorder: true,
                   ),
                   child: LayoutBuilder(
                     builder: (context, constraints) {
@@ -551,22 +573,12 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                           width: 22,
                           height: 22,
                           decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [
-                                Color(0xFFE53935),
-                                Color(0xFFD32F2F),
-                              ],
+                            color: AppColors.primaryRed,
+                            borderRadius: BorderRadius.circular(SoftUIDesign.buttonBorderRadius),
+                            boxShadow: SoftUIDesign.getSoftShadow(
+                              elevation: 2.0,
+                              shadowColor: AppColors.primaryRed.withOpacity(0.3),
                             ),
-                            borderRadius: BorderRadius.circular(6),
-                            boxShadow: [
-                              BoxShadow(
-                                color: const Color(0xFFE53935).withOpacity(0.3),
-                                blurRadius: 6,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
                           ),
                           child: const Icon(
                             Icons.radio,
@@ -795,13 +807,12 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                     Center(
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFE53935).withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: const Color(0xFFE53935).withOpacity(0.3),
-                            width: 1.5,
-                          ),
+                        decoration: SoftUIDesign.cardDecoration(
+                          backgroundColor: AppColors.primaryRed.withOpacity(0.08),
+                          borderRadius: SoftUIDesign.buttonBorderRadius,
+                          elevation: 2.0,
+                          borderColor: AppColors.primaryRed.withOpacity(0.3),
+                          showBorder: true,
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
@@ -832,13 +843,12 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                       child: Container(
                         margin: const EdgeInsets.only(top: 6),
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFE53935).withOpacity(0.05),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: const Color(0xFFE53935).withOpacity(0.2),
-                            width: 1,
-                          ),
+                        decoration: SoftUIDesign.cardDecoration(
+                          backgroundColor: AppColors.primaryRed.withOpacity(0.05),
+                          borderRadius: SoftUIDesign.buttonBorderRadius,
+                          elevation: 1.0,
+                          borderColor: AppColors.primaryRed.withOpacity(0.2),
+                          showBorder: true,
                         ),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -880,16 +890,79 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
     );
   }
   
+  List<Map<String, dynamic>> _getFilteredUsers() {
+    switch (_userFilter) {
+      case 'Online':
+        return _connectedUsers.where((u) => u['isActive'] == true).toList();
+      case 'Muted':
+        return _connectedUsers.where((u) => u['isMuted'] == true).toList();
+      case 'All':
+      default:
+        return _connectedUsers;
+    }
+  }
+
+  Widget _buildFilterChip(String label, bool isSelected, VoidCallback onTap) {
+    final count = label == 'All' 
+        ? _connectedUsers.length 
+        : label == 'Online' 
+            ? _connectedUsers.where((u) => u['isActive'] == true).length
+            : _connectedUsers.where((u) => u['isMuted'] == true).length;
+    
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: SoftUIDesign.cardDecoration(
+          backgroundColor: isSelected ? AppColors.primaryRed : Colors.transparent,
+          borderRadius: SoftUIDesign.buttonBorderRadius,
+          elevation: isSelected ? 3.0 : 0.0,
+          borderColor: isSelected ? AppColors.primaryRed : AppColors.lightGray.withOpacity(0.3),
+          showBorder: true,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                color: isSelected ? AppColors.white : AppColors.textSecondary,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: isSelected 
+                    ? AppColors.white.withOpacity(0.25)
+                    : const Color(0xFFE53935).withOpacity(0.15),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                count.toString(),
+                style: TextStyle(
+                  color: isSelected ? AppColors.white : const Color(0xFFE53935),
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _sendEmergencyAlert() {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.emergency, color: Color(0xFFE53935)),
-            SizedBox(width: 8),
-            Text('Emergency Alert'),
-          ],
+        title: const SolidModalHeader(
+          icon: Icons.emergency,
+          iconColor: Color(0xFFE53935),
+          title: 'Emergency Alert',
         ),
         content: const Text(
           'This will send an emergency alert to all connected users. Use only in genuine emergency situations.',

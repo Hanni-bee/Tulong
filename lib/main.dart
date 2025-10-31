@@ -133,10 +133,10 @@ class TulongApp extends StatelessWidget {
               foregroundColor: Colors.white,
               textStyle: AppTypography.buttonText,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(12), // Soft UI standard
               ),
-              padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 24),
-              elevation: 0,
+              padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 24),
+              elevation: 0, // Using custom shadows instead
               shadowColor: Colors.transparent,
             ),
           ),
@@ -144,23 +144,43 @@ class TulongApp extends StatelessWidget {
             filled: true,
             fillColor: Colors.white,
             border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(16),
-              borderSide: BorderSide.none,
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(
+                color: Color(0xFFE0E0E0),
+                width: 1.0,
+              ),
             ),
             enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(16),
-              borderSide: BorderSide.none,
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(
+                color: Color(0xFFE0E0E0),
+                width: 1.0,
+              ),
             ),
             focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(12),
               borderSide: const BorderSide(
                 color: Color(0xFFD32F2F),
-                width: 2,
+                width: 2.0,
+              ),
+            ),
+            errorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(
+                color: Color(0xFFEF5350),
+                width: 1.5,
+              ),
+            ),
+            focusedErrorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(
+                color: Color(0xFFEF5350),
+                width: 2.0,
               ),
             ),
             contentPadding: const EdgeInsets.symmetric(
-              horizontal: 20,
-              vertical: 20,
+              horizontal: 16,
+              vertical: 14,
             ),
           ),
           cardTheme: const CardThemeData(

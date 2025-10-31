@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
 import '../constants/app_spacing.dart';
+import '../constants/soft_ui_design.dart';
 
 enum ButtonVariant { primary, secondary, outline, ghost, danger }
 enum ButtonSize { small, medium, large }
@@ -131,18 +132,7 @@ class CustomButton extends StatelessWidget {
           textColor: AppColors.white,
           border: Border.all(color: AppColors.white.withOpacity(0.2), width: 1),
           borderRadius: AppSpacing.radiusXl,
-          shadows: [
-            BoxShadow(
-              color: AppColors.primaryRed.withOpacity(0.3),
-              blurRadius: 20,
-              offset: const Offset(0, 8),
-            ),
-            BoxShadow(
-              color: AppColors.white.withOpacity(0.1),
-              blurRadius: 10,
-              offset: const Offset(0, -2),
-            ),
-          ],
+          shadows: SoftUIDesign.getButtonShadow(color: AppColors.primaryRed),
           fontSize: size == ButtonSize.small ? 14 : size == ButtonSize.medium ? 16 : 18,
           fontWeight: FontWeight.w700,
           letterSpacing: 0.5,
@@ -155,13 +145,7 @@ class CustomButton extends StatelessWidget {
           textColor: AppColors.textPrimary,
           border: Border.all(color: AppColors.mediumGray, width: 1),
           borderRadius: AppSpacing.radiusXl,
-          shadows: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.1),
-              blurRadius: 8,
-              offset: const Offset(0, 4),
-            ),
-          ],
+          shadows: SoftUIDesign.getCardShadow(elevation: 2.0),
           fontSize: size == ButtonSize.small ? 14 : size == ButtonSize.medium ? 16 : 18,
           fontWeight: FontWeight.w600,
           letterSpacing: 0.3,
@@ -204,13 +188,7 @@ class CustomButton extends StatelessWidget {
           textColor: AppColors.white,
           border: Border.all(color: AppColors.white.withOpacity(0.2), width: 1),
           borderRadius: AppSpacing.radiusXl,
-          shadows: [
-            BoxShadow(
-              color: AppColors.error.withOpacity(0.3),
-              blurRadius: 20,
-              offset: const Offset(0, 8),
-            ),
-          ],
+          shadows: SoftUIDesign.getButtonShadow(color: AppColors.error),
           fontSize: size == ButtonSize.small ? 14 : size == ButtonSize.medium ? 16 : 18,
           fontWeight: FontWeight.w700,
           letterSpacing: 0.5,

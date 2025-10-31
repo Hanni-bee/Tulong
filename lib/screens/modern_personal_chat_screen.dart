@@ -471,13 +471,12 @@ class _ModernPersonalChatScreenState extends State<ModernPersonalChatScreen> {
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: AppColors.white,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.1),
-                  blurRadius: 10,
-                  offset: const Offset(0, -2),
+              border: Border(
+                top: BorderSide(
+                  color: AppColors.lightGray.withOpacity(0.3),
+                  width: 1.5,
                 ),
-              ],
+              ),
             ),
             child: Row(
               children: [
@@ -486,15 +485,12 @@ class _ModernPersonalChatScreenState extends State<ModernPersonalChatScreen> {
                   width: 48,
                   height: 48,
                   decoration: BoxDecoration(
-                    color: AppColors.errorGradient,
+                    color: AppColors.error,
                     borderRadius: BorderRadius.circular(24),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.error.withOpacity(0.3),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.3),
+                      width: 1.5,
+                    ),
                   ),
                   child: IconButton(
                     icon: const Icon(Icons.warning, color: AppColors.white),
@@ -507,11 +503,11 @@ class _ModernPersonalChatScreenState extends State<ModernPersonalChatScreen> {
                 Expanded(
                   child: Container(
                     decoration: BoxDecoration(
-                      color: AppColors.ultraLightGray,
+                      color: AppColors.white,
                       borderRadius: BorderRadius.circular(24),
                       border: Border.all(
-                        color: AppColors.lightGray,
-                        width: 1,
+                        color: AppColors.lightGray.withOpacity(0.5),
+                        width: 1.5,
                       ),
                     ),
                     child: TextField(
@@ -536,15 +532,12 @@ class _ModernPersonalChatScreenState extends State<ModernPersonalChatScreen> {
                   width: 48,
                   height: 48,
                   decoration: BoxDecoration(
-                    color: AppColors.primaryGradient,
+                    color: AppColors.primaryRed,
                     borderRadius: BorderRadius.circular(24),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.primaryRed.withOpacity(0.3),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.3),
+                      width: 1.5,
+                    ),
                   ),
                   child: IconButton(
                     icon: const Icon(Icons.send, color: AppColors.white),
