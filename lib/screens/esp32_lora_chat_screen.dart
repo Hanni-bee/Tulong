@@ -1,7 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:path_provider/path_provider.dart';
 import '../constants/app_colors.dart';
 import '../constants/app_typography.dart';
 import '../services/simple_bluetooth_service.dart';
@@ -107,7 +111,13 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen> {
     // Check if it's a voice message
     if (message['type'] == 'voice_message' && message['data_b64_pcm16le'] != null) {
       final String base64Data = message['data_b64_pcm16le'];
+      final String senderName = message['from_node'] ?? message['sender'] ?? 'Unknown';
+      
+      // Play the voice message immediately
       _voiceController.playBase64Pcm(base64Data);
+      
+      // Save voice data to file and add to chat messages
+      _saveVoiceMessageToChat(message, base64Data, senderName);
       return;
     }
     
@@ -122,6 +132,55 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen> {
     if (_scrollController.hasClients) {
       _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
     }
+  }
+
+  /// Save voice message data to file and add to chat messages
+  Future<void> _saveVoiceMessageToChat(Map<String, dynamic> message, String base64Data, String senderName) async {
+    try {
+      // Generate unique file path for the voice message
+      final directory = await getApplicationDocumentsDirectory();
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final messageId = message['messageId'] ?? 'voice_$timestamp';
+      final voiceFilePath = '${directory.path}/received_voice_${messageId}.pcm';
+      
+      // Decode base64 data and save to file
+      final Uint8List pcmData = base64.decode(base64Data);
+      final File voiceFile = File(voiceFilePath);
+      await voiceFile.writeAsBytes(pcmData);
+      
+      // Create chat message with voice data
+      final Map<String, dynamic> chatMessage = {
+        'type': 'voice_message',
+        'messageId': messageId,
+        'sender_name': senderName,
+        'from_node': message['from_node'],
+        'voiceFilePath': voiceFilePath,
+        'voiceDuration': _estimateVoiceDuration(pcmData.length),
+        'timestamp': message['timestamp'] ?? DateTime.now().toIso8601String(),
+        'isLocal': false,
+        'isEmergency': false,
+        'isRead': false,
+      };
+      
+      // Add to messages list
+      setState(() {
+        _messages.add(chatMessage);
+      });
+      _scrollToBottom();
+      
+      print('[VOICE_CHAT] ✅ Voice message saved and added to chat: $voiceFilePath');
+      
+    } catch (e) {
+      print('[VOICE_CHAT] ❌ Error saving voice message: $e');
+      _showSimpleMessage('Error saving voice message: $e');
+    }
+  }
+
+  /// Estimate voice duration based on PCM data length
+  int _estimateVoiceDuration(int pcmDataLength) {
+    // PCM16LE at 8kHz: 2 bytes per sample, 8000 samples per second
+    // Duration = (bytes / 2) / 8000 * 1000 (convert to milliseconds)
+    return ((pcmDataLength / 2) / 8000 * 1000).round();
   }
 
   void _sendVoiceFrame(Map<String, dynamic> frame) {

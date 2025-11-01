@@ -214,7 +214,7 @@ void clearSession(int idx) {
 }
 
 // ----------- SEND VOICE VIA LORA ----------
-static const int LORA_MAX_PAYLOAD = 220;
+static const int LORA_MAX_PAYLOAD = 50;  // Reduced for multi-packet testing
 
 static void sendVoiceLoRa(const String &msgId, const std::vector<uint8_t> &adpcm) {
   uint16_t total = (adpcm.size() + LORA_MAX_PAYLOAD - 1) / LORA_MAX_PAYLOAD;
@@ -233,14 +233,14 @@ static void sendVoiceLoRa(const String &msgId, const std::vector<uint8_t> &adpcm
     LoRa.write(&adpcm[off], len);
     LoRa.endPacket();
 
-    logLine("LORA_TX", String("Sent chunk ") + String(i + 1) + "/" + String(total) + " ID=" + msgId);
+    logLine("LORA_TX", String("Sent chunk ") + String(i + 1) + "/" + String(total) + " ID=" + msgId + " (" + String(len) + " bytes)");
     delay(25);
   }
 }
 
 // ----------- HANDLE BLUETOOTH MESSAGES ----------
 static void handleBT(const String &msg) {
-  if (msg.indexOf("\"voice_frame\"") > 0 || msg.indexOf("\"pcm16leb64\"") > 0) {
+  if (msg.indexOf("\"voice_frame\"") > 0 || msg.indexOf("\"pcm16leb64\"") > 0 || msg.indexOf("\"audio_data\"") > 0) {
     logLine("BT_RX", "Voice frame received from app");
 
     DynamicJsonDocument doc(4096);
@@ -249,14 +249,30 @@ static void handleBT(const String &msg) {
       return;
     }
 
-    String mid = doc["messageId"] | makeMsgId();
-    String b64 = doc["pcm16leb64"] | "";
+    String mid = doc["messageId"].as<String>();
+    if (mid.isEmpty()) mid = makeMsgId();
+    String b64 = "";
+    
+    // Try different field names that Flutter app might send
+    if (doc.containsKey("pcm16leb64")) {
+      b64 = doc["pcm16leb64"].as<String>();
+    } else if (doc.containsKey("audio_data")) {
+      b64 = doc["audio_data"].as<String>();
+    } else if (doc.containsKey("data")) {
+      b64 = doc["data"].as<String>();
+    }
+    
     if (b64.isEmpty()) {
-      logLine("BT_WARN", "Empty audio frame");
+      logLine("BT_WARN", "Empty audio frame - no valid audio data field found");
       return;
     }
 
     std::vector<uint8_t> pcmBytes = b64Decode(b64);
+    if (pcmBytes.size() < 2) {
+      logLine("BT_WARN", "Invalid PCM data size");
+      return;
+    }
+    
     std::vector<int16_t> pcm;
     pcm.reserve(pcmBytes.size() / 2);
     for (size_t i = 0; i + 1 < pcmBytes.size(); i += 2)
@@ -328,19 +344,26 @@ static void processLoRa() {
   if (idx == -1) return;
 
   VoicePacket &v = sessions[idx];
-  if (pktIdx >= v.totalPkts) return;
+  if (pktIdx >= v.totalPkts) {
+    logLine("LORA_ERR", String("Invalid packet index ") + String(pktIdx) + " >= " + String(v.totalPkts));
+    return;
+  }
+  
+  // Only store if we haven't received this packet yet
   if (v.chunks[pktIdx].empty()) {
     v.chunks[pktIdx].assign(payload, payload + payloadLen);
     v.receivedPkts++;
+    logLine("LORA_RX", String("VC pkt ") + String(pktIdx + 1) + "/" + String(v.totalPkts) + " stored");
+  } else {
+    logLine("LORA_RX", String("VC pkt ") + String(pktIdx + 1) + "/" + String(v.totalPkts) + " duplicate");
   }
   v.lastActivity = millis();
 
-  logLine("LORA_RX", String("VC pkt ") + String(pktIdx + 1) + "/" + String(v.totalPkts));
-
   if (v.receivedPkts >= v.totalPkts) {
-    logLine("LORA_RX", "All packets received — decoding...");
+    logLine("LORA_RX", "All packets received — reassembling...");
     size_t totalBytes = 0;
     for (auto &c : v.chunks) totalBytes += c.size();
+    logLine("LORA_RX", String("Reassembling ") + String(totalBytes) + " bytes from " + String(v.totalPkts) + " packets");
     std::vector<uint8_t> adpcm; adpcm.reserve(totalBytes);
     for (auto &c : v.chunks) adpcm.insert(adpcm.end(), c.begin(), c.end());
 
@@ -362,9 +385,13 @@ static void processLoRa() {
       out["type"] = "voice_message";
       out["messageId"] = msgId;
       out["from_node"] = nodeId;
-      out["data_b64_pcm16le"] = b64;
+      out["sender"] = nodeId;  // Add alternative sender field
+      out["data_b64_pcm16le"] = b64;  // Match Flutter app expected field name
+      out["timestamp"] = String(millis());
+      out["message"] = "Voice Message";  // Add message text for display
       String outS;
       serializeJson(out, outS);
+      logLine("BT_TX", "Sending JSON: " + outS);
       BT.println(outS);
       logLine("BT_TX", "Voice message forwarded to app");
     }
@@ -423,5 +450,4 @@ void loop() {
 
   processLoRa();
   delay(5);
-}
 }
