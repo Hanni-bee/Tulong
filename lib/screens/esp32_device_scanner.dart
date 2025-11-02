@@ -23,6 +23,7 @@ class _ESP32DeviceScannerState extends State<ESP32DeviceScanner>
   String _selectedDevice = '';
   late AnimationController _scanController;
   late Animation<double> _scanAnimation;
+  bool _showAllDevices = false;
   
   @override
   void initState() {
@@ -75,6 +76,7 @@ class _ESP32DeviceScannerState extends State<ESP32DeviceScanner>
         setState(() {
           _availableDevices = devices;
           _isScanning = false;
+          _showAllDevices = false; // Reset show all when scanning again
         });
         
         if (_availableDevices.isEmpty) {
@@ -214,7 +216,7 @@ class _ESP32DeviceScannerState extends State<ESP32DeviceScanner>
                   ? _buildScanningIndicator()
                   : _availableDevices.isEmpty
                       ? _buildEmptyState()
-                      : _buildDeviceList(),
+                      : _buildDeviceListWithSections(),
             ),
           ],
         ),
@@ -381,101 +383,229 @@ class _ESP32DeviceScannerState extends State<ESP32DeviceScanner>
     );
   }
   
-  Widget _buildDeviceList() {
-    return ListView.builder(
+  // Separate devices into paired and nearby
+  List<Map<String, String>> get _pairedDevices {
+    return _availableDevices.where((d) => d['bonded'] == 'true').toList();
+  }
+  
+  List<Map<String, String>> get _nearbyDevices {
+    return _availableDevices.where((d) => d['bonded'] != 'true').toList();
+  }
+  
+  // Get devices to display - show 6 total initially, then all when showAll is true
+  Widget _buildDeviceListWithSections() {
+    final pairedDevices = _pairedDevices;
+    final nearbyDevices = _nearbyDevices;
+    final allDevices = [...pairedDevices, ...nearbyDevices];
+    final totalCount = allDevices.length;
+    
+    // Calculate how many devices to show from each section
+    int pairedToShowCount = 0;
+    int nearbyToShowCount = 0;
+    int remainingTotal = 0;
+    
+    if (_showAllDevices || totalCount <= 6) {
+      // Show all devices
+      pairedToShowCount = pairedDevices.length;
+      nearbyToShowCount = nearbyDevices.length;
+      remainingTotal = 0;
+    } else {
+      // Show up to 6 total devices
+      int shown = 0;
+      if (shown < 6 && pairedDevices.isNotEmpty) {
+        pairedToShowCount = (6 - shown).clamp(0, pairedDevices.length);
+        shown += pairedToShowCount;
+      }
+      if (shown < 6 && nearbyDevices.isNotEmpty) {
+        nearbyToShowCount = (6 - shown).clamp(0, nearbyDevices.length);
+        shown += nearbyToShowCount;
+      }
+      remainingTotal = totalCount - 6;
+    }
+    
+    final pairedToShow = pairedDevices.take(pairedToShowCount).toList();
+    final nearbyToShow = nearbyDevices.take(nearbyToShowCount).toList();
+    
+    return ListView(
       padding: const EdgeInsets.all(16),
-      itemCount: _availableDevices.length,
-      itemBuilder: (context, index) {
-        final device = _availableDevices[index];
-        final deviceName = device['name'] ?? 'Unknown';
-        final deviceAddress = device['address'] ?? '';
-        final isSelected = _selectedDevice == deviceName;
+      children: [
+        // Paired Devices Section
+        if (pairedDevices.isNotEmpty) ...[
+          _buildSectionHeader('Paired Devices', pairedDevices.length),
+          const SizedBox(height: 12),
+          ...pairedToShow.map((device) => _buildDeviceItem(device)),
+          const SizedBox(height: 24),
+        ],
         
-        return Container(
-          margin: const EdgeInsets.only(bottom: 12),
+        // Nearby Devices Section
+        if (nearbyDevices.isNotEmpty) ...[
+          _buildSectionHeader('Nearby Devices', nearbyDevices.length),
+          const SizedBox(height: 12),
+          ...nearbyToShow.map((device) => _buildDeviceItem(device)),
+        ],
+        
+        // Show more button (appears after all sections if there are more devices)
+        if (remainingTotal > 0 && !_showAllDevices)
+          _buildShowMoreButton(remainingTotal, () {
+            setState(() {
+              _showAllDevices = true;
+            });
+          }),
+      ],
+    );
+  }
+  
+  Widget _buildSectionHeader(String title, int count) {
+    return Row(
+      children: [
+        Text(
+          title,
+          style: AppTypography.titleMedium.copyWith(
+            fontWeight: FontWeight.bold,
+            color: AppColors.darkGray,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
           decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: isSelected 
-                  ? AppColors.online 
+            color: AppColors.primaryRed.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Text(
+            '$count',
+            style: TextStyle(
+              color: AppColors.primaryRed,
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+        const Spacer(),
+        Text(
+          title == 'Paired Devices' 
+              ? 'Previously linked devices'
+              : 'Visible nearby devices',
+          style: AppTypography.bodySmall.copyWith(
+            color: AppColors.mediumGray,
+          ),
+        ),
+      ],
+    );
+  }
+  
+  Widget _buildShowMoreButton(int remainingCount, VoidCallback onTap) {
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      child: Center(
+        child: TextButton(
+          onPressed: onTap,
+          style: TextButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+          ),
+          child: Text(
+            'Show more ($remainingCount)',
+            style: AppTypography.bodyMedium.copyWith(
+              color: AppColors.primaryRed,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildDeviceItem(Map<String, String> device) {
+    final deviceName = device['name'] ?? 'Unknown';
+    final deviceAddress = device['address'] ?? '';
+    final isPaired = device['bonded'] == 'true';
+    final isSelected = _selectedDevice == deviceName;
+    
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isSelected 
+              ? AppColors.online 
+              : isPaired
+                  ? AppColors.success.withOpacity(0.3)
                   : Colors.transparent,
-              width: 2,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 10,
-                offset: const Offset(0, 2),
-              ),
-            ],
+          width: 2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
           ),
-          child: ListTile(
-            contentPadding: const EdgeInsets.all(16),
-            leading: Container(
-              width: 56,
-              height: 56,
+        ],
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.all(16),
+        leading: Container(
+          width: 56,
+          height: 56,
+          decoration: BoxDecoration(
+            color: (isPaired ? AppColors.success : AppColors.online).withOpacity(0.1),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(
+            isPaired ? Icons.bluetooth_connected : Icons.bluetooth,
+            color: isPaired ? AppColors.success : AppColors.online,
+            size: 30,
+          ),
+        ),
+        title: Text(
+          deviceName,
+          style: AppTypography.titleMedium.copyWith(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 4),
+            Text(
+              deviceAddress,
+              style: AppTypography.bodySmall.copyWith(
+                color: AppColors.mediumGray,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
-                color: AppColors.online.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
+                color: (isPaired ? AppColors.success : AppColors.warning).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
               ),
-              child: const Icon(
-                Icons.bluetooth,
-                color: AppColors.online,
-                size: 30,
-              ),
-            ),
-            title: Text(
-              deviceName,
-              style: AppTypography.titleMedium.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 4),
-                Text(
-                  deviceAddress,
-                  style: AppTypography.bodySmall.copyWith(
-                    color: AppColors.mediumGray,
-                  ),
+              child: Text(
+                isPaired ? 'Paired' : 'Available',
+                style: TextStyle(
+                  color: isPaired ? AppColors.success : AppColors.warning,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
                 ),
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: AppColors.success.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    'Available',
-                    style: TextStyle(
-                      color: AppColors.success,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ),
-            trailing: isSelected
-                ? const SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(
-                    Icons.arrow_forward_ios,
-                    size: 20,
-                    color: AppColors.mediumGray,
-                  ),
-            onTap: isSelected ? null : () {
-              _pairAndConnect(deviceName, deviceAddress);
-            },
-          ),
-        );
-      },
+          ],
+        ),
+        trailing: isSelected
+            ? const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(
+                Icons.arrow_forward_ios,
+                size: 20,
+                color: AppColors.mediumGray,
+              ),
+        onTap: isSelected ? null : () {
+          _pairAndConnect(deviceName, deviceAddress);
+        },
+      ),
     );
   }
 }
