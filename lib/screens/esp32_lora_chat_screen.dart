@@ -8,6 +8,7 @@ import '../constants/soft_ui_design.dart';
 import '../services/simple_bluetooth_service.dart';
 import '../controllers/voice_controller.dart';
 import '../widgets/unified_top_bar.dart';
+import '../widgets/connected_users_dialog.dart';
 
 /// ESP32 LoRa Chat Screen - Ultra Simple Version
 /// No animations, no pop-ups, no complex status tracking
@@ -216,11 +217,23 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen> {
           // Unified top bar
           Consumer<SimpleBluetoothService>(
             builder: (context, esp32Service, child) {
+              final connectedCount = esp32Service.connectedUsers.length;
+              final status = esp32Service.isConnected
+                  ? 'Connected${connectedCount > 0 ? ' ($connectedCount)' : ''}'
+                  : 'Disconnected';
+              
               return TopBarConfigs.loraTopBar(
-                status: esp32Service.isConnected ? 'Connected' : 'Disconnected',
+                status: status,
                 onBluetoothTap: () {
                   Navigator.of(context).pushNamed('/esp32-scanner');
                 },
+                onSubtitleTap: esp32Service.isConnected
+                    ? () {
+                        // Show connected users dialog
+                        final connectedUsers = esp32Service.connectedUsers;
+                        ConnectedUsersDialog.show(context, connectedUsers);
+                      }
+                    : null,
               );
             },
           ),

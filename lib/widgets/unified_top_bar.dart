@@ -13,6 +13,7 @@ class UnifiedTopBar extends StatelessWidget {
   final Color backgroundColor;
   final List<Widget>? actions;
   final VoidCallback? onIconTap;
+  final VoidCallback? onSubtitleTap; // NEW: callback for subtitle tap
   final bool showBackButton;
   final VoidCallback? onBackPressed;
   final bool compact; // NEW: compact variant
@@ -27,6 +28,7 @@ class UnifiedTopBar extends StatelessWidget {
     this.backgroundColor = AppColors.white,
     this.actions,
     this.onIconTap,
+    this.onSubtitleTap,
     this.showBackButton = false,
     this.onBackPressed,
     this.compact = false,
@@ -144,29 +146,32 @@ class UnifiedTopBar extends StatelessWidget {
                         Row(
                           children: [
                             if (subtitle != null && subtitle!.isNotEmpty)
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: subtitle!.toLowerCase().contains('connected')
-                                      ? AppColors.success.withOpacity(0.1)
-                                      : AppColors.warning.withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(
+                              PolishedBounce(
+                                onTap: onSubtitleTap,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                  decoration: BoxDecoration(
                                     color: subtitle!.toLowerCase().contains('connected')
-                                        ? AppColors.success.withOpacity(0.3)
-                                        : AppColors.warning.withOpacity(0.3),
-                                    width: 1,
+                                        ? AppColors.success.withOpacity(0.1)
+                                        : AppColors.warning.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(
+                                      color: subtitle!.toLowerCase().contains('connected')
+                                          ? AppColors.success.withOpacity(0.3)
+                                          : AppColors.warning.withOpacity(0.3),
+                                      width: 1,
+                                    ),
                                   ),
-                                ),
-                                child: Text(
-                                  subtitle!,
-                                  style: UnifiedTypography.appBarSubtitle.copyWith(
-                                    color: subtitle!.toLowerCase().contains('connected')
-                                        ? AppColors.success
-                                        : AppColors.warning,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                    height: 1.1,
+                                  child: Text(
+                                    subtitle!,
+                                    style: UnifiedTypography.appBarSubtitle.copyWith(
+                                      color: subtitle!.toLowerCase().contains('connected')
+                                          ? AppColors.success
+                                          : AppColors.warning,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      height: 1.1,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -214,6 +219,7 @@ class TopBarConfigs {
   static Widget loraTopBar({
     required String status,
     required VoidCallback onBluetoothTap,
+    VoidCallback? onSubtitleTap,
     List<Widget>? additionalActions,
     bool compact = false,
     List<Widget>? badges,
@@ -226,6 +232,7 @@ class TopBarConfigs {
           ? AppColors.success
           : AppColors.warning,
       onIconTap: onBluetoothTap,
+      onSubtitleTap: onSubtitleTap,
       actions: additionalActions,
       compact: compact,
       statusBadges: badges,

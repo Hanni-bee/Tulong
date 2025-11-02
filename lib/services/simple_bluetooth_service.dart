@@ -37,6 +37,10 @@ class SimpleBluetoothService extends ChangeNotifier {
   String _userName = '';
   String _pairedDeviceName = '';
   String _pairedDeviceAddress = '';
+  
+  // Track connected users (users who have sent messages on the same channel)
+  // Key: sender_email or sender_id, Value: sender_name (first_name)
+  final Map<String, String> _connectedUsers = <String, String>{};
 
   // ============================================================================
   // MESSAGE HANDLING
@@ -74,6 +78,7 @@ class SimpleBluetoothService extends ChangeNotifier {
   Stream<String> get statusStream => _statusController.stream;
   Stream<List<Map<String, dynamic>>> get messagesStream => _messagesStreamController.stream;
   List<Map<String, dynamic>> get messages => List.unmodifiable(_messages);
+  List<String> get connectedUsers => _connectedUsers.values.toList();
 
   // ============================================================================
   // INITIALIZATION
@@ -137,9 +142,17 @@ class SimpleBluetoothService extends ChangeNotifier {
       
       // Still send auth request for ESP32 (non-blocking)
       _sendAuthRequest();
+      
+      // Request connected users list after a short delay to ensure connection is stable
+      Future.delayed(const Duration(milliseconds: 800), () {
+        if (_isConnected) {
+          requestConnectedUsers();
+        }
+      });
     } else {
       _addStatusLog('Disconnected from ESP32');
       _isAuthenticated = false;
+      _clearConnectedUsers();
     }
     
     notifyListeners();
@@ -173,6 +186,8 @@ class SimpleBluetoothService extends ChangeNotifier {
           _handleAuthRequest(data);
         } else if (data.containsKey('sync_complete')) {
           _handleSyncComplete(data);
+        } else if (data.containsKey('connected_users')) {
+          _handleConnectedUsersResponse(data);
         } else if (data.containsKey('type')) {
           if (data['type'] == 'voice_message') {
             _handleVoiceMessage(data);
@@ -514,6 +529,13 @@ class SimpleBluetoothService extends ChangeNotifier {
       
       _addStatusLog('📤 Message data: sender_name="$senderNameToUse", sender_email="${userEmail ?? 'EMPTY'}"');
 
+      // Add current user to connected users list
+      String userKey = userEmail ?? _esp32NodeId ?? senderNameToUse;
+      if (userKey.isNotEmpty && senderNameToUse.isNotEmpty) {
+        _connectedUsers[userKey] = senderNameToUse;
+        _addStatusLog('📋 Added current user to connected users: $senderNameToUse');
+      }
+
       // Optimistic append to store for instant UI
       final localData = Map<String, dynamic>.from(messageData)
         ..['isLocal'] = true;
@@ -550,6 +572,18 @@ class SimpleBluetoothService extends ChangeNotifier {
       String messageType = data['type'] ?? '';
       String senderName = data['sender_name'] ?? 'Unknown';
       String message = data['message'] ?? '';
+      String? senderEmail = data['sender_email']?.toString();
+      String? senderId = data['sender_id']?.toString();
+
+      // Track connected user (add to connected users map)
+      if (senderName.isNotEmpty && senderName != 'Unknown') {
+        // Use sender_email as key if available, otherwise use sender_id, otherwise use sender_name
+        String userKey = senderEmail ?? senderId ?? senderName;
+        if (userKey.isNotEmpty) {
+          _connectedUsers[userKey] = senderName;
+          _addStatusLog('📋 Added to connected users: $senderName (key: $userKey)');
+        }
+      }
 
       // Mark as remote by default unless explicitly local
       data['isLocal'] = data['isLocal'] == true;
@@ -697,6 +731,57 @@ class SimpleBluetoothService extends ChangeNotifier {
       
     } catch (e) {
       _addErrorLog('Error sending message: $e');
+    }
+  }
+
+  // Request connected users list from ESP32
+  void requestConnectedUsers() {
+    if (!_isConnected) {
+      _addErrorLog('Cannot request connected users: Not connected');
+      return;
+    }
+    
+    try {
+      final request = {
+        'type': 'request',
+        'action': 'get_connected_users',
+      };
+      sendMessage(request);
+      _addStatusLog('📋 Requesting connected users from ESP32...');
+    } catch (e) {
+      _addErrorLog('Error requesting connected users: $e');
+    }
+  }
+
+  // Clear connected users (when disconnected)
+  void _clearConnectedUsers() {
+    _connectedUsers.clear();
+    notifyListeners();
+  }
+
+  // Handle connected users response from ESP32
+  void _handleConnectedUsersResponse(Map<String, dynamic> data) {
+    try {
+      if (data.containsKey('users') && data['users'] is List) {
+        List<dynamic> users = data['users'];
+        _connectedUsers.clear();
+        
+        for (var user in users) {
+          if (user is Map<String, dynamic>) {
+            String? userName = user['name']?.toString() ?? user['sender_name']?.toString() ?? user['first_name']?.toString();
+            String? userKey = user['email']?.toString() ?? user['sender_email']?.toString() ?? user['nodeId']?.toString() ?? userName;
+            
+            if (userName != null && userName.isNotEmpty && userKey != null) {
+              _connectedUsers[userKey] = userName;
+            }
+          }
+        }
+        
+        _addStatusLog('📋 Updated connected users list: ${_connectedUsers.length} users');
+        notifyListeners();
+      }
+    } catch (e) {
+      _addErrorLog('Error handling connected users response: $e');
     }
   }
 

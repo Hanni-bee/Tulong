@@ -59,6 +59,19 @@ uint8_t expectedTotalChunks = 0;
 bool isReceiving = false;
 uint32_t messageCounter = 0;
 
+// Connected users tracking (phones connected to ESP32s on same channel)
+struct ConnectedUser {
+  String nodeId;
+  String userName;
+  unsigned long lastSeen;
+  bool isOnline;
+};
+ConnectedUser connectedUsers[10];  // Max 10 users
+uint8_t userCount = 0;
+unsigned long lastPresenceBroadcast = 0;
+const unsigned long PRESENCE_BROADCAST_INTERVAL = 30000;  // 30 seconds
+const unsigned long USER_TIMEOUT = 60000;  // 60 seconds
+
 // --- Forward declarations ---
 void handleBluetooth();
 void handlePhoneBinaryChunk();
@@ -67,6 +80,10 @@ void sendViaNRF24(String message);
 void handleNRF24();
 void sendStatus();
 void forwardMessageToPhone(String message);
+void broadcastPresence();
+void handlePresenceMessage(String msg);
+void sendConnectedUsers();
+void updateConnectedUsers();
 
 void setup() {
   delay(500);
@@ -122,6 +139,11 @@ void loop() {
       conn = true;
       Serial.println("\n[BT] ✓ Client connected");
       sendStatus();
+      // Broadcast presence immediately when phone connects
+      broadcastPresence();
+      // Send connected users list immediately
+      delay(500);  // Small delay to ensure connection is stable
+      sendConnectedUsers();
     }
     handleBluetooth();
   } else if (conn) {
@@ -129,6 +151,15 @@ void loop() {
     Serial.println("\n[BT] ✗ Client disconnected");
     buf = "";
   }
+  
+  // Broadcast presence periodically
+  if (millis() - lastPresenceBroadcast > PRESENCE_BROADCAST_INTERVAL) {
+    broadcastPresence();
+    lastPresenceBroadcast = millis();
+  }
+  
+  // Update connected users (mark offline after timeout)
+  updateConnectedUsers();
   
   handleNRF24();
   delay(10);
@@ -290,9 +321,48 @@ void processBluetoothMessage(String msg) {
   Serial.println("[BT RX] Message length: " + String(msg.length()) + " bytes");
   Serial.println("[BT RX] Timestamp: " + String(millis()) + " ms");
   
+  // Check for request for connected users
+  if (msg.indexOf("\"action\":\"get_connected_users\"") >= 0 || msg.indexOf("\"type\":\"request\"") >= 0) {
+    Serial.println("[BT RX] ✓ Connected users request detected");
+    sendConnectedUsers();
+    return;
+  }
+  
   // Check if it's a chat message with type and message fields
   if (msg.indexOf("\"type\":") >= 0 && msg.indexOf("\"message\":") >= 0) {
     Serial.println("[BT RX] ✓ Valid JSON message format detected");
+    
+    // Extract sender_name to track connected user
+    String senderName = "Unknown";
+    int nameStart = msg.indexOf("\"sender_name\":\"");
+    if (nameStart >= 0) {
+      nameStart += 15;
+      int nameEnd = msg.indexOf("\"", nameStart);
+      if (nameEnd > nameStart) {
+        senderName = msg.substring(nameStart, nameEnd);
+      }
+    }
+    
+    // Track this user as connected
+    if (senderName != "Unknown" && senderName.length() > 0) {
+      bool found = false;
+      for (int i = 0; i < userCount; i++) {
+        if (connectedUsers[i].nodeId == nId && connectedUsers[i].userName == senderName) {
+          connectedUsers[i].lastSeen = millis();
+          connectedUsers[i].isOnline = true;
+          found = true;
+          break;
+        }
+      }
+      if (!found && userCount < 10) {
+        connectedUsers[userCount].nodeId = nId;
+        connectedUsers[userCount].userName = senderName;
+        connectedUsers[userCount].lastSeen = millis();
+        connectedUsers[userCount].isOnline = true;
+        userCount++;
+        Serial.println("[TRACK] Added user to connected list: " + senderName);
+      }
+    }
     
     // Simply forward the message as-is from phone (phone already sends correct sender_name/first_name)
     // Only add from_node field for routing
@@ -489,14 +559,21 @@ void handleNRF24() {
       Serial.println("[NRF24 RX] ✓ Reassembly complete!");
       Serial.println("[NRF24 RX] Total message length: " + String(receivingMessage.length()) + " bytes");
       Serial.println("[NRF24 RX] Full message content: " + receivingMessage);
-      Serial.println("[NRF24 RX] Preparing to forward to phone via Bluetooth...");
-      Serial.println("==========================================");
       
-      // Forward to Bluetooth
-      if (receivingMessage.length() > 0) {
-        forwardMessageToPhone(receivingMessage);
+      // Check if it's a presence message
+      if (receivingMessage.indexOf("\"presence\":true") >= 0) {
+        Serial.println("[NRF24 RX] Presence message detected");
+        handlePresenceMessage(receivingMessage);
       } else {
-        Serial.println("[ERROR] Reassembled message is empty!");
+        // Regular chat message - forward to phone
+        Serial.println("[NRF24 RX] Preparing to forward to phone via Bluetooth...");
+        Serial.println("==========================================");
+        
+        if (receivingMessage.length() > 0) {
+          forwardMessageToPhone(receivingMessage);
+        } else {
+          Serial.println("[ERROR] Reassembled message is empty!");
+        }
       }
       
       // Reset for next message
@@ -553,4 +630,100 @@ void sendStatus() {
   String status = "{\"status\":\"connected\",\"node_id\":\"" + nId + "\"}";
   BT.println(status);
   Serial.println("[STATUS] Sent to phone.");
+}
+
+void broadcastPresence() {
+  // Broadcast presence via NRF24L01 so other ESP32s know we're here
+  String presence = "{\"presence\":true,\"node_id\":\"" + nId + "\",\"channel\":76}";
+  
+  radio.stopListening();
+  radio.openWritingPipe(address[otherNode]);
+  
+  // Send presence as single chunk (small message)
+  uint8_t msgBytes[64];
+  int msgLen = presence.length();
+  presence.getBytes(msgBytes, sizeof(msgBytes));
+  
+  ChunkHeader header;
+  header.msgId = ++messageCounter;
+  header.chunkIndex = 0;
+  header.totalChunks = 1;
+  header.dataLen = min(msgLen, (int)NRF24_DATA_SIZE);
+  header.reserved = 0;
+  
+  uint8_t chunk[NRF24_PAYLOAD_SIZE] = {0};
+  memcpy(chunk, &header, sizeof(ChunkHeader));
+  memcpy(chunk + sizeof(ChunkHeader), msgBytes, header.dataLen);
+  
+  radio.write(&chunk, NRF24_PAYLOAD_SIZE);
+  radio.startListening();
+  
+  Serial.println("[PRESENCE] Broadcasted on channel 76");
+}
+
+void handlePresenceMessage(String msg) {
+  // Extract node ID from presence message
+  int idStart = msg.indexOf("\"node_id\":\"");
+  if (idStart >= 0) {
+    idStart += 11;
+    int idEnd = msg.indexOf("\"", idStart);
+    if (idEnd > idStart) {
+      String remoteNodeId = msg.substring(idStart, idEnd);
+      
+      // Update or add to connected users list
+      bool found = false;
+      for (int i = 0; i < userCount; i++) {
+        if (connectedUsers[i].nodeId == remoteNodeId) {
+          connectedUsers[i].lastSeen = millis();
+          connectedUsers[i].isOnline = true;
+          found = true;
+          break;
+        }
+      }
+      if (!found && userCount < 10) {
+        connectedUsers[userCount].nodeId = remoteNodeId;
+        connectedUsers[userCount].userName = remoteNodeId;  // Use node ID as default name
+        connectedUsers[userCount].lastSeen = millis();
+        connectedUsers[userCount].isOnline = true;
+        userCount++;
+        Serial.println("[PRESENCE] Added remote node: " + remoteNodeId);
+      }
+    }
+  }
+}
+
+void sendConnectedUsers() {
+  // Build JSON response with connected users
+  String response = "{\"connected_users\":true,\"users\":[";
+  
+  // Add current phone's user if we have it
+  // For now, we'll include all tracked users
+  for (int i = 0; i < userCount; i++) {
+    if (i > 0) response += ",";
+    response += "{\"nodeId\":\"" + connectedUsers[i].nodeId + "\",";
+    response += "\"name\":\"" + connectedUsers[i].userName + "\",";
+    response += "\"isOnline\":" + String(connectedUsers[i].isOnline ? "true" : "false") + "}";
+  }
+  
+  // Also add self (this ESP32's node)
+  if (userCount > 0) response += ",";
+  response += "{\"nodeId\":\"" + nId + "\",";
+  response += "\"name\":\"Local User\",";
+  response += "\"isOnline\":true}";
+  
+  response += "]}";
+  
+  if (conn && BT.hasClient()) {
+    BT.println(response);
+    Serial.println("[DISCOVERY] Sent " + String(userCount + 1) + " connected users to phone");
+  }
+}
+
+void updateConnectedUsers() {
+  unsigned long now = millis();
+  for (int i = 0; i < userCount; i++) {
+    if (now - connectedUsers[i].lastSeen > USER_TIMEOUT) {
+      connectedUsers[i].isOnline = false;
+    }
+  }
 }
