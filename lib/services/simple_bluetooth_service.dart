@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/auth_provider.dart';
+import '../services/sqlite_service.dart';
 
 /// Simple Bluetooth Service for ESP32 Communication
 /// Uses platform channels to communicate with Android Bluetooth
@@ -123,14 +124,16 @@ class SimpleBluetoothService extends ChangeNotifier {
     _connectionStatus = data['status'] ?? 'Unknown';
     
     if (_isConnected) {
+      // Async function call to load first_name from database
+      _loadUserNameFromDatabase();
       _addStatusLog('Connected to ESP32');
       
       // BYPASS AUTH: Auto-authenticate for testing
       _isAuthenticated = true;
       _esp32NodeId = 'ESP32_TEST';
-      _userName = 'TestUser';
+      _userName = 'TestUser'; // Temporary, will be updated by _loadUserNameFromDatabase
       _addStatusLog('✅ Auto-authenticated (testing mode)');
-      _addStatusLog('Ready to send/receive messages!');
+      _addStatusLog('Loading user name from database...');
       
       // Still send auth request for ESP32 (non-blocking)
       _sendAuthRequest();
@@ -193,6 +196,58 @@ class SimpleBluetoothService extends ChangeNotifier {
     _lastError = arguments.toString();
     _addErrorLog('Bluetooth error: $_lastError');
     notifyListeners();
+  }
+
+  // Load user name (first_name) from database
+  Future<void> _loadUserNameFromDatabase() async {
+    String defaultUserName = 'TestUser'; // Fallback
+    String? userEmail = '';
+    
+    // Get email from SharedPreferences (SQLite session, not Firebase)
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      userEmail = prefs.getString('session_email');
+      _addStatusLog('📧 [_loadUserName] Session email from SharedPreferences: ${userEmail ?? 'null'}');
+    } catch (e) {
+      _addErrorLog('Error getting session_email from SharedPreferences: $e');
+    }
+    
+    // If no email from SharedPreferences, try AuthProvider as fallback
+    if (userEmail == null || userEmail.isEmpty) {
+      final authProvider = AuthProvider();
+      userEmail = authProvider.userEmail;
+      _addStatusLog('⚠ [_loadUserName] No session_email in SharedPreferences, using AuthProvider.userEmail: ${userEmail ?? 'null'}');
+    }
+    
+    if (userEmail != null && userEmail.isNotEmpty) {
+      try {
+        final sqliteService = SQLiteService();
+        final user = await sqliteService.getUserByEmail(userEmail);
+        if (user != null) {
+          final firstName = user['first_name']?.toString();
+          if (firstName != null && firstName.isNotEmpty && firstName.trim().isNotEmpty) {
+            defaultUserName = firstName.trim();
+            _userName = defaultUserName;
+            _addStatusLog('✓✓✓ [_loadUserName] Updated userName to first_name from SQLite database: "$defaultUserName" ✓✓✓');
+            notifyListeners();
+          } else {
+            _addStatusLog('⚠ [_loadUserName] User found in SQLite but first_name is empty');
+          }
+        } else {
+          _addStatusLog('⚠ [_loadUserName] User not found in SQLite database for email: $userEmail');
+        }
+      } catch (e) {
+        _addStatusLog('⚠ [_loadUserName] Could not fetch first_name from SQLite: $e, using: "$defaultUserName"');
+      }
+    } else {
+      _addStatusLog('⚠ [_loadUserName] No userEmail available (neither SharedPreferences nor AuthProvider), using: "$defaultUserName"');
+    }
+    
+    if (_userName == 'TestUser' && defaultUserName != 'TestUser') {
+      _userName = defaultUserName;
+      _addStatusLog('✓ Updated userName to: "$defaultUserName"');
+      notifyListeners();
+    }
   }
 
   // ============================================================================
@@ -386,16 +441,78 @@ class SimpleBluetoothService extends ChangeNotifier {
     
     try {
       final String messageId = '${DateTime.now().millisecondsSinceEpoch}-${(_userName.isNotEmpty ? _userName[0] : 'U')}';
+      
+      // Get first_name from SQLite database (local device storage)
+      // Get email from SharedPreferences (where it's saved during SQLite sign-in)
+      String senderNameToUse = _userName; // Default fallback
+      final sqliteService = SQLiteService();
+      String? userEmail = '';
+      
+      // Get email from SharedPreferences (SQLite session, not Firebase)
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        userEmail = prefs.getString('session_email');
+        _addStatusLog('📧 Session email from SharedPreferences: ${userEmail ?? 'null'}');
+      } catch (e) {
+        _addErrorLog('Error getting session_email from SharedPreferences: $e');
+      }
+      
+      // If no email from SharedPreferences, try AuthProvider as fallback
+      if (userEmail == null || userEmail.isEmpty) {
+        final authProvider = AuthProvider();
+        userEmail = authProvider.userEmail;
+        _addStatusLog('⚠ No session_email in SharedPreferences, using AuthProvider.userEmail: ${userEmail ?? 'null'}');
+      }
+      
+      // Try to get first_name from SQLite database
+      bool foundFirstName = false;
+      
+      if (userEmail != null && userEmail.isNotEmpty) {
+        try {
+          final user = await sqliteService.getUserByEmail(userEmail);
+          if (user != null) {
+            final firstName = user['first_name']?.toString();
+            if (firstName != null && firstName.isNotEmpty && firstName.trim().isNotEmpty) {
+              senderNameToUse = firstName.trim();
+              foundFirstName = true;
+              _addStatusLog('📝 ✓✓✓ Using first_name from SQLite database: "$senderNameToUse" ✓✓✓');
+            } else {
+              _addStatusLog('⚠ User found in SQLite but first_name is empty or null');
+            }
+          } else {
+            _addStatusLog('⚠ User not found in SQLite database for email: $userEmail');
+            // Try to get all users and show them
+            try {
+              final allUsers = await sqliteService.getAllUsers();
+              _addStatusLog('📋 SQLite database has ${allUsers.length} users');
+              for (var u in allUsers.take(3)) {
+                _addStatusLog('  - ${u['email']} -> ${u['first_name']} ${u['last_name']}');
+              }
+            } catch (_) {}
+          }
+        } catch (e) {
+          _addErrorLog('Error fetching first_name from SQLite: $e');
+        }
+      } else {
+        _addErrorLog('⚠⚠⚠ WARNING: No userEmail available (neither SharedPreferences nor AuthProvider)!');
+      }
+      
+      if (!foundFirstName) {
+        _addStatusLog('⚠⚠⚠ Using fallback sender_name: "$senderNameToUse"');
+      }
 
       Map<String, dynamic> messageData = {
         'type': type,
-        'sender_name': _userName,
+        'sender_name': senderNameToUse,  // Use first_name from database
         'sender_id': _esp32NodeId,
+        'sender_email': userEmail ?? '',  // Add email for database lookup
         'receiver_id': receiverId,
         'message': message,
         'timestamp': DateTime.now().toIso8601String(),
         'id': messageId,
       };
+      
+      _addStatusLog('📤 Message data: sender_name="$senderNameToUse", sender_email="${userEmail ?? 'EMPTY'}"');
 
       // Optimistic append to store for instant UI
       final localData = Map<String, dynamic>.from(messageData)
@@ -428,7 +545,7 @@ class SimpleBluetoothService extends ChangeNotifier {
     );
   }
 
-  void _handleChatMessage(Map<String, dynamic> data) {
+  void _handleChatMessage(Map<String, dynamic> data) async {
     try {
       String messageType = data['type'] ?? '';
       String senderName = data['sender_name'] ?? 'Unknown';
@@ -436,6 +553,102 @@ class SimpleBluetoothService extends ChangeNotifier {
 
       // Mark as remote by default unless explicitly local
       data['isLocal'] = data['isLocal'] == true;
+
+      // If message is from another user (not local), fetch first_name from database
+      if (!data['isLocal']) {
+        final sqliteService = SQLiteService();
+        String? firstName;
+        
+        _addStatusLog('🔍 Looking up first_name for sender: "$senderName"');
+        
+        // Strategy 1: If sender_name is already a first name (matches first_name in DB), use it
+        // But first verify it exists in database to avoid using fake names like "TestUser"
+        var allUsers = await sqliteService.getAllUsers();
+        bool senderNameIsFirstName = false;
+        
+        for (var user in allUsers) {
+          final dbFirstName = user['first_name']?.toString().toLowerCase() ?? '';
+          if (dbFirstName == senderName.toLowerCase()) {
+            senderNameIsFirstName = true;
+            firstName = user['first_name']?.toString(); // Get original case
+            _addStatusLog('✓ sender_name "$senderName" matches first_name in database');
+            break;
+          }
+        }
+        
+        // Strategy 2: If sender_name matches a full name, get first_name
+        if (!senderNameIsFirstName && firstName == null) {
+          _addStatusLog('🔍 Checking if "$senderName" matches full name or email...');
+          
+          // Try matching by email first (if sender_email exists)
+          String? senderEmail = data['sender_email']?.toString();
+          if (senderEmail != null && senderEmail.isNotEmpty && senderEmail.contains('@')) {
+            final user = await sqliteService.getUserByEmail(senderEmail);
+            if (user != null) {
+              firstName = user['first_name']?.toString();
+              _addStatusLog('✓ Found first_name by email: $firstName');
+            }
+          }
+          
+          // Try matching sender_name as email
+          if (firstName == null && senderName.contains('@')) {
+            final user = await sqliteService.getUserByEmail(senderName);
+            if (user != null) {
+              firstName = user['first_name']?.toString();
+              _addStatusLog('✓ Found first_name by sender_name (as email): $firstName');
+            }
+          }
+          
+          // Try matching by full name
+          if (firstName == null) {
+            for (var user in allUsers) {
+              final dbFirstName = user['first_name']?.toString() ?? '';
+              final dbLastName = user['last_name']?.toString() ?? '';
+              final dbFullName = '$dbFirstName $dbLastName'.trim().toLowerCase();
+              
+              if (dbFullName == senderName.toLowerCase() || 
+                  dbFirstName.toLowerCase() == senderName.toLowerCase()) {
+                firstName = dbFirstName;
+                _addStatusLog('✓ Found first_name by full name match: $firstName');
+                break;
+              }
+            }
+          }
+          
+          // If still not found, check if any user's first_name or full name contains senderName
+          if (firstName == null) {
+            for (var user in allUsers) {
+              final dbFirstName = user['first_name']?.toString() ?? '';
+              final dbLastName = user['last_name']?.toString() ?? '';
+              final dbFullName = '$dbFirstName $dbLastName'.trim();
+              
+              // Check if senderName is part of full name or vice versa
+              if (dbFullName.toLowerCase().contains(senderName.toLowerCase()) ||
+                  senderName.toLowerCase().contains(dbFirstName.toLowerCase())) {
+                firstName = dbFirstName;
+                _addStatusLog('✓ Found first_name by partial match: $firstName');
+                break;
+              }
+            }
+          }
+        }
+        
+        // Replace sender_name with first_name from database
+        if (firstName != null && firstName.isNotEmpty) {
+          data['sender_name'] = firstName;
+          senderName = firstName;
+          _addStatusLog('📝 ✓✓✓ Displaying first_name: "$senderName" ✓✓✓');
+        } else {
+          _addStatusLog('⚠ Could not find first_name for "$senderName" in database');
+          _addStatusLog('📋 Available users in database:');
+          for (var user in allUsers.take(5)) {
+            final fname = user['first_name']?.toString() ?? 'no first_name';
+            final lname = user['last_name']?.toString() ?? 'no last_name';
+            final email = user['email']?.toString() ?? 'no email';
+            _addStatusLog('  - $fname $lname ($email)');
+          }
+        }
+      }
 
       if (messageType == 'group') {
         _addStatusLog('📢 Group message from $senderName: $message');

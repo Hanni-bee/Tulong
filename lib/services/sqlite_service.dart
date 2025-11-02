@@ -164,6 +164,50 @@ class SQLiteService {
     return results.isNotEmpty ? results.first : null;
   }
 
+  /// Get user's first name by email
+  Future<String?> getFirstNameByEmail(String email) async {
+    final db = await database;
+    final results = await db.query(
+      _usersTable,
+      columns: ['first_name'],
+      where: 'email = ?',
+      whereArgs: [email.toLowerCase()],
+    );
+    if (results.isNotEmpty && results.first['first_name'] != null) {
+      return results.first['first_name'] as String;
+    }
+    return null;
+  }
+
+  /// Get user's first name by full name (searches in first_name or last_name)
+  Future<String?> getFirstNameByName(String name) async {
+    if (name.isEmpty) return null;
+    
+    final db = await database;
+    final nameLower = name.toLowerCase().trim();
+    
+    // Query all users to check first_name and full name matches
+    var results = await db.query(
+      _usersTable,
+      columns: ['first_name', 'last_name'],
+    );
+    for (var user in results) {
+      final firstName = user['first_name']?.toString() ?? '';
+      final lastName = user['last_name']?.toString() ?? '';
+      final fullName = '$firstName $lastName'.trim().toLowerCase();
+      
+      if (fullName == nameLower || firstName.toLowerCase() == nameLower) {
+        return firstName;
+      }
+      
+      // Also check if the input name contains the first name (partial match)
+      if (nameLower.contains(firstName.toLowerCase()) && firstName.isNotEmpty) {
+        return firstName;
+      }
+    }
+    return null;
+  }
+
   Future<int> updateUser(int id, Map<String, dynamic> userData) async {
     final db = await database;
     return await db.update(

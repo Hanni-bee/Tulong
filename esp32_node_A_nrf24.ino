@@ -293,30 +293,22 @@ void processBluetoothMessage(String msg) {
   // Check if it's a chat message with type and message fields
   if (msg.indexOf("\"type\":") >= 0 && msg.indexOf("\"message\":") >= 0) {
     Serial.println("[BT RX] ✓ Valid JSON message format detected");
-    int msgStart = msg.indexOf("\"message\":\"") + 11;
-    int msgEnd = msg.indexOf("\"", msgStart);
     
-    if (msgStart > 10 && msgEnd > msgStart) {
-      String messageText = msg.substring(msgStart, msgEnd);
-      Serial.println("[BT->NRF24] Extracted message text: " + messageText);
-      
-      // Add from_node to message before sending
-      String fullMsg = msg;
-      if (fullMsg.endsWith("}")) {
-        fullMsg.remove(fullMsg.length() - 1);
-        fullMsg += ",\"from_node\":\"" + nId + "\"}";
-        Serial.println("[BT->NRF24] Full message with node ID: " + fullMsg);
-      } else {
-        Serial.println("[WARNING] Message doesn't end with '}', appending node ID anyway");
-        fullMsg += ",\"from_node\":\"" + nId + "\"}";
-      }
-      
-      Serial.println("[BT->NRF24] ✓ Message validated, preparing to send via NRF24L01...");
-      sendViaNRF24(fullMsg);
-      Serial.println("[BT->NRF24] ✓ Message sent to NRF24L01 transmission queue");
+    // Simply forward the message as-is from phone (phone already sends correct sender_name/first_name)
+    // Only add from_node field for routing
+    String fullMsg = msg;
+    if (fullMsg.endsWith("}")) {
+      fullMsg.remove(fullMsg.length() - 1);
+      fullMsg += ",\"from_node\":\"" + nId + "\"}";
+      Serial.println("[BT->NRF24] Forwarding message with node ID: " + fullMsg.substring(0, min(100, (int)fullMsg.length())));
     } else {
-      Serial.println("[ERROR] Could not extract message from JSON");
+      Serial.println("[WARNING] Message doesn't end with '}', appending node ID anyway");
+      fullMsg += ",\"from_node\":\"" + nId + "\"}";
     }
+    
+    Serial.println("[BT->NRF24] ✓ Message validated, preparing to send via NRF24L01...");
+    sendViaNRF24(fullMsg);
+    Serial.println("[BT->NRF24] ✓ Message sent to NRF24L01 transmission queue");
   } else {
     Serial.println("[WARNING] Message doesn't contain 'type' and 'message' fields, ignoring");
   }
@@ -366,17 +358,23 @@ void sendViaNRF24(String message) {
     // Copy data
     memcpy(chunk + sizeof(ChunkHeader), msgBytes + start, len);
     
-    // Send chunk
-    bool sent = radio.write(&chunk, NRF24_PAYLOAD_SIZE);
+    // Send chunk with retries
+    bool sent = false;
+    for (int retry = 0; retry < 3 && !sent; retry++) {
+      sent = radio.write(&chunk, NRF24_PAYLOAD_SIZE);
+      if (!sent && retry < 2) {
+        delay(5);  // Small delay before retry
+      }
+    }
     
     if (sent) {
       Serial.println("[OK] Chunk " + String(i + 1) + "/" + String(totalChunks) + " (" + String(len) + " bytes)");
     } else {
-      Serial.println("[FAIL] Chunk " + String(i + 1) + "/" + String(totalChunks));
+      Serial.println("[FAIL] Chunk " + String(i + 1) + "/" + String(totalChunks) + " (retried 3x)");
       allSent = false;
     }
     
-    delay(15);  // Small delay between chunks for reliability
+    delay(25);  // Increased delay between chunks for reliability
   }
   
   // Resume listening
