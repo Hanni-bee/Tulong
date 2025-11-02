@@ -71,7 +71,27 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen> {
     // Listen to the canonical message list from the service
     _messagesListSubscription = esp32Service.messagesStream.listen((list) {
       setState(() {
+        // Update messages from service list
         _messages = list;
+        
+        // Check if any incoming messages match ones we sent (for seen status)
+        final esp32Service2 = Provider.of<SimpleBluetoothService>(context, listen: false);
+        for (var msg in list) {
+          if (msg['sender_name']?.toString() == esp32Service2.userName && 
+              msg['isLocal'] != true &&
+              msg['message']?.toString().isNotEmpty == true) {
+            // This is our message being echoed back - find local version and mark as seen
+            final localIndex = _messages.indexWhere((m) => 
+              m['message'] == msg['message'] && 
+              m['isLocal'] == true &&
+              m['sender_name'] == msg['sender_name'] &&
+              (m['status'] == 'sent' || m['status'] == 'sending')
+            );
+            if (localIndex >= 0) {
+              _messages[localIndex]['status'] = 'seen';
+            }
+          }
+        }
       });
       _scrollToBottom();
     });
@@ -112,6 +132,31 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen> {
     }
     
     message['isLocal'] = false;
+    
+    final messageText = message['message']?.toString() ?? '';
+    final senderName = message['sender_name']?.toString() ?? '';
+    final esp32Service = Provider.of<SimpleBluetoothService>(context, listen: false);
+    
+    // If this message is from us (meaning it was forwarded back via NRF24L01), it means someone else saw it
+    if (senderName == esp32Service.userName && messageText.isNotEmpty) {
+      // Find the local message we sent and mark it as seen
+      setState(() {
+        final index = _messages.indexWhere((m) => 
+          m['message'] == messageText && 
+          m['isLocal'] == true &&
+          m['sender_name'] == senderName &&
+          (m['status'] == 'sent' || m['status'] == 'sending')
+        );
+        if (index >= 0) {
+          _messages[index]['status'] = 'seen';
+          // Don't add this as a new message since it's our own message being echoed back
+          _scrollToBottom();
+          return;
+        }
+      });
+    }
+    
+    // This is a new message from someone else
     setState(() {
       _messages.add(message);
     });
@@ -120,7 +165,16 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen> {
 
   void _scrollToBottom() {
     if (_scrollController.hasClients) {
-      _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+      // Use smooth animation for better UX
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (_scrollController.hasClients) {
+          _scrollController.animateTo(
+            _scrollController.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+          );
+        }
+      });
     }
   }
 
@@ -170,16 +224,21 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen> {
     
     setState(() => _isSending = true);
     
+    // Generate unique message ID
+    final messageId = DateTime.now().millisecondsSinceEpoch.toString();
+    
     try {
-      // Add message to local list immediately
+      // Add message to local list immediately with "sending" status
       final localMessage = {
         'type': 'group',
         'sender_name': esp32Service.userName,
         'sender_id': esp32Service.esp32NodeId,
         'receiver_id': 'all',
         'message': message,
-        'timestamp': DateTime.now().toString(),
+        'timestamp': DateTime.now().toIso8601String(),
+        'id': messageId,
         'isLocal': true,
+        'status': 'sending',  // Initial status: sending
       };
       
       setState(() {
@@ -192,8 +251,23 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen> {
       // Send via ESP32
       await esp32Service.sendGroupMessage(message);
       
+      // Update status to "sent" after successful send
+      setState(() {
+        final index = _messages.indexWhere((m) => m['id'] == messageId);
+        if (index >= 0) {
+          _messages[index]['status'] = 'sent';
+        }
+      });
+      
     } catch (e) {
       _showSimpleMessage('Failed to send: $e');
+      // Update status to failed if error
+      setState(() {
+        final index = _messages.indexWhere((m) => m['id'] == messageId);
+        if (index >= 0) {
+          _messages[index]['status'] = 'failed';
+        }
+      });
     } finally {
       setState(() => _isSending = false);
     }
@@ -350,11 +424,21 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen> {
                     ),
                   ),
                   const SizedBox(height: 4),
-                  Text(
-                    _formatTime(timestamp),
-                    style: AppTypography.bodySmall.copyWith(
-                      color: isLocal ? Colors.white70 : AppColors.lightGray,
-                    ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _formatTime(timestamp),
+                        style: AppTypography.bodySmall.copyWith(
+                          color: isLocal ? Colors.white70 : AppColors.lightGray,
+                          fontSize: 11,
+                        ),
+                      ),
+                      if (isLocal) ...[
+                        const SizedBox(width: 4),
+                        _buildMessageStatus(message),
+                      ],
+                    ],
                   ),
                 ],
               ),
@@ -396,6 +480,46 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen> {
       }
     } catch (e) {
       return 'now';
+    }
+  }
+
+  Widget _buildMessageStatus(Map<String, dynamic> message) {
+    final status = message['status']?.toString() ?? 'sent';
+    
+    switch (status) {
+      case 'sending':
+        return SizedBox(
+          width: 12,
+          height: 12,
+          child: CircularProgressIndicator(
+            strokeWidth: 1.5,
+            valueColor: AlwaysStoppedAnimation<Color>(Colors.white70),
+          ),
+        );
+      case 'sent':
+        return Icon(
+          Icons.done,
+          size: 14,
+          color: Colors.white70,
+        );
+      case 'seen':
+        return Icon(
+          Icons.done_all,
+          size: 14,
+          color: Colors.white,
+        );
+      case 'failed':
+        return Icon(
+          Icons.error_outline,
+          size: 14,
+          color: Colors.red[300],
+        );
+      default:
+        return Icon(
+          Icons.done,
+          size: 14,
+          color: Colors.white70,
+        );
     }
   }
 
