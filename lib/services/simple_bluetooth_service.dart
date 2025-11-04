@@ -189,9 +189,8 @@ class SimpleBluetoothService extends ChangeNotifier {
         } else if (data.containsKey('connected_users')) {
           _handleConnectedUsersResponse(data);
         } else if (data.containsKey('type')) {
-          if (data['type'] == 'voice_message') {
-            _handleVoiceMessage(data);
-          } else {
+          // Handle chat messages (ignore voice messages)
+          if (data['type'] != 'voice_message') {
             _handleChatMessage(data);
           }
         } else if (data.containsKey('ack')) {
@@ -700,25 +699,6 @@ class SimpleBluetoothService extends ChangeNotifier {
 
     } catch (e) {
       _addErrorLog('Error handling chat message: $e');
-    }
-  }
-
-  void _handleVoiceMessage(Map<String, dynamic> data) {
-    try {
-      String messageId = data['messageId'] ?? 'unknown';
-      String fromNode = data['from_node'] ?? 'unknown';
-      
-      _addStatusLog('🎵 Voice message received from $fromNode (ID: $messageId)');
-      
-      // Push to message stream for voice controller to handle
-      _messageController.add(data);
-      
-      // Also add to message store for UI display
-      _messages.add(Map<String, dynamic>.from(data));
-      _messagesStreamController.add(List<Map<String, dynamic>>.from(_messages));
-      
-    } catch (e) {
-      _addErrorLog('Error handling voice message: $e');
     }
   }
 

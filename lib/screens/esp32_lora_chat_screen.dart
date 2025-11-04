@@ -1,12 +1,14 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:record/record.dart' as record;
+import 'package:path_provider/path_provider.dart';
+import 'package:audioplayers/audioplayers.dart';
 import '../constants/app_colors.dart';
 import '../constants/app_typography.dart';
 import '../constants/soft_ui_design.dart';
 import '../services/simple_bluetooth_service.dart';
-import '../controllers/voice_controller.dart';
 import '../widgets/unified_top_bar.dart';
 import '../widgets/connected_users_dialog.dart';
 
@@ -19,28 +21,32 @@ class ESP32LoRaChatScreen extends StatefulWidget {
   State<ESP32LoRaChatScreen> createState() => _ESP32LoRaChatScreenState();
 }
 
-class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen> {
+class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen> with TickerProviderStateMixin {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   
   List<Map<String, dynamic>> _messages = [];
   StreamSubscription<Map<String, dynamic>>? _messageSubscription;
   StreamSubscription<List<Map<String, dynamic>>>? _messagesListSubscription;
-  StreamSubscription<Map<String, dynamic>>? _voiceFrameSubscription;
   
   bool _isSending = false;
-  bool _isRecording = false;
-  bool _isPlaying = false;
   
-  late VoiceController _voiceController;
+  // Voice recording state
+  final record.AudioRecorder _recorder = record.AudioRecorder();
+  bool _isRecording = false;
+  String? _recordedFilePath;
+  final AudioPlayer _audioPlayer = AudioPlayer();
+  late AnimationController _waveAnimationController;
 
   @override
   void initState() {
     super.initState();
-    _voiceController = VoiceController();
+    _waveAnimationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1000),
+    );
     _initializeESP32Service();
     _setupMessageStreams();
-    _setupVoiceStreams();
   }
 
   void _initializeESP32Service() async {
@@ -50,9 +56,6 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen> {
     if (!esp32Service.isConnected) {
       await esp32Service.connectToESP32();
     }
-    
-    // Initialize voice controller
-    await _voiceController.initialize();
   }
 
   void _setupMessageStreams() {
@@ -61,11 +64,6 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen> {
     // Listen for incoming messages
     _messageSubscription = esp32Service.messageStream.listen((message) {
       _handleIncomingMessage(message);
-      
-      // Handle voice messages from ESP32
-      if (message['type'] == 'voice_message') {
-        _voiceController.handleVoiceMessage(message);
-      }
     });
     
     // Listen to the canonical message list from the service
@@ -97,40 +95,7 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen> {
     });
   }
 
-  void _setupVoiceStreams() {
-    // Listen for voice frames from voice controller
-    _voiceFrameSubscription = _voiceController.voiceFrameStream.listen((frame) {
-      _sendVoiceFrame(frame);
-    });
-    
-    // Listen for recording state
-    _voiceController.recordingStream.listen((recording) {
-      setState(() {
-        _isRecording = recording;
-      });
-    });
-    
-    // Listen for playing state
-    _voiceController.playingStream.listen((playing) {
-      setState(() {
-        _isPlaying = playing;
-      });
-    });
-    
-    // Listen for voice errors
-    _voiceController.errorStream.listen((error) {
-      _showSimpleMessage('Voice error: $error');
-    });
-  }
-
   void _handleIncomingMessage(Map<String, dynamic> message) {
-    // Check if it's a voice message
-    if (message['type'] == 'voice_message' && message['data_b64_pcm16le'] != null) {
-      final String base64Data = message['data_b64_pcm16le'];
-      _voiceController.playBase64Pcm(base64Data);
-      return;
-    }
-    
     message['isLocal'] = false;
     
     final messageText = message['message']?.toString() ?? '';
@@ -176,34 +141,6 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen> {
         }
       });
     }
-  }
-
-  void _sendVoiceFrame(Map<String, dynamic> frame) {
-    final esp32Service = Provider.of<SimpleBluetoothService>(context, listen: false);
-    
-    if (!esp32Service.isConnected) {
-      _showSimpleMessage('Not connected to ESP32');
-      return;
-    }
-    
-    // Send voice frame via ESP32 service - ESP32 compatible format
-    final Map<String, dynamic> voiceMessage = {
-      'messageId': frame['messageId'],
-      'pcm16leb64': frame['pcm16leb64'],  // Direct ESP32 format
-    };
-    
-    // Send via the existing Bluetooth service
-    esp32Service.sendMessage(voiceMessage);
-  }
-
-  void _startPTT() {
-    _voiceController.startPTT();
-    HapticFeedback.mediumImpact();
-  }
-
-  void _stopPTT() {
-    _voiceController.stopPTT();
-    HapticFeedback.lightImpact();
   }
 
   Future<void> _sendMessage() async {
@@ -280,6 +217,73 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen> {
         duration: const Duration(seconds: 2),
       ),
     );
+  }
+
+  Future<void> _startRecording() async {
+    if (await _recorder.hasPermission()) {
+      final dir = await getTemporaryDirectory();
+      final path = '${dir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
+      await _recorder.start(
+        record.RecordConfig(
+          encoder: record.AudioEncoder.aacLc,
+          bitRate: 128000,
+          sampleRate: 44100,
+        ),
+        path: path,
+      );
+      setState(() {
+        _isRecording = true;
+      });
+      _waveAnimationController.repeat();
+    }
+  }
+
+  Future<void> _stopRecording() async {
+    final path = await _recorder.stop();
+    if (path != null) {
+      final file = File(path);
+      
+      // Read file bytes and print first 10 bytes
+      final bytes = await file.readAsBytes();
+      print(bytes.take(10).toList()); // e.g. [0, 0, 0, 32, 102, 116, 121, 112, ...]
+      
+      final size = (await file.length() / 1024).toStringAsFixed(1);
+      
+      // Get duration using audioplayers
+      String duration = "0";
+      try {
+        await _audioPlayer.setSource(DeviceFileSource(path));
+        final durationObj = await _audioPlayer.getDuration();
+        if (durationObj != null) {
+          duration = durationObj.inSeconds.toStringAsFixed(1);
+        }
+      } catch (e) {
+        // If duration cannot be retrieved, default to "0"
+        duration = "0";
+      }
+
+      setState(() {
+        _recordedFilePath = path;
+        _isRecording = false;
+      });
+      _waveAnimationController.stop();
+      _waveAnimationController.reset();
+
+      setState(() {
+        _messages.add({
+          'type': 'voice',
+          'filePath': path,
+          'duration': duration,
+          'fileSize': size,
+          'sender_name': Provider.of<SimpleBluetoothService>(context, listen: false).userName,
+          'isLocal': true,
+          'timestamp': DateTime.now().toIso8601String(),
+          'status': 'sent',
+        });
+      });
+
+      _scrollToBottom();
+    }
   }
 
   @override
@@ -362,6 +366,11 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen> {
   }
 
   Widget _buildSimpleMessageBubble(Map<String, dynamic> message) {
+    // Check if this is a voice message
+    if (message['type'] == 'voice') {
+      return _buildVoiceMessageBubble(message);
+    }
+    
     final isLocal = message['isLocal'] == true;
     final senderName = message['sender_name'] ?? 'Unknown';
     final messageText = message['message'] ?? '';
@@ -523,6 +532,47 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen> {
     }
   }
 
+  Widget _buildVoiceMessageBubble(Map<String, dynamic> message) {
+    final isLocal = message['isLocal'] == true;
+    final filePath = message['filePath'];
+    final duration = message['duration'];
+    final size = message['fileSize'];
+
+    return Align(
+      alignment: isLocal ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: isLocal ? AppColors.primaryRed : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isLocal ? Colors.white.withOpacity(0.3) : AppColors.lightGray,
+            width: 1.5,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              icon: Icon(
+                Icons.play_arrow_rounded,
+                color: isLocal ? Colors.white : AppColors.primaryRed,
+              ),
+              onPressed: () => _audioPlayer.play(DeviceFileSource(filePath)),
+            ),
+            Text(
+              '$duration s • $size KB',
+              style: AppTypography.bodySmall.copyWith(
+                color: isLocal ? Colors.white70 : AppColors.darkGray,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildSimpleMessageInput() {
     return Container(
       decoration: SoftUIDesign.cardDecoration(
@@ -537,122 +587,84 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen> {
       child: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(16),
-          child: Column(
+          child: Row(
             children: [
-              // Voice status indicator
-              if (_isRecording || _isPlaying)
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-                  margin: const EdgeInsets.only(bottom: 12),
+              // Text input
+              Expanded(
+                child: Container(
                   decoration: SoftUIDesign.cardDecoration(
-                    backgroundColor: _isRecording ? AppColors.error.withOpacity(0.08) : AppColors.success.withOpacity(0.08),
-                    borderRadius: SoftUIDesign.buttonBorderRadius,
+                    backgroundColor: AppColors.white,
+                    borderRadius: 24.0,
                     elevation: 2.0,
-                    borderColor: _isRecording ? AppColors.error.withOpacity(0.3) : AppColors.success.withOpacity(0.3),
+                    borderColor: AppColors.lightGray.withOpacity(0.3),
                     showBorder: true,
                   ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        _isRecording ? Icons.mic : Icons.volume_up,
-                        color: _isRecording ? AppColors.error : AppColors.success,
-                        size: 16,
+                  child: TextField(
+                    controller: _messageController,
+                    decoration: const InputDecoration(
+                      hintText: 'Type a message...',
+                      border: InputBorder.none,
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
                       ),
-                      const SizedBox(width: 8),
-                      Text(
-                        _isRecording ? 'Recording...' : 'Playing...',
-                        style: AppTypography.bodySmall.copyWith(
-                          color: _isRecording ? AppColors.error : AppColors.success,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
+                    ),
+                    maxLines: null,
+                    textInputAction: TextInputAction.send,
+                    onSubmitted: (_) => _sendMessage(),
                   ),
                 ),
-              
-              // Input row
-              Row(
-                children: [
-                  // PTT Button
-                  GestureDetector(
-                    onTapDown: (_) => _startPTT(),
-                    onTapUp: (_) => _stopPTT(),
-                    onTapCancel: () => _stopPTT(),
-                    child: Container(
-                      width: 48,
-                      height: 48,
-                      decoration: SoftUIDesign.buttonDecoration(
-                        backgroundColor: _isRecording ? AppColors.error : AppColors.online,
-                        borderRadius: 24.0,
-                        shadowColor: _isRecording ? AppColors.error : AppColors.online,
-                      ),
-                      child: Icon(
-                        _isRecording ? Icons.mic : Icons.mic_none,
-                        color: Colors.white,
-                        size: 20,
-                      ),
-                    ),
+              ),
+
+              const SizedBox(width: 12),
+
+              // Mic button with wave animation
+              GestureDetector(
+                onLongPressStart: (_) => _startRecording(),
+                onLongPressEnd: (_) => _stopRecording(),
+                child: Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: _isRecording ? Colors.redAccent : Colors.green,
+                    borderRadius: BorderRadius.circular(24),
                   ),
-                  
-                  const SizedBox(width: 12),
-                  
-                  // Text input
-                  Expanded(
-                    child: Container(
-                      decoration: SoftUIDesign.cardDecoration(
-                        backgroundColor: AppColors.white,
-                        borderRadius: 24.0,
-                        elevation: 2.0,
-                        borderColor: AppColors.lightGray.withOpacity(0.3),
-                        showBorder: true,
-                      ),
-                      child: TextField(
-                        controller: _messageController,
-                        decoration: const InputDecoration(
-                          hintText: 'Type a message...',
-                          border: InputBorder.none,
-                          contentPadding: EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 12,
-                          ),
+                  child: _isRecording
+                      ? _buildWaveAnimation()
+                      : const Icon(
+                          Icons.mic_rounded,
+                          color: Colors.white,
+                          size: 20,
                         ),
-                        maxLines: null,
-                        textInputAction: TextInputAction.send,
-                        onSubmitted: (_) => _sendMessage(),
-                      ),
-                    ),
+                ),
+              ),
+
+              const SizedBox(width: 12),
+
+              // Send button
+              GestureDetector(
+                onTap: _isSending ? null : _sendMessage,
+                child: Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: _isSending ? AppColors.lightGray : AppColors.primaryRed,
+                    borderRadius: BorderRadius.circular(24),
                   ),
-                  
-                  const SizedBox(width: 12),
-                  
-                  // Send button
-                  GestureDetector(
-                    onTap: _isSending ? null : _sendMessage,
-                    child: Container(
-                      width: 48,
-                      height: 48,
-                      decoration: BoxDecoration(
-                        color: _isSending ? AppColors.lightGray : AppColors.primaryRed,
-                        borderRadius: BorderRadius.circular(24),
-                      ),
-                      child: _isSending
-                          ? const Padding(
-                              padding: EdgeInsets.all(12),
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                              ),
-                            )
-                          : const Icon(
-                              Icons.send_rounded,
-                              color: Colors.white,
-                              size: 20,
-                            ),
-                    ),
-                  ),
-                ],
+                  child: _isSending
+                      ? const Padding(
+                          padding: EdgeInsets.all(12),
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        )
+                      : const Icon(
+                          Icons.send_rounded,
+                          color: Colors.white,
+                          size: 20,
+                        ),
+                ),
               ),
             ],
           ),
@@ -661,14 +673,44 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen> {
     );
   }
 
+  Widget _buildWaveAnimation() {
+    return AnimatedBuilder(
+      animation: _waveAnimationController,
+      builder: (context, child) {
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: List.generate(3, (index) {
+            final delay = index * 0.2;
+            final animationValue = (_waveAnimationController.value + delay) % 1.0;
+            final height = 8 + (animationValue < 0.5 
+                ? animationValue * 12 
+                : (1 - animationValue) * 12);
+            
+            return Container(
+              margin: const EdgeInsets.symmetric(horizontal: 2),
+              width: 3,
+              height: height,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            );
+          }),
+        );
+      },
+    );
+  }
+
   @override
   void dispose() {
+    _waveAnimationController.dispose();
+    _recorder.dispose();
+    _audioPlayer.dispose();
     _messageController.dispose();
     _scrollController.dispose();
     _messageSubscription?.cancel();
     _messagesListSubscription?.cancel();
-    _voiceFrameSubscription?.cancel();
-    _voiceController.dispose();
     super.dispose();
   }
 }

@@ -33,7 +33,6 @@ String buf = "";
 bool conn = false;
 
 // Phone binary chunking variables (for messages > 128 bytes)
-uint8_t phoneChunkBuffer[512];  // Store received phone chunks
 uint8_t phoneChunkData[4][128];  // Store up to 4 chunks from phone (128 bytes each)
 uint8_t phoneChunkLengths[4];
 uint8_t phoneReceivedChunks = 0;
