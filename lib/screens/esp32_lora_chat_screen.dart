@@ -298,8 +298,13 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen> with TickerPr
             // Unified top bar
             Consumer<SimpleBluetoothService>(
               builder: (context, esp32Service, child) {
+                final connectedCount = esp32Service.connectedUsers.length;
+                final status = esp32Service.isConnected 
+                    ? (connectedCount > 0 ? 'Connected ($connectedCount)' : 'Connected')
+                    : 'Disconnected';
+                
                 return TopBarConfigs.loraTopBar(
-                  status: esp32Service.isConnected ? 'Connected' : 'Disconnected',
+                  status: status,
                   onBluetoothTap: () {
                     // Bluetooth icon - ESP32 Device Scanner Modal (list of devices to connect)
                     showDialog(
