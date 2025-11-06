@@ -90,6 +90,16 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen> {
       setState(() {
         _isRecording = recording;
       });
+      
+      // Send V2 protocol markers
+      final esp32Service = Provider.of<SimpleBluetoothService>(context, listen: false);
+      if (recording) {
+        // Send <VOICE_START> when recording starts
+        esp32Service.sendRawMessage('<VOICE_START>');
+      } else {
+        // Send <VOICE_END> when recording stops
+        esp32Service.sendRawMessage('<VOICE_END>');
+      }
     });
     
     // Listen for playing state
@@ -109,10 +119,21 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen> {
     // Check if it's a voice message
     if (message['type'] == 'voice_message' && message['data_b64_pcm16le'] != null) {
       final String base64Data = message['data_b64_pcm16le'];
+      
+      // Play the voice message
       _voiceController.playBase64Pcm(base64Data);
+      
+      // Also display it in chat UI
+      message['isLocal'] = false;
+      message['message'] = '🎤 Voice message';  // Display text for voice
+      setState(() {
+        _messages.add(message);
+      });
+      _scrollToBottom();
       return;
     }
     
+    // Regular text message
     message['isLocal'] = false;
     setState(() {
       _messages.add(message);

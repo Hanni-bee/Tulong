@@ -1,5 +1,5 @@
 /*
- * ESP32 LoRa + Bluetooth (SPP) + ADPCM Voice Bridge
+ * ESP32 NRF24L01 + Bluetooth (SPP) + ADPCM Voice Bridge - V2 Protocol
  * Compatible with Flutter App PTT system
  * 
  * Node Roles:
@@ -7,23 +7,24 @@
  *   Node B → "ESP32_Node_B"
  *   Node C → "ESP32_Node_C"
  *
- * LoRa Wiring:
- *   NSS  = 5
- *   MOSI = 23
- *   MISO = 19
- *   SCK  = 18
- *   RESET= 2
- *   DIO0 = 4
+ * NRF24L01 Wiring:
+ *   CE   = GPIO 4
+ *   CSN  = GPIO 5
+ *   MOSI = GPIO 23
+ *   MISO = GPIO 19
+ *   SCK  = GPIO 18
+ *   IRQ  = GPIO 2 (optional)
  *
- * LoRa: SX1278 @ 433 MHz
+ * NRF24L01 @ 2.4 GHz
  */
 
 #include <Arduino.h>
 #include <BluetoothSerial.h>
-#include <LoRa.h>
+#include <SPI.h>
+#include <nRF24L01.h>
+#include <RF24.h>
 #include <ArduinoJson.h>
 #include <vector>
-#include <SPI.h>
 
 // ✅ Base64 support (ESP32 core 3.x)
 extern "C" {
@@ -31,17 +32,55 @@ extern "C" {
   #include "libb64/cencode.h"
 }
 
+// ===== VoiceProtoV2 Protocol Definitions =====
+enum : uint8_t { VP2_START = 0xE0, VP2_DATA = 0xE1, VP2_END = 0xE2 };
+
+// 5-byte packed header → payload ≤ 27B for a 32B RF packet
+struct __attribute__((packed)) V2Hdr {
+  uint8_t  type;     // VP2_*
+  uint16_t seqLE;    // little-endian
+  uint8_t  len;      // payload bytes (0..27)
+  uint8_t  crc8;     // CRC-8 over [type|seq|len|payload], excl. crc8 byte
+};
+
+// CRC-8 (poly 0x07, init 0x00), no reflect, no xorout
+static inline uint8_t crc8_update(uint8_t crc, const uint8_t* p, size_t n) {
+  while (n--) {
+    crc ^= *p++;
+    for (uint8_t b = 0; b < 8; b++)
+      crc = (crc & 0x80) ? (uint8_t)((crc << 1) ^ 0x07) : (uint8_t)(crc << 1);
+  }
+  return crc;
+}
+
+static inline uint8_t crc8_calc(const void* data, size_t n) {
+  return crc8_update(0x00, (const uint8_t*)data, n);
+}
+
+#ifndef VP2_MAX_PAYLOAD
+#define VP2_MAX_PAYLOAD 27   // nRF24-friendly
+#endif
+
 // ---------------- CONFIG ----------------
-#define NSS 5
-#define RST 2
-#define DIO0 4
-#define FREQ 433E6
+#define CE_PIN 4
+#define CSN_PIN 5
+#define RF24_CHANNEL 76  // 2.476 GHz
 #define BT_DEVICE_NAME "ESP32_Node_B"  // change per node
 
+// NRF24L01 addresses (5 bytes)
+const uint64_t address[2] = {0xF0F0F0F0E1LL, 0xF0F0F0F0E2LL};  // Node A=0, Node B=1
+const int thisNode = 1;  // Node B uses address[1]
+
+RF24 radio(CE_PIN, CSN_PIN);
 BluetoothSerial BT;
 String nodeId = "";
 String btBuf = "";
 bool connected = false;
+
+// Voice reassembly buffer for V2 protocol
+std::vector<uint8_t> vp2_audio_buffer;
+bool vp2_voice_open = false;
+uint16_t vp2_expect = 0;
 
 // ---------- LOGGING UTILITY ----------
 void logLine(const char* tag, const String &msg) {
@@ -50,16 +89,6 @@ void logLine(const char* tag, const String &msg) {
 }
 
 // ---------------- UTILITIES -------------
-static uint16_t crc16(const uint8_t *buf, size_t len) {
-  uint16_t crc = 0xFFFF;
-  while (len--) {
-    crc ^= *buf++;
-    for (int i = 0; i < 8; ++i)
-      crc = (crc & 1) ? (crc >> 1) ^ 0xA001 : (crc >> 1);
-  }
-  return crc;
-}
-
 static String makeMsgId() {
   uint32_t t = millis();
   uint32_t r = esp_random();
@@ -172,235 +201,288 @@ public:
   }
 };
 
-// ----------- VOICE REASSEMBLY BUFFER ----------
-struct VoicePacket {
-  String msgId;
-  uint16_t totalPkts;
-  uint16_t receivedPkts;
-  std::vector<std::vector<uint8_t>> chunks;
-  unsigned long lastActivity;
-  bool active;
-};
-
-#define MAX_VOICE_SESSIONS 4
-#define VOICE_TIMEOUT 20000
-VoicePacket sessions[MAX_VOICE_SESSIONS];
-
-int findSession(const String &mid) {
-  for (int i = 0; i < MAX_VOICE_SESSIONS; i++)
-    if (sessions[i].active && sessions[i].msgId == mid) return i;
-  return -1;
+// ===== nRF24 write/read helpers =====
+static bool rfWrite(const uint8_t* buf, uint8_t n) {
+  if (n == 0 || n > 32) return false;
+  radio.stopListening();
+  bool ok = false;
+  for (int attempt = 0; attempt < 3 && !ok; attempt++) {
+    ok = radio.write(buf, n);
+    if (!ok) delay(5);
+  }
+  radio.startListening();
+  return ok;
 }
 
-int createSession(const String &mid, uint16_t totalPkts) {
-  for (int i = 0; i < MAX_VOICE_SESSIONS; i++) {
-    if (!sessions[i].active) {
-      sessions[i].active = true;
-      sessions[i].msgId = mid;
-      sessions[i].totalPkts = totalPkts;
-      sessions[i].receivedPkts = 0;
-      sessions[i].chunks.assign(totalPkts, {});
-      sessions[i].lastActivity = millis();
-      return i;
+static bool rfRead(uint8_t* raw, uint8_t* len) {
+  if (!radio.available()) return false;
+  uint8_t n = radio.getDynamicPayloadSize();
+  if (n == 0 || n > 32) { radio.flush_rx(); return false; }
+  radio.read(raw, n);
+  *len = n;
+  return true;
+}
+
+// ===== TX: V2 send helpers =====
+static uint16_t g_txSeq = 0;
+
+static bool vp2_send_control(uint8_t type) {
+  V2Hdr h;
+  h.type = type;
+  h.seqLE = (type == VP2_START ? 0 : g_txSeq++);
+  h.len = 0;
+  h.crc8 = crc8_calc(&h, 4);  // header (type|seq|len), no payload
+  return rfWrite((uint8_t*)&h, sizeof(V2Hdr));
+}
+
+static bool vp2_send_start() {
+  g_txSeq = 0;
+  return vp2_send_control(VP2_START);
+}
+
+static bool vp2_send_end() {
+  return vp2_send_control(VP2_END);
+}
+
+static bool vp2_send_audio(const uint8_t* data, size_t n) {
+  size_t i = 0;
+  while (i < n) {
+    const uint8_t L = (uint8_t)min((size_t)VP2_MAX_PAYLOAD, n - i);
+    uint8_t buf[sizeof(V2Hdr) + VP2_MAX_PAYLOAD];
+    V2Hdr* h = (V2Hdr*)buf;
+    h->type = VP2_DATA;
+    h->seqLE = g_txSeq++;
+    h->len = L;
+    memcpy(buf + sizeof(V2Hdr), data + i, L);
+    
+    uint8_t crc = 0;
+    crc = crc8_update(crc, (uint8_t*)h, 4);              // type|seq|len
+    crc = crc8_update(crc, buf + sizeof(V2Hdr), L);      // payload
+    h->crc8 = crc;
+    
+    if (!rfWrite(buf, (uint8_t)(sizeof(V2Hdr) + L))) return false;
+    i += L;
+    delay(2);  // pacing
+  }
+  return true;
+}
+
+// ===== RX: V2 parsing =====
+static void vp2_handle_one(const uint8_t* raw, uint8_t rfLen) {
+  if (rfLen < sizeof(V2Hdr)) return;
+  
+  const V2Hdr* h = (const V2Hdr*)raw;
+  const uint8_t payLen = (uint8_t)(rfLen - sizeof(V2Hdr));
+  
+  if (payLen != h->len || payLen > VP2_MAX_PAYLOAD) {
+    logLine("V2_LEN_ERR", String("Expected ") + h->len + " got " + payLen);
+    return;
+  }
+  
+  uint8_t crc = 0;
+  crc = crc8_update(crc, raw, 4);
+  crc = crc8_update(crc, raw + sizeof(V2Hdr), payLen);
+  
+  if (crc != h->crc8) {
+    logLine("V2_CRC_ERR", String("CRC mismatch"));
+    return;
+  }
+  
+  switch (h->type) {
+    case VP2_START:
+      vp2_voice_open = true;
+      vp2_expect = 0;
+      vp2_audio_buffer.clear();
+      logLine("V2_RX", "START");
+      if (connected && BT.hasClient()) BT.println("<VOICE_START>");
+      return;
+      
+    case VP2_END:
+      if (vp2_voice_open) {
+        vp2_voice_open = false;
+        logLine("V2_RX", "END");
+        
+        // Decode and forward to phone
+        if (vp2_audio_buffer.size() > 0) {
+          IMAState st{0, 0};
+          std::vector<int16_t> pcm;
+          ADPCM::decode(vp2_audio_buffer.data(), vp2_audio_buffer.size(), pcm, st);
+          
+          std::vector<uint8_t> pcmBytes;
+          pcmBytes.reserve(pcm.size() * 2);
+          for (auto s : pcm) {
+            pcmBytes.push_back((uint8_t)(s & 0xFF));
+            pcmBytes.push_back((uint8_t)((s >> 8) & 0xFF));
+          }
+          
+          String b64 = b64Encode(pcmBytes.data(), pcmBytes.size());
+          if (connected && BT.hasClient()) {
+            DynamicJsonDocument out(8192);
+            out["type"] = "voice_message";
+            out["from_node"] = nodeId;
+            out["data_b64_pcm16le"] = b64;
+            String outS;
+            serializeJson(out, outS);
+            BT.println(outS);
+          }
+          vp2_audio_buffer.clear();
+        }
+        
+        if (connected && BT.hasClient()) BT.println("<VOICE_END>");
+      }
+      return;
+      
+    case VP2_DATA: {
+      if (!vp2_voice_open) {
+        logLine("V2_ERR", "DATA_WHEN_CLOSED");
+        return;
+      }
+      
+      const uint16_t seq = h->seqLE;
+      if (seq != vp2_expect) {
+        logLine("V2_SEQ", String("Loss expect=") + vp2_expect + " got=" + seq);
+        vp2_expect = (uint16_t)(seq + 1);
+      } else {
+        vp2_expect++;
+      }
+      
+      // Accumulate audio payload
+      const uint8_t* p = raw + sizeof(V2Hdr);
+      const uint8_t L = payLen;
+      vp2_audio_buffer.insert(vp2_audio_buffer.end(), p, p + L);
+      
+      return;
     }
   }
-  return -1;
 }
 
-void clearSession(int idx) {
-  if (idx < 0 || idx >= MAX_VOICE_SESSIONS) return;
-  sessions[idx].active = false;
-  sessions[idx].chunks.clear();
-}
-
-// ----------- SEND VOICE VIA LORA ----------
-static const int LORA_MAX_PAYLOAD = 220;
-
-static void sendVoiceLoRa(const String &msgId, const std::vector<uint8_t> &adpcm) {
-  uint16_t total = (adpcm.size() + LORA_MAX_PAYLOAD - 1) / LORA_MAX_PAYLOAD;
-  for (uint16_t i = 0; i < total; i++) {
-    size_t off = (size_t)i * LORA_MAX_PAYLOAD;
-    size_t len = min((size_t)LORA_MAX_PAYLOAD, adpcm.size() - off);
-    uint16_t c = crc16(&adpcm[off], len);
-
-    LoRa.beginPacket();
-    LoRa.print("VC");
-    LoRa.print(msgId);
-    LoRa.write((uint8_t)i);
-    LoRa.write((uint8_t)total);
-    LoRa.write((uint8_t)(c >> 8));
-    LoRa.write((uint8_t)(c & 0xFF));
-    LoRa.write(&adpcm[off], len);
-    LoRa.endPacket();
-
-    logLine("LORA_TX", String("Sent chunk ") + String(i + 1) + "/" + String(total) + " ID=" + msgId);
-    delay(25);
+void handleNRF24() {
+  uint8_t raw[32], n;
+  while (rfRead(raw, &n)) {
+    vp2_handle_one(raw, n);
   }
 }
 
 // ----------- HANDLE BLUETOOTH MESSAGES ----------
 static void handleBT(const String &msg) {
-  if (msg.indexOf("\"voice_frame\"") > 0 || msg.indexOf("\"pcm16leb64\"") > 0) {
+  // Check for V2 protocol markers
+  if (msg == "<VOICE_START>") {
+    logLine("BT_RX", "Voice START marker");
+    vp2_send_start();
+    return;
+  }
+  
+  if (msg == "<VOICE_END>") {
+    logLine("BT_RX", "Voice END marker");
+    vp2_send_end();
+    return;
+  }
+  
+  // Check for voice frame with base64 data
+  if (msg.indexOf("\"pcm16leb64\"") > 0 || msg.indexOf("\"voice_frame\"") > 0) {
     logLine("BT_RX", "Voice frame received from app");
-
+    
     DynamicJsonDocument doc(4096);
     if (deserializeJson(doc, msg)) {
       logLine("JSON_ERR", "Failed to parse incoming JSON");
       return;
     }
-
-    String mid = doc["messageId"] | makeMsgId();
+    
     String b64 = doc["pcm16leb64"] | "";
     if (b64.isEmpty()) {
       logLine("BT_WARN", "Empty audio frame");
       return;
     }
-
+    
+    // Decode base64 → PCM → ADPCM
     std::vector<uint8_t> pcmBytes = b64Decode(b64);
     std::vector<int16_t> pcm;
     pcm.reserve(pcmBytes.size() / 2);
     for (size_t i = 0; i + 1 < pcmBytes.size(); i += 2)
       pcm.push_back((int16_t)((uint8_t)pcmBytes[i] | ((uint8_t)pcmBytes[i + 1] << 8)));
-
+    
     IMAState st{0, 0};
     std::vector<uint8_t> adpcm;
     ADPCM::encode(pcm.data(), pcm.size(), adpcm, st);
     logLine("ADPCM_ENC", String("PCM→ADPCM OK (") + String(adpcm.size()) + " bytes)");
-
-    sendVoiceLoRa(mid, adpcm);
+    
+    // Send via V2 protocol
+    if (!vp2_send_start()) {
+      logLine("V2_ERR", "Failed to send START");
+      return;
+    }
+    delay(10);
+    
+    if (!vp2_send_audio(adpcm.data(), adpcm.size())) {
+      logLine("V2_ERR", "Failed to send audio");
+      return;
+    }
+    
+    if (!vp2_send_end()) {
+      logLine("V2_ERR", "Failed to send END");
+      return;
+    }
+    
     if (BT.hasClient()) BT.println("{\"ack\":\"voice_sent\"}");
     return;
   }
-
+  
+  // Text messages (unchanged)
   if (msg.indexOf("\"message\":") > 0) {
     logLine("BT_RX", "Text message received");
-    int end = msg.lastIndexOf('}');
-    String out = (end > 0)
-                   ? (msg.substring(0, end) + ",\"from_node\":\"" + nodeId + "\"}")
-                   : msg;
-    LoRa.beginPacket();
-    LoRa.print(out);
-    LoRa.endPacket();
+    // Text messages can still use simple NRF24 write (not V2 protocol)
+    String out = msg;
+    if (out.lastIndexOf('}') > 0) {
+      out = out.substring(0, out.lastIndexOf('}')) + ",\"from_node\":\"" + nodeId + "\"}";
+    }
+    
+    // Send text via NRF24 (simple mode, not V2)
+    radio.stopListening();
+    radio.write(out.c_str(), min((size_t)32, out.length()));
+    radio.startListening();
+    
     if (BT.hasClient()) BT.println("{\"ack\":\"text_sent\"}");
-    logLine("LORA_TX", "Text message sent");
+    logLine("NRF_TX", "Text message sent");
   }
-}
-
-// ----------- PROCESS LORA PACKETS -----------
-static void processLoRa() {
-  int sz = LoRa.parsePacket();
-  if (!sz) return;
-
-  std::vector<uint8_t> buf(sz);
-  for (int i = 0; i < sz && LoRa.available(); i++) buf[i] = LoRa.read();
-
-  // TEXT
-  if (sz >= 2 && buf[0] != 'V' && buf[1] != 'C') {
-    String msg((char*)buf.data(), sz);
-    if (msg.indexOf(nodeId) > 0) return;
-    if (connected && BT.hasClient()) BT.println(msg);
-    logLine("LORA_RX", "Text message relayed");
-    return;
-  }
-
-  // VOICE
-  if (sz < 14 || buf[0] != 'V' || buf[1] != 'C') return;
-
-  char midChars[9];
-  memcpy(midChars, &buf[2], 8);
-  midChars[8] = '\0';
-  String msgId = String(midChars);
-
-  uint8_t pktIdx = buf[10];
-  uint8_t totalPkts = buf[11];
-  uint16_t crcRecv = ((uint16_t)buf[12] << 8) | buf[13];
-  const uint8_t *payload = &buf[14];
-  size_t payloadLen = sz - 14;
-
-  uint16_t crcCalc = crc16(payload, payloadLen);
-  if (crcCalc != crcRecv) {
-    logLine("LORA_ERR", (String("CRC mismatch pkt ") + String(pktIdx) + " ID=" + msgId).c_str());
-    return;
-  }
-
-  int idx = findSession(msgId);
-  if (idx == -1) idx = createSession(msgId, totalPkts);
-  if (idx == -1) return;
-
-  VoicePacket &v = sessions[idx];
-  if (pktIdx >= v.totalPkts) return;
-  if (v.chunks[pktIdx].empty()) {
-    v.chunks[pktIdx].assign(payload, payload + payloadLen);
-    v.receivedPkts++;
-  }
-  v.lastActivity = millis();
-
-  logLine("LORA_RX", String("VC pkt ") + String(pktIdx + 1) + "/" + String(v.totalPkts));
-
-  if (v.receivedPkts >= v.totalPkts) {
-    logLine("LORA_RX", "All packets received — decoding...");
-    size_t totalBytes = 0;
-    for (auto &c : v.chunks) totalBytes += c.size();
-    std::vector<uint8_t> adpcm; adpcm.reserve(totalBytes);
-    for (auto &c : v.chunks) adpcm.insert(adpcm.end(), c.begin(), c.end());
-
-    IMAState st{0, 0};
-    std::vector<int16_t> pcm;
-    ADPCM::decode(adpcm.data(), adpcm.size(), pcm, st);
-    logLine("ADPCM_DEC", String("Decoded ") + String(pcm.size()) + " samples");
-
-    std::vector<uint8_t> pcmBytes;
-    pcmBytes.reserve(pcm.size() * 2);
-    for (auto s : pcm) {
-      pcmBytes.push_back((uint8_t)(s & 0xFF));
-      pcmBytes.push_back((uint8_t)((s >> 8) & 0xFF));
-    }
-
-    String b64 = b64Encode(pcmBytes.data(), pcmBytes.size());
-    if (connected && BT.hasClient()) {
-      DynamicJsonDocument out(8192);
-      out["type"] = "voice_message";
-      out["messageId"] = msgId;
-      out["from_node"] = nodeId;
-      out["data_b64_pcm16le"] = b64;
-      String outS;
-      serializeJson(out, outS);
-      BT.println(outS);
-      logLine("BT_TX", "Voice message forwarded to app");
-    }
-    clearSession(idx);
-  }
-
-  unsigned long now = millis();
-  for (int i = 0; i < MAX_VOICE_SESSIONS; i++)
-    if (sessions[i].active && now - sessions[i].lastActivity > VOICE_TIMEOUT) {
-      logLine("CLEANUP", (String("Drop expired session ") + sessions[i].msgId).c_str());
-      clearSession(i);
-    }
 }
 
 // ----------- SETUP -----------
 void setup() {
   Serial.begin(115200);
   delay(50);
-
+  
   uint64_t id = ESP.getEfuseMac();
   nodeId = "NODE_" + String((uint32_t)(id >> 32), HEX);
   nodeId.toUpperCase();
-
-  logLine("BOOT", "Initializing ESP32 LoRa Voice Bridge...");
-  SPI.begin(18, 19, 23, NSS);
-  LoRa.setPins(NSS, RST, DIO0);
-  if (!LoRa.begin(FREQ)) {
-    logLine("ERROR", "LoRa init failed — check wiring/freq");
-    while (1) delay(1000);
+  
+  logLine("BOOT", "Initializing ESP32 NRF24L01 Voice Bridge V2...");
+  
+  // Initialize SPI for NRF24L01
+  SPI.begin(18, 19, 23, CSN_PIN);  // SCK, MISO, MOSI, CSN
+  
+  // Initialize NRF24L01
+  if (!radio.begin()) {
+    logLine("ERROR", "NRF24L01 init failed — check wiring");
+    while(1) delay(1000);
   }
-  LoRa.setTxPower(17);
-  LoRa.setSpreadingFactor(9);
-  LoRa.setSignalBandwidth(125E3);
-  LoRa.enableCrc();
-  logLine("LORA_INIT", "SX1278 ready");
-
+  
+  // Configure NRF24L01
+  radio.setChannel(RF24_CHANNEL);
+  radio.setPALevel(RF24_PA_HIGH);
+  radio.setDataRate(RF24_1MBPS);
+  radio.setAutoAck(true);
+  radio.setRetries(10, 15);
+  radio.setCRCLength(RF24_CRC_16);
+  radio.enableDynamicPayloads();
+  radio.enableAckPayload();
+  
+  // Set addresses (Node B listens on address[1], sends to address[0])
+  radio.openReadingPipe(0, address[thisNode]);
+  radio.openWritingPipe(address[1 - thisNode]);  // Send to Node A
+  radio.startListening();
+  
+  logLine("NRF_INIT", "NRF24L01 ready");
+  
   BT.begin(BT_DEVICE_NAME);
   logLine("BT_INIT", String("Bluetooth started: ") + BT_DEVICE_NAME);
   logLine("READY", String("Node ID: ") + nodeId);
@@ -413,15 +495,17 @@ void loop() {
     while (BT.available()) {
       char c = (char)BT.read();
       if (c == '\n' || c == '\r') {
-        if (btBuf.length()) { handleBT(btBuf); btBuf = ""; }
+        if (btBuf.length()) {
+          handleBT(btBuf);
+          btBuf = "";
+        }
       } else {
         if (btBuf.length() < 1024) btBuf += c;
         else btBuf = "";
       }
     }
   } else connected = false;
-
-  processLoRa();
+  
+  handleNRF24();
   delay(5);
-}
 }

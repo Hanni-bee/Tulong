@@ -62,6 +62,15 @@ class SimpleBluetoothHandler(private val flutterEngine: FlutterEngine) : MethodC
                     result.error("INVALID_ARGUMENT", "Message data is null", null)
                 }
             }
+            "sendRawMessage" -> {
+                // Send raw string message (for V2 protocol markers)
+                val message = call.arguments as? String
+                if (message != null) {
+                    sendRawMessage(message, result)
+                } else {
+                    result.error("INVALID_ARGUMENT", "Message is null", null)
+                }
+            }
             else -> result.notImplemented()
         }
     }
@@ -313,6 +322,32 @@ class SimpleBluetoothHandler(private val flutterEngine: FlutterEngine) : MethodC
             } catch (e: Exception) {
                 mainHandler.post {
                     result.error("SEND_ERROR", "Error sending message: ${e.message}", null)
+                }
+            }
+        }.start()
+    }
+    
+    private fun sendRawMessage(message: String, result: MethodChannel.Result) {
+        if (!isConnected || outputStream == null) {
+            result.error("NOT_CONNECTED", "Not connected to ESP32", null)
+            return
+        }
+        
+        Thread {
+            try {
+                // Send raw string with newline terminator
+                outputStream?.write((message + "\n").toByteArray())
+                outputStream?.flush()
+                
+                // Log for debugging
+                updateStatus("TX_RAW: $message")
+                
+                mainHandler.post {
+                    result.success(true)
+                }
+            } catch (e: Exception) {
+                mainHandler.post {
+                    result.error("SEND_ERROR", "Error sending raw message: ${e.message}", null)
                 }
             }
         }.start()

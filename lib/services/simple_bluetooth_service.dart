@@ -161,32 +161,54 @@ class SimpleBluetoothService extends ChangeNotifier {
     try {
       final Map<String, dynamic> wrapper = Map<String, dynamic>.from(arguments);
       
-      // Kotlin sends {"message": "JSON_STRING"}
+      // Kotlin sends {"message": "JSON_STRING"} or {"message": "<VOICE_START>"}
       // We need to parse the JSON string inside
       if (wrapper.containsKey('message')) {
         final String messageJson = wrapper['message'] as String;
         _addStatusLog('Raw RX: $messageJson');
         
-        // Parse the JSON string
-        final Map<String, dynamic> data = json.decode(messageJson);
+        // Check for V2 protocol markers first
+        if (messageJson == '<VOICE_START>') {
+          _addStatusLog('🎤 Voice transmission started (V2)');
+          _messageController.add({
+            'type': 'voice_start',
+            'timestamp': DateTime.now().toString(),
+          });
+          return;
+        } else if (messageJson == '<VOICE_END>') {
+          _addStatusLog('🎤 Voice transmission ended (V2)');
+          _messageController.add({
+            'type': 'voice_end',
+            'timestamp': DateTime.now().toString(),
+          });
+          return;
+        }
         
-        if (data.containsKey('auth_request')) {
-          _handleAuthRequest(data);
-        } else if (data.containsKey('sync_complete')) {
-          _handleSyncComplete(data);
-        } else if (data.containsKey('discovered_users')) {
-          _handleDiscoveredUsers(data);
-        } else if (data.containsKey('type')) {
-          if (data['type'] == 'voice_message') {
-            _handleVoiceMessage(data);
+        // Try to parse as JSON
+        try {
+          final Map<String, dynamic> data = json.decode(messageJson);
+          
+          if (data.containsKey('auth_request')) {
+            _handleAuthRequest(data);
+          } else if (data.containsKey('sync_complete')) {
+            _handleSyncComplete(data);
+          } else if (data.containsKey('discovered_users')) {
+            _handleDiscoveredUsers(data);
+          } else if (data.containsKey('type')) {
+            if (data['type'] == 'voice_message') {
+              _handleVoiceMessage(data);
+            } else {
+              _handleChatMessage(data);
+            }
+          } else if (data.containsKey('ack')) {
+            // Acknowledgment, just log it
+            _addStatusLog('✓ ESP32 acknowledged');
           } else {
-            _handleChatMessage(data);
+            _addStatusLog('Unknown message type: $messageJson');
           }
-        } else if (data.containsKey('ack')) {
-          // Acknowledgment, just log it
-          _addStatusLog('✓ ESP32 acknowledged');
-        } else {
-          _addStatusLog('Unknown message type: $messageJson');
+        } catch (e) {
+          // Not JSON, might be raw text - just log it
+          _addStatusLog('Non-JSON message: $messageJson');
         }
       }
       
@@ -521,6 +543,16 @@ class SimpleBluetoothService extends ChangeNotifier {
       
     } catch (e) {
       _addErrorLog('Error sending message: $e');
+    }
+  }
+
+  /// Send raw string message (for V2 protocol markers like <VOICE_START>, <VOICE_END>)
+  void sendRawMessage(String message) {
+    try {
+      _channel.invokeMethod('sendRawMessage', message);
+      _addStatusLog('📤 Sent raw: $message');
+    } catch (e) {
+      _addErrorLog('Error sending raw message: $e');
     }
   }
 
