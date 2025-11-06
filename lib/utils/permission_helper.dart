@@ -14,7 +14,6 @@ class PermissionHelper {
       Permission.location,
       Permission.locationWhenInUse,
       Permission.storage,
-      Permission.camera,
       Permission.microphone,
       Permission.notification,
     ];
@@ -120,7 +119,6 @@ class PermissionHelper {
           '• Bluetooth - To connect with ESP32 device\n'
           '• Location - Required for Bluetooth scanning\n'
           '• Storage - To save messages and media\n'
-          '• Camera - For emergency photo reports\n'
           '• Microphone - For walkie-talkie feature\n'
           '• Notifications - For emergency alerts\n\n'
           'These permissions are essential for disaster communication.',

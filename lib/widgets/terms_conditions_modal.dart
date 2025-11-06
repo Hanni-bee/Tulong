@@ -2,8 +2,44 @@ import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
 import '../constants/soft_ui_design.dart';
 
-class TermsConditionsModal extends StatelessWidget {
+class TermsConditionsModal extends StatefulWidget {
   const TermsConditionsModal({super.key});
+
+  @override
+  State<TermsConditionsModal> createState() => _TermsConditionsModalState();
+}
+
+class _TermsConditionsModalState extends State<TermsConditionsModal> {
+  final ScrollController _scrollController = ScrollController();
+  bool _hasScrolledToBottom = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    // Check if user has scrolled to bottom (within 50 pixels)
+    if (_scrollController.hasClients) {
+      final maxScroll = _scrollController.position.maxScrollExtent;
+      final currentScroll = _scrollController.position.pixels;
+      final isAtBottom = (maxScroll - currentScroll) <= 50.0;
+      
+      if (isAtBottom != _hasScrolledToBottom) {
+        setState(() {
+          _hasScrolledToBottom = isAtBottom;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -50,9 +86,45 @@ class TermsConditionsModal extends StatelessWidget {
             
             const SizedBox(height: 20),
             
+            // Scroll indicator
+            if (!_hasScrolledToBottom)
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                decoration: BoxDecoration(
+                  color: AppColors.warning.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: AppColors.warning.withOpacity(0.3),
+                    width: 1,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.arrow_downward,
+                      size: 16,
+                      color: AppColors.warning,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Please scroll to the bottom to continue',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.warning,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            
+            if (!_hasScrolledToBottom) const SizedBox(height: 12),
+            
             // Content
             Expanded(
               child: SingleChildScrollView(
+                controller: _scrollController,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -161,24 +233,46 @@ class TermsConditionsModal extends StatelessWidget {
                 
                 const SizedBox(width: 12),
                 
-                // Accept button
+                // Accept button - disabled until scrolled to bottom
                 Expanded(
                   child: ElevatedButton(
-                    onPressed: () => Navigator.of(context).pop(true),
+                    onPressed: _hasScrolledToBottom 
+                        ? () => Navigator.of(context).pop(true)
+                        : null,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primaryRed,
+                      backgroundColor: _hasScrolledToBottom 
+                          ? AppColors.primaryRed 
+                          : Colors.grey,
                       foregroundColor: AppColors.white,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
+                      disabledBackgroundColor: Colors.grey,
+                      disabledForegroundColor: Colors.white.withOpacity(0.6),
                     ),
-                    child: const Text(
-                      'I Accept',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        if (!_hasScrolledToBottom) ...[
+                          Icon(
+                            Icons.lock_outline,
+                            size: 18,
+                            color: Colors.white.withOpacity(0.6),
+                          ),
+                          const SizedBox(width: 8),
+                        ],
+                        Text(
+                          'I Accept',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: _hasScrolledToBottom 
+                                ? Colors.white 
+                                : Colors.white.withOpacity(0.6),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),

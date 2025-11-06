@@ -1,12 +1,19 @@
 import 'package:flutter/material.dart';
 
 /// Global configuration for uniform page transitions
+/// Updated to match prototype: slide up + fade, 300ms, easeOut
 class PageTransitionConfig {
-  /// Default transition duration for all pages
-  static const Duration defaultDuration = Duration(milliseconds: 350);
+  /// Default transition duration for all pages (from prototype: 300ms)
+  static const Duration defaultDuration = Duration(milliseconds: 300);
 
-  /// Default transition curve
-  static const Curve defaultCurve = Curves.easeInOutCubic;
+  /// Exit transition duration (from prototype: 200ms)
+  static const Duration exitDuration = Duration(milliseconds: 200);
+
+  /// Default transition curve (from prototype: easeOut)
+  static const Curve defaultCurve = Curves.easeOut;
+
+  /// Exit transition curve (from prototype: easeIn)
+  static const Curve exitCurve = Curves.easeIn;
 
   /// Transition type for the entire app
   static PageTransitionsBuilder get defaultTransition => 
@@ -47,14 +54,15 @@ class _SharedAxisTransition extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Entry animation: slide up (y: 20px) + fade
     return SlideTransition(
       position: Tween<Offset>(
-        begin: const Offset(0.3, 0.0),
+        begin: const Offset(0.0, 0.02), // 20px = ~0.02 in normalized coordinates
         end: Offset.zero,
       ).animate(
         CurvedAnimation(
           parent: animation,
-          curve: PageTransitionConfig.defaultCurve,
+          curve: PageTransitionConfig.defaultCurve, // easeOut
         ),
       ),
       child: FadeTransition(
@@ -64,31 +72,21 @@ class _SharedAxisTransition extends StatelessWidget {
         ).animate(
           CurvedAnimation(
             parent: animation,
-            curve: PageTransitionConfig.defaultCurve,
+            curve: PageTransitionConfig.defaultCurve, // easeOut
           ),
         ),
-        child: SlideTransition(
-          position: Tween<Offset>(
-            begin: Offset.zero,
-            end: const Offset(-0.3, 0.0),
+        // Exit animation: fade out only (simpler exit)
+        child: FadeTransition(
+          opacity: Tween<double>(
+            begin: 1.0,
+            end: 0.0,
           ).animate(
             CurvedAnimation(
               parent: secondaryAnimation,
-              curve: PageTransitionConfig.defaultCurve,
+              curve: PageTransitionConfig.exitCurve, // easeIn
             ),
           ),
-          child: FadeTransition(
-            opacity: Tween<double>(
-              begin: 1.0,
-              end: 0.0,
-            ).animate(
-              CurvedAnimation(
-                parent: secondaryAnimation,
-                curve: PageTransitionConfig.defaultCurve,
-              ),
-            ),
-            child: child,
-          ),
+          child: child,
         ),
       ),
     );
@@ -102,8 +100,8 @@ extension UniformNavigationExtension on BuildContext {
     return Navigator.of(this).push<T>(
       PageRouteBuilder<T>(
         pageBuilder: (context, animation, secondaryAnimation) => page,
-        transitionDuration: PageTransitionConfig.defaultDuration,
-        reverseTransitionDuration: PageTransitionConfig.defaultDuration,
+        transitionDuration: PageTransitionConfig.defaultDuration, // 300ms
+        reverseTransitionDuration: PageTransitionConfig.exitDuration, // 200ms
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           return _SharedAxisTransition(
             animation: animation,
@@ -120,8 +118,8 @@ extension UniformNavigationExtension on BuildContext {
     return Navigator.of(this).pushReplacement<T, TO>(
       PageRouteBuilder<T>(
         pageBuilder: (context, animation, secondaryAnimation) => page,
-        transitionDuration: PageTransitionConfig.defaultDuration,
-        reverseTransitionDuration: PageTransitionConfig.defaultDuration,
+        transitionDuration: PageTransitionConfig.defaultDuration, // 300ms
+        reverseTransitionDuration: PageTransitionConfig.exitDuration, // 200ms
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           return _SharedAxisTransition(
             animation: animation,
@@ -138,8 +136,8 @@ extension UniformNavigationExtension on BuildContext {
     return Navigator.of(this).pushAndRemoveUntil<T>(
       PageRouteBuilder<T>(
         pageBuilder: (context, animation, secondaryAnimation) => page,
-        transitionDuration: PageTransitionConfig.defaultDuration,
-        reverseTransitionDuration: PageTransitionConfig.defaultDuration,
+        transitionDuration: PageTransitionConfig.defaultDuration, // 300ms
+        reverseTransitionDuration: PageTransitionConfig.exitDuration, // 200ms
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           return _SharedAxisTransition(
             animation: animation,

@@ -36,6 +36,9 @@ class SimpleBluetoothService extends ChangeNotifier {
   String _userName = '';
   String _pairedDeviceName = '';
   String _pairedDeviceAddress = '';
+  
+  // Connected users from ESP32
+  List<Map<String, dynamic>> _connectedUsers = [];
 
   // ============================================================================
   // MESSAGE HANDLING
@@ -73,6 +76,7 @@ class SimpleBluetoothService extends ChangeNotifier {
   Stream<String> get statusStream => _statusController.stream;
   Stream<List<Map<String, dynamic>>> get messagesStream => _messagesStreamController.stream;
   List<Map<String, dynamic>> get messages => List.unmodifiable(_messages);
+  List<Map<String, dynamic>> get connectedUsers => List.unmodifiable(_connectedUsers);
 
   // ============================================================================
   // INITIALIZATION
@@ -170,6 +174,8 @@ class SimpleBluetoothService extends ChangeNotifier {
           _handleAuthRequest(data);
         } else if (data.containsKey('sync_complete')) {
           _handleSyncComplete(data);
+        } else if (data.containsKey('discovered_users')) {
+          _handleDiscoveredUsers(data);
         } else if (data.containsKey('type')) {
           if (data['type'] == 'voice_message') {
             _handleVoiceMessage(data);
@@ -367,6 +373,37 @@ class SimpleBluetoothService extends ChangeNotifier {
       
     } catch (e) {
       _addErrorLog('Error handling sync complete: $e');
+    }
+  }
+
+  void _handleDiscoveredUsers(Map<String, dynamic> data) {
+    try {
+      if (data.containsKey('users') && data['users'] is List) {
+        final List<dynamic> usersList = data['users'];
+        _connectedUsers = usersList.map((user) {
+          return Map<String, dynamic>.from(user as Map);
+        }).toList();
+        
+        _addStatusLog('📡 Discovered ${_connectedUsers.length} user(s)');
+        notifyListeners();
+      }
+    } catch (e) {
+      _addErrorLog('Error handling discovered users: $e');
+    }
+  }
+
+  // Request discovered users from ESP32
+  Future<void> requestDiscoveredUsers() async {
+    if (!_isConnected || !_isAuthenticated) {
+      _addErrorLog('Cannot request users: Not connected or authenticated');
+      return;
+    }
+    
+    try {
+      sendMessage({'discover_users': true});
+      _addStatusLog('📡 Requesting discovered users...');
+    } catch (e) {
+      _addErrorLog('Error requesting discovered users: $e');
     }
   }
 

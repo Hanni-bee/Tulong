@@ -76,6 +76,8 @@ class TulongApp extends StatelessWidget {
         title: 'T.U.L.O.N.G',
         debugShowCheckedModeBanner: false,
         theme: ThemeData(
+          useMaterial3: true,
+          splashFactory: InkRipple.splashFactory,
           pageTransitionsTheme: const PageTransitionsTheme(
             builders: {
               TargetPlatform.android: CustomPageTransitionsBuilder(),
