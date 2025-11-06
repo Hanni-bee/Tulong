@@ -10,7 +10,9 @@ import '../constants/app_typography.dart';
 import '../constants/soft_ui_design.dart';
 import '../services/simple_bluetooth_service.dart';
 import '../widgets/unified_top_bar.dart';
-import '../widgets/connected_users_dialog.dart';
+import '../widgets/special_animations.dart';
+import '../widgets/bluetooth_radar_modal.dart';
+import '../widgets/connected_users_modal.dart';
 
 /// ESP32 LoRa Chat Screen - Ultra Simple Version
 /// No animations, no pop-ups, no complex status tracking
@@ -290,36 +292,51 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen> with TickerPr
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
-      body: Column(
-        children: [
-          // Unified top bar
-          Consumer<SimpleBluetoothService>(
-            builder: (context, esp32Service, child) {
-              final connectedCount = esp32Service.connectedUsers.length;
-              final status = esp32Service.isConnected
-                  ? 'Connected${connectedCount > 0 ? ' ($connectedCount)' : ''}'
-                  : 'Disconnected';
-              
-              return TopBarConfigs.loraTopBar(
-                status: status,
-                onBluetoothTap: () {
-                  Navigator.of(context).pushNamed('/esp32-scanner');
-                },
-                onSubtitleTap: esp32Service.isConnected
-                    ? () {
-                        // Show connected users dialog
-                        final connectedUsers = esp32Service.connectedUsers;
-                        ConnectedUsersDialog.show(context, connectedUsers);
-                      }
-                    : null,
-              );
-            },
-          ),
-          // Accent line handled by UnifiedTopBar; remove local duplicate
-          
-          Expanded(child: _buildMessagesList()),
-          _buildSimpleMessageInput(),
-        ],
+      body: SafeArea(
+        child: Column(
+          children: [
+            // Unified top bar
+            Consumer<SimpleBluetoothService>(
+              builder: (context, esp32Service, child) {
+                return TopBarConfigs.loraTopBar(
+                  status: esp32Service.isConnected ? 'Connected' : 'Disconnected',
+                  onBluetoothTap: () {
+                    // Bluetooth icon - ESP32 Device Scanner Modal (list of devices to connect)
+                    showDialog(
+                      context: context,
+                      barrierDismissible: true,
+                      barrierColor: Colors.black54,
+                      builder: (context) => const ConnectedUsersModal(),
+                    );
+                  },
+                  onConnectedTap: () {
+                    // Connected status badge - Radar Modal (shows connected users from chat)
+                    if (esp32Service.isConnected) {
+                      showDialog(
+                        context: context,
+                        barrierDismissible: true,
+                        barrierColor: Colors.black54,
+                        builder: (context) => const BluetoothRadarModal(),
+                      );
+                    } else {
+                      // If not connected, show message
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Please connect to an ESP32 device first'),
+                          duration: Duration(seconds: 2),
+                        ),
+                      );
+                    }
+                  },
+                );
+              },
+            ),
+            // Accent line handled by UnifiedTopBar; remove local duplicate
+            
+            Expanded(child: _buildMessagesList()),
+            _buildSimpleMessageInput(),
+          ],
+        ),
       ),
     );
   }
@@ -327,16 +344,15 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen> with TickerPr
 
   Widget _buildMessagesList() {
     if (_messages.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+      return EmptyStateEntrance(
+        iconWidget: Icon(
+          Icons.chat_bubble_outline,
+          size: 64,
+          color: AppColors.lightGray,
+        ),
+        textWidget: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.chat_bubble_outline,
-              size: 64,
-              color: AppColors.lightGray,
-            ),
-            const SizedBox(height: 16),
             Text(
               'No messages yet',
               style: AppTypography.bodyLarge.copyWith(
@@ -352,6 +368,7 @@ class _ESP32LoRaChatScreenState extends State<ESP32LoRaChatScreen> with TickerPr
             ),
           ],
         ),
+        accentColor: AppColors.online,
       );
     }
     

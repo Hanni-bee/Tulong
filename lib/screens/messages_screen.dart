@@ -5,6 +5,7 @@ import '../constants/app_strings.dart';
 import '../providers/network_provider.dart';
 import '../widgets/chat_card.dart';
 import '../widgets/search_bar.dart';
+import '../widgets/unified_top_bar.dart';
 import 'message_detail_screen.dart';
 import 'calls_screen.dart';
 import '../constants/unified_typography.dart';
@@ -99,41 +100,22 @@ class _MessagesScreenState extends State<MessagesScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.backgroundLight,
-      appBar: AppBar(
-        title: const Text(
-          AppStrings.messages,
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        actions: [
-          Consumer<NetworkProvider>(
-            builder: (context, networkProvider, child) {
-              return Container(
-                margin: const EdgeInsets.only(right: 8),
-                child: IconButton(
-                  icon: const Icon(Icons.call),
-                  onPressed: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (context) => const CallsScreen(),
-                      ),
-                    );
-                  },
+      body: SafeArea(
+        child: Column(
+          children: [
+            // Unified top bar
+            TopBarConfigs.messagesTopBar(
+            onCallTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => const CallsScreen(),
                 ),
               );
             },
-          ),
-          IconButton(
-            icon: const Icon(Icons.more_vert),
-            onPressed: () {
+            onMoreTap: () {
               _showOptionsMenu(context);
             },
           ),
-        ],
-      ),
-      body: Column(
-        children: [
           // Search bar
           Padding(
             padding: const EdgeInsets.all(16),
@@ -204,6 +186,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
             ),
           ),
         ],
+      ),
       ),
       floatingActionButton: FloatingActionButton(
         key: const ValueKey('messages_new_fab'),

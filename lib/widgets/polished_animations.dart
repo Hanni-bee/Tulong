@@ -12,9 +12,9 @@ class PolishedBounce extends StatefulWidget {
     super.key,
     required this.child,
     this.onTap,
-    this.scale = 0.95,
-    this.duration = const Duration(milliseconds: 150),
-    this.curve = Curves.easeInOut,
+    this.scale = 0.95, // From prototype: scale to 0.95 on press
+    this.duration = const Duration(milliseconds: 100), // From prototype: 100ms
+    this.curve = Curves.easeInOut, // From prototype: easeInOut
   });
 
   @override

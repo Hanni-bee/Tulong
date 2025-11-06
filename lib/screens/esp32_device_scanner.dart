@@ -6,6 +6,7 @@ import '../services/simple_bluetooth_service.dart';
 import '../constants/app_colors.dart';
 import '../constants/app_typography.dart';
 import '../utils/permission_helper.dart';
+import '../widgets/special_animations.dart';
 
 /// ESP32 Device Scanner - In-app Bluetooth pairing and connection
 class ESP32DeviceScanner extends StatefulWidget {
@@ -21,31 +22,16 @@ class _ESP32DeviceScannerState extends State<ESP32DeviceScanner>
   List<Map<String, String>> _availableDevices = [];
   bool _isScanning = false;
   String _selectedDevice = '';
-  late AnimationController _scanController;
-  late Animation<double> _scanAnimation;
   bool _showAllDevices = false;
   
   @override
   void initState() {
     super.initState();
     
-    _scanController = AnimationController(
-      duration: const Duration(milliseconds: 2000),
-      vsync: this,
-    )..repeat();
-    
-    _scanAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(_scanController);
-    
     // Auto-scan on open
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _startScan();
     });
-  }
-  
-  @override
-  void dispose() {
-    _scanController.dispose();
-    super.dispose();
   }
   
   Future<void> _startScan() async {
@@ -280,30 +266,25 @@ class _ESP32DeviceScannerState extends State<ESP32DeviceScanner>
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          AnimatedBuilder(
-            animation: _scanAnimation,
-            builder: (context, child) {
-              return Transform.scale(
-                scale: 1.0 + (_scanAnimation.value * 0.2),
-                child: Container(
-                  width: 100,
-                  height: 100,
-                  decoration: BoxDecoration(
-                    color: AppColors.online.withOpacity(0.1),
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: AppColors.online.withOpacity(0.3),
-                      width: 2,
-                    ),
-                  ),
-                  child: const Icon(
-                    Icons.bluetooth_searching,
-                    size: 50,
-                    color: AppColors.online,
-                  ),
+          ScanningAnimation(
+            glowColor: AppColors.online,
+            child: Container(
+              width: 100,
+              height: 100,
+              decoration: BoxDecoration(
+                color: AppColors.online.withOpacity(0.1),
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: AppColors.online.withOpacity(0.3),
+                  width: 2,
                 ),
-              );
-            },
+              ),
+              child: const Icon(
+                Icons.bluetooth_searching,
+                size: 50,
+                color: AppColors.online,
+              ),
+            ),
           ),
           const SizedBox(height: 24),
           Text(

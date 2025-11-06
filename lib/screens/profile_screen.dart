@@ -525,7 +525,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void _showLogoutDialog(BuildContext context) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
         ),
@@ -533,19 +533,40 @@ class _ProfileScreenState extends State<ProfileScreen> {
         content: const Text('Are you sure you want to log out?'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(dialogContext),
             child: const Text('Cancel'),
           ),
           ElevatedButton(
-            onPressed: () {
-              final authProvider = Provider.of<AuthProvider>(context, listen: false);
-              authProvider.signOut();
-              Navigator.pop(context);
-              Navigator.of(context).pushReplacement(
-                MaterialPageRoute(
-                  builder: (context) => const SignInScreen(),
-                ),
-              );
+            onPressed: () async {
+              try {
+                final authProvider = Provider.of<AuthProvider>(context, listen: false);
+                await authProvider.signOut();
+                
+                // Close dialog first
+                if (dialogContext.mounted) {
+                  Navigator.pop(dialogContext);
+                }
+                
+                // Navigate to sign-in screen and clear navigation stack
+                if (context.mounted) {
+                  Navigator.of(context, rootNavigator: true).pushNamedAndRemoveUntil(
+                    '/signin',
+                    (route) => false,
+                  );
+                }
+              } catch (e) {
+                print('❌ Logout error: $e');
+                // Even if there's an error, try to navigate
+                if (dialogContext.mounted) {
+                  Navigator.pop(dialogContext);
+                }
+                if (context.mounted) {
+                  Navigator.of(context, rootNavigator: true).pushNamedAndRemoveUntil(
+                    '/signin',
+                    (route) => false,
+                  );
+                }
+              }
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.primaryRed,

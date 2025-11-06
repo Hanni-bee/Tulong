@@ -257,11 +257,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
       backgroundColor: Colors.white,
       body: Stack(
         children: [
-          // Subtle background overlay
-          SoftUIDesign.buildScreenBackgroundOverlay(
-            accentColor: AppColors.primaryRed,
-            intensity: 0.01,
-          ),
+          // Removed background overlay to avoid hazy/blurred appearance on sign-up
           
           Column(
             children: [
@@ -657,10 +653,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 if (newValue != null) {
                   final isNCR = (_selectedRegion ?? '').toUpperCase().contains('NCR') || (_selectedRegion ?? '').toUpperCase().contains('NATIONAL CAPITAL REGION');
                   if (isNCR) {
-                    // For NCR, the "province" dropdown actually contains city names
-                    _selectedCity = newValue;
-                    _loadBarangays(newValue);
+                    // For NCR, the "province" dropdown contains districts (like "NATIONAL CAPITAL REGION - FIRST DISTRICT")
+                    // We need to load cities for that district so the City/Municipality dropdown can show the cities
+                    _selectedProvince = newValue; // Keep track of the selected district
+                    _loadCities(newValue); // Load cities for the selected district
+                    // Don't set _selectedCity here - let the user select from City/Municipality dropdown
+                    // Don't load barangays yet - wait for city selection
                   } else {
+                    // For non-NCR regions, load cities normally
                     _loadCities(newValue);
                   }
                 }
@@ -674,99 +674,91 @@ class _SignUpScreenState extends State<SignUpScreen> {
             ),
           ),
           
-          // City/Municipality dropdown (shown for non-NCR regions)
-          if (!((_selectedRegion ?? '').toUpperCase().contains('NCR') || (_selectedRegion ?? '').toUpperCase().contains('NATIONAL CAPITAL REGION'))) ...[
-            const SizedBox(height: 20),
-            Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: Colors.grey.shade300,
-                  width: 1.5,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.grey.withOpacity(0.1),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: DropdownButtonFormField<String>(
-                initialValue: _selectedCity,
-                decoration: const InputDecoration(
-                  labelText: 'City/Municipality',
-                  prefixIcon: Icon(Icons.location_city, color: AppColors.primaryRed),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.all(Radius.circular(12)),
-                    borderSide: BorderSide.none,
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.all(Radius.circular(12)),
-                    borderSide: BorderSide.none,
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.all(Radius.circular(12)),
-                    borderSide: BorderSide(color: AppColors.primaryRed, width: 2),
-                  ),
-                  contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                  labelStyle: TextStyle(
-                    color: AppColors.primary,
-                    fontSize: 17,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.3,
-                  ),
-                  hintStyle: TextStyle(
-                    color: AppColors.mediumGray,
-                    fontSize: 17,
-                    fontWeight: FontWeight.w500,
-                    letterSpacing: 0.2,
-                  ),
-                ),
-                items: _cities.isEmpty 
-                  ? [DropdownMenuItem<String>(
-                      value: null,
-                      child: _isLoadingLocations 
-                        ? const Row(
-                            children: [
-                              SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              ),
-                              SizedBox(width: 8),
-                              Text('Loading cities...'),
-                            ],
-                          )
-                        : const Text('Select a province first'),
-                    )]
-                  : _cities.map((Map<String, dynamic> city) {
-                      return DropdownMenuItem<String>(
-                        // Use city NAME as the value so barangay lookup can work by name
-                        value: city['name'],
-                        child: Text(city['name']),
-                      );
-                    }).toList(),
-                onChanged: (String? newValue) {
-                  setState(() {
-                    _selectedCity = newValue;
-                    _selectedBarangay = null;
-                    _barangays.clear();
-                  });
-                  if (newValue != null) {
-                    _loadBarangays(newValue);
-                  }
-                },
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please select your city/municipality';
-                  }
-                  return null;
-                },
-              ),
+          // City/Municipality dropdown (always visible)
+          const SizedBox(height: 20),
+          Container(
+            decoration: SoftUIDesign.cardDecoration(
+              backgroundColor: AppColors.white,
+              borderRadius: SoftUIDesign.cardBorderRadius,
+              elevation: 2.0,
+              borderColor: AppColors.lightGray.withOpacity(0.3),
+              showBorder: true,
             ),
-          ],
+            child: DropdownButtonFormField<String>(
+              initialValue: _selectedCity,
+              decoration: const InputDecoration(
+                labelText: 'City/Municipality',
+                prefixIcon: Icon(Icons.location_city, color: AppColors.primaryRed),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.all(Radius.circular(12)),
+                  borderSide: BorderSide.none,
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.all(Radius.circular(12)),
+                  borderSide: BorderSide.none,
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.all(Radius.circular(12)),
+                  borderSide: BorderSide(color: AppColors.primaryRed, width: 2),
+                ),
+                contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                labelStyle: TextStyle(
+                  color: AppColors.primary,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.3,
+                ),
+                hintStyle: TextStyle(
+                  color: AppColors.mediumGray,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w500,
+                  letterSpacing: 0.2,
+                ),
+              ),
+              items: _cities.isEmpty 
+                ? [DropdownMenuItem<String>(
+                    value: null,
+                    child: _isLoadingLocations 
+                      ? const Row(
+                          children: [
+                            SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                            SizedBox(width: 8),
+                            Text('Loading cities...'),
+                          ],
+                        )
+                      : _selectedRegion == null
+                        ? const Text('Select a region first')
+                        : const Text('Select a province first'),
+                  )]
+                : _cities.map((Map<String, dynamic> city) {
+                    return DropdownMenuItem<String>(
+                      // Use city NAME as the value so barangay lookup can work by name
+                      value: city['name'],
+                      child: Text(city['name']),
+                    );
+                  }).toList(),
+              onChanged: (String? newValue) {
+                setState(() {
+                  _selectedCity = newValue;
+                  _selectedBarangay = null;
+                  _barangays.clear();
+                });
+                if (newValue != null) {
+                  _loadBarangays(newValue);
+                }
+              },
+              validator: (value) {
+                if (value == null || value.isEmpty) {
+                  return 'Please select your city/municipality';
+                }
+                return null;
+              },
+            ),
+          ),
 
           const SizedBox(height: 20),
           

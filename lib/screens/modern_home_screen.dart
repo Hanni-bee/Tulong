@@ -9,6 +9,7 @@ import '../widgets/modern_neumorphic_card.dart';
 import '../widgets/modern_responsive_layout.dart';
 import '../widgets/modern_toast.dart';
 import '../widgets/modern_network_indicator.dart';
+import '../widgets/network_status_dashboard.dart';
 import '../widgets/modern_floating_layout.dart';
 import '../widgets/emergency_alert_widget.dart';
 import '../widgets/enhanced_text_styles.dart';
@@ -24,6 +25,8 @@ import '../config/page_transition_config.dart';
 import '../providers/auth_provider.dart';
 import '../services/offline_messaging_service.dart';
 import '../widgets/interactive_feedback.dart';
+import '../utils/prototype_animations.dart';
+import '../widgets/special_animations.dart';
 import 'enhanced_global_chat_screen.dart';
 import 'walkie_talkie_screen.dart';
 import 'modern_people_screen.dart';
@@ -48,9 +51,60 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
   late Animation<Offset> _slideAnimation;
   late Animation<double> _welcomeAnimation;
   
+  // Stagger animations for Quick Actions
+  late StaggeredListAnimations _quickActionsStagger;
+  // Stagger animations for Recent Activity
+  late StaggeredListAnimations _recentActivityStagger;
+  
   bool _isInitializing = true;
   bool _showWelcome = false;
   bool _isEmergencyHolding = false;
+  
+  // Quick Actions list - created as getter to avoid initialization issues
+  List<Map<String, dynamic>> _getQuickActions() => [
+    {
+      'onPressed': () => _showEmergencyDialog(context),
+      'backgroundColor': AppColors.error,
+      'icon': Icons.emergency,
+      'title': 'Emergency',
+      'subtitle': 'Alert',
+    },
+    {
+      'onPressed': () => _navigateToChat(context),
+      'backgroundColor': AppColors.info,
+      'icon': Icons.message_rounded,
+      'title': 'Send',
+      'subtitle': 'Message',
+    },
+    {
+      'onPressed': () => _navigateToWalkieTalkie(context),
+      'backgroundColor': AppColors.success,
+      'icon': Icons.call_rounded,
+      'title': 'Voice',
+      'subtitle': 'Call',
+    },
+    {
+      'onPressed': () => _navigateToPeople(context),
+      'backgroundColor': AppColors.warning,
+      'icon': Icons.people_rounded,
+      'title': 'People',
+      'subtitle': 'Contacts',
+    },
+    {
+      'onPressed': () => _navigateToProfile(context),
+      'backgroundColor': AppColors.primaryRed,
+      'icon': Icons.person_rounded,
+      'title': 'Profile',
+      'subtitle': 'Settings',
+    },
+    {
+      'onPressed': () => _navigateToDisasterDemo(context),
+      'backgroundColor': Colors.purple,
+      'icon': Icons.science,
+      'title': 'Demo',
+      'subtitle': 'Disaster',
+    },
+  ];
 
 
   @override
@@ -113,6 +167,18 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
     _fadeController.forward();
     _slideController.forward();
     
+    // Initialize stagger animations for Quick Actions
+    _quickActionsStagger = StaggeredListAnimations(
+      vsync: this,
+      itemCount: _getQuickActions().length,
+    );
+    
+    // Initialize stagger animations for Recent Activity (3 items)
+    _recentActivityStagger = StaggeredListAnimations(
+      vsync: this,
+      itemCount: 3,
+    );
+    
     // Simulate initialization and show welcome animation
     _initializeApp();
   }
@@ -154,6 +220,8 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
     _slideController.dispose();
     _welcomeController.dispose();
     _emergencyHoldController.dispose();
+    _quickActionsStagger.dispose();
+    _recentActivityStagger.dispose();
     super.dispose();
   }
 
@@ -196,21 +264,12 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                       ),
                       const SizedBox(height: 12),
                       
-                      // Quick Actions
+                      // Network Status Dashboard
                       PolishedFadeIn(
                         delay: const Duration(milliseconds: 200),
                         child: Container(
                           margin: const EdgeInsets.symmetric(horizontal: 16),
-                          child: SoftUIDesign.buildEnhancedCard(
-                            child: Padding(
-                              padding: const EdgeInsets.all(SoftUIDesign.cardPadding),
-                              child: _buildQuickActions(),
-                            ),
-                            elevation: 4.0,
-                            showDepthOverlay: true,
-                            showDiagonalOverlay: true,
-                            accentColor: AppColors.primaryRed,
-                          ),
+                          child: const NetworkStatusDashboard(),
                         ),
                       ),
                       const SizedBox(height: 12),
@@ -221,16 +280,6 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                         child: SecondaryCard(
                           margin: const EdgeInsets.symmetric(horizontal: 16),
                           child: _buildRecentActivity(),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      
-                      // Hardware Status Section
-                      PolishedFadeIn(
-                        delay: const Duration(milliseconds: 350),
-                        child: SecondaryCard(
-                          margin: const EdgeInsets.symmetric(horizontal: 16),
-                          child: _buildHardwareStatusSection(),
                         ),
                       ),
                       const SizedBox(height: 12),
@@ -460,12 +509,24 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
           ),
         ),
         const SizedBox(height: 12),
-        Container(
+        // Gradient accent line matching Calls/Messages/Profile style
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 420),
+          curve: Curves.easeInOutCubic,
           height: 3,
           margin: const EdgeInsets.symmetric(horizontal: 16),
           decoration: BoxDecoration(
-            color: AppColors.primaryRed,
             borderRadius: BorderRadius.circular(2),
+            gradient: LinearGradient(
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+              colors: [
+                AppColors.primaryRed.withOpacity(0.0),
+                AppColors.primaryRed.withOpacity(0.85),
+                AppColors.primaryRed.withOpacity(0.0),
+              ],
+              stops: const [0.0, 0.5, 1.0],
+            ),
           ),
         ),
       ],
@@ -518,58 +579,35 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
               const SizedBox(height: 12),
               SizedBox(
                 height: 100, // Reduced height for more compact layout
-                child: ListView(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  children: [
-                    _buildUniformActionButton(
-                      onPressed: () => _showEmergencyDialog(context),
-                      backgroundColor: AppColors.error,
-                      icon: Icons.emergency,
-                      title: 'Emergency',
-                      subtitle: 'Alert',
-                    ),
-                    const SizedBox(width: 8), // Reduced spacing between buttons
-                    _buildUniformActionButton(
-                      onPressed: () => _navigateToChat(context),
-                      backgroundColor: AppColors.info,
-                      icon: Icons.message_rounded,
-                      title: 'Send',
-                      subtitle: 'Message',
-                    ),
-                    const SizedBox(width: 8), // Reduced spacing between buttons
-                    _buildUniformActionButton(
-                      onPressed: () => _navigateToWalkieTalkie(context),
-                      backgroundColor: AppColors.success,
-                      icon: Icons.call_rounded,
-                      title: 'Voice',
-                      subtitle: 'Call',
-                    ),
-                    const SizedBox(width: 8), // Reduced spacing between buttons
-                    _buildUniformActionButton(
-                      onPressed: () => _navigateToPeople(context),
-                      backgroundColor: AppColors.warning,
-                      icon: Icons.people_rounded,
-                      title: 'People',
-                      subtitle: 'Contacts',
-                    ),
-                    const SizedBox(width: 8), // Reduced spacing between buttons
-                    _buildUniformActionButton(
-                      onPressed: () => _navigateToProfile(context),
-                      backgroundColor: AppColors.primaryRed,
-                      icon: Icons.person_rounded,
-                      title: 'Profile',
-                      subtitle: 'Settings',
-                    ),
-                    const SizedBox(width: 8), // Reduced spacing between buttons
-                    _buildUniformActionButton(
-                      onPressed: () => _navigateToDisasterDemo(context),
-                      backgroundColor: Colors.purple,
-                      icon: Icons.science,
-                      title: 'Disaster',
-                      subtitle: 'Demo',
-                    ),
-                  ],
+                child: Builder(
+                  builder: (context) {
+                    final quickActions = _getQuickActions();
+                    return ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      itemCount: quickActions.length,
+                      itemBuilder: (context, index) {
+                        final action = quickActions[index];
+                        return _quickActionsStagger.buildAnimatedItem(
+                          index,
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              _buildUniformActionButton(
+                                onPressed: action['onPressed'] as VoidCallback,
+                                backgroundColor: action['backgroundColor'] as Color,
+                                icon: action['icon'] as IconData,
+                                title: action['title'] as String,
+                                subtitle: action['subtitle'] as String,
+                              ),
+                              if (index < quickActions.length - 1)
+                                const SizedBox(width: 8), // Reduced spacing between buttons
+                            ],
+                          ),
+                        );
+                      },
+                    );
+                  },
                 ),
               ),
             ],
@@ -687,25 +725,34 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                 ModernNeumorphicCard(
                   child: Column(
                     children: [
-                      _buildActivityItem(
-                        icon: Icons.message,
-                        title: 'New message from User 1',
-                        subtitle: '2 minutes ago',
-                        color: AppColors.info,
+                      _recentActivityStagger.buildAnimatedItem(
+                        0,
+                        _buildActivityItem(
+                          icon: Icons.message,
+                          title: 'New message from User 1',
+                          subtitle: '2 minutes ago',
+                          color: AppColors.info,
+                        ),
                       ),
                       const Divider(height: 32),
-                      _buildActivityItem(
-                        icon: Icons.emergency,
-                        title: 'Emergency alert resolved',
-                        subtitle: '15 minutes ago',
-                        color: AppColors.success,
+                      _recentActivityStagger.buildAnimatedItem(
+                        1,
+                        _buildActivityItem(
+                          icon: Icons.emergency,
+                          title: 'Emergency alert resolved',
+                          subtitle: '15 minutes ago',
+                          color: AppColors.success,
+                        ),
                       ),
                       const Divider(height: 24),
-                      _buildActivityItem(
-                        icon: Icons.network_check,
-                        title: 'Network connection restored',
-                        subtitle: '1 hour ago',
-                        color: AppColors.success,
+                      _recentActivityStagger.buildAnimatedItem(
+                        2,
+                        _buildActivityItem(
+                          icon: Icons.network_check,
+                          title: 'Network connection restored',
+                          subtitle: '1 hour ago',
+                          color: AppColors.success,
+                        ),
                       ),
                     ],
                   ),
@@ -767,65 +814,6 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
     );
   }
 
-  Widget _buildHardwareStatusSection() {
-    return Container(
-      padding: const EdgeInsets.all(SoftUIDesign.cardPadding),
-      decoration: SoftUIDesign.cardDecoration(
-        backgroundColor: AppColors.white,
-        borderRadius: SoftUIDesign.cardBorderRadius,
-        elevation: 4.0,
-        borderColor: AppColors.primaryRed.withOpacity(0.3),
-        showBorder: true,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: AppColors.info.withOpacity(0.08),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Text(
-                  'Hardware Status',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.info,
-                    letterSpacing: -0.2,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Consumer<SimpleBluetoothService>(
-            builder: (context, bluetoothService, _) {
-              return SolidStatusTile(
-                icon: Icons.bluetooth,
-                label: 'Bluetooth',
-                status: bluetoothService.isConnected 
-                    ? 'Connected' 
-                    : bluetoothService.isConnecting 
-                        ? 'Connecting...'
-                        : 'Disconnected',
-                statusColor: bluetoothService.isConnected 
-                    ? AppColors.success 
-                    : bluetoothService.isConnecting
-                        ? AppColors.warning
-                        : AppColors.mediumGray,
-                onTap: () {
-                  // Could navigate to Bluetooth settings
-                },
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
 
   Widget _buildEmergencyButton() {
     const double btnSize = 120.0; // Increased from 80 to 120
@@ -865,18 +853,40 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                 ),
               ),
             ),
-            Container(
-              width: btnSize,
-              height: btnSize,
-              decoration: BoxDecoration(
-                color: const Color(0xFFE53935),
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: Colors.white.withOpacity(0.3),
-                  width: 2,
-                ),
-              ),
-              child: const Icon(
+            _isEmergencyHolding
+              ? EmergencyButtonRipple(
+                  rippleColor: const Color(0xFFE53935),
+                  isActive: true,
+                  child: Container(
+                    width: btnSize,
+                    height: btnSize,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE53935),
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: Colors.white.withOpacity(0.3),
+                        width: 2,
+                      ),
+                    ),
+                    child: const Icon(
+                      Icons.emergency,
+                      color: AppColors.white,
+                      size: 40,
+                    ),
+                  ),
+                )
+              : Container(
+                  width: btnSize,
+                  height: btnSize,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE53935),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.3),
+                      width: 2,
+                    ),
+                  ),
+                  child: const Icon(
                 Icons.emergency,
                 color: AppColors.white,
                 size: 40, // Increased from 22 to 40 to match larger button

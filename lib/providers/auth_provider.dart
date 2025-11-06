@@ -1092,6 +1092,8 @@ class AuthProvider extends ChangeNotifier {
       if (success) {
         // Update local state
         _userName = fullName;
+        // Reload user model to get updated data
+        await loadUserModel();
         notifyListeners();
         print('✅ Profile updated: $_userEmail');
       } else {

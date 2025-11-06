@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tulong_app/constants/app_colors.dart';
 import 'package:tulong_app/constants/unified_typography.dart';
 import 'package:tulong_app/constants/soft_ui_design.dart';
@@ -9,6 +10,7 @@ import 'package:tulong_app/models/user_model.dart';
 import 'package:tulong_app/screens/notification_settings_screen.dart';
 import 'package:tulong_app/widgets/animated_neumorphic_card.dart';
 import 'package:tulong_app/widgets/unified_top_bar.dart';
+import 'package:tulong_app/utils/prototype_animations.dart';
 
 class ModernProfileScreen extends StatefulWidget {
   const ModernProfileScreen({super.key});
@@ -23,6 +25,9 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
   late AnimationController _slideController;
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
+  
+  // Stagger animations for Stat Cards (2 cards)
+  late StaggeredListAnimations _statCardsStagger;
 
   // Dynamic user profile data will be fetched from AuthProvider
 
@@ -56,12 +61,28 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
 
     _fadeController.forward();
     _slideController.forward();
+    
+    // Initialize stagger animations for Stat Cards (4 cards)
+    _statCardsStagger = StaggeredListAnimations(
+      vsync: this,
+      itemCount: 4,
+    );
+    
+    // Load user model immediately when screen opens to ensure data is available
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      if (authProvider.userEmail != null) {
+        // Always try to load user model, even if it exists (to refresh data)
+        authProvider.loadUserModel();
+      }
+    });
   }
 
   @override
   void dispose() {
     _fadeController.dispose();
     _slideController.dispose();
+    _statCardsStagger.dispose();
     super.dispose();
   }
 
@@ -70,34 +91,36 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
-            child: Column(
-              children: [
+        child: Column(
+          children: [
+            // Top bar - part of Column layout, fixed at top
             TopBarConfigs.profileTopBar(onEdit: () => _editProfile(context)),
-            // Accent line handled by UnifiedTopBar; remove local duplicate
             
+            // Scrollable content - only this part scrolls
             Expanded(
-      child: FadeTransition(
-        opacity: _fadeAnimation,
-        child: SlideTransition(
-          position: _slideAnimation,
-          child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(16),
-            child: Column(
-              children: [
-                         _buildQuickStats(),
-                         const SizedBox(height: 20),
-                         _buildStatsSection(),
-                         const SizedBox(height: 20),
-                         _buildSettingsSections(),
-                         const SizedBox(height: 20),
-                         _buildActionButtons(),
-                       ],
-                     ),
+              child: SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                padding: const EdgeInsets.all(16),
+                child: FadeTransition(
+                  opacity: _fadeAnimation,
+                  child: SlideTransition(
+                    position: _slideAnimation,
+                    child: Column(
+                      children: [
+                        _buildQuickStats(),
+                        const SizedBox(height: 20),
+                        _buildStatsSection(),
+                        const SizedBox(height: 20),
+                        _buildSettingsSections(),
+                        const SizedBox(height: 20),
+                        _buildActionButtons(),
+                      ],
+                    ),
                   ),
+                ),
               ),
             ),
-          ),
-        ],
+          ],
         ),
       ),
     );
@@ -106,6 +129,14 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
   Widget _buildQuickStats() {
     return Consumer<AuthProvider>(
       builder: (context, auth, child) {
+        // Ensure user model is loaded
+        if (auth.userEmail != null && auth.currentUserModel == null) {
+          // Load user model if not already loaded
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            auth.loadUserModel();
+          });
+        }
+        
         final userName = auth.userName ?? 'User';
         final userEmail = auth.userEmail ?? 'user@example.com';
         final userModel = auth.currentUserModel;
@@ -115,6 +146,9 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
           if ((userModel?.city ?? '').isNotEmpty) userModel!.city,
           if ((userModel?.province ?? '').isNotEmpty) userModel!.province,
         ].join(', ');
+        
+        // Get phone from userModel or fallback
+        final phone = userModel?.phone ?? '';
         
          return Container(
           margin: const EdgeInsets.only(bottom: 16),
@@ -218,13 +252,13 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                            ],
                          ),
                 const SizedBox(height: 8),
-                if ((userModel?.phone ?? '').isNotEmpty) Row(
+                if (phone.isNotEmpty) Row(
                   children: [
                     const Icon(Icons.call, color: Colors.white, size: 18),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        userModel!.phone!,
+                        phone,
                         style: const TextStyle(color: Colors.white),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -232,7 +266,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                     ),
                   ],
                 ),
-                if ((userModel?.phone ?? '').isNotEmpty) const SizedBox(height: 8),
+                if (phone.isNotEmpty) const SizedBox(height: 8),
                 if (location.isNotEmpty) Row(
                       children: [
                     const Icon(Icons.location_on_outlined, color: Colors.white, size: 18),
@@ -263,53 +297,41 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
       builder: (context, auth, child) {
         final userModel = auth.currentUserModel;
         
-        return Column(
-      children: [
-            // Enhanced Stats Section with better spacing
-            Row(
-              children: [
-                Expanded(
-                  child: _buildStatCard(
-          title: 'Messages Sent',
-                    value: _getMessagesCount(userModel),
-                    icon: Icons.message_outlined,
-                    color: AppColors.primaryRed,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: _buildStatCard(
-          title: 'Emergency Alerts',
-                    value: _getEmergencyAlertsCount(userModel),
-                    icon: Icons.warning_amber_outlined,
-                    color: AppColors.warning,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: _buildStatCard(
-          title: 'Calls Made',
-                    value: _getCallsCount(userModel),
-                    icon: Icons.phone_outlined,
-          color: AppColors.success,
-        ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: _buildStatCard(
-          title: 'Days Active',
+        return Container(
+          margin: const EdgeInsets.only(bottom: 32),
+          child: Row(
+            children: [
+              Expanded(
+                child: _statCardsStagger.buildAnimatedItem(
+                  0,
+                  _buildStatCard(
+                    title: 'Days Active',
                     value: _getDaysActiveCount(userModel),
                     icon: Icons.calendar_today_outlined,
                     color: AppColors.info,
                   ),
                 ),
-              ],
-            ),
-          ],
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: _statCardsStagger.buildAnimatedItem(
+                  1,
+                  FutureBuilder<String>(
+                    future: _getConnectedDevicesCountAsync(),
+                    builder: (context, snapshot) {
+                      final deviceCount = snapshot.data ?? '0';
+                      return _buildStatCard(
+                        title: 'Connected Devices',
+                        value: deviceCount,
+                        icon: Icons.bluetooth_connected,
+                        color: AppColors.primaryRed,
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ],
+          ),
         );
       },
     );
@@ -321,82 +343,108 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
     required IconData icon,
     required Color color,
   }) {
-    return AnimatedNeumorphicCard(
-       child: Stack(
-         children: [
-           // Subtle radial overlay for depth
-           SoftUIDesign.buildRadialOverlay(
-             color: color,
-             opacity: 0.04,
-             alignment: Alignment.topLeft,
-           ),
-           // Center everything perfectly
-           Center(
-             child: Padding(
-               padding: const EdgeInsets.all(20),
-               child: Column(
-                 mainAxisAlignment: MainAxisAlignment.center,
-                 crossAxisAlignment: CrossAxisAlignment.center,
-                 mainAxisSize: MainAxisSize.min,
-                 children: [
-                   // Icon with background circle - Centered
-                   Center(
-                     child: Container(
-                       width: 48,
-                       height: 48,
-                       margin: const EdgeInsets.only(bottom: 12),
-                       decoration: BoxDecoration(
-                         color: color.withOpacity(0.12),
-                         shape: BoxShape.circle,
-                         boxShadow: SoftUIDesign.getGlowOverlay(
-                           color: color,
-                           intensity: 0.12,
-                           blur: 8.0,
-                         ),
-                       ),
-                       alignment: Alignment.center,
-                       child: Icon(
-                         icon,
-                         color: color,
-                         size: 22,
-                       ),
-                     ),
-                   ),
-                   // Value text - Centered
-                   Center(
-                     child: Text(
-                       value,
-                       textAlign: TextAlign.center,
-                       style: UnifiedTypography.titleLarge.copyWith(
-                         color: AppColors.textPrimary,
-                         fontWeight: FontWeight.bold,
-                         fontSize: 20,
-                         height: 1.1,
-                       ),
-                     ),
-                   ),
-                   const SizedBox(height: 6),
-                   // Title text - Centered
-                   Center(
-                     child: Text(
-                       title,
-                       textAlign: TextAlign.center,
-                       style: UnifiedTypography.bodySmall.copyWith(
-                         color: AppColors.textSecondary,
-                         fontSize: 12,
-                         fontWeight: FontWeight.w500,
-                         height: 1.2,
-                       ),
-                       maxLines: 2,
-                       overflow: TextOverflow.ellipsis,
-                     ),
-                   ),
-                 ],
-               ),
-             ),
-           ),
-         ],
-       ),
+    return Container(
+      constraints: const BoxConstraints(minHeight: 140),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+            spreadRadius: 0,
+          ),
+          BoxShadow(
+            color: color.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+            spreadRadius: 0,
+          ),
+        ],
+      ),
+      child: Stack(
+        children: [
+          // Subtle gradient overlay
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    color.withOpacity(0.03),
+                    Colors.transparent,
+                  ],
+                ),
+              ),
+            ),
+          ),
+          // Content - centered with proper spacing
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  // Icon with enhanced styling
+                  Container(
+                    width: 52,
+                    height: 52,
+                    margin: const EdgeInsets.only(bottom: 10),
+                    decoration: BoxDecoration(
+                      color: color.withOpacity(0.12),
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: color.withOpacity(0.15),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                          spreadRadius: 0,
+                        ),
+                      ],
+                    ),
+                    child: Icon(
+                      icon,
+                      color: color,
+                      size: 24,
+                    ),
+                  ),
+                  // Value text - larger and bolder
+                  Text(
+                    value,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: AppColors.textPrimary,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 26,
+                      height: 1.0,
+                      letterSpacing: -0.5,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  // Title text
+                  Text(
+                    title,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      height: 1.2,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -406,12 +454,6 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
         _buildSettingsSection(
           title: 'Account Settings',
           items: [
-            _buildSettingsItem(
-              icon: Icons.person,
-              title: 'Personal Information',
-              subtitle: 'Update your personal details',
-              onTap: () => _editProfile(context),
-            ),
             _buildSettingsItem(
               icon: Icons.sms_failed_outlined,
               title: 'Emergency Message',
@@ -633,9 +675,20 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
   }
 
   // Action methods
-  void _editProfile(BuildContext context) {
+  void _editProfile(BuildContext context) async {
     HapticFeedback.lightImpact();
-    Navigator.of(context).pushNamed('/update-profile');
+    // Navigate to edit profile screen
+    await Navigator.of(context).pushNamed('/update-profile');
+    
+    // Reload user model after returning from edit profile to show updated data
+    if (mounted) {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      if (authProvider.userEmail != null) {
+        await authProvider.loadUserModel();
+        // Force UI rebuild
+        setState(() {});
+      }
+    }
   }
 
   void _openSecurity(BuildContext context) {
@@ -1262,10 +1315,30 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                     Expanded(
                       child: ElevatedButton(
                         onPressed: () async {
-                          Navigator.pop(sheetContext);
-                          await rootContext.read<AuthProvider>().signOut();
-                          if (!mounted) return;
-                          Navigator.of(rootContext).pushNamedAndRemoveUntil('/signin', (route) => false);
+                          try {
+                            // Close bottom sheet first
+                            Navigator.pop(sheetContext);
+                            
+                            // Sign out
+                            await rootContext.read<AuthProvider>().signOut();
+                            
+                            // Navigate to sign-in screen and clear navigation stack
+                            if (rootContext.mounted) {
+                              Navigator.of(rootContext, rootNavigator: true).pushNamedAndRemoveUntil(
+                                '/signin',
+                                (route) => false,
+                              );
+                            }
+                          } catch (e) {
+                            print('❌ Logout error: $e');
+                            // Even if there's an error, try to navigate
+                            if (rootContext.mounted) {
+                              Navigator.of(rootContext, rootNavigator: true).pushNamedAndRemoveUntil(
+                                '/signin',
+                                (route) => false,
+                              );
+                            }
+                          }
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.primaryRed,
@@ -1325,27 +1398,6 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
   }
 
   // Dynamic stats calculation methods using real data
-  String _getMessagesCount(UserModel? userModel) {
-    if (userModel == null) return '0';
-    // This would query the actual messages table for the user
-    // For now, return a placeholder that can be updated with real data
-    return '0'; // TODO: Implement real message count query
-  }
-
-  String _getEmergencyAlertsCount(UserModel? userModel) {
-    if (userModel == null) return '0';
-    // This would query the actual emergency alerts table
-    // For now, return a placeholder that can be updated with real data
-    return '0'; // TODO: Implement real emergency alerts count query
-  }
-
-  String _getCallsCount(UserModel? userModel) {
-    if (userModel == null) return '0';
-    // This would query the actual calls/voice messages table
-    // For now, return a placeholder that can be updated with real data
-    return '0'; // TODO: Implement real calls count query
-  }
-
   String _getDaysActiveCount(UserModel? userModel) {
     if (userModel == null) return '0';
     // Calculate days since user joined using real data
@@ -1356,5 +1408,36 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
       return daysSinceJoin.toString();
     }
     return '0';
+  }
+
+  Future<String> _getConnectedDevicesCountAsync() async {
+    try {
+      int count = 0;
+      
+      // Check SharedPreferences for saved paired device
+      final prefs = await SharedPreferences.getInstance();
+      final pairedDeviceName = prefs.getString('paired_device_name');
+      
+      // Check if we have a paired device saved
+      if (pairedDeviceName != null && pairedDeviceName.isNotEmpty) {
+        count++;
+      }
+      
+      // Also check for ESP32 MAC address and node ID (from previous connections)
+      final esp32Mac = prefs.getString('esp32_mac');
+      final esp32NodeId = prefs.getString('esp32_node_id');
+      
+      // If we have ESP32 connection data but no paired device name, still count it
+      if ((esp32Mac != null && esp32Mac.isNotEmpty) || 
+          (esp32NodeId != null && esp32NodeId.isNotEmpty)) {
+        if (pairedDeviceName == null || pairedDeviceName.isEmpty) {
+          count++;
+        }
+      }
+      
+      return count.toString();
+    } catch (e) {
+      return '0';
+    }
   }
 }
