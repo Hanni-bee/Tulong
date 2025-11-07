@@ -8,9 +8,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 
-/// ESP32 Bluetooth LoRa Chat Service
+/// ESP32 Bluetooth Chat Service
 /// Handles communication with ESP32 via Bluetooth Classic
-/// Manages authentication, message routing, and LoRa integration
+/// Manages authentication and message routing
 class ESP32BluetoothService extends ChangeNotifier {
   // ============================================================================
   // SINGLETON PATTERN
@@ -60,7 +60,7 @@ class ESP32BluetoothService extends ChangeNotifier {
   // CONSTANTS
   // ============================================================================
   
-  static const String ESP32_DEVICE_NAME = 'ESP32_LoRa_Node';
+  static const String ESP32_DEVICE_NAME = 'ESP32_Node';
   static const String PREF_ESP32_MAC = 'esp32_mac';
   static const String PREF_ESP32_NODE_ID = 'esp32_node_id';
   static const String PREF_AUTHENTICATED = 'esp32_authenticated';
@@ -126,7 +126,7 @@ class ESP32BluetoothService extends ChangeNotifier {
       _connectionStatus = 'Searching for ESP32...';
       notifyListeners();
       
-      _addStatusLog('Searching for ESP32 LoRa Node...');
+      _addStatusLog('Searching for ESP32 device...');
       
       // Get bonded devices first
       List<BluetoothDevice> bondedDevices = 
@@ -161,7 +161,7 @@ class ESP32BluetoothService extends ChangeNotifier {
         await Future.delayed(const Duration(seconds: 15));
         
         if (esp32Device == null) {
-          throw Exception('ESP32 LoRa Node not found. Make sure it\'s powered on and in pairing mode.');
+          throw Exception('ESP32 device not found. Make sure it\'s powered on and in pairing mode.');
         }
       }
       
@@ -298,7 +298,7 @@ class ESP32BluetoothService extends ChangeNotifier {
   // MESSAGE HANDLING
   // ============================================================================
   
-  /// Send chat message via ESP32/LoRa
+  /// Send chat message via ESP32
   Future<void> sendChatMessage({
     required String message,
     required String type, // 'group' or 'private'
@@ -517,8 +517,7 @@ class ESP32BluetoothService extends ChangeNotifier {
           await FlutterBluetoothSerial.instance.getBondedDevices();
       
       return devices.where((device) => 
-          (device.name?.contains('ESP32') ?? false) || 
-          (device.name?.contains('LoRa') ?? false)).toList();
+          (device.name?.contains('ESP32') ?? false)).toList();
       
     } catch (e) {
       _addErrorLog('Error getting devices: $e');

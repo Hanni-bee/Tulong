@@ -263,7 +263,7 @@ class SimpleBluetoothService extends ChangeNotifier {
       _connectionStatus = 'Searching for ESP32...';
       notifyListeners();
       
-      _addStatusLog('Searching for ESP32 LoRa Node...');
+      _addStatusLog('Searching for ESP32 device...');
       
       final bool result = await _channel.invokeMethod('connectToESP32');
       

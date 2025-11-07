@@ -20,6 +20,7 @@ import 'screens/main_navigation.dart';
 import 'providers/auth_provider.dart';
 import 'providers/network_provider.dart';
 import 'providers/power_provider.dart';
+import 'providers/chat_provider.dart';
 import 'services/simple_bluetooth_service.dart';
 import 'services/hardware_service.dart';
 import 'utils/performance_optimizer.dart';
@@ -71,6 +72,7 @@ class TulongApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => PowerProvider()),
         ChangeNotifierProvider(create: (_) => SimpleBluetoothService()),
         ChangeNotifierProvider(create: (_) => HardwareService()..initialize()),
+        ChangeNotifierProvider(create: (_) => ChatProvider()),
       ],
       child: MaterialApp(
         title: 'T.U.L.O.N.G',

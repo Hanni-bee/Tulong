@@ -253,7 +253,7 @@ class VoiceController {
     }
   }
 
-  /// Handle voice message from ESP32 (LoRa received and decoded)
+  /// Handle voice message from ESP32
   Future<void> handleVoiceMessage(Map<String, dynamic> messageData) async {
     try {
       if (messageData['type'] == 'voice_message' && 

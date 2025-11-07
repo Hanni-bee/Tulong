@@ -3,7 +3,7 @@ import '../constants/app_colors.dart';
 import '../constants/unified_typography.dart';
 import '../utils/prototype_animations.dart';
 
-/// Unified top bar component for consistent design across LoRa, Calls, and Profile screens
+/// Unified top bar component for consistent design across Local Chat, Calls, and Profile screens
 /// Matches the app's neumorphic design system and typography
 /// Enhanced with prototype floating bar animation
 class UnifiedTopBar extends StatefulWidget {
@@ -354,7 +354,7 @@ class _UnifiedTopBarState extends State<UnifiedTopBar>
 /// Predefined top bar configurations for different screens
 /// Each configuration is tailored to match the app's design system
 class TopBarConfigs {
-  static Widget loraTopBar({
+  static Widget localChatTopBar({
     required String status,
     required VoidCallback onBluetoothTap,
     VoidCallback? onConnectedTap,

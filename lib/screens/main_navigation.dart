@@ -7,7 +7,7 @@ import '../providers/network_provider.dart';
 import '../utils/prototype_animations.dart';
 import '../widgets/solid_badge.dart';
 import 'modern_home_screen.dart';
-import 'esp32_lora_chat_screen.dart';
+import 'local_chat_screen.dart';
 import 'walkie_talkie_screen.dart';
 // Hardware screen removed - using pure Bluetooth only
 import 'modern_profile_screen.dart';
@@ -50,7 +50,7 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
   
   final List<Widget> _screens = [
     const ModernHomeScreen(),
-    const ESP32LoRaChatScreen(),
+    const LocalChatScreen(),
     const WalkieTalkieScreen(),
     const ModernProfileScreen(),
   ];

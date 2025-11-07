@@ -152,7 +152,7 @@ class PermissionHelper {
           ],
         ),
         content: const Text(
-          'To connect with your ESP32 LoRa device, TULONG needs:\n\n'
+          'To connect with your ESP32 device, TULONG needs:\n\n'
           '✓ Bluetooth permissions - To scan and connect\n'
           '✓ Location permission - Required by Android for Bluetooth\n\n'
           'Without these, offline messaging won\'t work.',

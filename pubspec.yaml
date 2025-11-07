@@ -49,10 +49,12 @@ dependencies:
   
   # Hardware communication dependencies
   permission_handler: ^11.0.1
-  # flutter_bluetooth_serial: ^0.4.0  # Using custom implementation instead
+  flutter_bluetooth_serial_plus: ^0.5.1
   
   # Voice/Audio dependencies
   flutter_sound: ^9.2.13
+  audioplayers: ^6.1.0
+  path_provider: ^2.1.1
 
 dev_dependencies:
   flutter_test:
