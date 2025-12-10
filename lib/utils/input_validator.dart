@@ -151,31 +151,41 @@ class InputValidator {
     return null;
   }
 
-  // Location validation (Region, City, Barangay) - TEXT ONLY, NO NUMBERS, NO EMOJIS
+  // Location validation (Region, City, Barangay) - ALLOWS ROMAN NUMERALS
   static String? validateLocation(String? location, String fieldName) {
     if (location == null || location.isEmpty) {
       return '$fieldName is required';
     }
 
-    if (location.length > _maxNameLength) {
+    // Trim whitespace first
+    final trimmedLocation = location.trim();
+    if (trimmedLocation.isEmpty) {
+      return '$fieldName is required';
+    }
+
+    if (trimmedLocation.length > _maxNameLength) {
       return '$fieldName is too long';
     }
 
     // Check for emojis and special Unicode characters
     final emojiRegex = RegExp(r'[\u{1F600}-\u{1F64F}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]', unicode: true);
-    if (emojiRegex.hasMatch(location)) {
+    if (emojiRegex.hasMatch(trimmedLocation)) {
       return '$fieldName cannot contain emojis or special characters';
     }
 
-    // Check for numbers
-    if (location.contains(RegExp(r'[0-9]'))) {
-      return '$fieldName cannot contain numbers';
+    // Check for Arabic digits (0-9) only - ALLOW ROMAN NUMERALS (I, V, X, L, C, D, M)
+    // Roman numerals are letters, not digits, so they should pass
+    // Only reject if actual Arabic digits (0-9) are present
+    if (trimmedLocation.contains(RegExp(r'[0-9]'))) {
+      return '$fieldName cannot contain Arabic digits (0-9). Roman numerals (I, II, III, IV, V, VI, VII, VIII, IX, X, XI, XII, XIII) are allowed.';
     }
 
-    // Only allow letters, spaces, and common location characters
+    // Allow letters (including Roman numerals I, V, X, L, C, D, M), spaces, hyphens, and common location characters
+    // Examples that should pass: "REGION IV-B", "REGION XII", "REGION IV-A", "NCR"
+    // The hyphen (-) is explicitly allowed in the regex
     final locationRegex = RegExp(r"^[a-zA-Z\s\-'.,()]+$");
-    if (!locationRegex.hasMatch(location)) {
-      return '$fieldName can only contain letters, spaces, hyphens, apostrophes, periods, commas, and parentheses';
+    if (!locationRegex.hasMatch(trimmedLocation)) {
+      return '$fieldName can only contain letters (including Roman numerals), spaces, hyphens, apostrophes, periods, commas, and parentheses';
     }
 
     return null;

@@ -6,7 +6,6 @@ import '../providers/auth_provider.dart';
 import '../providers/power_provider.dart';
 import '../widgets/profile_info_card.dart';
 import '../widgets/settings_tile.dart';
-import 'auth/sign_in_screen_simple.dart';
 import 'change_password_screen.dart';
 import 'notifications_screen.dart';
 
@@ -306,23 +305,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
             Row(
               children: [
                 Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () {
-                      _showDeleteAccountDialog(context);
-                    },
-                    icon: const Icon(Icons.delete, color: AppColors.error),
-                    label: const Text(
-                      AppStrings.deleteAccount,
-                      style: TextStyle(color: AppColors.error),
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: AppColors.error),
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
                   child: ElevatedButton.icon(
                     onPressed: () {
                       _showLogoutDialog(context);
@@ -485,42 +467,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  void _showDeleteAccountDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        title: const Text('Delete Account'),
-        content: const Text(
-          'Are you sure you want to delete your account? This action cannot be undone and you will lose all your data.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Account deleted successfully'),
-                  backgroundColor: AppColors.error,
-                ),
-              );
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.error,
-              foregroundColor: AppColors.white,
-            ),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-  }
 
   void _showLogoutDialog(BuildContext context) {
     showDialog(

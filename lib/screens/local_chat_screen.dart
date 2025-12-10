@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter_bluetooth_serial_plus/flutter_bluetooth_serial_plus.dart';
 import 'package:intl/intl.dart';
 import '../constants/app_colors.dart';
 import '../constants/app_typography.dart';
@@ -125,15 +124,6 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
     });
   }
 
-  void _showDeviceDialog() {
-    showDialog(
-      context: context,
-      barrierDismissible: true,
-      barrierColor: Colors.black54,
-      builder: (context) => _DeviceSelectionDialog(),
-    );
-  }
-
   void _showConnectedUsersModal() {
     showDialog(
       context: context,
@@ -143,11 +133,6 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
     );
   }
 
-  void _toggleDebugConsole() {
-    setState(() {
-      _isDebugConsoleVisible = !_isDebugConsoleVisible;
-    });
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -164,11 +149,13 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
                     : 'Disconnected';
                 return TopBarConfigs.localChatTopBar(
                   status: statusText,
-                  onBluetoothTap: _showDeviceDialog,
-                  onConnectedTap: provider.isConnected ? () {
-                    // Show connected users modal
-                    _showConnectedUsersModal();
-                  } : null,
+                  onBluetoothTap: null, // Removed - now on home screen
+                  onConnectedTap: () {
+                    if (provider.isConnected) {
+                      _showConnectedUsersModal();
+                    }
+                    // Removed radar modal - now on home screen
+                  },
                 );
               },
             ),
@@ -857,11 +844,12 @@ class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
                 Expanded(
                   child: provider.pairedDevices.isEmpty
                       ? Center(
-                          child: Padding(
-                            padding: const EdgeInsets.all(40),
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
+                          child: SingleChildScrollView(
+                            child: Padding(
+                              padding: const EdgeInsets.all(40),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
                                 Container(
                                   padding: const EdgeInsets.all(24),
                                   decoration: BoxDecoration(
@@ -893,7 +881,8 @@ class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
                               ],
                             ),
                           ),
-                        )
+                        ),
+                      )
                       : Column(
                           children: [
                             Expanded(

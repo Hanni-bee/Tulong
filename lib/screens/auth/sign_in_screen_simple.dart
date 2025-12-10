@@ -65,6 +65,9 @@ class _SignInScreenState extends State<SignInScreen> {
           // Offline login successful - attempt Firebase sync if online
           print('Offline login successful for: $email');
           
+          // Small delay to ensure user model is loaded before navigating
+          await Future.delayed(const Duration(milliseconds: 300));
+          
           // Try to sync with Firebase in background (non-blocking)
           _attemptFirebaseSync(email, password);
         } else {
@@ -74,6 +77,9 @@ class _SignInScreenState extends State<SignInScreen> {
             if (firebaseUser?.user != null) {
               await authProvider.setAuthenticated(email: email, name: email.split('@')[0]);
               print('Online login successful for: $email');
+              
+              // Small delay to ensure user model is loaded
+              await Future.delayed(const Duration(milliseconds: 300));
             } else {
               throw Exception('Firebase sign-in returned no user');
             }

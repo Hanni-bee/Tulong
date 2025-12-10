@@ -206,8 +206,10 @@ class FirebaseService {
     required String email,
     required String firstName,
     required String lastName,
+    String? phone,
     required String address,
     required String region,
+    String? province,
     required String city,
     required String barangay,
     required String hashedPassword,
@@ -223,15 +225,19 @@ class FirebaseService {
           'firebase_uid': firebaseUid,
           'first_name': firstName,
           'last_name': lastName,
-          'address': address,
+          'phone': phone,
+          'street': address, // SQLite uses 'street' column
           'region': region,
+          'province': province,
           'city': city,
           'barangay': barangay,
           'password': hashedPassword,
           'is_online': 1,
+          'account_status': 'active',
           'last_seen': DateTime.now().millisecondsSinceEpoch,
           'is_synced': firebaseUid != null ? 1 : 0,
           'sync_timestamp': firebaseUid != null ? DateTime.now().millisecondsSinceEpoch : null,
+          'is_verified': 1, // Email verification completed
         });
         print('SQLite user updated: $email');
       } else {
@@ -241,16 +247,22 @@ class FirebaseService {
           'email': email,
           'first_name': firstName,
           'last_name': lastName,
-          'address': address,
+          'phone': phone,
+          'street': address, // SQLite uses 'street' column
           'region': region,
+          'province': province,
           'city': city,
           'barangay': barangay,
           'password': hashedPassword,
           'is_online': 1,
+          'account_status': 'active',
           'created_at': DateTime.now().millisecondsSinceEpoch,
           'last_seen': DateTime.now().millisecondsSinceEpoch,
           'is_synced': firebaseUid != null ? 1 : 0,
           'sync_timestamp': firebaseUid != null ? DateTime.now().millisecondsSinceEpoch : null,
+          'is_google_auth': 0,
+          'address_setup_completed': 0,
+          'is_verified': 1, // Email verification completed
         });
         print('SQLite user created: $email');
       }
@@ -373,6 +385,11 @@ class FirebaseService {
     return digest.toString();
   }
 
+  // Public method to hash password (for use in other services)
+  String hashPassword(String password) {
+    return _hashPassword(password);
+  }
+
   // Generate a secure temporary password for hybrid accounts
   String _generateSecurePassword() {
     const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#\$%^&*';
@@ -472,13 +489,19 @@ class FirebaseService {
     required String password,
     required String firstName,
     required String lastName,
+    String? phone,
     required String address,
     required String region,
+    String? province,
     required String city,
     required String barangay,
   }) async {
     try {
       // Validate all input data
+      print('🔍 Validating signup data...');
+      print('   Region value: "$region" (length: ${region.length})');
+      print('   Region bytes: ${region.codeUnits}');
+      
       final validationErrors = InputValidator.validateUserInput(
         email: email,
         password: password,
@@ -494,8 +517,10 @@ class FirebaseService {
       // Check for validation errors
       final errors = validationErrors.values.where((error) => error != null).toList();
       if (errors.isNotEmpty) {
+        print('❌ Validation errors found: $errors');
         throw Exception('Validation failed: ${errors.join(', ')}');
       }
+      print('✅ All validations passed');
 
       // Sanitize inputs
       final sanitizedFirstName = InputValidator.sanitizeText(firstName);
@@ -510,14 +535,29 @@ class FirebaseService {
         password: password,
       );
 
-      // Create user profile in Realtime Database
+      // Wait for auth state to be ready
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      // Create user profile in Realtime Database AFTER successful account creation
       if (userCredential.user != null) {
-        await database.ref('users/${userCredential.user!.uid}').set({
+        final sanitizedProvince = province != null ? InputValidator.sanitizeText(province) : '';
+        final userUid = userCredential.user!.uid;
+        
+        // Verify user is authenticated
+        final currentAuthUser = auth.currentUser;
+        if (currentAuthUser == null || currentAuthUser.uid != userUid) {
+          print('⚠️ Warning: Auth state not ready, waiting...');
+          await Future.delayed(const Duration(milliseconds: 1000));
+        }
+
+        final userData = {
           'FirstName': sanitizedFirstName,
           'LastName': sanitizedLastName,
           'Email': email.trim(),
+          'Phone': phone ?? '',  // Ensure phone is saved
           'Address': sanitizedAddress,
           'Region': sanitizedRegion,
+          'Province': sanitizedProvince,
           'City': sanitizedCity,
           'Barangay': sanitizedBarangay,
           
@@ -525,15 +565,65 @@ class FirebaseService {
           'createdAt': ServerValue.timestamp,
           'isOnline': true,
           'lastSeen': ServerValue.timestamp,
-        });
+          'is_verified': true, // Email verification completed
+        };
+
+        print('🔥 Saving to Firebase Realtime Database AFTER account creation:');
+        print('   UID: $userUid');
+        print('   Email: ${email.trim()}');
+        print('   Phone: ${phone ?? 'N/A'}');
+        print('   Auth User: ${auth.currentUser?.uid}');
+
+        try {
+          // Ensure user is authenticated
+          if (auth.currentUser == null) {
+            throw Exception('User not authenticated - cannot save to Realtime Database');
+          }
+          
+          // Save to Firebase Realtime Database
+          final userRef = database.ref('users/$userUid');
+          await userRef.set(userData);
+          
+          print('✅ User data saved to Firebase Realtime Database at users/$userUid');
+          _addDebugLog('✅ User data saved to Firebase Realtime Database at users/$userUid');
+          
+          // Verify the save immediately
+          await Future.delayed(const Duration(milliseconds: 500));
+          final verifySnapshot = await userRef.get();
+          
+          if (verifySnapshot.exists) {
+            final savedData = verifySnapshot.value as Map<dynamic, dynamic>;
+            print('✅ VERIFIED: User data exists in Firebase Realtime Database');
+            print('   Saved Email: ${savedData['Email']}');
+            print('   Saved Phone: ${savedData['Phone']}');
+            print('   Saved FirstName: ${savedData['FirstName']}');
+            print('   Saved LastName: ${savedData['LastName']}');
+            _addDebugLog('✅ VERIFIED: User data exists in Firebase Realtime Database');
+          } else {
+            print('❌ ERROR: User data not found after save - verification failed');
+            _addDebugLog('❌ ERROR: User data not found after save - verification failed');
+            throw Exception('User data verification failed - data not found in database');
+          }
+          
+        } catch (firebaseError) {
+          print('❌ CRITICAL ERROR saving to Firebase Realtime Database: $firebaseError');
+          print('❌ Error type: ${firebaseError.runtimeType}');
+          print('❌ Error details: ${firebaseError.toString()}');
+          _addDebugLog('❌ CRITICAL ERROR saving to Firebase Realtime Database: $firebaseError');
+          
+          // Re-throw to fail the signup if Firebase save fails
+          rethrow;
+        }
 
         // Save user to SQLite for offline access
         await _saveUserToSQLite(
           email: email.trim(),
           firstName: sanitizedFirstName,
           lastName: sanitizedLastName,
+          phone: phone,
           address: sanitizedAddress,
           region: sanitizedRegion,
+          province: sanitizedProvince,
           city: sanitizedCity,
           barangay: sanitizedBarangay,
           

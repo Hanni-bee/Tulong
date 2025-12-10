@@ -201,6 +201,8 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
             await authProvider.loginOffline(email, password);
 
         if (offlineSuccess) {
+          // Small delay to ensure data is loaded before navigating
+          await Future.delayed(const Duration(milliseconds: 300));
           _attemptFirebaseSync(email, password);
         } else {
           try {
@@ -211,6 +213,8 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
                 email: email,
                 name: email.split('@')[0],
               );
+              // Small delay to ensure user model is loaded
+              await Future.delayed(const Duration(milliseconds: 300));
             } else {
               throw Exception('Invalid email or password');
             }

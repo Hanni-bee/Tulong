@@ -1,34 +1,52 @@
 {
   "rules": {
+    ".read": true,
+    ".write": true,
     "users": {
+      ".read": true,
+      ".write": true,
       "$uid": {
         ".read": "auth != null && (auth.uid == $uid || root.child('users').child(auth.uid).child('role').val() == 'admin')",
         ".write": "auth != null && (auth.uid == $uid || root.child('users').child(auth.uid).child('role').val() == 'admin')",
-        ".validate": "newData.hasChildren(['Email'])",
+        ".validate": "newData.hasChildren(['Email', 'FirstName', 'LastName'])",
         "Email": {
           ".validate": "newData.isString() && newData.val().matches(/^[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}$/i)"
         },
         "FirstName": {
+          ".read": true,
+      		".write": true,
           ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 50"
         },
         "LastName": {
-          ".validate": "newData.isString() && newData.val().length >= 0 && newData.val().length <= 50"
+          ".read": true,
+      		".write": true,
+          ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 50"
         },
         "isOnline": {
+          ".read": true,
+      		".write": true,
           ".validate": "newData.isBoolean()"
         },
         "role": {
+          ".read": true,
+      		".write": true,
           ".validate": "newData.isString() && newData.val().matches(/^(user|moderator|admin)$/)"
         },
         "Password": {
-          ".validate": "newData.isString() && newData.val().length >= 0"
+          ".read": true,
+      		".write": true,
+          ".validate": "newData.isString() && newData.val().length >= 64"
         },
         "preferences": {
+          ".read": true,
+      		".write": true,
           ".validate": "newData.hasChildren(['notifications', 'privacy'])"
         }
       }
     },
     "chats": {
+      ".read": true,
+      ".write": true,
       "$chatId": {
         ".read": "auth != null && (root.child('chats').child($chatId).child('participants').child(auth.uid).exists() || root.child('users').child(auth.uid).child('role').val() == 'admin')",
         ".write": "auth != null && root.child('chats').child($chatId).child('participants').child(auth.uid).exists()",

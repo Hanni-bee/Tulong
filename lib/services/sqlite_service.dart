@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 
@@ -9,7 +10,7 @@ class SQLiteService {
 
   static Database? _database;
   static const String _databaseName = 'tulong_offline.db';
-  static const int _databaseVersion = 3;
+  static const int _databaseVersion = 4;
 
   // Table names
   static const String _usersTable = 'users';
@@ -61,7 +62,8 @@ class SQLiteService {
         is_synced INTEGER DEFAULT 0,
         sync_timestamp INTEGER,
         is_google_auth INTEGER DEFAULT 0,
-        address_setup_completed INTEGER DEFAULT 0
+        address_setup_completed INTEGER DEFAULT 0,
+        is_verified INTEGER DEFAULT 0
       )
     ''');
 
@@ -130,6 +132,10 @@ class SQLiteService {
     if (oldVersion < 3) {
       // Add emergency_message column
       await db.execute('ALTER TABLE $_usersTable ADD COLUMN emergency_message TEXT');
+    }
+    if (oldVersion < 4) {
+      // Add is_verified column
+      await db.execute('ALTER TABLE $_usersTable ADD COLUMN is_verified INTEGER DEFAULT 0');
     }
   }
 
@@ -241,15 +247,39 @@ class SQLiteService {
     required Map<String, dynamic> data,
   }) async {
     final db = await database;
-    return await db.insert(_syncQueueTable, {
-      'table_name': tableName,
-      'record_id': recordId,
-      'operation': operation,
-      'data': data.toString(),
-      'created_at': DateTime.now().millisecondsSinceEpoch,
-      'retry_count': 0,
-      'last_attempt': null,
-    });
+    // Check if queue item already exists for this record
+    final existing = await db.query(
+      _syncQueueTable,
+      where: 'table_name = ? AND record_id = ?',
+      whereArgs: [tableName, recordId],
+    );
+    
+    // If exists, update it; otherwise insert new
+    if (existing.isNotEmpty) {
+      await db.update(
+        _syncQueueTable,
+        {
+          'operation': operation,
+          'data': jsonEncode(data), // Store as JSON string
+          'created_at': DateTime.now().millisecondsSinceEpoch,
+          'retry_count': 0,
+          'last_attempt': null,
+        },
+        where: 'table_name = ? AND record_id = ?',
+        whereArgs: [tableName, recordId],
+      );
+      return existing.first['id'] as int;
+    } else {
+      return await db.insert(_syncQueueTable, {
+        'table_name': tableName,
+        'record_id': recordId,
+        'operation': operation,
+        'data': jsonEncode(data), // Store as JSON string
+        'created_at': DateTime.now().millisecondsSinceEpoch,
+        'retry_count': 0,
+        'last_attempt': null,
+      });
+    }
   }
 
   Future<List<Map<String, dynamic>>> getSyncQueue() async {

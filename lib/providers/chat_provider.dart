@@ -28,6 +28,7 @@ class ChatProvider with ChangeNotifier {
   List<ChatMessage> get messages => _messages;
   List<String> get debugLogs => _debugLogs;
   bool get isConnecting => _isConnecting;
+  String? get currentUserName => _currentUserName;
   
   // Get connected users including current user
   List<String> get connectedUsers {

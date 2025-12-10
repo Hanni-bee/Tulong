@@ -30,6 +30,7 @@ import 'services/notification_service.dart';
 import 'services/offline_sync_service.dart';
 import 'services/philippine_location_service.dart';
 import 'services/app_initialization_service.dart';
+import 'services/sqlite_service.dart';
 import 'config/page_transition_config.dart';
 
 void main() async {
@@ -73,6 +74,7 @@ class TulongApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => SimpleBluetoothService()),
         ChangeNotifierProvider(create: (_) => HardwareService()..initialize()),
         ChangeNotifierProvider(create: (_) => ChatProvider()),
+        Provider(create: (_) => SQLiteService()),
       ],
       child: MaterialApp(
         title: 'T.U.L.O.N.G',

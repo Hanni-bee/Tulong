@@ -304,18 +304,23 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
         barangay: barangayName,
       );
       
-      // Update local user model
-      final updatedUser = authProvider.currentUserModel!.copyWith(
-        name: _nameController.text.trim(),
-        email: _emailController.text.trim(),
-        // Normalize phone locally as well
-        phone: (() { final d = _phoneController.text.replaceAll(RegExp(r'\\D'), ''); return d.isEmpty ? null : ('0' + d); })(),
-        street: _addressController.text.trim(),
-        barangay: barangayName,
-        city: cityName,
-        province: provinceName,
-      );
-      authProvider.updateUser(updatedUser);
+      // Reload user model to ensure all saved data is loaded from database
+      await authProvider.loadUserModel();
+      
+      // Update local user model with latest data
+      if (authProvider.currentUserModel != null) {
+        final updatedUser = authProvider.currentUserModel!.copyWith(
+          name: _nameController.text.trim(),
+          email: _emailController.text.trim(),
+          // Normalize phone locally as well
+          phone: (() { final d = _phoneController.text.replaceAll(RegExp(r'\\D'), ''); return d.isEmpty ? null : ('0' + d); })(),
+          street: _addressController.text.trim(),
+          barangay: barangayName,
+          city: cityName,
+          province: provinceName,
+        );
+        authProvider.updateUser(updatedUser);
+      }
 
       HapticFeedback.mediumImpact();
       

@@ -222,16 +222,21 @@ class _AddressSetupScreenState extends State<AddressSetupScreen> {
       // Mark address setup as completed
       await unifiedDataService.markAddressSetupCompleted(userEmail);
       
-      // Update local user model
-      final updatedUser = authProvider.currentUserModel!.copyWith(
-        street: _addressController.text.trim(),
-        barangay: barangayName,
-        city: cityName,
-        province: provinceName,
-        phone: (() { final d = _phoneController.text.replaceAll(RegExp(r'\\D'), ''); return d.isEmpty ? null : ('0' + d); })(),
-        addressSetupCompleted: true,
-      );
-      authProvider.updateUser(updatedUser);
+      // Reload user model to ensure all saved data is loaded
+      await authProvider.loadUserModel();
+      
+      // Update local user model with latest data
+      if (authProvider.currentUserModel != null) {
+        final updatedUser = authProvider.currentUserModel!.copyWith(
+          street: _addressController.text.trim(),
+          barangay: barangayName,
+          city: cityName,
+          province: provinceName,
+          phone: (() { final d = _phoneController.text.replaceAll(RegExp(r'\\D'), ''); return d.isEmpty ? null : ('0' + d); })(),
+          addressSetupCompleted: true,
+        );
+        authProvider.updateUser(updatedUser);
+      }
 
       HapticFeedback.mediumImpact();
       

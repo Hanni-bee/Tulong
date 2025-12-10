@@ -29,8 +29,10 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
   late AnimationController _pageEntranceController;
   late Animation<double> _pageExitFade;
   late Animation<Offset> _pageExitSlide;
+  late Animation<double> _pageExitScale;
   late Animation<double> _pageEntranceFade;
   late Animation<Offset> _pageEntranceSlide;
+  late Animation<double> _pageEntranceScale;
   
   // Floating bottom nav animation
   late AnimationController _floatingNavController;
@@ -93,9 +95,9 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
       duration: const Duration(milliseconds: 280),
       vsync: this,
     );
-    // Exit animation: fade out (quick and clean)
+    // Enhanced exit animation: fade out + slide + scale (smooth and polished)
     _pageExitController = AnimationController(
-      duration: const Duration(milliseconds: 200),
+      duration: const Duration(milliseconds: 280),
       vsync: this,
     )..value = 0.0; // Start hidden
     
@@ -109,15 +111,23 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
     
     _pageExitSlide = Tween<Offset>(
       begin: Offset.zero,
-      end: const Offset(0, -0.02), // Subtle slide up on exit
+      end: const Offset(0, -0.04), // Slide up on exit
     ).animate(CurvedAnimation(
       parent: _pageExitController,
       curve: Curves.easeInCubic,
     ));
     
-    // Entrance animation: fade in + slide up
+    _pageExitScale = Tween<double>(
+      begin: 1.0,
+      end: 0.96, // Slight scale down on exit
+    ).animate(CurvedAnimation(
+      parent: _pageExitController,
+      curve: Curves.easeInCubic,
+    ));
+    
+    // Enhanced entrance animation: fade in + slide up + scale (smooth entrance)
     _pageEntranceController = AnimationController(
-      duration: const Duration(milliseconds: 350),
+      duration: const Duration(milliseconds: 400),
       vsync: this,
     )..value = 1.0; // Start visible
     
@@ -130,8 +140,16 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
     ));
     
     _pageEntranceSlide = Tween<Offset>(
-      begin: const Offset(0, 0.08), // Slide up from 8% below
+      begin: const Offset(0, 0.06), // Slide up from 6% below
       end: Offset.zero,
+    ).animate(CurvedAnimation(
+      parent: _pageEntranceController,
+      curve: Curves.easeOutCubic,
+    ));
+    
+    _pageEntranceScale = Tween<double>(
+      begin: 0.96, // Start slightly scaled down
+      end: 1.0,
     ).animate(CurvedAnimation(
       parent: _pageEntranceController,
       curve: Curves.easeOutCubic,
@@ -270,20 +288,23 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
       _pageExitController.reset();
       _pageEntranceController.reset();
       
-      // Start exit animation first (fade out + subtle slide up)
+      // Start exit animation first (fade out + slide up + scale)
       _pageExitController.forward().then((_) {
         // After exit completes, switch page and start entrance
         setState(() {
           _currentIndex = index;
         });
         
-        // Start entrance animation (fade in + slide up)
-        _pageEntranceController.forward().then((_) {
-          _iconAnimationController.reverse();
-          // Reset exit controller for next transition
-          _pageExitController.reset();
-          // Keep entrance visible for next transition
-          _pageEntranceController.value = 1.0;
+        // Small delay for smoother transition (10ms)
+        Future.delayed(const Duration(milliseconds: 10), () {
+          // Start entrance animation (fade in + slide up + scale)
+          _pageEntranceController.forward().then((_) {
+            _iconAnimationController.reverse();
+            // Reset exit controller for next transition
+            _pageExitController.reset();
+            // Keep entrance visible for next transition
+            _pageEntranceController.value = 1.0;
+          });
         });
       });
     }
@@ -301,7 +322,12 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
             // Exiting page (only visible during exit animation)
             if (_pageExitController.value > 0.0)
               AnimatedBuilder(
-                animation: _pageExitController,
+                animation: Listenable.merge([
+                  _pageExitController,
+                  _pageExitFade,
+                  _pageExitSlide,
+                  _pageExitScale,
+                ]),
                 builder: (context, child) {
                   return Positioned.fill(
                     child: IgnorePointer(
@@ -309,9 +335,12 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
                         opacity: _pageExitFade,
                         child: SlideTransition(
                           position: _pageExitSlide,
-                          child: IndexedStack(
-                            index: _previousIndex,
-                            children: _screens,
+                          child: ScaleTransition(
+                            scale: _pageExitScale,
+                            child: IndexedStack(
+                              index: _previousIndex,
+                              children: _screens,
+                            ),
                           ),
                         ),
                       ),
@@ -321,15 +350,23 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
               ),
             // Entering page (current page with entrance animation)
             AnimatedBuilder(
-              animation: _pageEntranceController,
+              animation: Listenable.merge([
+                _pageEntranceController,
+                _pageEntranceFade,
+                _pageEntranceSlide,
+                _pageEntranceScale,
+              ]),
               builder: (context, child) {
                 return FadeTransition(
                   opacity: _pageEntranceFade,
                   child: SlideTransition(
                     position: _pageEntranceSlide,
-                    child: IndexedStack(
-                      index: _currentIndex,
-                      children: _screens,
+                    child: ScaleTransition(
+                      scale: _pageEntranceScale,
+                      child: IndexedStack(
+                        index: _currentIndex,
+                        children: _screens,
+                      ),
                     ),
                   ),
                 );
@@ -349,10 +386,30 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
               color: Colors.white, // solid pill
               borderRadius: BorderRadius.circular(28),
               border: Border.all(
-                color: AppColors.lightGray.withOpacity(0.35), // subtle ring to distinguish
-                width: 1.2,
+                color: AppColors.lightGray.withOpacity(0.25), // More subtle border
+                width: 1.0,
               ),
-              boxShadow: SoftUIDesign.getCardShadow(elevation: 6.0), // Soft UI shadow for nav bar
+              boxShadow: [
+                // Enhanced shadow with multiple layers
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.08),
+                  blurRadius: 20,
+                  offset: const Offset(0, 8),
+                  spreadRadius: 0,
+                ),
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.04),
+                  blurRadius: 8,
+                  offset: const Offset(0, 4),
+                  spreadRadius: 0,
+                ),
+                BoxShadow(
+                  color: Colors.white.withOpacity(0.8),
+                  blurRadius: 10,
+                  offset: const Offset(0, -2),
+                  spreadRadius: 0,
+                ),
+              ],
             ),
         child: SafeArea(
           top: false,
@@ -363,7 +420,7 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
               return Stack(
                 alignment: Alignment.centerLeft,
                 children: [
-                  // Sliding pill indicator (from prototype: smooth transition with spring)
+                  // Enhanced sliding pill indicator with glow effect
                   AnimatedPositioned(
                     duration: PrototypeAnimations.navTransitionDuration, // 400ms
                     curve: Curves.easeInOutCubic,
@@ -371,14 +428,24 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
                     width: itemWidth,
                     top: 6,
                     bottom: 6,
-                    child: AnimatedContainer(
-                      duration: PrototypeAnimations.navTransitionDuration,
-                      curve: Curves.easeInOutCubic,
-                      margin: const EdgeInsets.symmetric(horizontal: 6),
-                      decoration: BoxDecoration(
-                        color: _navigationItems[_currentIndex].color.withOpacity(0.08),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
+                    child: AnimatedBuilder(
+                      animation: _glowPulseController,
+                      builder: (context, child) {
+                        return Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 6),
+                          decoration: BoxDecoration(
+                            color: _navigationItems[_currentIndex].color.withOpacity(0.08),
+                            borderRadius: BorderRadius.circular(20),
+                            boxShadow: [
+                              BoxShadow(
+                                color: _navigationItems[_currentIndex].color.withOpacity(0.15 * _glowPulseAnimation.value),
+                                blurRadius: 8,
+                                spreadRadius: 1,
+                              ),
+                            ],
+                          ),
+                        );
+                      },
                     ),
                   ),
                   Row(
@@ -405,247 +472,17 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
     final isSelected = _currentIndex == index;
 
     return Expanded(
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () => _onTabTapped(index),
-          borderRadius: BorderRadius.circular(20),
-          child: AnimatedContainer(
-          duration: const Duration(milliseconds: 400),
-          curve: Curves.easeInOutCubic,
-          margin: const EdgeInsets.symmetric(horizontal: 4),
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          decoration: BoxDecoration(
-            color: isSelected ? Colors.white : Colors.transparent,
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: isSelected
-                ? [
-                    ...SoftUIDesign.getSoftShadow(elevation: 3.0, shadowColor: item.color.withOpacity(0.2)),
-                    // Subtle glow overlay for active items
-                    ...SoftUIDesign.getGlowOverlay(color: item.color, intensity: 0.08, blur: 6.0),
-                  ]
-                : [
-                    // Subtle shadow for unselected items
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.02),
-                      offset: const Offset(0, 1),
-                      blurRadius: 4,
-                      spreadRadius: 0,
-                    ),
-                  ],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              // Enhanced icon with multiple animations and badge
-              Semantics(
-                selected: isSelected,
-                label: item.label,
-                child: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  // Active dot above the icon (centered), matching icon color
-                  if (isSelected)
-                    Positioned(
-                      top: -10,
-                      left: 0,
-                      right: 0,
-                      child: Container(
-                        width: 8,
-                        height: 8,
-                        decoration: BoxDecoration(
-                          color: item.color,
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: item.color.withOpacity(0.35),
-                              blurRadius: 6,
-                              spreadRadius: 1,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  // Subtle color-matched gradient glow behind each icon
-                  Positioned.fill(
-                    child: IgnorePointer(
-                      child: Center(
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 320),
-                          curve: Curves.easeInOutCubic,
-                          width: isSelected ? 66 : 46,
-                          height: isSelected ? 66 : 46,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(18),
-                            gradient: RadialGradient(
-                              center: Alignment.center,
-                              radius: 0.85,
-                              colors: [
-                                item.color.withOpacity(isSelected ? 0.18 : 0.06),
-                                Colors.transparent,
-                              ],
-                              stops: const [0.0, 1.0],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  // Icon with wobble animation and glow effect
-                  AnimatedBuilder(
-                    animation: Listenable.merge([
-                      _iconScaleAnimation,
-                      if (_iconWobbleControllers.containsKey(index)) ...[
-                        _iconWobbleScaleAnimations[index]!,
-                        _iconWobbleRotateAnimations[index]!,
-                      ],
-                      if (isSelected) _glowPulseAnimation,
-                    ]),
-                    builder: (context, child) {
-                      final baseScale = isSelected ? _iconScaleAnimation.value : 1.0;
-                      final wobbleScale = _iconWobbleControllers.containsKey(index) && 
-                          _iconWobbleControllers[index]!.isAnimating
-                          ? _iconWobbleScaleAnimations[index]!.value
-                          : 1.0;
-                      final wobbleRotate = _iconWobbleControllers.containsKey(index) && 
-                          _iconWobbleControllers[index]!.isAnimating
-                          ? _iconWobbleRotateAnimations[index]!.value
-                          : 0.0;
-                      final glowOpacity = isSelected ? _glowPulseAnimation.value : 0.0;
-
-                      return Container(
-                        decoration: isSelected
-                            ? BoxDecoration(
-                                shape: BoxShape.circle,
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: item.color.withOpacity(glowOpacity),
-                                    blurRadius: 16,
-                                    spreadRadius: 2,
-                                  ),
-                                ],
-                              )
-                            : null,
-                        child: Transform.scale(
-                          scale: baseScale * wobbleScale,
-                          child: Transform.rotate(
-                            angle: wobbleRotate,
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 320),
-                              curve: Curves.easeInOutCubic,
-                              padding: const EdgeInsets.all(10),
-                              decoration: BoxDecoration(
-                                color: isSelected ? item.color : Colors.transparent,
-                                borderRadius: BorderRadius.circular(16),
-                                // Color-matched ring around active icon tile
-                                border: isSelected
-                                    ? Border.all(
-                                        color: item.color.withOpacity(0.25),
-                                        width: 1,
-                                      )
-                                    : null,
-                              ),
-                              child: AnimatedSwitcher(
-                                duration: const Duration(milliseconds: 220),
-                                switchInCurve: Curves.easeOutCubic,
-                                switchOutCurve: Curves.easeInCubic,
-                                transitionBuilder: (child, animation) {
-                                  return FadeTransition(
-                                    opacity: animation,
-                                    child: ScaleTransition(
-                                      scale: Tween<double>(begin: 0.98, end: 1.0).animate(animation),
-                                      child: SlideTransition(
-                                        position: Tween<Offset>(
-                                          begin: const Offset(0, 0.06),
-                                          end: const Offset(0, 0),
-                                        ).animate(animation),
-                                        child: child,
-                                      ),
-                                    ),
-                                  );
-                                },
-                                child: Icon(
-                                  isSelected ? item.activeIcon : item.icon,
-                                  key: ValueKey(isSelected),
-                                  color: isSelected ? Colors.white : AppColors.mediumGray,
-                                  size: 24,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                  // Badge counter - positioned top-right of icon
-                  if (_shouldShowBadge(index))
-                    Positioned(
-                      right: -2,
-                      top: -2,
-                      child: SolidBadge(
-                        count: _getBadgeCount(index),
-                        backgroundColor: AppColors.primaryRed,
-                      ),
-                    ),
-                ],
-              )),
-              const SizedBox(height: 6),
-              // Enhanced label with smooth transitions
-              AnimatedDefaultTextStyle(
-                duration: const Duration(milliseconds: 280),
-                curve: Curves.easeInOutCubic,
-                style: TextStyle(
-                  fontSize: isSelected ? 12 : 11,
-                  fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                  color: isSelected ? item.color : AppColors.mediumGray,
-                  letterSpacing: isSelected ? 0.3 : 0.2,
-                  height: 1.1,
-                ),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 260),
-                  curve: Curves.easeInOutCubic,
-                  padding: EdgeInsets.symmetric(
-                    horizontal: isSelected ? 8 : 4,
-                    vertical: isSelected ? 2 : 0,
-                  ),
-                  decoration: BoxDecoration(
-                    color: isSelected 
-                        ? item.color.withOpacity(0.1) 
-                        : Colors.transparent,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 220),
-                    switchInCurve: Curves.easeOutCubic,
-                    switchOutCurve: Curves.easeInCubic,
-                    transitionBuilder: (child, animation) => FadeTransition(opacity: animation, child: child),
-                    child: Text(
-                      item.label,
-                      key: ValueKey(isSelected),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                ),
-              ),
-              // Underline indicator matching icon color (subtle)
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 320),
-                curve: Curves.easeInOutCubic,
-                margin: const EdgeInsets.only(top: 4),
-                height: 3,
-                width: isSelected ? 16 : 0,
-                decoration: BoxDecoration(
-                  color: item.color.withOpacity(isSelected ? 0.8 : 0.0),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+      child: _AnimatedNavItem(
+        isSelected: isSelected,
+        item: item,
+        index: index,
+        onTap: () => _onTabTapped(index),
+        iconScaleAnimation: _iconScaleAnimation,
+        iconWobbleScale: _iconWobbleScaleAnimations[index],
+        iconWobbleRotate: _iconWobbleRotateAnimations[index],
+        glowPulse: _glowPulseAnimation,
+        shouldShowBadge: _shouldShowBadge(index),
+        badgeCount: _getBadgeCount(index),
       ),
     );
   }
@@ -676,6 +513,301 @@ class NavigationItem {
     required this.label,
     required this.color,
   });
+}
+
+/// Enhanced animated navigation item with press feedback
+class _AnimatedNavItem extends StatefulWidget {
+  final bool isSelected;
+  final NavigationItem item;
+  final int index;
+  final VoidCallback onTap;
+  final Animation<double> iconScaleAnimation;
+  final Animation<double>? iconWobbleScale;
+  final Animation<double>? iconWobbleRotate;
+  final Animation<double> glowPulse;
+  final bool shouldShowBadge;
+  final int badgeCount;
+
+  const _AnimatedNavItem({
+    required this.isSelected,
+    required this.item,
+    required this.index,
+    required this.onTap,
+    required this.iconScaleAnimation,
+    this.iconWobbleScale,
+    this.iconWobbleRotate,
+    required this.glowPulse,
+    required this.shouldShowBadge,
+    required this.badgeCount,
+  });
+
+  @override
+  State<_AnimatedNavItem> createState() => _AnimatedNavItemState();
+}
+
+class _AnimatedNavItemState extends State<_AnimatedNavItem>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _pressController;
+  late Animation<double> _pressScale;
+  bool _isPressed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _pressController = AnimationController(
+      duration: const Duration(milliseconds: 150),
+      vsync: this,
+    );
+    _pressScale = Tween<double>(begin: 1.0, end: 0.88).animate(
+      CurvedAnimation(parent: _pressController, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _pressController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: GestureDetector(
+        onTapDown: (_) {
+          setState(() => _isPressed = true);
+          _pressController.forward();
+          HapticFeedback.selectionClick();
+        },
+        onTapUp: (_) {
+          setState(() => _isPressed = false);
+          _pressController.reverse();
+          widget.onTap();
+        },
+        onTapCancel: () {
+          setState(() => _isPressed = false);
+          _pressController.reverse();
+        },
+        child: AnimatedBuilder(
+          animation: Listenable.merge([
+            widget.iconScaleAnimation,
+            widget.glowPulse,
+            _pressScale,
+            if (widget.iconWobbleScale != null) widget.iconWobbleScale!,
+            if (widget.iconWobbleRotate != null) widget.iconWobbleRotate!,
+          ]),
+          builder: (context, child) {
+            final baseScale = widget.isSelected ? widget.iconScaleAnimation.value : 1.0;
+            final wobbleScale = widget.iconWobbleScale?.value ?? 1.0;
+            final wobbleRotate = widget.iconWobbleRotate?.value ?? 0.0;
+            final glowOpacity = widget.isSelected ? widget.glowPulse.value : 0.0;
+            final pressScale = _pressScale.value;
+
+            return Transform.scale(
+              scale: pressScale,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 320),
+                curve: Curves.easeInOutCubic,
+                margin: const EdgeInsets.symmetric(horizontal: 4),
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                decoration: BoxDecoration(
+                  color: widget.isSelected ? Colors.white : Colors.transparent,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: widget.isSelected
+                      ? [
+                          ...SoftUIDesign.getSoftShadow(
+                            elevation: _isPressed ? 4.0 : 3.0,
+                            shadowColor: widget.item.color.withOpacity(0.2),
+                          ),
+                          ...SoftUIDesign.getGlowOverlay(
+                            color: widget.item.color,
+                            intensity: 0.08,
+                            blur: 6.0,
+                          ),
+                          BoxShadow(
+                            color: widget.item.color.withOpacity(glowOpacity * 0.3),
+                            blurRadius: 12,
+                            spreadRadius: 1,
+                          ),
+                        ]
+                      : [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.02),
+                            offset: const Offset(0, 1),
+                            blurRadius: 4,
+                            spreadRadius: 0,
+                          ),
+                        ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Semantics(
+                      selected: widget.isSelected,
+                      label: widget.item.label,
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          // Active dot above icon
+                          if (widget.isSelected)
+                            Positioned(
+                              top: -10,
+                              left: 0,
+                              right: 0,
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 300),
+                                width: 8,
+                                height: 8,
+                                decoration: BoxDecoration(
+                                  color: widget.item.color,
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: widget.item.color.withOpacity(0.4 * glowOpacity),
+                                      blurRadius: 6,
+                                      spreadRadius: 1,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          // Gradient glow background
+                          Positioned.fill(
+                            child: IgnorePointer(
+                              child: Center(
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 320),
+                                  curve: Curves.easeInOutCubic,
+                                  width: widget.isSelected ? 66 : 46,
+                                  height: widget.isSelected ? 66 : 46,
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(18),
+                                    gradient: RadialGradient(
+                                      center: Alignment.center,
+                                      radius: 0.85,
+                                      colors: [
+                                        widget.item.color.withOpacity(
+                                          widget.isSelected ? 0.18 : 0.06,
+                                        ),
+                                        Colors.transparent,
+                                      ],
+                                      stops: const [0.0, 1.0],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          // Icon with animations
+                          Transform.scale(
+                            scale: baseScale * wobbleScale,
+                            child: Transform.rotate(
+                              angle: wobbleRotate,
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 320),
+                                curve: Curves.easeInOutCubic,
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  color: widget.isSelected ? widget.item.color : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: widget.isSelected
+                                      ? Border.all(
+                                          color: widget.item.color.withOpacity(0.25),
+                                          width: 1,
+                                        )
+                                      : null,
+                                ),
+                                child: AnimatedSwitcher(
+                                  duration: const Duration(milliseconds: 220),
+                                  switchInCurve: Curves.easeOutCubic,
+                                  switchOutCurve: Curves.easeInCubic,
+                                  transitionBuilder: (child, animation) {
+                                    return FadeTransition(
+                                      opacity: animation,
+                                      child: ScaleTransition(
+                                        scale: Tween<double>(begin: 0.95, end: 1.0).animate(animation),
+                                        child: child,
+                                      ),
+                                    );
+                                  },
+                                  child: Icon(
+                                    widget.isSelected ? widget.item.activeIcon : widget.item.icon,
+                                    key: ValueKey(widget.isSelected),
+                                    color: widget.isSelected ? Colors.white : AppColors.mediumGray,
+                                    size: 24,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          // Badge
+                          if (widget.shouldShowBadge)
+                            Positioned(
+                              right: -2,
+                              top: -2,
+                              child: SolidBadge(
+                                count: widget.badgeCount,
+                                backgroundColor: AppColors.primaryRed,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    // Label
+                    AnimatedDefaultTextStyle(
+                      duration: const Duration(milliseconds: 280),
+                      curve: Curves.easeInOutCubic,
+                      style: TextStyle(
+                        fontSize: widget.isSelected ? 12 : 11,
+                        fontWeight: widget.isSelected ? FontWeight.w800 : FontWeight.w600,
+                        color: widget.isSelected ? widget.item.color : AppColors.mediumGray,
+                        letterSpacing: widget.isSelected ? 0.3 : 0.2,
+                        height: 1.1,
+                      ),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 260),
+                        curve: Curves.easeInOutCubic,
+                        padding: EdgeInsets.symmetric(
+                          horizontal: widget.isSelected ? 8 : 4,
+                          vertical: widget.isSelected ? 2 : 0,
+                        ),
+                        decoration: BoxDecoration(
+                          color: widget.isSelected
+                              ? widget.item.color.withOpacity(0.1)
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          widget.item.label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ),
+                    // Underline
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 320),
+                      curve: Curves.easeInOutCubic,
+                      margin: const EdgeInsets.only(top: 4),
+                      height: 3,
+                      width: widget.isSelected ? 16 : 0,
+                      decoration: BoxDecoration(
+                        color: widget.item.color.withOpacity(widget.isSelected ? 0.8 : 0.0),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
 }
 
 // Local scroll behavior that removes glow and scrollbar indicators

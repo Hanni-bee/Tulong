@@ -48,6 +48,8 @@ class _SignInScreenState extends State<SignInScreen> {
         final firebaseUser = await FirebaseService().signInWithEmail(email: email, password: password);
         if (firebaseUser?.user != null) {
           await authProvider.setAuthenticated(email: email, name: email.split('@')[0]);
+          // Small delay to ensure user model is loaded
+          await Future.delayed(const Duration(milliseconds: 300));
         } else {
           throw Exception('Firebase sign-in returned no user');
         }
@@ -55,6 +57,8 @@ class _SignInScreenState extends State<SignInScreen> {
         // Fallback to offline SQLite
         final user = await OfflineAuthService().signInOffline(email: email, password: password);
         await authProvider.setAuthenticated(email: email, name: user['first_name'] != null ? '${user['first_name']} ${user['last_name']}' : email.split('@')[0]);
+        // Small delay to ensure user model is loaded
+        await Future.delayed(const Duration(milliseconds: 300));
       }
 
       if (mounted) {

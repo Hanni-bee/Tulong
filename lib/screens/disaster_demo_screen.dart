@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:async';
 import '../constants/app_colors.dart';
+import '../constants/app_typography.dart';
+import '../widgets/unified_top_bar.dart';
+import '../constants/soft_ui_design.dart';
 
 class DisasterDemoScreen extends StatefulWidget {
   const DisasterDemoScreen({super.key});
@@ -20,6 +23,11 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
   bool _isEmergencyActive = false;
   int _currentScenario = 0;
   Timer? _scenarioTimer;
+  Timer? _countdownTimer;
+  int _remainingSeconds = 0;
+  bool _isAutoPlaying = true;
+  int _affectedUsers = 0;
+  int _responseCount = 0;
   
   final List<DisasterScenario> _scenarios = [
     DisasterScenario(
@@ -80,7 +88,7 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
     
     _pulseAnimation = Tween<double>(
       begin: 1.0,
-      end: 1.2,
+      end: 1.03, // Significantly reduced from 1.2 to 1.03 for subtle effect
     ).animate(CurvedAnimation(
       parent: _pulseController,
       curve: Curves.easeInOut,
@@ -91,10 +99,13 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
       end: 1.0,
     ).animate(CurvedAnimation(
       parent: _shakeController,
-      curve: Curves.elasticIn,
+      curve: Curves.easeInOut, // Changed from elasticIn for smoother, less jarring animation
     ));
     
     _startScenarioDemo();
+    _startCountdown();
+    _affectedUsers = 20;
+    _responseCount = 12;
   }
 
   @override
@@ -102,12 +113,15 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
     _pulseController.dispose();
     _shakeController.dispose();
     _scenarioTimer?.cancel();
+    _countdownTimer?.cancel();
     super.dispose();
   }
 
   void _startScenarioDemo() {
+    if (!_isAutoPlaying) return;
+    
     _scenarioTimer = Timer.periodic(const Duration(seconds: 8), (timer) {
-      if (mounted) {
+      if (mounted && _isAutoPlaying) {
         setState(() {
           _currentScenario = (_currentScenario + 1) % _scenarios.length;
         });
@@ -117,12 +131,48 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
     });
   }
 
+  void _selectScenario(int index) {
+    if (index == _currentScenario) return;
+    
+    setState(() {
+      _currentScenario = index;
+      _remainingSeconds = _scenarios[index].timeLeft * 60;
+      _affectedUsers = (20 + (index * 5)).clamp(10, 50);
+      _responseCount = (_affectedUsers * 0.6).round();
+    });
+    
+    _startCountdown();
+    _triggerEmergencyAlert();
+  }
+
+  void _startCountdown() {
+    _countdownTimer?.cancel();
+    _remainingSeconds = _scenarios[_currentScenario].timeLeft * 60;
+    
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (mounted && _remainingSeconds > 0) {
+        setState(() {
+          _remainingSeconds--;
+        });
+      } else {
+        timer.cancel();
+      }
+    });
+  }
+
+  String _formatTime(int seconds) {
+    final minutes = seconds ~/ 60;
+    final secs = seconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
+  }
+
   void _triggerEmergencyAlert() {
     setState(() {
       _isEmergencyActive = true;
+      _affectedUsers = (20 + (_currentScenario * 5)).clamp(10, 50);
+      _responseCount = (_affectedUsers * 0.6).round();
     });
     
-    // Reduced haptic feedback - lighter impact instead of heavy
     HapticFeedback.mediumImpact();
     
     // Start animations
@@ -153,138 +203,51 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
     
     return Scaffold(
       backgroundColor: AppColors.backgroundLight,
-      appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(100),
-        child: Container(
-          margin: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: AppColors.white,
-            borderRadius: BorderRadius.circular(24),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.1),
-                blurRadius: 20,
-                offset: const Offset(8, 8),
-              ),
-              BoxShadow(
-                color: Colors.white.withOpacity(0.8),
-                blurRadius: 20,
-                offset: const Offset(-8, -8),
-              ),
-            ],
-          ),
-          child: SafeArea(
-            child: Container(
-              height: 80,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: const BoxDecoration(
-                color: AppColors.white,
-              ),
-              child: Row(
-                children: [
-                  _buildNeumorphicButton(
-                    icon: Icons.arrow_back_ios_new,
-                    onPressed: () => Navigator.of(context).pop(),
-                  ),
-                  const SizedBox(width: 16),
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: AppColors.primaryRed,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(
-                      Icons.warning,
-                      color: Colors.white,
-                      size: 24,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  const Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          'Disaster Demo',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.textPrimary,
-                          ),
-                        ),
-                        Text(
-                          'Emergency simulation',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  _buildNeumorphicActionButton(
-                    icon: Icons.info_outline,
-                    onPressed: () {},
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
+      body: SafeArea(
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Demo instructions
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.blue.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: Colors.blue.withOpacity(0.3),
-                  width: 1,
+            // Unified Top Bar
+            UnifiedTopBar(
+              title: 'Disaster Simulation',
+              subtitle: _isAutoPlaying ? 'Auto-playing' : 'Paused',
+              icon: Icons.science_rounded,
+              iconColor: AppColors.warning,
+              showBackButton: true,
+              onBackPressed: () => Navigator.of(context).pop(),
+              actions: [
+                IconButton(
+                  icon: Icon(_isAutoPlaying ? Icons.pause : Icons.play_arrow),
+                  onPressed: () {
+                    setState(() {
+                      _isAutoPlaying = !_isAutoPlaying;
+                    });
+                    if (_isAutoPlaying) {
+                      _startScenarioDemo();
+                    } else {
+                      _scenarioTimer?.cancel();
+                    }
+                  },
+                  tooltip: _isAutoPlaying ? 'Pause' : 'Play',
                 ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.info,
-                        color: Colors.blue,
-                        size: 24,
-                      ),
-                      const SizedBox(width: 12),
-                      const Text(
-                        'Interactive Demo',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.textPrimary,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'This demo shows how T.U.L.O.N.G works during real disasters. Emergency alerts will appear automatically, or you can trigger them manually.',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: AppColors.textSecondary,
-                      height: 1.5,
-                    ),
-                  ),
-                ],
-              ),
+              ],
             ),
             
-            const SizedBox(height: 32),
+            // Main Content
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Scenario Selector
+                    _buildScenarioSelector(),
+                    
+                    const SizedBox(height: 16),
+                    
+                    // Statistics Panel
+                    _buildStatisticsPanel(),
+                    
+                    const SizedBox(height: 16),
             
             // Emergency alert simulation
             AnimatedBuilder(
@@ -297,50 +260,237 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
               },
             ),
             
-            const SizedBox(height: 32),
-            
-            // Current scenario info
-            _buildScenarioInfo(currentScenario),
-            
-            const SizedBox(height: 32),
-            
-            // Manual trigger button
-            SizedBox(
-              width: double.infinity,
-              height: 56,
-              child: ElevatedButton.icon(
-                onPressed: _simulateEmergency,
-                icon: const Icon(Icons.warning),
-                label: const Text(
-                  'Simulate Emergency Alert',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  elevation: 8,
-                  shadowColor: Colors.red.withOpacity(0.3),
-                ),
-              ),
-            ),
-            
-            const SizedBox(height: 24),
+                    const SizedBox(height: 16),
+                    
+                    // Current scenario info
+                    _buildScenarioInfo(_scenarios[_currentScenario]),
+                    
+                    const SizedBox(height: 16),
+                    
+                    // Manual trigger button
+                    SizedBox(
+                      width: double.infinity,
+                      height: 56,
+                      child: ElevatedButton.icon(
+                        onPressed: _simulateEmergency,
+                        icon: const Icon(Icons.sos_rounded),
+                        label: const Text(
+                          'Trigger Emergency Alert',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primaryRed,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          elevation: 8,
+                          shadowColor: AppColors.primaryRed.withOpacity(0.3),
+                        ),
+                      ),
+                    ),
+                    
+                    const SizedBox(height: 16),
             
             // Community response simulation
             _buildCommunityResponse(currentScenario),
             
             const SizedBox(height: 32),
             
-            // Safety tips
-            _buildSafetyTips(currentScenario),
+                    // Safety tips
+                    _buildSafetyTips(currentScenario),
+                  ],
+                ),
+              ),
+            ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildScenarioSelector() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: SoftUIDesign.cardDecoration(
+        backgroundColor: AppColors.white,
+        borderRadius: SoftUIDesign.cardBorderRadius,
+        elevation: 3.0,
+        borderColor: AppColors.lightGray.withOpacity(0.3),
+        showBorder: true,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.category_rounded, color: AppColors.primaryRed, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                'Select Scenario',
+                style: AppTypography.cardTitle.copyWith(
+                  color: AppColors.textPrimary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: List.generate(_scenarios.length, (index) {
+              final scenario = _scenarios[index];
+              final isSelected = index == _currentScenario;
+              return GestureDetector(
+                onTap: () => _selectScenario(index),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: isSelected 
+                        ? scenario.color.withOpacity(0.15)
+                        : AppColors.lightGray.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: isSelected 
+                          ? scenario.color
+                          : AppColors.lightGray.withOpacity(0.3),
+                      width: isSelected ? 2 : 1,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        scenario.icon,
+                        size: 18,
+                        color: isSelected ? scenario.color : AppColors.textSecondary,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        scenario.title,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+                          color: isSelected ? scenario.color : AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatisticsPanel() {
+    final responseRate = _affectedUsers > 0 
+        ? ((_responseCount / _affectedUsers) * 100).round()
+        : 0;
+    
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: SoftUIDesign.cardDecoration(
+        backgroundColor: AppColors.white,
+        borderRadius: SoftUIDesign.cardBorderRadius,
+        elevation: 3.0,
+        borderColor: AppColors.lightGray.withOpacity(0.3),
+        showBorder: true,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.analytics_rounded, color: AppColors.info, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                'Simulation Stats',
+                style: AppTypography.cardTitle.copyWith(
+                  color: AppColors.textPrimary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: _buildStatItem(
+                  icon: Icons.people_rounded,
+                  label: 'Affected',
+                  value: '$_affectedUsers',
+                  color: AppColors.error,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildStatItem(
+                  icon: Icons.check_circle_rounded,
+                  label: 'Responses',
+                  value: '$_responseCount',
+                  color: AppColors.success,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildStatItem(
+                  icon: Icons.trending_up_rounded,
+                  label: 'Rate',
+                  value: '$responseRate%',
+                  color: AppColors.info,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatItem({
+    required IconData icon,
+    required String label,
+    required String value,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.2)),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, color: color, size: 24),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              color: color,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textSecondary,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -351,7 +501,7 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
       builder: (context, child) {
         return Transform.translate(
           offset: Offset(
-            _isEmergencyActive ? _shakeAnimation.value * 5 : 0.0, // Reduced from 10 to 5
+            _isEmergencyActive ? _shakeAnimation.value * 1.5 : 0.0, // Significantly reduced vibration
             0.0,
           ),
           child: Container(
@@ -525,29 +675,55 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
                 
                 const SizedBox(height: 20),
                 
-                // Time remaining
+                // Real-time Countdown
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
                     color: scenario.color.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: scenario.color.withOpacity(0.3),
+                      width: 1.5,
+                    ),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(
-                        Icons.access_time,
-                        color: scenario.color,
-                        size: 20,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Time remaining: ${scenario.timeLeft} minutes',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
                           color: scenario.color,
+                          borderRadius: BorderRadius.circular(8),
                         ),
+                        child: const Icon(
+                          Icons.timer_rounded,
+                          color: Colors.white,
+                          size: 20,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Time Remaining',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            _formatTime(_remainingSeconds),
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w800,
+                              color: scenario.color,
+                              fontFeatures: [FontFeature.tabularFigures()],
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -563,45 +739,83 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
   Widget _buildScenarioInfo(DisasterScenario scenario) {
     return Container(
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
+      decoration: SoftUIDesign.cardDecoration(
+        backgroundColor: AppColors.white,
+        borderRadius: SoftUIDesign.cardBorderRadius,
+        elevation: 3.0,
+        borderColor: scenario.color.withOpacity(0.2),
+        showBorder: true,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(
-                Icons.info_outline,
-                color: scenario.color,
-                size: 24,
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: scenario.color.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  scenario.icon,
+                  color: scenario.color,
+                  size: 24,
+                ),
               ),
               const SizedBox(width: 12),
-              const Text(
-                'Current Scenario',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.textPrimary,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      scenario.title,
+                      style: AppTypography.cardTitle.copyWith(
+                        color: AppColors.textPrimary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      scenario.description,
+                      style: AppTypography.bodySmall.copyWith(
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: scenario.color,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  scenario.severity.toUpperCase(),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.5,
+                  ),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 16),
-          Text(
-            'This is how T.U.L.O.N.G would respond to a ${scenario.title.toLowerCase()}. The app automatically sends alerts to all users in the affected area.',
-            style: const TextStyle(
-              fontSize: 14,
-              color: AppColors.textSecondary,
-              height: 1.5,
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.backgroundLight,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              'This is how T.U.L.O.N.G would respond to a ${scenario.title.toLowerCase()}. The app automatically sends alerts to all users in the affected area through the mesh network.',
+              style: AppTypography.bodyMedium.copyWith(
+                color: AppColors.textSecondary,
+                height: 1.5,
+              ),
             ),
           ),
         ],
@@ -612,16 +826,12 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
   Widget _buildCommunityResponse(DisasterScenario scenario) {
     return Container(
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
+      decoration: SoftUIDesign.cardDecoration(
+        backgroundColor: AppColors.white,
+        borderRadius: SoftUIDesign.cardBorderRadius,
+        elevation: 3.0,
+        borderColor: AppColors.lightGray.withOpacity(0.3),
+        showBorder: true,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -739,16 +949,12 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
   Widget _buildSafetyTips(DisasterScenario scenario) {
     return Container(
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
+      decoration: SoftUIDesign.cardDecoration(
+        backgroundColor: AppColors.white,
+        borderRadius: SoftUIDesign.cardBorderRadius,
+        elevation: 3.0,
+        borderColor: AppColors.lightGray.withOpacity(0.3),
+        showBorder: true,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -808,85 +1014,6 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
     );
   }
 
-  Widget _buildNeumorphicButton({
-    required IconData icon,
-    required VoidCallback onPressed,
-  }) {
-    return Container(
-      width: 44,
-      height: 44,
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 8,
-            offset: const Offset(4, 4),
-          ),
-          BoxShadow(
-            color: Colors.white.withOpacity(0.8),
-            blurRadius: 8,
-            offset: const Offset(-4, -4),
-          ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(12),
-          onTap: onPressed,
-          child: Center(
-            child: Icon(
-              icon,
-              color: AppColors.textPrimary,
-              size: 20,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildNeumorphicActionButton({
-    required IconData icon,
-    required VoidCallback onPressed,
-  }) {
-    return Container(
-      width: 40,
-      height: 40,
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(10),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.08),
-            blurRadius: 6,
-            offset: const Offset(3, 3),
-          ),
-          BoxShadow(
-            color: Colors.white.withOpacity(0.8),
-            blurRadius: 6,
-            offset: const Offset(-3, -3),
-          ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(10),
-          onTap: onPressed,
-          child: Center(
-            child: Icon(
-              icon,
-              color: AppColors.textSecondary,
-              size: 18,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 class DisasterScenario {

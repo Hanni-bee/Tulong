@@ -482,13 +482,13 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
               icon: Icons.help,
               title: 'Help Center',
               subtitle: 'Get help and support',
-              onTap: () {},
+              onTap: () => _showHelpCenterModal(context),
             ),
             _buildSettingsItem(
               icon: Icons.info,
               title: 'About',
               subtitle: 'App version and information',
-              onTap: () {},
+              onTap: () => _showAboutModal(context),
             ),
           ],
         ),
@@ -621,50 +621,6 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                             ),
                           ],
                         ),
-                ),
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Container(
-            decoration: SoftUIDesign.cardDecoration(
-              backgroundColor: AppColors.white,
-              borderRadius: SoftUIDesign.buttonBorderRadius,
-              elevation: 3.0,
-              borderColor: AppColors.error.withOpacity(0.3),
-              showBorder: true,
-            ),
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: () => _deleteAccount(context),
-                borderRadius: BorderRadius.circular(12),
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 16, horizontal: 8),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.delete_forever,
-                        color: AppColors.error,
-                        size: 18,
-                      ),
-                      SizedBox(width: 6),
-                      Flexible(
-                        child: Text(
-                          'Delete Account',
-                          style: TextStyle(
-                            color: AppColors.error,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 13,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
                 ),
               ),
             ),
@@ -1362,33 +1318,6 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
     );
   }
 
-  void _deleteAccount(BuildContext context) {
-    HapticFeedback.lightImpact();
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Account'),
-        content: const Text('Are you sure you want to delete your account? This action cannot be undone.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              // TODO: Implement account deletion
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.error,
-              foregroundColor: AppColors.white,
-            ),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-  }
 
   String _getInitials(String? name) {
     if (name == null || name.isEmpty) return 'U';
@@ -1402,10 +1331,26 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
     if (userModel == null) return '0';
     // Calculate days since user joined using real data
     if (userModel.createdAt > 0) {
-      final daysSinceJoin = DateTime.now().difference(
-        DateTime.fromMillisecondsSinceEpoch(userModel.createdAt)
-      ).inDays;
-      return daysSinceJoin.toString();
+      // Handle both milliseconds and seconds timestamps
+      int timestamp = userModel.createdAt;
+      
+      // If timestamp is less than a reasonable date (year 2000 in milliseconds),
+      // it's likely in seconds, so convert to milliseconds
+      if (timestamp < 946684800000) { // Jan 1, 2000 in milliseconds
+        timestamp = timestamp * 1000;
+      }
+      
+      try {
+        final createdAtDate = DateTime.fromMillisecondsSinceEpoch(timestamp);
+        final now = DateTime.now();
+        final daysSinceJoin = now.difference(createdAtDate).inDays;
+        
+        // Ensure non-negative result
+        return daysSinceJoin >= 0 ? daysSinceJoin.toString() : '0';
+      } catch (e) {
+        print('Error calculating days active: $e');
+        return '0';
+      }
     }
     return '0';
   }
@@ -1439,5 +1384,361 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
     } catch (e) {
       return '0';
     }
+  }
+
+  // Help Center Modal
+  void _showHelpCenterModal(BuildContext context) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierColor: Colors.black54,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(24),
+        ),
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 400, maxHeight: 600),
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryRed.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(
+                      Icons.help_outline,
+                      color: AppColors.primaryRed,
+                      size: 28,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Help Center',
+                          style: UnifiedTypography.titleLarge.copyWith(
+                            color: AppColors.textPrimary,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Get help and support',
+                          style: UnifiedTypography.bodySmall.copyWith(
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(context),
+                    color: AppColors.textSecondary,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              
+              // Help Topics
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildHelpTopic(
+                        icon: Icons.emergency,
+                        title: 'Emergency Features',
+                        description: 'Learn how to send emergency alerts and SOS messages',
+                      ),
+                      const SizedBox(height: 16),
+                      _buildHelpTopic(
+                        icon: Icons.bluetooth,
+                        title: 'Bluetooth Connection',
+                        description: 'How to connect to ESP32 devices and mesh network',
+                      ),
+                      const SizedBox(height: 16),
+                      _buildHelpTopic(
+                        icon: Icons.chat_bubble,
+                        title: 'Local Chat',
+                        description: 'Send messages and voice recordings to nearby users',
+                      ),
+                      const SizedBox(height: 16),
+                      _buildHelpTopic(
+                        icon: Icons.radio,
+                        title: 'Voice Calls',
+                        description: 'Push-to-talk walkie-talkie style communication',
+                      ),
+                      const SizedBox(height: 16),
+                      _buildHelpTopic(
+                        icon: Icons.network_check,
+                        title: 'Network Status',
+                        description: 'Monitor connection status and nearby users',
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              
+              const SizedBox(height: 16),
+              
+              // Contact Support Button
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    // TODO: Open support email or contact form
+                  },
+                  icon: const Icon(Icons.email),
+                  label: const Text('Contact Support'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primaryRed,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHelpTopic({
+    required IconData icon,
+    required String title,
+    required String description,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.lightGray.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: AppColors.lightGray.withOpacity(0.3),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: AppColors.primaryRed.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(
+              icon,
+              color: AppColors.primaryRed,
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: UnifiedTypography.bodyLarge.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  description,
+                  style: UnifiedTypography.bodySmall.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // About Modal
+  void _showAboutModal(BuildContext context) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierColor: Colors.black54,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(24),
+        ),
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 400),
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryRed.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(
+                      Icons.info_outline,
+                      color: AppColors.primaryRed,
+                      size: 28,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Text(
+                      'About',
+                      style: UnifiedTypography.titleLarge.copyWith(
+                        color: AppColors.textPrimary,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(context),
+                    color: AppColors.textSecondary,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              
+              // App Logo/Icon
+              Container(
+                width: 80,
+                height: 80,
+                decoration: BoxDecoration(
+                  color: AppColors.primaryRed,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.primaryRed.withOpacity(0.3),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.emergency,
+                  color: Colors.white,
+                  size: 40,
+                ),
+              ),
+              const SizedBox(height: 16),
+              
+              // App Name
+              Text(
+                'T.U.L.O.N.G',
+                style: UnifiedTypography.headlineSmall.copyWith(
+                  color: AppColors.textPrimary,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 4),
+              
+              // Full Name
+              Text(
+                'Transmission Unit for Local\nOffline Network Generation',
+                textAlign: TextAlign.center,
+                style: UnifiedTypography.bodyMedium.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 24),
+              
+              // Version Info
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppColors.lightGray.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  children: [
+                    _buildAboutRow('Version', '1.0.0'),
+                    const Divider(height: 24),
+                    _buildAboutRow('Build', 'Release'),
+                    const Divider(height: 24),
+                    _buildAboutRow('Platform', 'Android'),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+              
+              // Description
+              Text(
+                'A disaster-ready communication system for emergency situations. Connect with nearby users through mesh networking when traditional communication fails.',
+                textAlign: TextAlign.center,
+                style: UnifiedTypography.bodySmall.copyWith(
+                  color: AppColors.textSecondary,
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 24),
+              
+              // Close Button
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primaryRed,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Text('Close'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAboutRow(String label, String value) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          label,
+          style: UnifiedTypography.bodyMedium.copyWith(
+            color: AppColors.textSecondary,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        Text(
+          value,
+          style: UnifiedTypography.bodyMedium.copyWith(
+            color: AppColors.textPrimary,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
+    );
   }
 }

@@ -1,14 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import '../constants/app_colors.dart';
-import '../constants/app_strings.dart';
-import '../providers/network_provider.dart';
 import '../widgets/chat_card.dart';
 import '../widgets/search_bar.dart';
 import '../widgets/unified_top_bar.dart';
 import 'message_detail_screen.dart';
 import 'calls_screen.dart';
-import '../constants/unified_typography.dart';
 
 class MessagesScreen extends StatefulWidget {
   const MessagesScreen({super.key});

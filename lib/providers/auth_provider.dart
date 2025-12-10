@@ -45,6 +45,37 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  // Helper method to parse timestamp from various formats
+  int _parseTimestamp(dynamic timestamp) {
+    if (timestamp == null) return 0;
+    
+    try {
+      int ts = 0;
+      
+      // Handle different types
+      if (timestamp is int) {
+        ts = timestamp;
+      } else if (timestamp is String) {
+        ts = int.tryParse(timestamp) ?? 0;
+      } else if (timestamp is double) {
+        ts = timestamp.toInt();
+      } else {
+        return 0;
+      }
+      
+      // If timestamp is less than a reasonable date (year 2000 in milliseconds),
+      // it's likely in seconds, so convert to milliseconds
+      if (ts > 0 && ts < 946684800000) { // Jan 1, 2000 in milliseconds
+        ts = ts * 1000;
+      }
+      
+      return ts;
+    } catch (e) {
+      print('Error parsing timestamp: $e');
+      return 0;
+    }
+  }
+
   // Method to load user data and create UserModel
   Future<void> loadUserModel() async {
     if (_userEmail == null) return;
@@ -83,7 +114,7 @@ class AuthProvider extends ChangeNotifier {
           addressSetupCompleted: (sqliteUser['address_setup_completed'] ?? 0) == 1,
           isGoogleAuth: false,
           isOnline: (sqliteUser['is_online'] ?? 0) == 1,
-          createdAt: sqliteUser['created_at']?.toInt() ?? 0,
+          createdAt: _parseTimestamp(sqliteUser['created_at'] ?? 0),
         );
         
         _currentUserModel = userModel;
@@ -98,32 +129,68 @@ class AuthProvider extends ChangeNotifier {
       
       // If not found in SQLite, try Firebase
       final firebaseService = FirebaseService();
-      final userSnapshot = await firebaseService.database.ref('users').orderByChild('Email').equalTo(_userEmail!).get();
       
-      if (userSnapshot.exists) {
-        print('Found user in Firebase');
-        final userData = userSnapshot.value as Map<dynamic, dynamic>;
-        final userEntry = userData.values.first as Map<dynamic, dynamic>;
-        
-        // Combine first and last name for Firebase
-        final firstName = userEntry['FirstName']?.toString() ?? '';
-        final lastName = userEntry['LastName']?.toString() ?? '';
+      // Try to get user by UID first (more reliable), then by email
+      String? userUid;
+      try {
+        final authUser = firebaseService.auth.currentUser;
+        if (authUser != null) {
+          userUid = authUser.uid;
+        }
+      } catch (e) {
+        print('Could not get current auth user: $e');
+      }
+      
+      Map<dynamic, dynamic>? userEntry;
+      
+      if (userUid != null) {
+        // Try to get user by UID first
+        try {
+          final userRef = firebaseService.database.ref('users/$userUid');
+          final userSnapshot = await userRef.get();
+          if (userSnapshot.exists) {
+            userEntry = userSnapshot.value as Map<dynamic, dynamic>;
+            print('Found user in Firebase by UID: $userUid');
+          }
+        } catch (e) {
+          print('Error getting user by UID: $e');
+        }
+      }
+      
+      // If not found by UID, try by email
+      if (userEntry == null) {
+        try {
+          final userSnapshot = await firebaseService.database.ref('users').orderByChild('Email').equalTo(_userEmail!).get();
+          if (userSnapshot.exists) {
+            print('Found user in Firebase by Email');
+            final userData = userSnapshot.value as Map<dynamic, dynamic>;
+            userEntry = userData.values.first as Map<dynamic, dynamic>;
+          }
+        } catch (e) {
+          print('Error getting user by Email: $e');
+        }
+      }
+      
+      if (userEntry != null) {
+        // Combine first and last name for Firebase (handle both PascalCase and camelCase)
+        final firstName = userEntry['FirstName']?.toString() ?? userEntry['firstName']?.toString() ?? '';
+        final lastName = userEntry['LastName']?.toString() ?? userEntry['lastName']?.toString() ?? '';
         final fullName = '$firstName $lastName'.trim();
         
         final userModel = UserModel(
-          id: userEntry['ID']?.toString() ?? _userEmail!,
-          name: fullName.isNotEmpty ? fullName : (userEntry['Name']?.toString() ?? _userName ?? 'User'),
-          email: userEntry['Email']?.toString() ?? _userEmail!,
-          phone: userEntry['Phone']?.toString(),
-          street: userEntry['Street']?.toString() ?? userEntry['Address']?.toString() ?? '',
-          region: userEntry['Region']?.toString() ?? '',
-          barangay: userEntry['Barangay']?.toString() ?? '',
-          city: userEntry['City']?.toString() ?? '',
-          province: userEntry['Province']?.toString() ?? '',
-          addressSetupCompleted: userEntry['AddressSetupCompleted'] == true,
-          isGoogleAuth: userEntry['IsGoogleAuth'] == true,
-          isOnline: userEntry['IsOnline'] == true,
-          createdAt: userEntry['CreatedAt']?.toInt() ?? 0,
+          id: userEntry['ID']?.toString() ?? userEntry['id']?.toString() ?? userUid ?? _userEmail!,
+          name: fullName.isNotEmpty ? fullName : (userEntry['Name']?.toString() ?? userEntry['name']?.toString() ?? userEntry['DisplayName']?.toString() ?? _userName ?? 'User'),
+          email: userEntry['Email']?.toString() ?? userEntry['email']?.toString() ?? _userEmail!,
+          phone: userEntry['Phone']?.toString() ?? userEntry['phone']?.toString(),
+          street: userEntry['Street']?.toString() ?? userEntry['street']?.toString() ?? userEntry['Address']?.toString() ?? userEntry['address']?.toString() ?? '',
+          region: userEntry['Region']?.toString() ?? userEntry['region']?.toString() ?? '',
+          barangay: userEntry['Barangay']?.toString() ?? userEntry['barangay']?.toString() ?? '',
+          city: userEntry['City']?.toString() ?? userEntry['city']?.toString() ?? '',
+          province: userEntry['Province']?.toString() ?? userEntry['province']?.toString() ?? '',
+          addressSetupCompleted: userEntry['AddressSetupCompleted'] == true || userEntry['addressSetupCompleted'] == true,
+          isGoogleAuth: userEntry['IsGoogleAuth'] == true || userEntry['isGoogleAuth'] == true,
+          isOnline: userEntry['IsOnline'] == true || userEntry['isOnline'] == true,
+          createdAt: _parseTimestamp(userEntry['createdAt'] ?? userEntry['CreatedAt'] ?? 0),
         );
         
         _currentUserModel = userModel;
@@ -461,6 +528,10 @@ class AuthProvider extends ChangeNotifier {
     await prefs.setString('session_email', _userEmail!);
     await prefs.setString('session_name', _userName!);
     print('Session saved - Name: $_userName, Email: $_userEmail');
+    
+    // Load user model immediately after authentication to ensure profile data is available
+    await loadUserModel();
+    
     notifyListeners();
   }
 
@@ -900,6 +971,9 @@ class AuthProvider extends ChangeNotifier {
         
         // Save session
         await _saveSession(email, _userName!);
+        
+        // Load user model immediately after authentication to ensure profile data is available
+        await loadUserModel();
         
         notifyListeners();
         print('✅ Login successful for: $email');
