@@ -19,7 +19,7 @@ class SignInScreen extends StatefulWidget {
 
 class _SignInScreenState extends State<SignInScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _emailController = TextEditingController();
+  final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
   
   bool _obscurePassword = true;
@@ -27,7 +27,7 @@ class _SignInScreenState extends State<SignInScreen> {
 
   @override
   void dispose() {
-    _emailController.dispose();
+    _usernameController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
@@ -41,22 +41,26 @@ class _SignInScreenState extends State<SignInScreen> {
 
     try {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      final email = _emailController.text.trim();
+      final username = _usernameController.text.trim();
       final password = _passwordController.text;
       try {
         // Try Firebase first (online)
-        final firebaseUser = await FirebaseService().signInWithEmail(email: email, password: password);
-        if (firebaseUser?.user != null) {
-          await authProvider.setAuthenticated(email: email, name: email.split('@')[0]);
+        final firebaseUser = await FirebaseService().authenticateUserByUsername(username: username, password: password);
+        if (firebaseUser != null) {
+          final firstName = firebaseUser['FirstName'] ?? '';
+          final lastName = firebaseUser['LastName'] ?? '';
+          final displayName = '$firstName $lastName'.trim();
+          await authProvider.setAuthenticated(username: username, name: displayName.isNotEmpty ? displayName : username);
           // Small delay to ensure user model is loaded
           await Future.delayed(const Duration(milliseconds: 300));
         } else {
-          throw Exception('Firebase sign-in returned no user');
+          throw Exception('Firebase authentication returned no user');
         }
       } catch (_) {
         // Fallback to offline SQLite
-        final user = await OfflineAuthService().signInOffline(email: email, password: password);
-        await authProvider.setAuthenticated(email: email, name: user['first_name'] != null ? '${user['first_name']} ${user['last_name']}' : email.split('@')[0]);
+        final user = await OfflineAuthService().signInOffline(username: username, password: password);
+        final displayName = user['first_name'] != null ? '${user['first_name']} ${user['last_name']}' : username;
+        await authProvider.setAuthenticated(username: username, name: displayName);
         // Small delay to ensure user model is loaded
         await Future.delayed(const Duration(milliseconds: 300));
       }
@@ -83,20 +87,12 @@ class _SignInScreenState extends State<SignInScreen> {
     }
   }
 
+  // SSO removed - deprecated
+  @Deprecated('SSO removed')
   Future<void> _signInWithGoogle() async {
-    setState(() {
-      _isLoading = true;
-    });
-
-    try {
-      final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      await authProvider.signInWithGoogle();
-
-      if (mounted) {
-        // Go to tutorial first; tutorial flow will route to fill form
-        Navigator.of(context).pushReplacementNamed('/');
-      }
-    } catch (e) {
+    // SSO removed
+    return;
+  }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -229,21 +225,16 @@ class _SignInScreenState extends State<SignInScreen> {
         key: _formKey,
         child: Column(
           children: [
-            // Email field
+            // Username field
             _buildModernTextField(
-              controller: _emailController,
-              label: 'Email',
-              hint: 'Enter your email',
-              keyboardType: TextInputType.emailAddress,
-              prefixIcon: Icons.email_outlined,
+              controller: _usernameController,
+              label: 'Username',
+              hint: 'Enter your username',
+              keyboardType: TextInputType.text,
+              textCapitalization: TextCapitalization.none,
+              prefixIcon: Icons.person_outline,
               validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'Please enter your email';
-                }
-                if (!value.contains('@')) {
-                  return 'Please enter a valid email';
-                }
-                return null;
+                return InputValidator.validateUsername(value);
               },
             ),
           
@@ -314,26 +305,7 @@ class _SignInScreenState extends State<SignInScreen> {
             ),
           ),
           
-          const SizedBox(height: 20),
-          
-          // Google sign in button (simplified)
-          SizedBox(
-            width: double.infinity,
-            height: 56,
-            child: OutlinedButton.icon(
-              onPressed: _isLoading ? null : _signInWithGoogle,
-              icon: const Icon(Icons.g_mobiledata, size: 24, color: AppColors.textPrimary),
-              label: const Text(
-                'Continue with Google',
-                style: UnifiedTypography.titleLarge,
-              ),
-              style: OutlinedButton.styleFrom(
-                side: BorderSide(color: AppColors.borderColor, width: 1.5),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                backgroundColor: Colors.white,
-              ),
-            ),
-          ),
+          // SSO removed - Google sign-in button removed
         ],
       ),
     );

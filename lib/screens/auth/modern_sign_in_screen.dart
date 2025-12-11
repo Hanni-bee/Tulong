@@ -4,13 +4,13 @@ import 'dart:ui' show lerpDouble;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:animations/animations.dart'; // Material motion (SharedAxis/FadeThrough)
 
 import '../../constants/app_colors.dart';
 import '../../constants/unified_typography.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/firebase_service.dart';
+import '../../utils/input_validator.dart';
 import '../../constants/soft_ui_design.dart';
 import '../../utils/prototype_animations.dart';
 import '../../utils/animation_controller.dart' as AppAnim;
@@ -30,9 +30,9 @@ class ModernSignInScreen extends StatefulWidget {
 class _ModernSignInScreenState extends State<ModernSignInScreen>
     with TickerProviderStateMixin, WidgetsBindingObserver {
   final _formKey = GlobalKey<FormState>();
-  final _emailController = TextEditingController();
+  final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
-  final _emailFocusNode = FocusNode();
+  final _usernameFocusNode = FocusNode();
   final _passwordFocusNode = FocusNode();
 
   late AnimationController _fadeController;
@@ -105,7 +105,7 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
       curve: const Interval(0.0, 0.9, curve: kEmphasized),
     ));
 
-    _emailFocusNode.addListener(_onFocusChange);
+    _usernameFocusNode.addListener(_onFocusChange);
     _passwordFocusNode.addListener(_onFocusChange);
 
     _shakeController = AnimationController(
@@ -134,7 +134,7 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
   }
 
   void _onFocusChange() {
-    final hasFocus = _emailFocusNode.hasFocus || _passwordFocusNode.hasFocus;
+    final hasFocus = _usernameFocusNode.hasFocus || _passwordFocusNode.hasFocus;
     if (hasFocus) {
       if (!_keyboardAnimationController.isAnimating ||
           _keyboardAnimationController.value < 1.0) {
@@ -152,11 +152,11 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _emailController.dispose();
+    _usernameController.dispose();
     _passwordController.dispose();
-    _emailFocusNode.removeListener(_onFocusChange);
+    _usernameFocusNode.removeListener(_onFocusChange);
     _passwordFocusNode.removeListener(_onFocusChange);
-    _emailFocusNode.dispose();
+    _usernameFocusNode.dispose();
     _passwordFocusNode.dispose();
     _fadeController.dispose();
     _slideController.dispose();
@@ -178,18 +178,18 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
 
     try {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      final email = _emailController.text.trim();
+      final username = _usernameController.text.trim();
       final password = _passwordController.text;
 
       final requiresTwoFactor =
-          await authProvider.checkTwoFactorRequired(email);
+          await authProvider.checkTwoFactorRequired(username);
 
       if (requiresTwoFactor) {
         if (mounted) {
           Navigator.of(context).pushNamed(
             '/two-factor-verification',
             arguments: {
-              'email': email,
+              'username': username,
               'password': password,
               'isRecovery': false,
             },
@@ -198,28 +198,32 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
       } else {
         // Offline-first login
         final offlineSuccess =
-            await authProvider.loginOffline(email, password);
+            await authProvider.loginOffline(username, password);
 
         if (offlineSuccess) {
           // Small delay to ensure data is loaded before navigating
           await Future.delayed(const Duration(milliseconds: 300));
-          _attemptFirebaseSync(email, password);
+          _attemptFirebaseSync(username, password);
         } else {
           try {
             final firebaseUser = await FirebaseService()
-                .signInWithEmail(email: email, password: password);
-            if (firebaseUser?.user != null) {
+                .authenticateUserByUsername(username: username, password: password);
+            if (firebaseUser != null) {
+              final firstName = firebaseUser['FirstName'] ?? '';
+              final lastName = firebaseUser['LastName'] ?? '';
+              final displayName = '$firstName $lastName'.trim();
+              
               await authProvider.setAuthenticated(
-                email: email,
-                name: email.split('@')[0],
+                username: username,
+                name: displayName.isNotEmpty ? displayName : username,
               );
               // Small delay to ensure user model is loaded
               await Future.delayed(const Duration(milliseconds: 300));
             } else {
-              throw Exception('Invalid email or password');
+              throw Exception('Invalid username or password');
             }
           } catch (_) {
-            throw Exception('Invalid email or password');
+            throw Exception('Invalid username or password');
           }
         }
 
@@ -240,24 +244,29 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
     _shakeController.forward(from: 0).whenComplete(() => _shakeController.value = 0);
   }
 
+  // SSO removed - deprecated
+  @Deprecated('SSO removed')
   Future<void> _signInWithGoogle() async {
+    // SSO removed
+    return;
+  }
+
+  // Legacy method - removed
+  void _attemptFirebaseSync(String username, String password) async {
     try {
-      final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      await authProvider.signInWithGoogle();
-      await Future.delayed(const Duration(milliseconds: 200));
-
-      if (!mounted) return;
-      final updated = Provider.of<AuthProvider>(context, listen: false);
-
-      if (updated.isAuthenticated && updated.currentUser != null) {
-        await _playRouteFadeAndNavigate('/');
-      } else {
-        _showErrorSnackbar('Google Sign-In was cancelled. Please try again.');
+      final firebaseService = FirebaseService();
+      final userData = await firebaseService.authenticateUserByUsername(username: username, password: password);
+      
+      if (userData != null && mounted) {
+        final firstName = userData['FirstName'] ?? '';
+        final lastName = userData['LastName'] ?? '';
+        final displayName = '$firstName $lastName'.trim();
+        
+        final authProvider = Provider.of<AuthProvider>(context, listen: false);
+        await authProvider.setAuthenticated(username: username, name: displayName.isNotEmpty ? displayName : username);
       }
     } catch (e) {
-      if (mounted) {
-        _showErrorSnackbar('Google Sign-In error: ${e.toString()}');
-      }
+      print('Firebase sync failed (non-critical): $e');
     }
   }
 
@@ -284,49 +293,9 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
     );
   }
 
-  Widget _buildGoogleSignInButton(double height) {
-    return GestureDetector(
-      onTap: _signInWithGoogle,
-      child: Container(
-        height: height,
-        decoration: SoftUIDesign.cardDecoration(
-          backgroundColor: AppColors.white,
-          borderRadius: SoftUIDesign.buttonBorderRadius,
-          elevation: 2.0,
-          borderColor: const Color(0xFFE0E3E7),
-          showBorder: true,
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            // Embedded Google logo for offline support
-            Container(
-              width: 20,
-              height: 20,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(4),
-                color: AppColors.white,
-                border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
-              ),
-              child: SvgPicture.string(
-                '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>',
-                width: 20,
-                height: 20,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Text(
-              'Continue with Google',
-              style: UnifiedTypography.buttonMedium
-                  .copyWith(color: const Color(0xFF3C4043)),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  // SSO removed - Google sign-in button removed
 
-  Widget _buildEmailSignInButton(double height) {
+  Widget _buildUsernameSignInButton(double height) {
     return FilledButton.icon(
       onPressed: _isLoading ? null : _signIn,
       style: FilledButton.styleFrom(
@@ -564,28 +533,21 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
                                                         : (isShort ? 18 : 20)),
                                               ),
 
-                                              // Email — Autofill + suggestions
+                                              // Username field
                                               _buildTextField(
-                                                controller: _emailController,
-                                                focusNode: _emailFocusNode,
-                                                label: 'Email Address',
-                                                hint: 'Enter your email',
-                                                icon: Icons.email_outlined,
-                                                keyboardType: TextInputType.emailAddress,
+                                                controller: _usernameController,
+                                                focusNode: _usernameFocusNode,
+                                                label: 'Username',
+                                                hint: 'Enter your username',
+                                                icon: Icons.person_outline,
+                                                keyboardType: TextInputType.text,
                                                 autofillHints: const [
                                                   AutofillHints.username,
-                                                  AutofillHints.email
                                                 ],
-                                                enableSuggestions: true,
+                                                enableSuggestions: false,
                                                 autocorrect: false,
                                                 validator: (value) {
-                                                  if (value == null || value.isEmpty) {
-                                                    return 'Please enter your email';
-                                                  }
-                                                  if (!value.contains('@')) {
-                                                    return 'Please enter a valid email';
-                                                  }
-                                                  return null;
+                                                  return InputValidator.validateUsername(value);
                                                 },
                                               ),
                                               SizedBox(
@@ -676,7 +638,7 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
                                                         : (isShort ? 16 : 18)),
                                               ),
 
-                                              _buildEmailSignInButton(controlHeight),
+                                              _buildUsernameSignInButton(controlHeight),
 
                                               SizedBox(
                                                 height: isUltraTiny
@@ -825,7 +787,7 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
                                                         : (isShort ? 16 : 18)),
                                               ),
 
-                                              _buildGoogleSignInButton(controlHeight),
+                                              // SSO removed - Google sign-in button removed
                                             ],
                                           ),
                                         ),
@@ -1012,62 +974,6 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
         ),
       ),
     );
-  }
-
-  void _attemptFirebaseSync(String email, String password) async {
-    try {
-      final firebaseService = FirebaseService();
-      final userCredential =
-          await firebaseService.signInWithEmail(email: email, password: password);
-
-      if (userCredential?.user != null) {
-        final authProvider = Provider.of<AuthProvider>(context, listen: false);
-        await authProvider.setAuthenticated(
-            email: email, name: email.split('@')[0]);
-        await authProvider.markUserAsSynced(email);
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Row(
-                children: [
-                  Icon(Icons.check_circle, color: Colors.white),
-                  SizedBox(width: 12),
-                  Text('Account synced with server'),
-                ],
-              ),
-              backgroundColor: AppColors.success,
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              margin: const EdgeInsets.all(16),
-            ),
-          );
-        }
-      }
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Row(
-              children: [
-                Icon(Icons.wifi_off, color: Colors.white),
-                SizedBox(width: 12),
-                Expanded(child: Text('Using offline mode - will sync when online')),
-              ],
-            ),
-            backgroundColor: AppColors.info,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            margin: const EdgeInsets.all(16),
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      }
-    }
   }
 }
 

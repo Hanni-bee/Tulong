@@ -8,7 +8,6 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:google_sign_in/google_sign_in.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/input_validator.dart';
 import '../models/user_model.dart';
@@ -42,160 +41,66 @@ class FirebaseService {
   // SQLite service for offline functionality
   final SQLiteService _sqliteService = SQLiteService();
   
-  // Google Sign-In - Android compatible implementation
-  Future<UserCredential?> signInWithGoogle() async {
+  // SMS OTP Verification - Send verification code to phone
+  Future<void> verifyPhoneNumber({
+    required String phoneNumber,
+    required Function(String verificationId) onCodeSent,
+    required Function(UserCredential userCredential) onVerificationCompleted,
+    required Function(String error) onVerificationFailed,
+    required Function(String error) onCodeAutoRetrievalTimeout,
+  }) async {
     try {
-      print('🔐 Starting Google Sign-In process...');
-
-      // Initialize Google Sign-In
-      final GoogleSignIn googleSignIn = GoogleSignIn(
-        scopes: ['email', 'profile'],
+      await auth.verifyPhoneNumber(
+        phoneNumber: phoneNumber,
+        verificationCompleted: (PhoneAuthCredential credential) async {
+          try {
+            final userCredential = await auth.signInWithCredential(credential);
+            onVerificationCompleted(userCredential);
+          } catch (e) {
+            onVerificationFailed(e.toString());
+          }
+        },
+        verificationFailed: (FirebaseAuthException e) {
+          onVerificationFailed(e.message ?? 'Verification failed');
+        },
+        codeSent: (String verificationId, int? resendToken) {
+          onCodeSent(verificationId);
+        },
+        codeAutoRetrievalTimeout: (String verificationId) {
+          onCodeAutoRetrievalTimeout('Code auto-retrieval timeout');
+        },
+        timeout: const Duration(seconds: 60),
       );
-
-      // Sign out from Google first to ensure clean state
-      await googleSignIn.signOut();
-      await auth.signOut();
-
-      print('✅ Cleared previous sessions');
-
-      // Trigger the authentication flow
-      final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
-
-      if (googleUser == null) {
-        print('❌ Google Sign-In was cancelled by user');
-        return null;
-      }
-
-      print('✅ Google Sign-In successful: ${googleUser.email}');
-
-      // Obtain the auth details from the request
-      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
-
-      // Create a new credential
-      final credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
-      );
-
-      // Sign in to Firebase with the Google credential
-      final userCredential = await auth.signInWithCredential(credential);
-
-      if (userCredential.user == null) {
-        print('❌ Firebase Google sign-in failed');
-        return null;
-      }
-
-      print('✅ Firebase Google sign-in successful: ${userCredential.user!.email}');
-
-      // Update user profile in database
-      final user = userCredential.user!;
-      final displayName = user.displayName ?? user.email?.split('@')[0] ?? 'User';
-      final email = user.email ?? '';
-
-      // Check if user already has email/password access
-      bool hasEmailPassword = false;
-      try {
-        final existingUserSnapshot = await database.ref('users/${user.uid}').get();
-        hasEmailPassword = existingUserSnapshot.exists && 
-            (existingUserSnapshot.value as Map?)?['hasEmailPassword'] == true;
-      } catch (e) {
-        print('⚠️ Could not check existing user data: $e');
-        _addDebugLog('⚠️ Could not check existing user data: $e');
-        // Continue without failing - assume new user
-      }
-
-      // Generate a temporary password for hybrid account functionality
-      // This allows Google users to also use email/password login
-      String tempPassword = '';
-      String hashedTempPassword = '';
-      
-      if (!hasEmailPassword) {
-        // Generate a secure temporary password that users can change later
-        tempPassword = _generateSecurePassword();
-        hashedTempPassword = _hashPassword(tempPassword);
-        
-        print('🔐 Generated temporary password for hybrid account: $email');
-        _addDebugLog('🔐 Generated temporary password for hybrid account: $email');
-        
-        // Link email/password credential to the Google account
-        try {
-          final emailCredential = EmailAuthProvider.credential(
-            email: email,
-            password: tempPassword,
-          );
-          await user.linkWithCredential(emailCredential);
-          print('✅ Email/password credential linked to Google account');
-          _addDebugLog('✅ Email/password credential linked to Google account');
-        } catch (e) {
-          print('⚠️ Could not link email/password credential: $e');
-          _addDebugLog('⚠️ Could not link email/password credential: $e');
-          // Continue without failing - user can still use Google login
-        }
-      }
-
-      try {
-        await database.ref('users/${user.uid}').update({
-          'FirstName': displayName.split(' ')[0],
-          'LastName': displayName.split(' ').length > 1 ? displayName.split(' ').sublist(1).join(' ') : '',
-          'Email': email,
-          'DisplayName': displayName,
-          'PhotoURL': user.photoURL ?? '',
-          'Provider': 'google',
-          'Password': hashedTempPassword, // Store the hashed temp password
-          'isOnline': true,
-          'lastSeen': ServerValue.timestamp,
-          'signInMethod': hasEmailPassword ? 'multi' : 'google', // Mark as multi-provider if hybrid
-          'hasEmailPassword': true, // Always enable email/password for Google users
-          'isMultiProvider': !hasEmailPassword, // Mark as multi-provider for new hybrid accounts
-          'tempPasswordGenerated': !hasEmailPassword, // Flag for first-time password generation
-        });
-
-        print('✅ User profile updated in Firebase Database');
-        _addDebugLog('✅ User profile updated in Firebase Database');
-      } catch (e) {
-        print('⚠️ Could not update user profile in database: $e');
-        _addDebugLog('⚠️ Could not update user profile in database: $e');
-        // Continue without failing - user is still authenticated
-      }
-
-      // Save user to SQLite for offline access
-      await _saveUserToSQLite(
-        email: email,
-        firstName: displayName.split(' ')[0],
-        lastName: displayName.split(' ').length > 1 ? displayName.split(' ').sublist(1).join(' ') : '',
-        address: '',
-        region: '',
-        city: '',
-        barangay: '',
-        
-        hashedPassword: hashedTempPassword, // Store the hashed temp password
-        firebaseUid: user.uid,
-      );
-
-      // Check if this is a new Google user
-      final prefs = await SharedPreferences.getInstance();
-      final existingUserCreatedAt = prefs.getString('user_created_at_$email');
-      
-      // Only set creation timestamp if user doesn't have one (truly new user)
-      if (existingUserCreatedAt == null) {
-        await prefs.setString('user_created_at_$email', DateTime.now().millisecondsSinceEpoch.toString());
-        print('New Google user marked for tutorial: $email');
-      } else {
-        print('Existing Google user (already has creation timestamp): $email');
-      }
-
-      print('✅ User profile updated in database');
-
-      // Log analytics
-      await analytics.logLogin(loginMethod: 'google');
-
-      print('🎉 Google Sign-In completed successfully');
-      return userCredential;
-
     } catch (e) {
-      print('❌ Google Sign-In error: $e');
-      throw Exception('Google sign in failed: ${e.toString()}');
+      onVerificationFailed(e.toString());
     }
+  }
+
+  // Verify SMS OTP code
+  Future<UserCredential?> signInWithPhoneNumber({
+    required String verificationId,
+    required String smsCode,
+  }) async {
+    try {
+      final credential = PhoneAuthProvider.credential(
+        verificationId: verificationId,
+        smsCode: smsCode,
+      );
+      
+      final userCredential = await auth.signInWithCredential(credential);
+      return userCredential;
+    } catch (e) {
+      print('❌ SMS OTP verification failed: $e');
+      return null;
+    }
+  }
+
+  // SSO removed - deprecated
+  @Deprecated('SSO removed - use username + password authentication')
+  Future<UserCredential?> signInWithGoogle() async {
+    // SSO removed - Google Sign-In no longer supported
+    print('⚠️ Google Sign-In is no longer supported. Please use username + password authentication.');
+    return null;
   }
 
   // Current user
@@ -203,7 +108,8 @@ class FirebaseService {
 
   // Helper method to save user to SQLite for offline access
   Future<void> _saveUserToSQLite({
-    required String email,
+    String? email, // Legacy support
+    String? username,
     required String firstName,
     required String lastName,
     String? phone,
@@ -216,13 +122,22 @@ class FirebaseService {
     String? firebaseUid,
   }) async {
     try {
+      // Use username if provided, otherwise fallback to email for migration
+      final userIdentifier = username ?? email ?? '';
+      if (userIdentifier.isEmpty) {
+        throw Exception('Username or email is required');
+      }
+      
       // Check if user already exists in SQLite
-      final existingUser = await _sqliteService.getUserByEmail(email);
+      final existingUser = username != null 
+          ? await _sqliteService.getUserByUsername(username)
+          : await _sqliteService.getUserByEmail(email ?? '');
       
       if (existingUser != null) {
         // Update existing user
         await _sqliteService.updateUser(existingUser['id'], {
           'firebase_uid': firebaseUid,
+          if (username != null) 'username': username,
           'first_name': firstName,
           'last_name': lastName,
           'phone': phone,
@@ -237,14 +152,14 @@ class FirebaseService {
           'last_seen': DateTime.now().millisecondsSinceEpoch,
           'is_synced': firebaseUid != null ? 1 : 0,
           'sync_timestamp': firebaseUid != null ? DateTime.now().millisecondsSinceEpoch : null,
-          'is_verified': 1, // Email verification completed
+          'is_verified': 0, // Will be set to 1 after SMS OTP verification
         });
-        print('SQLite user updated: $email');
+        print('SQLite user updated: ${username ?? email}');
       } else {
         // Create new user
         await _sqliteService.insertUser({
           'firebase_uid': firebaseUid,
-          'email': email,
+          'username': username ?? email ?? '',
           'first_name': firstName,
           'last_name': lastName,
           'phone': phone,
@@ -260,11 +175,10 @@ class FirebaseService {
           'last_seen': DateTime.now().millisecondsSinceEpoch,
           'is_synced': firebaseUid != null ? 1 : 0,
           'sync_timestamp': firebaseUid != null ? DateTime.now().millisecondsSinceEpoch : null,
-          'is_google_auth': 0,
           'address_setup_completed': 0,
-          'is_verified': 1, // Email verification completed
+          'is_verified': 0, // Will be set to 1 after SMS OTP verification
         });
-        print('SQLite user created: $email');
+        print('SQLite user created: ${username ?? email}');
       }
     } catch (e) {
       print('Error saving user to SQLite: $e');
@@ -273,15 +187,23 @@ class FirebaseService {
 
   // Helper method to update password in SQLite database
   Future<void> _updatePasswordInSQLite({
-    required String email,
+    String? email, // Legacy support
+    String? username,
     required String hashedPassword,
   }) async {
     try {
-      print('🔍 Looking for user in SQLite: $email');
-      _addDebugLog('🔍 Looking for user in SQLite: $email');
+      final userIdentifier = username ?? email ?? '';
+      if (userIdentifier.isEmpty) {
+        throw Exception('Username or email is required');
+      }
+      
+      print('🔍 Looking for user in SQLite: $userIdentifier');
+      _addDebugLog('🔍 Looking for user in SQLite: $userIdentifier');
       
       // Get existing user from SQLite
-      final existingUser = await _sqliteService.getUserByEmail(email);
+      final existingUser = username != null
+          ? await _sqliteService.getUserByUsername(username)
+          : await _sqliteService.getUserByEmail(email ?? '');
       
       if (existingUser != null) {
         print('✅ User found in SQLite with ID: ${existingUser['id']}');
@@ -297,11 +219,11 @@ class FirebaseService {
           'sync_timestamp': DateTime.now().millisecondsSinceEpoch,
         });
         
-        print('✅ SQLite password updated for: $email');
-        _addDebugLog('✅ SQLite password updated for: $email');
+        print('✅ SQLite password updated for: $userIdentifier');
+        _addDebugLog('✅ SQLite password updated for: $userIdentifier');
       } else {
-        print('❌ User not found in SQLite: $email');
-        _addDebugLog('❌ User not found in SQLite: $email');
+        print('❌ User not found in SQLite: $userIdentifier');
+        _addDebugLog('❌ User not found in SQLite: $userIdentifier');
         throw Exception('User not found in local database');
       }
     } catch (e) {
@@ -483,9 +405,9 @@ class FirebaseService {
     }
   }
 
-  // Authentication methods
-  Future<UserCredential?> signUpWithEmail({
-    required String email,
+  // Create user with username (no Firebase Auth email - just database entry)
+  Future<bool> createUserWithUsername({
+    required String username,
     required String password,
     required String firstName,
     required String lastName,
@@ -495,6 +417,7 @@ class FirebaseService {
     String? province,
     required String city,
     required String barangay,
+    String? firebaseUid, // Optional Firebase UID if user was verified via SMS OTP
   }) async {
     try {
       // Validate all input data
@@ -503,7 +426,7 @@ class FirebaseService {
       print('   Region bytes: ${region.codeUnits}');
       
       final validationErrors = InputValidator.validateUserInput(
-        email: email,
+        username: username,
         password: password,
         confirmPassword: password, // For signup, password serves as confirmation
         firstName: firstName,
@@ -530,30 +453,13 @@ class FirebaseService {
       final sanitizedCity = InputValidator.sanitizeText(city);
       final sanitizedBarangay = InputValidator.sanitizeText(barangay);
 
-      final userCredential = await auth.createUserWithEmailAndPassword(
-        email: email.trim(),
-        password: password,
-      );
-
-      // Wait for auth state to be ready
-      await Future.delayed(const Duration(milliseconds: 500));
-
-      // Create user profile in Realtime Database AFTER successful account creation
-      if (userCredential.user != null) {
-        final sanitizedProvince = province != null ? InputValidator.sanitizeText(province) : '';
-        final userUid = userCredential.user!.uid;
-        
-        // Verify user is authenticated
-        final currentAuthUser = auth.currentUser;
-        if (currentAuthUser == null || currentAuthUser.uid != userUid) {
-          print('⚠️ Warning: Auth state not ready, waiting...');
-          await Future.delayed(const Duration(milliseconds: 1000));
-        }
+      final sanitizedProvince = province != null ? InputValidator.sanitizeText(province) : '';
+      final userUid = firebaseUid ?? username; // Use Firebase UID if available, otherwise use username as key
 
         final userData = {
           'FirstName': sanitizedFirstName,
           'LastName': sanitizedLastName,
-          'Email': email.trim(),
+          'Username': username.trim(),
           'Phone': phone ?? '',  // Ensure phone is saved
           'Address': sanitizedAddress,
           'Region': sanitizedRegion,
@@ -565,22 +471,16 @@ class FirebaseService {
           'createdAt': ServerValue.timestamp,
           'isOnline': true,
           'lastSeen': ServerValue.timestamp,
-          'is_verified': true, // Email verification completed
+          'isVerified': false, // Will be set to true after SMS OTP verification
         };
 
-        print('🔥 Saving to Firebase Realtime Database AFTER account creation:');
+        print('🔥 Saving to Firebase Realtime Database:');
         print('   UID: $userUid');
-        print('   Email: ${email.trim()}');
+        print('   Username: ${username.trim()}');
         print('   Phone: ${phone ?? 'N/A'}');
-        print('   Auth User: ${auth.currentUser?.uid}');
 
         try {
-          // Ensure user is authenticated
-          if (auth.currentUser == null) {
-            throw Exception('User not authenticated - cannot save to Realtime Database');
-          }
-          
-          // Save to Firebase Realtime Database
+          // Save to Firebase Realtime Database using username as key
           final userRef = database.ref('users/$userUid');
           await userRef.set(userData);
           
@@ -594,7 +494,7 @@ class FirebaseService {
           if (verifySnapshot.exists) {
             final savedData = verifySnapshot.value as Map<dynamic, dynamic>;
             print('✅ VERIFIED: User data exists in Firebase Realtime Database');
-            print('   Saved Email: ${savedData['Email']}');
+            print('   Saved Username: ${savedData['Username']}');
             print('   Saved Phone: ${savedData['Phone']}');
             print('   Saved FirstName: ${savedData['FirstName']}');
             print('   Saved LastName: ${savedData['LastName']}');
@@ -617,7 +517,7 @@ class FirebaseService {
 
         // Save user to SQLite for offline access
         await _saveUserToSQLite(
-          email: email.trim(),
+          username: username.trim(),
           firstName: sanitizedFirstName,
           lastName: sanitizedLastName,
           phone: phone,
@@ -628,167 +528,90 @@ class FirebaseService {
           barangay: sanitizedBarangay,
           
           hashedPassword: _hashPassword(password),
-          firebaseUid: userCredential.user!.uid,
+          firebaseUid: userUid,
         );
 
         // Mark user as new for tutorial purposes
         final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('user_created_at_${email.trim()}', DateTime.now().millisecondsSinceEpoch.toString());
-        print('New user marked for tutorial: ${email.trim()}');
+        await prefs.setString('user_created_at_${username.trim()}', DateTime.now().millisecondsSinceEpoch.toString());
+        print('New user marked for tutorial: ${username.trim()}');
 
         // Log sign up event
-        await analytics.logSignUp(signUpMethod: 'email');
-      }
+        await analytics.logSignUp(signUpMethod: 'username');
 
-      return userCredential;
+      return true;
     } catch (e) {
       throw Exception('Sign up failed: ${e.toString()}');
     }
   }
 
-  Future<UserCredential?> signInWithEmail({
-    required String email,
+  // Authenticate user by username (database lookup, not Firebase Auth email)
+  Future<Map<String, dynamic>?> authenticateUserByUsername({
+    required String username,
     required String password,
   }) async {
     try {
       // Validate inputs
-      final emailError = InputValidator.validateEmail(email);
-      if (emailError != null) {
-        throw Exception(emailError);
+      final usernameError = InputValidator.validateUsername(username);
+      if (usernameError != null) {
+        throw Exception(usernameError);
       }
 
       if (password.isEmpty) {
         throw Exception('Password is required');
       }
 
-      print('🔐 Starting email/password sign-in for: ${email.trim()}');
-      _addDebugLog('🔐 Starting email/password sign-in for: ${email.trim()}');
+      print('🔐 Starting username/password authentication for: ${username.trim()}');
+      _addDebugLog('🔐 Starting username/password authentication for: ${username.trim()}');
 
-      // Step 1: Attempt Firebase Auth login first (let Firebase Auth be the source of truth)
-      UserCredential userCredential;
-      try {
-        userCredential = await auth.signInWithEmailAndPassword(
-            email: email.trim(),
-            password: password,
-          );
-        print('✅ Firebase Auth login successful');
-        _addDebugLog('✅ Firebase Auth login successful');
-        } catch (e) {
-        print('❌ Firebase Auth login failed: $e');
-        _addDebugLog('❌ Firebase Auth login failed: $e');
-        throw Exception('Invalid email or password');
-      }
-
-      // Step 2: Get the authenticated user and their UID
-      final user = userCredential.user!;
-      final uid = user.uid;
-      print('🔍 Authenticated user UID: $uid');
-      _addDebugLog('🔍 Authenticated user UID: $uid');
-
-      // Step 3: Fetch user data from Firebase Realtime Database
-      final userSnapshot = await database.ref('users/$uid').get();
+      // Look up user in Firebase Realtime Database by username
+      final hashedPassword = _hashPassword(password);
       
-      if (!userSnapshot.exists) {
-        print('⚠️ User not found in Realtime Database - creating entry');
-        _addDebugLog('⚠️ User not found in Realtime Database - creating entry');
-        
-        // Create database entry for existing Firebase Auth user
-        await _createDatabaseEntryForExistingUser(user, email.trim(), password);
-      }
-
-      // Step 4: Get user data and check for password sync
-      final userDataSnapshot = await database.ref('users/$uid').get();
-      final userData = userDataSnapshot.value as Map<String, dynamic>?;
+      // Query Firebase for user by username
+      final userSnapshot = await database.ref('users').orderByChild('Username').equalTo(username.trim()).get();
       
-      if (userData == null) {
-        throw Exception('User data not found in database');
+      if (!userSnapshot.exists || userSnapshot.value == null) {
+        print('❌ User not found: ${username.trim()}');
+        _addDebugLog('❌ User not found: ${username.trim()}');
+        throw Exception('Invalid username or password');
       }
 
-      // Step 5: Generate hash of the password the user just used to log in
-      final newHashedPassword = _hashPassword(password);
-      final storedPassword = userData['Password'] as String?;
+      // Get user data
+      final users = userSnapshot.value as Map<dynamic, dynamic>;
+      final userEntry = users.values.first as Map<dynamic, dynamic>;
+      final userUid = users.keys.first as String;
       
-      print('🔍 Password sync check:');
-      print('  - Stored password hash: ${storedPassword ?? "null"}');
-      print('  - New password hash: $newHashedPassword');
-      print('  - Hashes match: ${storedPassword == newHashedPassword}');
-      _addDebugLog('🔍 Password sync check:');
-      _addDebugLog('  - Stored password hash: ${storedPassword ?? "null"}');
-      _addDebugLog('  - New password hash: $newHashedPassword');
-      _addDebugLog('  - Hashes match: ${storedPassword == newHashedPassword}');
-
-      // Step 6: Check if password reset occurred (hashes don't match)
-      if (storedPassword != newHashedPassword) {
-        print('🔄 Password reset detected - syncing new password across all systems');
-        _addDebugLog('🔄 Password reset detected - syncing new password across all systems');
-        
-        // This confirms that a password reset occurred via email
-        // Update the password everywhere to keep systems in sync
-        
-        // Update Firebase Realtime Database
-        await database.ref('users/$uid').update({
-          'Password': newHashedPassword,
-          'hasEmailPassword': true,
-          'signInMethod': userData['signInMethod'] == 'google' ? 'multi' : 'email',
-          'isMultiProvider': userData['signInMethod'] == 'google' ? true : false,
-          'passwordSyncedAt': ServerValue.timestamp,
-        });
-        print('✅ Firebase Realtime Database updated with new password');
-
-        // Update SQLite database
-          await _updatePasswordInSQLite(
-            email: email.trim(),
-          hashedPassword: newHashedPassword,
-          );
-        print('✅ SQLite database updated with new password');
-
-        print('✅ Password successfully synced after reset');
-        _addDebugLog('✅ Password successfully synced after reset');
-        } else {
-        print('✅ Password hash matches - no sync needed');
-        _addDebugLog('✅ Password hash matches - no sync needed');
+      // Verify password
+      if (userEntry['Password'] != hashedPassword) {
+        print('❌ Invalid password for user: ${username.trim()}');
+        _addDebugLog('❌ Invalid password for user: ${username.trim()}');
+        throw Exception('Invalid username or password');
       }
 
-      // Step 7: Update user online status
-      await database.ref('users/$uid').update({
-        'isOnline': true,
+      // Update last seen
+      await database.ref('users/$userUid').update({
         'lastSeen': ServerValue.timestamp,
+        'isOnline': true,
       });
 
-      // Step 8: Update SQLite for offline access
-      final updatedUserData = await database.ref('users/$uid').get();
-      if (updatedUserData.exists) {
-        final finalUserData = updatedUserData.value as Map;
-        await _saveUserToSQLite(
-          email: email.trim(),
-          firstName: finalUserData['FirstName'] ?? '',
-          lastName: finalUserData['LastName'] ?? '',
-          address: finalUserData['Address'] ?? '',
-          region: finalUserData['Region'] ?? '',
-          city: finalUserData['City'] ?? '',
-          barangay: finalUserData['Barangay'] ?? '',
-          
-          hashedPassword: newHashedPassword,
-          firebaseUid: uid,
-        );
-      }
+      print('✅ Username/password authentication successful');
+      _addDebugLog('✅ Username/password authentication successful');
 
-      // Step 9: Log analytics
-      await analytics.logLogin(loginMethod: 'email');
-
-      print('🎉 Email/password sign-in completed successfully');
-      _addDebugLog('🎉 Email/password sign-in completed successfully');
-      
-      return userCredential;
+      // Return user data as Map
+      return {
+        'uid': userUid,
+        ...userEntry.map((key, value) => MapEntry(key.toString(), value)),
+      };
     } catch (e) {
-      print('❌ Sign in failed: $e');
-      _addDebugLog('❌ Sign in failed: $e');
-      throw Exception('Sign in failed: ${e.toString()}');
+      print('❌ Authentication failed: $e');
+      _addDebugLog('❌ Authentication failed: $e');
+      throw Exception('Authentication failed: ${e.toString()}');
     }
   }
 
 
-  // Forgot Password - Send password reset email
+  // Forgot Password - DEPRECATED (email auth removed)
+  @Deprecated('Email auth removed - password reset not supported with username auth')
   Future<void> sendPasswordResetEmail(String email) async {
     try {
       // Validate email
@@ -1075,15 +898,6 @@ class FirebaseService {
         }
       }
 
-      // Sign out from Google Sign-In
-      try {
-        final GoogleSignIn googleSignIn = GoogleSignIn();
-        await googleSignIn.signOut();
-      } catch (e) {
-        print('Google sign out failed: $e');
-        // Continue with Firebase sign out
-      }
-      
       // Sign out from Firebase
       await auth.signOut();
       await analytics.logEvent(name: 'user_sign_out');

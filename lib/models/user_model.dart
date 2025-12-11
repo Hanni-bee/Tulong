@@ -1,7 +1,7 @@
 class UserModel {
   final String id;
   final String name;
-  final String email;
+  final String username;
   final String? avatar;
   final bool isOnline;
   final String? lastSeen;
@@ -16,7 +16,7 @@ class UserModel {
   final String province;
   // Setup completion
   final bool addressSetupCompleted;
-  final bool isGoogleAuth;
+  final bool isVerified;
   // Additional fields for consistency
   final String accountStatus;
   final int createdAt;
@@ -24,7 +24,7 @@ class UserModel {
   const UserModel({
     required this.id,
     required this.name,
-    required this.email,
+    required this.username,
     this.avatar,
     this.isOnline = false,
     this.lastSeen,
@@ -37,7 +37,7 @@ class UserModel {
     this.city = '',
     this.province = '',
     this.addressSetupCompleted = false,
-    this.isGoogleAuth = false,
+    this.isVerified = false,
     this.accountStatus = 'active',
     this.createdAt = 0,
   });
@@ -46,7 +46,7 @@ class UserModel {
     return UserModel(
       id: map['id'] ?? '',
       name: map['name'] ?? '',
-      email: map['email'] ?? '',
+      username: map['username'] ?? map['email'] ?? '', // Support migration from email
       avatar: map['avatar'],
       isOnline: map['isOnline'] ?? false,
       lastSeen: map['lastSeen'],
@@ -59,7 +59,7 @@ class UserModel {
       city: map['city'] ?? '',
       province: map['province'] ?? '',
       addressSetupCompleted: map['addressSetupCompleted'] ?? false,
-      isGoogleAuth: map['isGoogleAuth'] ?? false,
+      isVerified: map['isVerified'] ?? false,
       accountStatus: map['accountStatus'] ?? 'active',
       createdAt: map['createdAt'] ?? 0,
     );
@@ -69,7 +69,7 @@ class UserModel {
     return {
       'id': id,
       'name': name,
-      'email': email,
+      'username': username,
       'avatar': avatar,
       'isOnline': isOnline,
       'lastSeen': lastSeen,
@@ -82,7 +82,7 @@ class UserModel {
       'city': city,
       'province': province,
       'addressSetupCompleted': addressSetupCompleted,
-      'isGoogleAuth': isGoogleAuth,
+      'isVerified': isVerified,
       'accountStatus': accountStatus,
       'createdAt': createdAt,
     };
@@ -91,7 +91,7 @@ class UserModel {
   UserModel copyWith({
     String? id,
     String? name,
-    String? email,
+    String? username,
     String? avatar,
     bool? isOnline,
     String? lastSeen,
@@ -104,14 +104,14 @@ class UserModel {
     String? city,
     String? province,
     bool? addressSetupCompleted,
-    bool? isGoogleAuth,
+    bool? isVerified,
     String? accountStatus,
     int? createdAt,
   }) {
     return UserModel(
       id: id ?? this.id,
       name: name ?? this.name,
-      email: email ?? this.email,
+      username: username ?? this.username,
       avatar: avatar ?? this.avatar,
       isOnline: isOnline ?? this.isOnline,
       lastSeen: lastSeen ?? this.lastSeen,
@@ -124,7 +124,7 @@ class UserModel {
       city: city ?? this.city,
       province: province ?? this.province,
       addressSetupCompleted: addressSetupCompleted ?? this.addressSetupCompleted,
-      isGoogleAuth: isGoogleAuth ?? this.isGoogleAuth,
+      isVerified: isVerified ?? this.isVerified,
       accountStatus: accountStatus ?? this.accountStatus,
       createdAt: createdAt ?? this.createdAt,
     );
@@ -141,6 +141,6 @@ class UserModel {
 
   @override
   String toString() {
-    return 'UserModel(id: $id, name: $name, email: $email, isOnline: $isOnline)';
+    return 'UserModel(id: $id, name: $name, username: $username, isOnline: $isOnline)';
   }
 }

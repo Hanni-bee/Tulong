@@ -8,8 +8,7 @@ import '../../widgets/custom_button.dart';
 import '../../widgets/custom_text_field.dart';
 import '../../widgets/password_strength_indicator.dart';
 import 'package:provider/provider.dart';
-import '../../providers/auth_provider.dart';
-// import removed
+import '../../providers/auth_provider.dart' as AppAuth;
 import '../../widgets/terms_conditions_modal.dart';
 import '../../services/firebase_service.dart';
 import '../../services/sqlite_service.dart';
@@ -17,8 +16,9 @@ import 'dart:io';
 import '../../services/location_service.dart';
 import '../../utils/input_validator.dart';
 import '../../utils/responsive_spacing.dart';
-import '../../services/emailjs_service.dart';
-import 'dart:math';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:crypto/crypto.dart';
+import 'dart:convert';
 
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({super.key});
@@ -31,24 +31,24 @@ class _SignUpScreenState extends State<SignUpScreen> {
   final _formKey = GlobalKey<FormState>();
   final _firstNameController = TextEditingController();
   final _lastNameController = TextEditingController();
-  final _emailController = TextEditingController();
+  final _usernameController = TextEditingController();
   final _phoneController = TextEditingController();
   final _addressController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
-  final _verificationCodeController = TextEditingController();
+  final _otpController = TextEditingController();
   
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
   bool _isLoading = false;
   bool _acceptedTerms = false;
   
-  // Email verification states
-  String? _generatedVerificationCode;
-  bool _isVerificationCodeSent = false;
-  bool _isEmailVerified = false;
-  bool _isSendingCode = false;
-  bool _isVerifyingCode = false;
+  // SMS OTP verification states
+  String? _verificationId;
+  bool _isOtpSent = false;
+  bool _isPhoneVerified = false;
+  bool _isSendingOtp = false;
+  bool _isVerifyingOtp = false;
   String? _verificationMessage;
   
   // Real-time validation states
@@ -77,11 +77,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
   void dispose() {
     _firstNameController.dispose();
     _lastNameController.dispose();
-    _emailController.dispose();
+    _usernameController.dispose();
+    _phoneController.dispose();
     _addressController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
-    _verificationCodeController.dispose();
+    _otpController.dispose();
     super.dispose();
   }
 
@@ -180,11 +181,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
       return;
     }
     
-    // Check if email is verified
-    if (!_isEmailVerified) {
+    // Check if phone is verified via SMS OTP
+    if (!_isPhoneVerified) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please verify your email address first'),
+          content: Text('Please verify your phone number first'),
           backgroundColor: AppColors.error,
         ),
       );
@@ -198,14 +199,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
     try {
       final first = _firstNameController.text.trim();
       final last = _lastNameController.text.trim();
-      final email = _emailController.text.trim();
+      final username = _usernameController.text.trim();
       final pwd = _passwordController.text;
 
       // Normalize phone for storage: 0 + 10 digits
       final phoneDigits = _phoneController.text.replaceAll(RegExp(r'\D'), '');
       final normalizedPhone = phoneDigits.isEmpty ? null : ('0' + phoneDigits);
 
-      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final authProvider = Provider.of<AppAuth.AuthProvider>(context, listen: false);
       final firebaseService = FirebaseService();
       final isConnected = await _isConnected();
 
@@ -236,8 +237,19 @@ class _SignUpScreenState extends State<SignUpScreen> {
           print('   Region code: $_selectedRegion -> Region name: $regionName');
           
           // STEP 1: Save to Firebase Realtime Database FIRST (main source)
-          final userCredential = await firebaseService.signUpWithEmail(
-            email: email,
+          // Get Firebase UID from phone auth if available
+          String? firebaseUid;
+          try {
+            final currentUser = FirebaseAuth.instance.currentUser;
+            if (currentUser != null) {
+              firebaseUid = currentUser.uid;
+            }
+          } catch (e) {
+            print('No Firebase Auth user from phone verification: $e');
+          }
+          
+          final success = await firebaseService.createUserWithUsername(
+            username: username,
             password: pwd,
             firstName: first,
             lastName: last,
@@ -247,14 +259,17 @@ class _SignUpScreenState extends State<SignUpScreen> {
             province: provinceName, // Use name for validation, not code
             city: _selectedCity ?? '',
             barangay: _selectedBarangay ?? '',
+            firebaseUid: firebaseUid,
           );
-
-          if (userCredential?.user == null) {
-            throw Exception('Firebase signup failed - user credential is null');
+          
+          if (!success) {
+            throw Exception('Failed to create user account');
           }
+          
+          // Get user UID (use username as key if no Firebase UID)
+          final userUid = firebaseUid ?? username;
 
           // Verify Firebase save was successful
-          final userUid = userCredential!.user!.uid;
           final verifyRef = firebaseService.database.ref('users/$userUid');
           final verifySnapshot = await verifyRef.get();
           
@@ -264,23 +279,23 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
           print('✅ CONFIRMED: User data saved to Firebase Realtime Database at users/$userUid');
           final savedData = verifySnapshot.value as Map<dynamic, dynamic>;
-          print('   Email: ${savedData['Email']}');
+          print('   Username: ${savedData['Username']}');
           print('   Phone: ${savedData['Phone']}');
           print('   FirstName: ${savedData['FirstName']}');
           print('   LastName: ${savedData['LastName']}');
 
-          // STEP 2: Save to SQLite as offline backup (should already be done by _saveUserToSQLite in signUpWithEmail)
+          // STEP 2: Save to SQLite as offline backup (should already be done by _saveUserToSQLite in createUserWithUsername)
           // Just verify SQLite has the data
           try {
             final sqliteService = SQLiteService();
             await sqliteService.database; // Initialize
-            final existingUser = await sqliteService.getUserByEmail(email);
+            final existingUser = await sqliteService.getUserByUsername(username);
             if (existingUser == null) {
               print('📱 User not in SQLite yet, saving now as backup...');
               // Save to SQLite manually if not already saved - ALL FIELDS INCLUDED
               await sqliteService.insertUser({
                 'firebase_uid': userUid,
-                'email': email,
+                'username': username,
                 'first_name': first,
                 'last_name': last,
                 'phone': normalizedPhone,
@@ -289,16 +304,15 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 'province': provinceName,
                 'city': _selectedCity ?? '',
                 'barangay': _selectedBarangay ?? '',
-                'password': firebaseService.hashPassword(pwd), // Hashed password
+                'password': _hashPassword(pwd), // Hashed password
                 'is_online': 1,
                 'account_status': 'active',
                 'created_at': DateTime.now().millisecondsSinceEpoch,
                 'last_seen': DateTime.now().millisecondsSinceEpoch,
                 'is_synced': 1, // Mark as synced since Firebase save succeeded
                 'sync_timestamp': DateTime.now().millisecondsSinceEpoch,
-                'is_google_auth': 0,
                 'address_setup_completed': 0,
-                'is_verified': 1, // Email verification completed
+                'is_verified': 1, // SMS OTP verification completed
               });
               print('✅ User saved to SQLite as backup');
             } else {
@@ -316,7 +330,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
           await Future.delayed(const Duration(milliseconds: 500));
           
           await authProvider.setAuthenticated(
-            email: email,
+            username: username,
             name: '$first $last',
           );
           
@@ -371,7 +385,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
         print('📴 Offline mode detected - saving to SQLite only');
         
         await authProvider.signupOffline(
-          email: email,
+          username: username,
           password: pwd,
           firstName: first,
           lastName: last,
@@ -385,7 +399,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
         if (!mounted) return;
         await authProvider.setAuthenticated(
-          email: email,
+          username: username,
           name: '$first $last',
         );
         
@@ -434,72 +448,101 @@ class _SignUpScreenState extends State<SignUpScreen> {
     }
   }
 
-  // Generate 6-digit verification code
-  String _generateVerificationCode() {
-    final random = Random();
-    return (100000 + random.nextInt(900000)).toString();
+  // Hash password using SHA-256
+  String _hashPassword(String password) {
+    final bytes = utf8.encode(password);
+    final digest = sha256.convert(bytes);
+    return digest.toString();
   }
 
-  // Send verification code via EmailJS
-  Future<void> _sendVerificationCode() async {
-    final email = _emailController.text.trim();
+  // Send SMS OTP verification code
+  Future<void> _sendOtpCode() async {
+    final phone = _phoneController.text.trim();
     
-    // Validate email first
-    if (email.isEmpty || !email.contains('@')) {
+    // Validate phone first
+    if (phone.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please enter a valid email address'),
+          content: Text('Please enter your phone number first'),
           backgroundColor: AppColors.error,
         ),
       );
       return;
     }
 
+    // Normalize phone number for Firebase (add +63 prefix)
+    final phoneDigits = phone.replaceAll(RegExp(r'\D'), '');
+    if (phoneDigits.length != 10 || !phoneDigits.startsWith('9')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter a valid 10-digit Philippine phone number starting with 9'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+    
+    final normalizedPhone = '+63$phoneDigits';
+
     setState(() {
-      _isSendingCode = true;
+      _isSendingOtp = true;
       _verificationMessage = null;
     });
 
     try {
-      // Generate 6-digit code
-      _generatedVerificationCode = _generateVerificationCode();
+      final firebaseService = FirebaseService();
       
-      // Send via EmailJS
-      final emailJSService = EmailJSService();
-      final success = await emailJSService.sendVerificationCode(
-        email: email,
-        passcode: _generatedVerificationCode!,
+      await firebaseService.verifyPhoneNumber(
+        phoneNumber: normalizedPhone,
+        onCodeSent: (verificationId) {
+          setState(() {
+            _verificationId = verificationId;
+            _isOtpSent = true;
+            _isPhoneVerified = false;
+            _verificationMessage = 'SMS OTP sent! Check your phone.';
+            _isSendingOtp = false;
+          });
+          
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('SMS OTP sent! Check your phone.'),
+              backgroundColor: AppColors.success,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        },
+        onVerificationCompleted: (userCredential) {
+          // Auto-verification successful
+          setState(() {
+            _isPhoneVerified = true;
+            _verificationMessage = 'Phone verified automatically.';
+            _isSendingOtp = false;
+          });
+        },
+        onVerificationFailed: (error) {
+          setState(() {
+            _verificationMessage = 'Failed to send OTP: $error';
+            _isSendingOtp = false;
+          });
+          
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to send OTP: $error'),
+              backgroundColor: AppColors.error,
+            ),
+          );
+        },
+        onCodeAutoRetrievalTimeout: (error) {
+          setState(() {
+            _verificationMessage = 'OTP timeout. Please request a new code.';
+            _isSendingOtp = false;
+          });
+        },
       );
-
-      if (success) {
-        setState(() {
-          _isVerificationCodeSent = true;
-          _isEmailVerified = false;
-          _verificationMessage = 'Check your email for the verification code.';
-        });
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Verification code sent! Check your email.'),
-            backgroundColor: AppColors.success,
-            duration: Duration(seconds: 3),
-          ),
-        );
-      } else {
-        setState(() {
-          _verificationMessage = 'Failed to send verification code. Please try again.';
-        });
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Failed to send verification code. Please try again.'),
-            backgroundColor: AppColors.error,
-          ),
-        );
-      }
     } catch (e) {
       setState(() {
-        _verificationMessage = 'Error sending verification code: ${e.toString()}';
+        _verificationMessage = 'Error: ${e.toString()}';
+        _isSendingOtp = false;
       });
       
       ScaffoldMessenger.of(context).showSnackBar(
@@ -508,21 +551,27 @@ class _SignUpScreenState extends State<SignUpScreen> {
           backgroundColor: AppColors.error,
         ),
       );
-    } finally {
-      setState(() {
-        _isSendingCode = false;
-      });
     }
   }
 
-  // Verify the entered code
-  Future<void> _verifyCode() async {
-    final enteredCode = _verificationCodeController.text.trim();
+  // Verify the entered OTP code
+  Future<void> _verifyOtpCode() async {
+    final enteredCode = _otpController.text.trim();
     
     if (enteredCode.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please enter the verification code'),
+          content: Text('Please enter the OTP code'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
+    if (_verificationId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please request an OTP code first'),
           backgroundColor: AppColors.error,
         ),
       );
@@ -530,57 +579,74 @@ class _SignUpScreenState extends State<SignUpScreen> {
     }
 
     setState(() {
-      _isVerifyingCode = true;
+      _isVerifyingOtp = true;
       _verificationMessage = null;
     });
 
-    // Simulate a small delay for better UX
-    await Future.delayed(const Duration(milliseconds: 500));
-
-    if (enteredCode == _generatedVerificationCode) {
-      setState(() {
-        _isEmailVerified = true;
-        _verificationMessage = 'Verification successful.';
-      });
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Row(
-            children: [
-              Icon(Icons.check_circle, color: Colors.white),
-              SizedBox(width: 12),
-              Text('Verification successful.'),
-            ],
-          ),
-          backgroundColor: AppColors.success,
-          duration: Duration(seconds: 2),
-        ),
+    try {
+      final firebaseService = FirebaseService();
+      final userCredential = await firebaseService.signInWithPhoneNumber(
+        verificationId: _verificationId!,
+        smsCode: enteredCode,
       );
-    } else {
+
+      if (userCredential != null) {
+        setState(() {
+          _isPhoneVerified = true;
+          _verificationMessage = 'Phone verification successful.';
+        });
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.white),
+                SizedBox(width: 12),
+                Text('Phone verification successful.'),
+              ],
+            ),
+            backgroundColor: AppColors.success,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      } else {
+        setState(() {
+          _isPhoneVerified = false;
+          _verificationMessage = 'Wrong OTP code, please try again.';
+          _otpController.clear();
+        });
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.error_outline, color: Colors.white),
+                SizedBox(width: 12),
+                Text('Wrong OTP code, please try again.'),
+              ],
+            ),
+            backgroundColor: AppColors.error,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
       setState(() {
-        _isEmailVerified = false;
-        _verificationMessage = 'Wrong code, please try again.';
-        _verificationCodeController.clear();
+        _isPhoneVerified = false;
+        _verificationMessage = 'Verification failed: ${e.toString()}';
       });
       
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Row(
-            children: [
-              Icon(Icons.error_outline, color: Colors.white),
-              SizedBox(width: 12),
-              Text('Wrong code, please try again.'),
-            ],
-          ),
+        SnackBar(
+          content: Text('Verification failed: ${e.toString()}'),
           backgroundColor: AppColors.error,
-          duration: Duration(seconds: 2),
         ),
       );
+    } finally {
+      setState(() {
+        _isVerifyingOtp = false;
+      });
     }
-
-    setState(() {
-      _isVerifyingCode = false;
-    });
   }
 
 
@@ -777,37 +843,50 @@ class _SignUpScreenState extends State<SignUpScreen> {
           
           const SizedBox(height: 20),
           
-          // Email field
+          // Username field
           CustomTextField(
-            controller: _emailController,
-            label: 'Email',
-            hint: 'Enter your email',
-            keyboardType: TextInputType.emailAddress,
-            prefixIcon: Icons.email_outlined,
+            controller: _usernameController,
+            label: 'Username',
+            hint: 'Enter your username (6+ characters, letters & numbers only)',
+            keyboardType: TextInputType.text,
+            prefixIcon: Icons.person_outline,
             validator: (value) {
-              return InputValidator.validateEmail(value);
-            },
-            onChanged: (value) {
-              // Reset verification state when email changes
-              if (value != _emailController.text.trim()) {
-                setState(() {
-                  _isVerificationCodeSent = false;
-                  _isEmailVerified = false;
-                  _generatedVerificationCode = null;
-                  _verificationCodeController.clear();
-                  _verificationMessage = null;
-                });
-              }
+              return InputValidator.validateUsername(value);
             },
           ),
           
-          // Send Verification Code button
+          const SizedBox(height: 20),
+          
+          // Phone field (required for SMS OTP)
+          CustomTextField(
+            controller: _phoneController,
+            label: 'Phone Number',
+            hint: 'Enter 10 digits (e.g., 9123456789)',
+            keyboardType: TextInputType.phone,
+            prefixIcon: Icons.phone_outlined,
+            prefixText: '+63 ',
+            validator: (value) {
+              return InputValidator.validatePhilippinePhoneNumber(value);
+            },
+            onChanged: (value) {
+              // Reset verification state when phone changes
+              setState(() {
+                _isOtpSent = false;
+                _isPhoneVerified = false;
+                _verificationId = null;
+                _otpController.clear();
+                _verificationMessage = null;
+              });
+            },
+          ),
+          
+          // Send OTP Code button
           const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
-              onPressed: _isSendingCode ? null : _sendVerificationCode,
-              icon: _isSendingCode
+              onPressed: _isSendingOtp ? null : _sendOtpCode,
+              icon: _isSendingOtp
                   ? const SizedBox(
                       width: 20,
                       height: 20,
@@ -818,7 +897,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                     )
                   : const Icon(Icons.send, color: Colors.white),
               label: Text(
-                _isSendingCode ? 'Sending...' : 'Send Verification Code',
+                _isSendingOtp ? 'Sending OTP...' : 'Send SMS OTP',
                 style: UnifiedTypography.titleMedium,
               ),
               style: ElevatedButton.styleFrom(
@@ -838,12 +917,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: _isEmailVerified 
+                color: _isPhoneVerified 
                     ? Colors.green.shade50 
                     : Colors.blue.shade50,
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(
-                  color: _isEmailVerified 
+                  color: _isPhoneVerified 
                       ? Colors.green.shade200 
                       : Colors.blue.shade200,
                 ),
@@ -851,8 +930,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
               child: Row(
                 children: [
                   Icon(
-                    _isEmailVerified ? Icons.check_circle : Icons.info_outline,
-                    color: _isEmailVerified 
+                    _isPhoneVerified ? Icons.check_circle : Icons.info_outline,
+                    color: _isPhoneVerified 
                         ? Colors.green.shade700 
                         : Colors.blue.shade700,
                     size: 20,
@@ -862,7 +941,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                     child: Text(
                       _verificationMessage!,
                       style: TextStyle(
-                        color: _isEmailVerified 
+                        color: _isPhoneVerified 
                             ? Colors.green.shade700 
                             : Colors.blue.shade700,
                         fontSize: 14,
@@ -874,18 +953,18 @@ class _SignUpScreenState extends State<SignUpScreen> {
             ),
           ],
           
-          // Verification Code Input (only show after code is sent)
-          if (_isVerificationCodeSent && !_isEmailVerified) ...[
+          // OTP Code Input (only show after OTP is sent)
+          if (_isOtpSent && !_isPhoneVerified) ...[
             const SizedBox(height: 20),
             Row(
               children: [
                 Expanded(
                   child: CustomTextField(
-                    controller: _verificationCodeController,
-                    label: 'Verification Code',
-                    hint: 'Enter 6-digit code',
+                    controller: _otpController,
+                    label: 'OTP Code',
+                    hint: 'Enter 6-digit OTP',
                     keyboardType: TextInputType.number,
-                    prefixIcon: Icons.verified_user_outlined,
+                    prefixIcon: Icons.sms_outlined,
                     inputFormatters: [
                       FilteringTextInputFormatter.digitsOnly,
                       LengthLimitingTextInputFormatter(6),
@@ -896,7 +975,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 SizedBox(
                   width: 100,
                   child: ElevatedButton(
-                    onPressed: _isVerifyingCode ? null : _verifyCode,
+                    onPressed: _isVerifyingOtp ? null : _verifyOtpCode,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.primaryRed,
                       foregroundColor: Colors.white,
@@ -905,7 +984,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    child: _isVerifyingCode
+                    child: _isVerifyingOtp
                         ? const SizedBox(
                             width: 20,
                             height: 20,
@@ -921,8 +1000,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
             ),
           ],
           
-          // Email verified indicator
-          if (_isEmailVerified) ...[
+          // Phone verified indicator
+          if (_isPhoneVerified) ...[
             const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.all(12),
@@ -940,7 +1019,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   ),
                   SizedBox(width: 12),
                   Text(
-                    '✅ Email verified successfully',
+                    '✅ Phone verified successfully',
                     style: TextStyle(
                       color: Colors.green,
                       fontSize: 14,
@@ -951,24 +1030,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
               ),
             ),
           ],
-          
-          const SizedBox(height: 20),
-          
-          // Phone Number field (+63 prefix, 10 digits only, starts with 9)
-          CustomTextField(
-            controller: _phoneController,
-            label: 'Phone Number',
-            hint: '9123456789',
-            keyboardType: TextInputType.number,
-            prefixIcon: Icons.phone_outlined,
-            prefixText: '+63 ',
-            inputFormatters: [
-              FilteringTextInputFormatter.digitsOnly,
-              LengthLimitingTextInputFormatter(10),
-            ],
-            validator: (value) => InputValidator.validatePhilippinePhoneNumber(value),
-            autovalidateMode: AutovalidateMode.onUserInteraction,
-          ),
           
           const SizedBox(height: 20),
           
@@ -1494,9 +1555,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
           // Sign up button
           CustomButton(
             text: 'Create Account',
-            onPressed: (_isLoading || !_acceptedTerms || !_isEmailVerified) ? null : _signUp,
+            onPressed: (_isLoading || !_acceptedTerms || !_isPhoneVerified) ? null : _signUp,
             isLoading: _isLoading,
-            backgroundColor: (_acceptedTerms && _isEmailVerified) ? AppColors.primaryRed : Colors.grey,
+            backgroundColor: (_acceptedTerms && _isPhoneVerified) ? AppColors.primaryRed : Colors.grey,
             textColor: Colors.white,
           ),
           
@@ -1524,20 +1585,20 @@ class _SignUpScreenState extends State<SignUpScreen> {
             ),
           ],
           
-          // Email verification requirement message
-          if (!_isEmailVerified) ...[
+          // Phone verification requirement message
+          if (!_isPhoneVerified) ...[
             const SizedBox(height: 12),
             Row(
               children: [
                 Icon(
-                  Icons.email_outlined,
+                  Icons.phone_outlined,
                   size: 16,
                   color: Colors.orange.shade600,
                 ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Please verify your email address to continue',
+                    'Please verify your phone number to continue',
                     style: TextStyle(
                       fontSize: 12,
                       color: Colors.orange.shade600,

@@ -71,7 +71,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
     // Load user model immediately when screen opens to ensure data is available
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      if (authProvider.userEmail != null) {
+      if (authProvider.username != null) {
         // Always try to load user model, even if it exists (to refresh data)
         authProvider.loadUserModel();
       }
@@ -130,7 +130,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
     return Consumer<AuthProvider>(
       builder: (context, auth, child) {
         // Ensure user model is loaded
-        if (auth.userEmail != null && auth.currentUserModel == null) {
+        if (auth.username != null && auth.currentUserModel == null) {
           // Load user model if not already loaded
           WidgetsBinding.instance.addPostFrameCallback((_) {
             auth.loadUserModel();
@@ -138,7 +138,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
         }
         
         final userName = auth.userName ?? 'User';
-        final userEmail = auth.userEmail ?? 'user@example.com';
+        final username = auth.username ?? 'user';
         final userModel = auth.currentUserModel;
         
         // Compose location string from model fields
@@ -239,11 +239,11 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
 
                          Row(
                            children: [
-                    const Icon(Icons.mail_outline, color: Colors.white, size: 18),
+                    const Icon(Icons.person_outline, color: Colors.white, size: 18),
                     const SizedBox(width: 10),
                              Expanded(
                                child: Text(
-                        userEmail,
+                        username,
                         style: const TextStyle(color: Colors.white),
                                  maxLines: 1,
                                  overflow: TextOverflow.ellipsis,
@@ -639,7 +639,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
     // Reload user model after returning from edit profile to show updated data
     if (mounted) {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      if (authProvider.userEmail != null) {
+      if (authProvider.username != null) {
         await authProvider.loadUserModel();
         // Force UI rebuild
         setState(() {});

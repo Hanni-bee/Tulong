@@ -10,7 +10,7 @@ class SQLiteService {
 
   static Database? _database;
   static const String _databaseName = 'tulong_offline.db';
-  static const int _databaseVersion = 4;
+  static const int _databaseVersion = 5;
 
   // Table names
   static const String _usersTable = 'users';
@@ -45,7 +45,7 @@ class SQLiteService {
         firebase_uid TEXT UNIQUE,
         first_name TEXT NOT NULL,
         last_name TEXT NOT NULL,
-        email TEXT NOT NULL UNIQUE,
+        username TEXT NOT NULL UNIQUE,
         phone TEXT,
         street TEXT,
         region TEXT,
@@ -61,7 +61,6 @@ class SQLiteService {
         last_seen INTEGER,
         is_synced INTEGER DEFAULT 0,
         sync_timestamp INTEGER,
-        is_google_auth INTEGER DEFAULT 0,
         address_setup_completed INTEGER DEFAULT 0,
         is_verified INTEGER DEFAULT 0
       )
@@ -137,6 +136,24 @@ class SQLiteService {
       // Add is_verified column
       await db.execute('ALTER TABLE $_usersTable ADD COLUMN is_verified INTEGER DEFAULT 0');
     }
+    if (oldVersion < 5) {
+      // Migrate from email to username
+      // Add username column
+      await db.execute('ALTER TABLE $_usersTable ADD COLUMN username TEXT');
+      // Migrate email to username (use email prefix before @ as username)
+      await db.execute('''
+        UPDATE $_usersTable 
+        SET username = CASE 
+          WHEN email LIKE '%@%' THEN substr(email, 1, instr(email, '@') - 1)
+          ELSE email
+        END
+        WHERE username IS NULL
+      ''');
+      // Make username NOT NULL and UNIQUE
+      await db.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_username ON $_usersTable(username)');
+      // Remove is_google_auth column (SSO removed)
+      // Note: SQLite doesn't support DROP COLUMN directly, so we'll just ignore it
+    }
   }
 
   // User operations
@@ -150,14 +167,36 @@ class SQLiteService {
     return await db.query(_usersTable, orderBy: 'created_at DESC');
   }
 
-  Future<Map<String, dynamic>?> getUserByEmail(String email) async {
+  Future<Map<String, dynamic>?> getUserByUsername(String username) async {
     final db = await database;
     final results = await db.query(
       _usersTable,
-      where: 'email = ?',
-      whereArgs: [email],
+      where: 'username = ?',
+      whereArgs: [username],
     );
     return results.isNotEmpty ? results.first : null;
+  }
+
+  // Legacy method for migration support
+  @Deprecated('Use getUserByUsername instead')
+  Future<Map<String, dynamic>?> getUserByEmail(String email) async {
+    // Try username first (in case email was migrated to username)
+    final byUsername = await getUserByUsername(email);
+    if (byUsername != null) return byUsername;
+    
+    // Fallback to email column if it still exists (for migration period)
+    final db = await database;
+    try {
+      final results = await db.query(
+        _usersTable,
+        where: 'email = ?',
+        whereArgs: [email],
+      );
+      return results.isNotEmpty ? results.first : null;
+    } catch (e) {
+      // Email column may not exist in new schema
+      return null;
+    }
   }
 
   Future<Map<String, dynamic>?> getUserById(int id) async {

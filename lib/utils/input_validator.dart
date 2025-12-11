@@ -26,24 +26,34 @@ class InputValidator {
     return null;
   }
 
-  // Email validation with comprehensive regex - EMOJIS ALLOWED
-  static String? validateEmail(String? email) {
-    if (email == null || email.isEmpty) {
-      return 'Email is required';
+  // Username validation - 6+ characters, letters and numbers only
+  static String? validateUsername(String? username) {
+    if (username == null || username.isEmpty) {
+      return 'Username is required';
     }
 
-    if (email.length > _maxEmailLength) {
-      return 'Email is too long';
+    if (username.length < 6) {
+      return 'Username must be at least 6 characters';
     }
 
-    // Email regex - allows emojis and special characters in local part
-    final emailRegex = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
+    if (username.length > 30) {
+      return 'Username is too long (max 30 characters)';
+    }
 
-    if (!emailRegex.hasMatch(email)) {
-      return 'Please enter a valid email address';
+    // Only letters and numbers allowed
+    final usernameRegex = RegExp(r'^[a-zA-Z0-9]+$');
+
+    if (!usernameRegex.hasMatch(username)) {
+      return 'Username can only contain letters and numbers (no special characters)';
     }
 
     return null;
+  }
+
+  // Legacy email validation - deprecated
+  @Deprecated('Use validateUsername instead')
+  static String? validateEmail(String? email) {
+    return validateUsername(email);
   }
 
   // Password validation with strength requirements
@@ -265,7 +275,7 @@ class InputValidator {
 
   // Validate and sanitize all user input data
   static Map<String, String?> validateUserInput({
-    required String email,
+    required String username,
     required String password,
     required String confirmPassword,
     required String firstName,
@@ -277,7 +287,7 @@ class InputValidator {
     String? phoneNumber,
   }) {
     return {
-      'email': validateEmail(email),
+      'username': validateUsername(username),
       'password': validatePassword(password),
       'confirmPassword': validateConfirmPassword(password, confirmPassword),
       'firstName': validateName(firstName, 'First name'),

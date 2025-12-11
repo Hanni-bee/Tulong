@@ -179,22 +179,22 @@ class _AddressSetupScreenState extends State<AddressSetupScreen> {
         orElse: () => {'brgy_name': _selectedBarangay ?? ''},
       )['brgy_name'] ?? _selectedBarangay ?? '';
       
-      // For Google users, we need to create/update their profile in SQLite first
-      final userEmail = authProvider.userEmail;
-      if (userEmail == null) {
-        throw Exception('User email not found');
+      // Get username from auth provider
+      final username = authProvider.username;
+      if (username == null) {
+        throw Exception('User username not found');
       }
       
       // Check if user exists in SQLite, if not create them
-      var sqliteUser = await unifiedDataService.getUserByEmail(userEmail);
+      var sqliteUser = await unifiedDataService.getUserByUsername(username);
       if (sqliteUser == null) {
-        // Create user in SQLite for Google auth users
+        // Create user in SQLite
         final userModel = authProvider.currentUserModel!;
         final digits = _phoneController.text.replaceAll(RegExp(r'\\D'), '');
         final storedPhone = digits.isEmpty ? null : ('0' + digits);
         sqliteUser = await unifiedDataService.createUser(
-          email: userEmail,
-          password: '', // Google users don't have password initially
+          username: username,
+          password: '', // Password should already be set during registration
           firstName: userModel.name.split(' ').first,
           lastName: userModel.name.split(' ').skip(1).join(' '),
           phone: storedPhone,
@@ -203,13 +203,12 @@ class _AddressSetupScreenState extends State<AddressSetupScreen> {
           province: provinceName,
           city: cityName,
           barangay: barangayName,
-          isGoogleAuth: true,
         );
       } else {
         // Update existing user profile
         final digits = _phoneController.text.replaceAll(RegExp(r'\\D'), '');
         final storedPhone = digits.isEmpty ? null : ('0' + digits);
-        await unifiedDataService.updateUserProfileWithMap(userEmail, {
+        await unifiedDataService.updateUserProfileWithMap(username, {
           'street': _addressController.text.trim(),
           'region': regionName,
           'province': provinceName,
@@ -220,7 +219,7 @@ class _AddressSetupScreenState extends State<AddressSetupScreen> {
       }
       
       // Mark address setup as completed
-      await unifiedDataService.markAddressSetupCompleted(userEmail);
+      await unifiedDataService.markAddressSetupCompleted(username);
       
       // Reload user model to ensure all saved data is loaded
       await authProvider.loadUserModel();

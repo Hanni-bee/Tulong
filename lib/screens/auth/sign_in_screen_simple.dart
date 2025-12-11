@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import '../../constants/app_colors.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/firebase_service.dart';
+import '../../utils/input_validator.dart';
 import 'sign_up_screen.dart';
 import '../../constants/unified_typography.dart';
 
@@ -16,7 +16,7 @@ class SignInScreen extends StatefulWidget {
 
 class _SignInScreenState extends State<SignInScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _emailController = TextEditingController();
+  final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
   
   bool _obscurePassword = true;
@@ -24,7 +24,7 @@ class _SignInScreenState extends State<SignInScreen> {
 
   @override
   void dispose() {
-    _emailController.dispose();
+    _usernameController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
@@ -38,11 +38,11 @@ class _SignInScreenState extends State<SignInScreen> {
 
     try {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      final email = _emailController.text.trim();
+      final username = _usernameController.text.trim();
       final password = _passwordController.text;
       
       // Check if user has 2FA enabled
-      final requiresTwoFactor = await authProvider.checkTwoFactorRequired(email);
+      final requiresTwoFactor = await authProvider.checkTwoFactorRequired(username);
       
       if (requiresTwoFactor) {
         // Navigate to 2FA verification screen
@@ -50,7 +50,7 @@ class _SignInScreenState extends State<SignInScreen> {
           Navigator.of(context).pushNamed(
             '/two-factor-verification',
             arguments: {
-              'email': email,
+              'username': username,
               'password': password,
               'isRecovery': false,
             },
@@ -59,33 +59,38 @@ class _SignInScreenState extends State<SignInScreen> {
       } else {
         // Regular sign-in without 2FA
         // Try SQLite first (offline-first approach)
-        final offlineSuccess = await authProvider.loginOffline(email, password);
+        final offlineSuccess = await authProvider.loginOffline(username, password);
         
         if (offlineSuccess) {
-          // Offline login successful - attempt Firebase sync if online
-          print('Offline login successful for: $email');
+          // Offline login successful
+          print('Offline login successful for: $username');
           
           // Small delay to ensure user model is loaded before navigating
           await Future.delayed(const Duration(milliseconds: 300));
           
           // Try to sync with Firebase in background (non-blocking)
-          _attemptFirebaseSync(email, password);
+          _attemptFirebaseSync(username, password);
         } else {
           // Try Firebase as backup (online)
           try {
-            final firebaseUser = await FirebaseService().signInWithEmail(email: email, password: password);
-            if (firebaseUser?.user != null) {
-              await authProvider.setAuthenticated(email: email, name: email.split('@')[0]);
-              print('Online login successful for: $email');
+            final firebaseUser = await FirebaseService().authenticateUserByUsername(username: username, password: password);
+            if (firebaseUser != null) {
+              // Get user name from Firebase data
+              final firstName = firebaseUser['FirstName'] ?? '';
+              final lastName = firebaseUser['LastName'] ?? '';
+              final displayName = '$firstName $lastName'.trim();
+              
+              await authProvider.setAuthenticated(username: username, name: displayName.isNotEmpty ? displayName : username);
+              print('Online login successful for: $username');
               
               // Small delay to ensure user model is loaded
               await Future.delayed(const Duration(milliseconds: 300));
             } else {
-              throw Exception('Firebase sign-in returned no user');
+              throw Exception('Firebase authentication returned no user');
             }
           } catch (firebaseError) {
-            print('Both offline and online login failed for: $email');
-            throw Exception('Invalid email or password');
+            print('Both offline and online login failed for: $username');
+            throw Exception('Invalid username or password');
           }
         }
 
@@ -112,54 +117,33 @@ class _SignInScreenState extends State<SignInScreen> {
     }
   }
 
+  // SSO removed - deprecated
+  @Deprecated('SSO removed')
   Future<void> _signInWithGoogle() async {
-    setState(() {
-      _isLoading = true;
-    });
+    // SSO removed
+    return;
+  }
 
+  // Attempt Firebase sync in background (non-blocking)
+  void _attemptFirebaseSync(String username, String password) async {
     try {
-      final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      await authProvider.signInWithGoogle();
-
-      // Add a small delay to ensure the AuthProvider has updated its state
-      await Future.delayed(const Duration(milliseconds: 100));
-
-      // Use a listener to check authentication state changes
-      if (mounted) {
-        // Re-read the auth provider after the delay
-        final updatedAuthProvider = Provider.of<AuthProvider>(context, listen: false);
-
-        if (updatedAuthProvider.isAuthenticated && updatedAuthProvider.currentUser != null) {
-          // After SSO, go to tutorial first; it will handle fill form
-          Navigator.of(context).pushReplacementNamed('/');
-        } else {
-          // User cancelled or sign-in failed - show a subtle message
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Google Sign In was cancelled or failed to authenticate'),
-              backgroundColor: Colors.orange,
-              duration: Duration(seconds: 3),
-            ),
-          );
-        }
+      print('Attempting Firebase sync for: $username');
+      
+      final firebaseService = FirebaseService();
+      final userData = await firebaseService.authenticateUserByUsername(username: username, password: password);
+      
+      if (userData != null) {
+        final firstName = userData['FirstName'] ?? '';
+        final lastName = userData['LastName'] ?? '';
+        final displayName = '$firstName $lastName'.trim();
+        
+        final authProvider = Provider.of<AuthProvider>(context, listen: false);
+        await authProvider.setAuthenticated(username: username, name: displayName.isNotEmpty ? displayName : username);
+        print('Firebase sync successful for: $username');
       }
     } catch (e) {
-      print('Google Sign-In exception: ${e.toString()}');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Google Sign In failed: ${e.toString()}'),
-            backgroundColor: AppColors.error,
-            duration: Duration(seconds: 4),
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
+      print('Firebase sync failed (non-critical): $e');
+      // Don't show error to user - offline mode is acceptable
     }
   }
 
@@ -242,22 +226,22 @@ class _SignInScreenState extends State<SignInScreen> {
                     children: [
                       // Email field
                       TextFormField(
-                        controller: _emailController,
-                        keyboardType: TextInputType.emailAddress,
+                        controller: _usernameController,
+                        keyboardType: TextInputType.text,
+                        textCapitalization: TextCapitalization.none,
                         decoration: const InputDecoration(
-                          labelText: 'Email',
-                          hintText: 'Enter your email',
-                          prefixIcon: Icon(Icons.email_outlined),
+                          labelText: 'Username',
+                          hintText: 'Enter your username',
+                          prefixIcon: Icon(Icons.person_outline),
                           border: OutlineInputBorder(),
                         ),
                         validator: (value) {
                           if (value == null || value.isEmpty) {
-                            return 'Please enter your email';
+                            return 'Please enter your username';
                           }
-                          if (!value.contains('@')) {
-                            return 'Please enter a valid email';
-                          }
-                          return null;
+                          // Use InputValidator for username validation
+                          final error = InputValidator.validateUsername(value);
+                          return error;
                         },
                       ),
                       
@@ -345,47 +329,7 @@ class _SignInScreenState extends State<SignInScreen> {
                         ),
                       ),
                       
-                      const SizedBox(height: 20),
-                      
-                      // Google sign in button
-                      SizedBox(
-                        width: double.infinity,
-                        height: 56,
-                        child: OutlinedButton(
-                          onPressed: _isLoading ? null : _signInWithGoogle,
-                          style: OutlinedButton.styleFrom(
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            side: const BorderSide(color: Colors.grey, width: 1.5),
-                            backgroundColor: Colors.white,
-                            elevation: 2,
-                            shadowColor: Colors.black.withOpacity(0.1),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Container(
-                                width: 24,
-                                height: 24,
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: SvgPicture.string(
-                                  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>',
-                                  width: 24,
-                                  height: 24,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Text(
-                                'Continue with Google',
-                                style: UnifiedTypography.titleLarge,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
+                      // SSO removed - Google sign in button removed
                     ],
                   ),
                 ),
@@ -428,61 +372,5 @@ class _SignInScreenState extends State<SignInScreen> {
         ),
       ),
     );
-  }
-
-
-  // Attempt Firebase sync in background (non-blocking)
-  void _attemptFirebaseSync(String email, String password) async {
-    try {
-      print('Attempting Firebase sync for: $email');
-      
-      // Check if we have internet connectivity
-      final firebaseService = FirebaseService();
-      final userCredential = await firebaseService.signInWithEmail(email: email, password: password);
-      
-      if (userCredential?.user != null) {
-        // Firebase sync successful - update user data
-        final authProvider = Provider.of<AuthProvider>(context, listen: false);
-        await authProvider.setAuthenticated(email: email, name: email.split('@')[0]);
-        
-        // Mark user as synced in SQLite
-        await authProvider.markUserAsSynced(email);
-        
-        print('Firebase sync successful for: $email');
-        
-        // Show success message to user
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Account synced with server'),
-              backgroundColor: AppColors.success,
-              duration: Duration(seconds: 2),
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      // Firebase sync failed - user can still use app offline
-      print('Firebase sync failed for: $email - $e');
-      
-      // Show info message to user
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Row(
-                children: [
-                  Icon(Icons.wifi_off, color: Colors.white),
-                  SizedBox(width: 12),
-                  Expanded(
-                    child: Text('Using offline mode - will sync when online'),
-                  ),
-                ],
-              ),
-              backgroundColor: AppColors.info,
-              duration: Duration(seconds: 3),
-            ),
-          );
-        }
-    }
   }
 }

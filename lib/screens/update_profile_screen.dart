@@ -21,7 +21,7 @@ class UpdateProfileScreen extends StatefulWidget {
 class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
-  final _emailController = TextEditingController();
+  final _usernameController = TextEditingController();
   final _phoneController = TextEditingController();
   final _addressController = TextEditingController();
   
@@ -59,7 +59,7 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
       if (user != null) {
         print('✅ Loading user data for Update Profile:');
         print('  - Name: ${user.name}');
-        print('  - Email: ${user.email}');
+        print('  - Username: ${user.username}');
         print('  - Phone: ${user.phone}');
         print('  - Street: ${user.street}');
         print('  - City: ${user.city}');
@@ -68,7 +68,7 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
         
         // Pre-fill basic info - ALWAYS set the text, even if empty
         _nameController.text = user.name.isNotEmpty ? user.name : '';
-        _emailController.text = user.email.isNotEmpty ? user.email : '';
+        _usernameController.text = user.username.isNotEmpty ? user.username : '';
         // Show only the 10 digits starting with 9 (strip a leading 0 if present)
         if (user.phone != null && user.phone!.isNotEmpty) {
           final digits = user.phone!.replaceAll(RegExp(r'\D'), '');
@@ -84,7 +84,7 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
         
         print('✅ Controllers set:');
         print('  - Name Controller: "${_nameController.text}"');
-        print('  - Email Controller: "${_emailController.text}"');
+        print('  - Username Controller: "${_usernameController.text}"');
         print('  - Phone Controller: "${_phoneController.text}"');
         print('  - Address Controller: "${_addressController.text}"');
       
@@ -213,7 +213,7 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
   @override
   void dispose() {
     _nameController.dispose();
-    _emailController.dispose();
+    _usernameController.dispose();
     _phoneController.dispose();
     _addressController.dispose();
     super.dispose();
@@ -311,7 +311,7 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
       if (authProvider.currentUserModel != null) {
         final updatedUser = authProvider.currentUserModel!.copyWith(
           name: _nameController.text.trim(),
-          email: _emailController.text.trim(),
+          username: _usernameController.text.trim(),
           // Normalize phone locally as well
           phone: (() { final d = _phoneController.text.replaceAll(RegExp(r'\\D'), ''); return d.isEmpty ? null : ('0' + d); })(),
           street: _addressController.text.trim(),
@@ -547,22 +547,16 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
 
                 const SizedBox(height: 16),
 
-                // Email
+                // Username
                 CustomTextField(
-                  controller: _emailController,
-                  label: 'Email',
-                  hint: 'Enter your email',
-                  prefixIcon: Icons.email_outlined,
-                  keyboardType: TextInputType.emailAddress,
-                  enabled: false, // Email usually can't be changed
+                  controller: _usernameController,
+                  label: 'Username',
+                  hint: 'Enter your username',
+                  prefixIcon: Icons.person_outline,
+                  keyboardType: TextInputType.text,
+                  enabled: false, // Username usually can't be changed
                   validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'Please enter your email';
-                    }
-                    if (!value.contains('@')) {
-                      return 'Please enter a valid email';
-                    }
-                    return null;
+                    return InputValidator.validateUsername(value);
                   },
                 ),
 

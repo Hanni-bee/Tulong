@@ -103,7 +103,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        authProvider.userEmail ?? 'user@example.com',
+                        authProvider.username ?? authProvider.currentUserModel?.username ?? 'user',
                         style: const TextStyle(
                           fontSize: 16,
                           color: AppColors.textSecondary,
@@ -159,10 +159,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             
             ProfileInfoCard(
-              title: 'Email',
-              value: 'user@example.com',
-              icon: Icons.email,
-              onEdit: () => _editField(context, 'Email', 'user@example.com'),
+              title: 'Username',
+              value: authProvider.username ?? authProvider.currentUserModel?.username ?? 'user',
+              icon: Icons.person_outline,
+              onEdit: () => _editField(context, 'Username', authProvider.username ?? 'user'),
             ),
             
             const SizedBox(height: 24),
