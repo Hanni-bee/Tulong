@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
-import '../widgets/enhanced_shadows.dart' as shadows;
 import 'package:provider/provider.dart';
 import '../services/hardware_service.dart';
 import '../widgets/hardware_status_widgets.dart';

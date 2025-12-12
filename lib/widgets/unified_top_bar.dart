@@ -464,10 +464,29 @@ class TopBarConfigs {
     required String status,
     VoidCallback? onBluetoothTap, // Made optional - removed from chat screen
     VoidCallback? onConnectedTap,
+    VoidCallback? onRefresh,
     List<Widget>? additionalActions,
     bool compact = false,
     List<Widget>? badges,
   }) {
+    final actions = <Widget>[];
+    
+    // Add refresh button if provided
+    if (onRefresh != null) {
+      actions.add(
+        _buildActionButton(
+          icon: Icons.refresh,
+          onPressed: onRefresh,
+          color: AppColors.textSecondary,
+        ),
+      );
+    }
+    
+    // Add additional actions
+    if (additionalActions != null) {
+      actions.addAll(additionalActions);
+    }
+    
     return UnifiedTopBar(
       title: 'Local Chat',
       subtitle: status,
@@ -477,7 +496,7 @@ class TopBarConfigs {
           : AppColors.warning,
       onIconTap: onBluetoothTap, // Can be null now
       onSubtitleTap: status.toLowerCase().contains('connected') ? onConnectedTap : null,
-      actions: additionalActions,
+      actions: actions.isNotEmpty ? actions : null,
       compact: compact,
       statusBadges: badges,
     );

@@ -18,6 +18,7 @@ import '../../services/location_service.dart';
 import '../../utils/input_validator.dart';
 import '../../utils/responsive_spacing.dart';
 import '../../services/emailjs_service.dart';
+import '../../widgets/accessible_text.dart';
 import 'dart:math';
 
 class SignUpScreen extends StatefulWidget {
@@ -203,7 +204,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
       // Normalize phone for storage: 0 + 10 digits
       final phoneDigits = _phoneController.text.replaceAll(RegExp(r'\D'), '');
-      final normalizedPhone = phoneDigits.isEmpty ? null : ('0' + phoneDigits);
+      final normalizedPhone = phoneDigits.isEmpty ? null : ('0$phoneDigits');
 
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       final firebaseService = FirebaseService();
@@ -601,12 +602,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   icon: const Icon(Icons.arrow_back, color: AppColors.primaryRed),
                   onPressed: () => Navigator.of(context).pop(),
                 ),
-                title: const Text(
+                title: AccessibleHeading(
                   'Create Account',
-                  style: TextStyle(
-                    color: AppColors.primary,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  level: HeadingLevel.h2,
+                  color: AppColors.primary,
+                  backgroundColor: AppColors.backgroundLight,
                 ),
               ),
               Expanded(

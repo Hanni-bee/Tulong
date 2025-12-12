@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
 import '../widgets/chat_card.dart';
-import '../widgets/search_bar.dart';
+import '../widgets/enhanced_search_bar.dart';
 import '../widgets/unified_top_bar.dart';
+import '../widgets/enhanced_empty_state.dart';
+import '../widgets/accessible_text.dart';
 import 'message_detail_screen.dart';
 import 'calls_screen.dart';
 
@@ -115,7 +117,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
           // Search bar
           Padding(
             padding: const EdgeInsets.all(16),
-            child: CustomSearchBar(
+            child: EnhancedSearchBar(
               controller: _searchController,
               hintText: 'Search messages...',
               onChanged: (value) {
@@ -146,13 +148,11 @@ class _MessagesScreenState extends State<MessagesScreen> {
                   ),
                 ),
                 const Spacer(),
-                Text(
+                AccessibleBodyText(
                   '${_conversations.where((c) => c['unreadCount'] > 0).length} unread',
-                  style: const TextStyle(
-                    color: AppColors.primaryRed,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14,
-                  ),
+                  size: BodySize.medium,
+                  color: AppColors.primaryRed,
+                  backgroundColor: AppColors.backgroundLight,
                 ),
               ],
             ),
@@ -160,25 +160,51 @@ class _MessagesScreenState extends State<MessagesScreen> {
           
           const SizedBox(height: 8),
           
-          // Conversations list
+          // Conversations list with pull-to-refresh
           Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              itemCount: _filteredConversations.length,
-              itemBuilder: (context, index) {
-                final conversation = _filteredConversations[index];
-                return ChatCard(
-                  name: conversation['name'],
-                  lastMessage: conversation['lastMessage'],
-                  timestamp: conversation['timestamp'],
-                  unreadCount: conversation['unreadCount'],
-                  isOnline: conversation['isOnline'],
-                  isGroup: conversation['isGroup'] ?? false,
-                  onTap: () {
-                    _openChat(context, conversation);
-                  },
-                );
+            child: RefreshIndicator(
+              onRefresh: () async {
+                // Simulate refresh delay
+                await Future.delayed(const Duration(milliseconds: 800));
+                // In real app, reload conversations from database/API
+                if (mounted) {
+                  setState(() {
+                    // Trigger rebuild to show updated data
+                  });
+                }
               },
+              color: AppColors.primaryRed,
+              child: _filteredConversations.isEmpty
+                  ? ListView(
+                      children: [
+                        SizedBox(
+                          height: MediaQuery.of(context).size.height * 0.5,
+                          child: EmptyStatePresets.noConversations(
+                            onStartNewChat: () {
+                              _showNewMessageDialog(context);
+                            },
+                          ),
+                        ),
+                      ],
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      itemCount: _filteredConversations.length,
+                      itemBuilder: (context, index) {
+                        final conversation = _filteredConversations[index];
+                        return ChatCard(
+                          name: conversation['name'],
+                          lastMessage: conversation['lastMessage'],
+                          timestamp: conversation['timestamp'],
+                          unreadCount: conversation['unreadCount'],
+                          isOnline: conversation['isOnline'],
+                          isGroup: conversation['isGroup'] ?? false,
+                          onTap: () {
+                            _openChat(context, conversation);
+                          },
+                        );
+                      },
+                    ),
             ),
           ),
         ],

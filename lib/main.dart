@@ -21,6 +21,7 @@ import 'providers/auth_provider.dart';
 import 'providers/network_provider.dart';
 import 'providers/power_provider.dart';
 import 'providers/chat_provider.dart';
+import 'providers/notification_provider.dart';
 import 'services/simple_bluetooth_service.dart';
 import 'services/hardware_service.dart';
 import 'utils/performance_optimizer.dart';
@@ -32,6 +33,7 @@ import 'services/philippine_location_service.dart';
 import 'services/app_initialization_service.dart';
 import 'services/sqlite_service.dart';
 import 'config/page_transition_config.dart';
+import 'utils/enhanced_page_transitions.dart';
 
 void main() async {
   // Optimize app performance
@@ -74,6 +76,7 @@ class TulongApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => SimpleBluetoothService()),
         ChangeNotifierProvider(create: (_) => HardwareService()..initialize()),
         ChangeNotifierProvider(create: (_) => ChatProvider()),
+        ChangeNotifierProvider(create: (_) => NotificationProvider()),
         Provider(create: (_) => SQLiteService()),
       ],
       child: MaterialApp(
@@ -84,11 +87,11 @@ class TulongApp extends StatelessWidget {
           splashFactory: InkRipple.splashFactory,
           pageTransitionsTheme: const PageTransitionsTheme(
             builders: {
-              TargetPlatform.android: CustomPageTransitionsBuilder(),
+              TargetPlatform.android: EnhancedPageTransitionsBuilder(),
               TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
-              TargetPlatform.linux: CustomPageTransitionsBuilder(),
-              TargetPlatform.macOS: CustomPageTransitionsBuilder(),
-              TargetPlatform.windows: CustomPageTransitionsBuilder(),
+              TargetPlatform.linux: EnhancedPageTransitionsBuilder(),
+              TargetPlatform.macOS: EnhancedPageTransitionsBuilder(),
+              TargetPlatform.windows: EnhancedPageTransitionsBuilder(),
             },
           ),
           primarySwatch: Colors.red,
@@ -120,9 +123,15 @@ class TulongApp extends StatelessWidget {
             labelMedium: AppTypography.labelMedium,
             labelSmall: AppTypography.labelSmall,
           ),
-          colorScheme: ColorScheme.fromSeed(
-            seedColor: const Color(0xFFD32F2F),
-            brightness: Brightness.light,
+          colorScheme: ColorScheme.light(
+            primary: const Color(0xFFD32F2F),
+            secondary: const Color(0xFF2C2C2C),
+            surface: Colors.white,
+            error: const Color(0xFFD32F2F),
+            onPrimary: Colors.white,
+            onSecondary: Colors.white,
+            onSurface: const Color(0xFF1A1A1A),
+            onError: Colors.white,
           ),
           appBarTheme: AppBarTheme(
             backgroundColor: const Color(0xFFF5F5F5),
@@ -201,10 +210,9 @@ class TulongApp extends StatelessWidget {
             foregroundColor: Colors.white,
             elevation: 0,
           ),
-          dialogBackgroundColor: Colors.white,
           bottomSheetTheme: const BottomSheetThemeData(
             backgroundColor: Colors.white,
-          ),
+          ), dialogTheme: DialogThemeData(backgroundColor: Colors.white),
         ),
         home: const EnhancedSplashScreen(),
         routes: {

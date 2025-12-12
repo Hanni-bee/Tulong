@@ -9,9 +9,9 @@ class BluetoothService {
   BluetoothService._internal();
 
   BluetoothConnection? _connection;
-  StreamController<String> _messageController = StreamController<String>.broadcast();
-  StreamController<bool> _connectionController = StreamController<bool>.broadcast();
-  StreamController<String> _debugController = StreamController<String>.broadcast();
+  final StreamController<String> _messageController = StreamController<String>.broadcast();
+  final StreamController<bool> _connectionController = StreamController<bool>.broadcast();
+  final StreamController<String> _debugController = StreamController<String>.broadcast();
   
   // Line buffer for accumulating data across Bluetooth packets
   String _lineBuffer = '';
@@ -57,7 +57,7 @@ class BluetoothService {
             
             if (completeLine.isNotEmpty) {
               _debugController.add('Received line: ${completeLine.length} chars');
-              _messageController.add(completeLine + '\n');
+              _messageController.add('$completeLine\n');
             }
           }
         }).onError((error) {

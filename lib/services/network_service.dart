@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:internet_connection_checker/internet_connection_checker.dart';
+import 'notification_service.dart';
+import 'dart:convert';
 
 class NetworkService {
   static final NetworkService _instance = NetworkService._internal();
@@ -16,12 +18,16 @@ class NetworkService {
   Stream<bool> get connectionStream => _connectionController.stream;
   
   bool _isConnected = false;
+  bool _previousConnectionState = false;
+  bool _isInitialized = false;
   bool get isConnected => _isConnected;
 
   // Initialize network monitoring
   Future<void> initialize() async {
     // Check initial connection
     await _checkConnection();
+    _previousConnectionState = _isConnected;
+    _isInitialized = true;
     
     // Listen to connectivity changes
     _connectivity.onConnectivityChanged.listen((List<ConnectivityResult> results) {
@@ -56,10 +62,52 @@ class NetworkService {
   // Update connection status
   void _updateConnectionStatus(bool connected) {
     if (_isConnected != connected) {
+      final wasConnected = _previousConnectionState;
       _isConnected = connected;
       _connectionController.add(_isConnected);
       
       print('🌐 Network status changed: ${_isConnected ? "Connected" : "Disconnected"}');
+      
+      // Show notification for connection status change
+      _showNetworkStatusNotification(connected, wasConnected);
+      _previousConnectionState = connected;
+    }
+  }
+  
+  Future<void> _showNetworkStatusNotification(bool isConnected, bool wasConnected) async {
+    // Don't show notification on initial state
+    if (!_isInitialized) {
+      return;
+    }
+    
+    try {
+      final notificationService = NotificationService();
+      
+      if (isConnected && !wasConnected) {
+        // Connection restored
+        await notificationService.showSystemNotification(
+          title: '🌐 Connection Restored',
+          body: 'You are back online',
+          payload: jsonEncode({
+            'type': 'network',
+            'status': 'connected',
+            'timestamp': DateTime.now().toIso8601String(),
+          }),
+        );
+      } else if (!isConnected && wasConnected) {
+        // Connection lost
+        await notificationService.showSystemNotification(
+          title: '⚠️ Connection Lost',
+          body: 'You are now offline',
+          payload: jsonEncode({
+            'type': 'network',
+            'status': 'disconnected',
+            'timestamp': DateTime.now().toIso8601String(),
+          }),
+        );
+      }
+    } catch (e) {
+      print('Error showing network status notification: $e');
     }
   }
 

@@ -9,7 +9,6 @@ import '../utils/responsive_helper.dart';
 import '../utils/responsive_spacing.dart';
 import 'modern_personal_chat_screen.dart';
 import '../widgets/modern_empty_state.dart';
-import '../widgets/modern_skeleton_loader.dart';
 import '../widgets/polished_shimmer.dart';
 import '../widgets/polished_animations.dart';
 import '../constants/app_typography.dart';

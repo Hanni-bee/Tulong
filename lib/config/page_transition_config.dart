@@ -202,8 +202,8 @@ extension UniformNavigationExtension on BuildContext {
 class UniformPageRoute<T> extends PageRoute<T> {
   UniformPageRoute({
     required this.builder,
-    RouteSettings? settings,
-  }) : super(settings: settings);
+    super.settings,
+  });
 
   final WidgetBuilder builder;
 

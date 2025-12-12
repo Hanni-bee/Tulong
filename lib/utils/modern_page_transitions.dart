@@ -306,6 +306,7 @@ class ModernHeroTransition {
 /// Page route with custom transition builder
 class CustomPageRoute<T> extends PageRoute<T> {
   final Widget child;
+  @override
   final Duration transitionDuration;
   final RouteTransitionsBuilder transitionsBuilder;
 
@@ -313,8 +314,8 @@ class CustomPageRoute<T> extends PageRoute<T> {
     required this.child,
     this.transitionDuration = const Duration(milliseconds: 400),
     required this.transitionsBuilder,
-    RouteSettings? settings,
-  }) : super(settings: settings);
+    super.settings,
+  });
 
   @override
   Color? get barrierColor => null;

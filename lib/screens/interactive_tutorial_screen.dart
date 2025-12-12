@@ -494,7 +494,7 @@ class _InteractiveTutorialScreenState extends State<InteractiveTutorialScreen>
                 );
               },
             );
-          }).toList(),
+          }),
 
           const SizedBox(height: 20),
         ],

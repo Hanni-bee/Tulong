@@ -393,7 +393,7 @@ class _CustomPullToRefreshState extends State<CustomPullToRefresh>
   late Animation<double> _rotateAnimation;
   
   bool _isRefreshing = false;
-  double _pullDistance = 0.0;
+  final double _pullDistance = 0.0;
 
   @override
   void initState() {

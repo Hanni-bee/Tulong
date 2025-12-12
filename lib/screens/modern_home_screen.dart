@@ -11,16 +11,13 @@ import '../widgets/modern_network_indicator.dart';
 import '../widgets/modern_floating_layout.dart';
 import '../widgets/emergency_alert_widget.dart';
 import '../widgets/enhanced_text_styles.dart';
-import '../widgets/micro_interactions.dart';
 import '../widgets/polished_animations.dart';
 import '../constants/soft_ui_design.dart';
 import '../utils/page_transitions.dart';
 import '../utils/phone_responsive_helper.dart';
-import '../config/page_transition_config.dart';
 import '../providers/auth_provider.dart';
 import '../providers/chat_provider.dart';
 import '../services/offline_messaging_service.dart';
-import '../widgets/interactive_feedback.dart';
 import '../utils/prototype_animations.dart';
 import '../widgets/special_animations.dart';
 import 'local_chat_screen.dart';
@@ -28,6 +25,13 @@ import 'modern_profile_screen.dart';
 import 'disaster_demo_screen.dart';
 import '../widgets/solid_modal_header.dart';
 import '../widgets/radar_scan_modal.dart';
+import '../widgets/enhanced_skeleton_loaders.dart';
+import '../widgets/enhanced_micro_interactions.dart' as micro;
+import '../widgets/accessible_text.dart';
+import '../utils/icon_system.dart';
+import '../utils/enhanced_page_transitions.dart';
+import '../services/notification_service.dart';
+import 'dart:convert';
 
 class ModernHomeScreen extends StatefulWidget {
   const ModernHomeScreen({super.key});
@@ -52,6 +56,7 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
   bool _isInitializing = true;
   bool _showWelcome = false;
   bool _isEmergencyHolding = false;
+  final bool _isLoadingStats = false;
   
   // Quick Actions list - created as getter to avoid initialization issues
   List<Map<String, dynamic>> _getQuickActions() => [
@@ -65,7 +70,7 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
     {
       'onPressed': () => _navigateToSettings(context),
       'backgroundColor': AppColors.warning,
-      'icon': Icons.settings_rounded,
+      'icon': IconSystem.actionSettings,
       'title': 'Settings',
       'subtitle': 'App Config',
     },
@@ -254,14 +259,39 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                       // Minimized Status Indicators
                       PolishedFadeIn(
                         delay: const Duration(milliseconds: 300),
-                        child: _buildCompactStatus(),
+                        child: _isLoadingStats 
+                            ? Container(
+                                margin: const EdgeInsets.symmetric(horizontal: 16),
+                                child: Row(
+                                  children: [
+                                    Expanded(child: SkeletonStatCard()),
+                                    const SizedBox(width: 12),
+                                    Expanded(child: SkeletonStatCard()),
+                                    const SizedBox(width: 12),
+                                    Expanded(child: SkeletonStatCard()),
+                                  ],
+                                ),
+                              )
+                            : _buildCompactStatus(),
                       ),
                       const SizedBox(height: 16),
                       
                       // Quick Actions
                       PolishedFadeIn(
                         delay: const Duration(milliseconds: 400),
-                        child: _buildQuickActions(),
+                        child: _isLoadingStats
+                            ? Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 16),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                                  children: [
+                                    SkeletonQuickActionCard(),
+                                    SkeletonQuickActionCard(),
+                                    SkeletonQuickActionCard(),
+                                  ],
+                                ),
+                              )
+                            : _buildQuickActions(),
                       ),
                       
                       const SizedBox(height: 16),
@@ -446,12 +476,11 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
+                      AccessibleHeading(
                         'T.U.L.O.N.G',
-                        style: AppTypography.titleLarge.copyWith(
-                          color: AppColors.primaryRed,
-                          fontWeight: FontWeight.bold,
-                        ),
+                        level: HeadingLevel.h3,
+                        color: AppColors.primaryRed,
+                        backgroundColor: AppColors.white,
                       ),
                       const SizedBox(height: 4),
                       Text(
@@ -588,12 +617,14 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
   }) {
     return PhoneResponsiveBuilder(
       builder: (context, screenSize) {
-        return InteractiveButton(
+        return micro.EnhancedInteractiveButton(
           onPressed: onPressed,
           backgroundColor: backgroundColor,
           padding: const EdgeInsets.all(12),
           borderRadius: BorderRadius.circular(SoftUIDesign.buttonBorderRadius),
-          shadows: SoftUIDesign.getButtonShadow(color: backgroundColor),
+          glowColor: backgroundColor,
+          enableHaptic: true,
+          hapticType: micro.HapticFeedbackType.medium,
           child: SizedBox(
             width: 80, // More compact width
             height: 80, // More compact height
@@ -668,7 +699,7 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
               Expanded(
                 flex: 1,
                 child: _buildStatusCard(
-                  icon: Icons.people_alt_rounded,
+                  icon: IconSystem.actionPeople,
                   label: '$userCount',
                   subLabel: 'Nearby',
                   color: AppColors.info,
@@ -796,7 +827,7 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
 
 
   Widget _buildEmergencyButton() {
-    const double btnSize = 120.0; // Increased from 80 to 120
+    const double btnSize = 140.0; // Increased for better prominence
     
     return GestureDetector(
       onLongPressStart: (_) {
@@ -805,7 +836,11 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
         _emergencyHoldController.forward(from: 0);
       },
       onLongPressEnd: (_) {
-        if (_emergencyHoldController.status != AnimationStatus.completed) {
+        if (_emergencyHoldController.status == AnimationStatus.completed) {
+          // Show success animation when hold completes
+          HapticFeedback.heavyImpact();
+          _showEmergencySuccessAnimation(context);
+        } else {
           _emergencyHoldController.reverse(from: _emergencyHoldController.value);
         }
         setState(() => _isEmergencyHolding = false);
@@ -815,24 +850,46 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
         setState(() => _isEmergencyHolding = false);
       },
       child: SizedBox(
-        width: btnSize + 18,
-        height: btnSize + 18,
+        width: btnSize + 24,
+        height: btnSize + 24,
         child: Stack(
           alignment: Alignment.center,
           children: [
+            // Outer glow ring (pulsing)
+            AnimatedBuilder(
+              animation: _welcomeAnimation,
+              builder: (context, _) {
+                return Container(
+                  width: btnSize + 20 + (_welcomeAnimation.value * 10),
+                  height: btnSize + 20 + (_welcomeAnimation.value * 10),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFFE53935).withOpacity(0.3 + (_welcomeAnimation.value * 0.2)),
+                        blurRadius: 20 + (_welcomeAnimation.value * 10),
+                        spreadRadius: 5 + (_welcomeAnimation.value * 5),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+            // Progress ring
             SizedBox(
-              width: btnSize + 12,
-              height: btnSize + 12,
+              width: btnSize + 16,
+              height: btnSize + 16,
               child: AnimatedBuilder(
                 animation: _emergencyHoldController,
                 builder: (context, _) => CircularProgressIndicator(
                   value: _isEmergencyHolding ? _emergencyHoldController.value : 0,
-                  strokeWidth: 6,
-                  backgroundColor: const Color(0xFFE53935).withOpacity(0.12),
+                  strokeWidth: 8,
+                  backgroundColor: const Color(0xFFE53935).withOpacity(0.15),
                   valueColor: const AlwaysStoppedAnimation(Color(0xFFE53935)),
                 ),
               ),
             ),
+            // Button with enhanced styling
             _isEmergencyHolding
               ? EmergencyButtonRipple(
                   rippleColor: const Color(0xFFE53935),
@@ -841,17 +898,31 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                     width: btnSize,
                     height: btnSize,
                     decoration: BoxDecoration(
-                      color: const Color(0xFFE53935),
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          const Color(0xFFE53935),
+                          const Color(0xFFC62828),
+                        ],
+                      ),
                       shape: BoxShape.circle,
                       border: Border.all(
-                        color: Colors.white.withOpacity(0.3),
-                        width: 2,
+                        color: Colors.white.withOpacity(0.4),
+                        width: 3,
                       ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFFE53935).withOpacity(0.5),
+                          blurRadius: 20,
+                          spreadRadius: 5,
+                        ),
+                      ],
                     ),
                     child: const Icon(
                       Icons.sos_rounded,
                       color: AppColors.white,
-                      size: 40,
+                      size: 50,
                     ),
                   ),
                 )
@@ -859,19 +930,34 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                   width: btnSize,
                   height: btnSize,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFE53935),
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        const Color(0xFFE53935),
+                        const Color(0xFFC62828),
+                      ],
+                    ),
                     shape: BoxShape.circle,
                     border: Border.all(
-                      color: Colors.white.withOpacity(0.3),
-                      width: 2,
+                      color: Colors.white.withOpacity(0.4),
+                      width: 3,
                     ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFFE53935).withOpacity(0.4),
+                        blurRadius: 25,
+                        spreadRadius: 8,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
                   ),
                   child: const Icon(
-                Icons.sos_rounded,
-                color: AppColors.white,
-                size: 40, // Increased from 22 to 40 to match larger button
-              ),
-            ),
+                    Icons.sos_rounded,
+                    color: AppColors.white,
+                    size: 50,
+                  ),
+                ),
           ],
         ),
       ),
@@ -991,7 +1077,8 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
 
   void _navigateToChat(BuildContext context) {
     HapticFeedback.mediumImpact();
-    context.pushPage(const LocalChatScreen());
+    // Fast transition for quick action
+    context.pushFast(const LocalChatScreen());
   }
 
 
@@ -999,12 +1086,8 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
 
   void _navigateToSettings(BuildContext context) {
     HapticFeedback.lightImpact();
-    Navigator.of(context).push(
-      ModernPageRoute(
-        child: const ModernProfileScreen(),
-        transitionType: ModernTransitionType.slideAndFade,
-      ),
-    );
+    // Standard transition
+    context.pushStandard(const ModernProfileScreen());
   }
 
   void _navigateToDisasterDemo(BuildContext context) {
@@ -1175,6 +1258,19 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
         userId: userId,
       );
       
+      // Send push notification for emergency alert
+      await NotificationService().showEmergencyAlert(
+        title: '🚨 Emergency Alert Sent',
+        body: emergencyMessage,
+        payload: jsonEncode({
+          'type': 'emergency',
+          'userId': userId,
+          'location': location,
+          'timestamp': DateTime.now().toIso8601String(),
+          'message': emergencyMessage,
+        }),
+      );
+      
       if (context.mounted) {
         ModernToastManager.showSuccess(
           context,
@@ -1191,6 +1287,69 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
     }
   }
 
+  void _showEmergencySuccessAnimation(BuildContext context) {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black.withOpacity(0.7),
+      barrierDismissible: false,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Success checkmark with urgent styling
+            micro.SuccessAnimation(
+              size: 120,
+              color: AppColors.error, // Red for emergency, not green
+              onComplete: () {
+                Future.delayed(const Duration(milliseconds: 800), () {
+                  if (context.mounted) {
+                    Navigator.of(context).pop();
+                  }
+                });
+              },
+            ),
+            const SizedBox(height: 24),
+            // Emergency confirmation message
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.2),
+                    blurRadius: 16,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Emergency Alert Sent',
+                    style: AppTypography.headlineSmall.copyWith(
+                      color: AppColors.error,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Help is on the way',
+                    style: AppTypography.bodyMedium.copyWith(
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _showSuccessAnimation(BuildContext context, String message) {
     showDialog(
       context: context,
@@ -1199,7 +1358,7 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
       builder: (context) => Dialog(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        child: SuccessAnimation(
+        child: micro.SuccessAnimation(
           onComplete: () {
             if (context.mounted) {
               Navigator.of(context).pop();

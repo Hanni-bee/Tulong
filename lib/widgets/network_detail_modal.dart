@@ -248,7 +248,7 @@ class NetworkDetailModal extends StatelessWidget {
                                     ),
                                   ),
                                 );
-                              }).toList(),
+                              }),
                             ],
                           ),
                         ],

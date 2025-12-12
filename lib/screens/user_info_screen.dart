@@ -4,7 +4,6 @@ import '../providers/auth_provider.dart';
 import '../constants/app_colors.dart';
 import '../widgets/animated_neumorphic_card.dart';
 import '../constants/app_typography.dart';
-import '../constants/unified_typography.dart';
 
 class UserInfoScreen extends StatefulWidget {
   const UserInfoScreen({super.key});

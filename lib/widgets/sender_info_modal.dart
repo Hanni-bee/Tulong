@@ -103,13 +103,11 @@ class _SenderInfoModalState extends State<SenderInfoModal> {
                 firstName.toLowerCase().contains(widget.senderName.toLowerCase().trim()) ||
                 lastName.toLowerCase().contains(widget.senderName.toLowerCase().trim())) {
               // Partial match
-              if (foundUser == null) {
-                foundUser = {
+              foundUser ??= {
                   'name': fullName,
                   'phone': user['Phone']?.toString() ?? 'Not provided',
                   'address': _formatFirebaseAddress(user),
                 };
-              }
             }
           });
 

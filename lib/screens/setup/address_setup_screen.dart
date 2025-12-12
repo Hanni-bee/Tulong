@@ -191,7 +191,7 @@ class _AddressSetupScreenState extends State<AddressSetupScreen> {
         // Create user in SQLite for Google auth users
         final userModel = authProvider.currentUserModel!;
         final digits = _phoneController.text.replaceAll(RegExp(r'\\D'), '');
-        final storedPhone = digits.isEmpty ? null : ('0' + digits);
+        final storedPhone = digits.isEmpty ? null : ('0$digits');
         sqliteUser = await unifiedDataService.createUser(
           email: userEmail,
           password: '', // Google users don't have password initially
@@ -208,7 +208,7 @@ class _AddressSetupScreenState extends State<AddressSetupScreen> {
       } else {
         // Update existing user profile
         final digits = _phoneController.text.replaceAll(RegExp(r'\\D'), '');
-        final storedPhone = digits.isEmpty ? null : ('0' + digits);
+        final storedPhone = digits.isEmpty ? null : ('0$digits');
         await unifiedDataService.updateUserProfileWithMap(userEmail, {
           'street': _addressController.text.trim(),
           'region': regionName,
@@ -232,7 +232,7 @@ class _AddressSetupScreenState extends State<AddressSetupScreen> {
           barangay: barangayName,
           city: cityName,
           province: provinceName,
-          phone: (() { final d = _phoneController.text.replaceAll(RegExp(r'\\D'), ''); return d.isEmpty ? null : ('0' + d); })(),
+          phone: (() { final d = _phoneController.text.replaceAll(RegExp(r'\\D'), ''); return d.isEmpty ? null : ('0$d'); })(),
           addressSetupCompleted: true,
         );
         authProvider.updateUser(updatedUser);
@@ -299,7 +299,7 @@ class _AddressSetupScreenState extends State<AddressSetupScreen> {
             ],
           ),
           child: DropdownButtonFormField<String>(
-            value: value,
+            initialValue: value,
             decoration: InputDecoration(
               contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               border: OutlineInputBorder(

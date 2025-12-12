@@ -11,6 +11,10 @@ import 'package:tulong_app/screens/notification_settings_screen.dart';
 import 'package:tulong_app/widgets/animated_neumorphic_card.dart';
 import 'package:tulong_app/widgets/unified_top_bar.dart';
 import 'package:tulong_app/utils/prototype_animations.dart';
+import 'package:tulong_app/widgets/enhanced_skeleton_loaders.dart';
+import 'package:tulong_app/widgets/accessible_text.dart';
+import 'package:tulong_app/utils/icon_system.dart';
+import 'package:fl_chart/fl_chart.dart';
 
 class ModernProfileScreen extends StatefulWidget {
   const ModernProfileScreen({super.key});
@@ -28,6 +32,9 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
   
   // Stagger animations for Stat Cards (2 cards)
   late StaggeredListAnimations _statCardsStagger;
+  
+  // Loading state
+  bool _isLoadingProfile = true;
 
   // Dynamic user profile data will be fetched from AuthProvider
 
@@ -69,11 +76,18 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
     );
     
     // Load user model immediately when screen opens to ensure data is available
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       if (authProvider.userEmail != null) {
         // Always try to load user model, even if it exists (to refresh data)
-        authProvider.loadUserModel();
+        await authProvider.loadUserModel();
+      }
+      // Simulate loading delay for better UX
+      await Future.delayed(const Duration(milliseconds: 500));
+      if (mounted) {
+        setState(() {
+          _isLoadingProfile = false;
+        });
       }
     });
   }
@@ -111,6 +125,8 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                         const SizedBox(height: 20),
                         _buildStatsSection(),
                         const SizedBox(height: 20),
+                        _buildWeeklyActivityChart(),
+                        const SizedBox(height: 20),
                         _buildSettingsSections(),
                         const SizedBox(height: 20),
                         _buildActionButtons(),
@@ -127,6 +143,10 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
   }
 
   Widget _buildQuickStats() {
+    if (_isLoadingProfile) {
+      return SkeletonProfileHeader();
+    }
+    
     return Consumer<AuthProvider>(
       builder: (context, auth, child) {
         // Ensure user model is loaded
@@ -184,14 +204,13 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                         border: Border.all(color: Colors.white.withOpacity(0.35), width: 1.2),
                       ),
                       child: Center(
-                   child: Text(
+                   child: AccessibleText(
                      _getInitials(userName),
-                     style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 22,
-                            fontWeight: FontWeight.w800,
-                          ),
-              ),
+                     baseStyle: UnifiedTypography.displaySmall,
+                     color: Colors.white,
+                     backgroundColor: AppColors.primaryRed,
+                     isHeading: true,
+                   ),
             ),
           ),
                  const SizedBox(width: 14),
@@ -199,18 +218,25 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
               child: Column(
                      crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                       Text(
+                       AccessibleHeading(
                          userName,
-                            maxLines: 1,
+                         level: HeadingLevel.h2,
+                         color: Colors.white,
+                         backgroundColor: AppColors.primaryRed,
+                         maxLines: 1,
                          overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800),
-                          ),
+                       ),
                           const SizedBox(height: 6),
                           Row(
                             children: const [
                               Icon(Icons.circle, color: Colors.greenAccent, size: 10),
                               SizedBox(width: 6),
-                              Text('Active', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                              AccessibleBodyText(
+                                'Active',
+                                size: BodySize.small,
+                                color: Colors.white,
+                                backgroundColor: AppColors.primaryRed,
+                              ),
                             ],
                           ),
                         ],
@@ -242,9 +268,10 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                     const Icon(Icons.mail_outline, color: Colors.white, size: 18),
                     const SizedBox(width: 10),
                              Expanded(
-                               child: Text(
-                        userEmail,
-                        style: const TextStyle(color: Colors.white),
+                               child: AccessibleBodyText(
+                                 userEmail,
+                                 color: Colors.white,
+                                 backgroundColor: AppColors.primaryRed,
                                  maxLines: 1,
                                  overflow: TextOverflow.ellipsis,
                                ),
@@ -254,12 +281,13 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                 const SizedBox(height: 8),
                 if (phone.isNotEmpty) Row(
                   children: [
-                    const Icon(Icons.call, color: Colors.white, size: 18),
+                    Icon(IconSystem.phone, color: Colors.white, size: IconSystem.sm),
                     const SizedBox(width: 10),
                     Expanded(
-                      child: Text(
+                      child: AccessibleBodyText(
                         phone,
-                        style: const TextStyle(color: Colors.white),
+                        color: Colors.white,
+                        backgroundColor: AppColors.primaryRed,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -269,12 +297,13 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                 if (phone.isNotEmpty) const SizedBox(height: 8),
                 if (location.isNotEmpty) Row(
                       children: [
-                    const Icon(Icons.location_on_outlined, color: Colors.white, size: 18),
+                    Icon(IconSystem.location, color: Colors.white, size: IconSystem.sm),
                     const SizedBox(width: 10),
                     Expanded(
-                      child: Text(
+                      child: AccessibleBodyText(
                         location,
-                        style: const TextStyle(color: Colors.white),
+                        color: Colors.white,
+                        backgroundColor: AppColors.primaryRed,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -293,6 +322,19 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
   }
 
   Widget _buildStatsSection() {
+    if (_isLoadingProfile) {
+        return Container(
+          margin: const EdgeInsets.only(bottom: 32),
+          child: Row(
+            children: const [
+              Expanded(child: SkeletonStatCard()),
+              SizedBox(width: 16),
+              Expanded(child: SkeletonStatCard()),
+            ],
+          ),
+        );
+    }
+    
     return Consumer<AuthProvider>(
       builder: (context, auth, child) {
         final userModel = auth.currentUserModel;
@@ -334,6 +376,302 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
           ),
         );
       },
+    );
+  }
+
+  Widget _buildWeeklyActivityChart() {
+    if (_isLoadingProfile) {
+      return AnimatedNeumorphicCard(
+        child: Container(
+          height: 220,
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header skeleton
+              Row(
+                children: [
+                  EnhancedSkeletonLoader(
+                    width: 40,
+                    height: 40,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        EnhancedSkeletonLoader(
+                          width: 150,
+                          height: 16,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        const SizedBox(height: 8),
+                        EnhancedSkeletonLoader(
+                          width: 100,
+                          height: 12,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              // Chart skeleton
+              Expanded(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: List.generate(7, (index) {
+                    return Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        child: EnhancedSkeletonLoader(
+                          height: 80 + (index % 3) * 20.0,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                    );
+                  }),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Sample weekly activity data (in real app, fetch from database/analytics)
+    final weeklyData = [
+      {'day': 'Mon', 'messages': 12, 'calls': 3, 'alerts': 1},
+      {'day': 'Tue', 'messages': 18, 'calls': 5, 'alerts': 2},
+      {'day': 'Wed', 'messages': 8, 'calls': 2, 'alerts': 0},
+      {'day': 'Thu', 'messages': 22, 'calls': 6, 'alerts': 1},
+      {'day': 'Fri', 'messages': 15, 'calls': 4, 'alerts': 1},
+      {'day': 'Sat', 'messages': 25, 'calls': 7, 'alerts': 3},
+      {'day': 'Sun', 'messages': 10, 'calls': 3, 'alerts': 0},
+    ];
+
+    return AnimatedNeumorphicCard(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppColors.info.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    Icons.bar_chart,
+                    color: AppColors.info,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  'Weekly Activity',
+                  style: UnifiedTypography.titleLarge.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const Spacer(),
+                TextButton(
+                  onPressed: () {
+                    // TODO: Show detailed stats or date range picker
+                  },
+                  child: Text(
+                    'View Details',
+                    style: UnifiedTypography.bodySmall.copyWith(
+                      color: AppColors.info,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            
+            // Chart
+            SizedBox(
+              height: 180,
+              child: BarChart(
+                BarChartData(
+                  alignment: BarChartAlignment.spaceAround,
+                  maxY: 30,
+                  barTouchData: BarTouchData(
+                    enabled: true,
+                    touchTooltipData: BarTouchTooltipData(
+                      tooltipBgColor: AppColors.primaryRed.withOpacity(0.9),
+                      getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                        final day = weeklyData[groupIndex]['day'] as String;
+                        final value = rod.toY.toInt();
+                        return BarTooltipItem(
+                          '$day\n$value activities',
+                          const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  titlesData: FlTitlesData(
+                    show: true,
+                    rightTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    topTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        getTitlesWidget: (value, meta) {
+                          final index = value.toInt();
+                          if (index >= 0 && index < weeklyData.length) {
+                            return Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: Text(
+                                weeklyData[index]['day'] as String,
+                                style: UnifiedTypography.bodySmall.copyWith(
+                                  color: AppColors.textSecondary,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            );
+                          }
+                          return const Text('');
+                        },
+                        reservedSize: 30,
+                      ),
+                    ),
+                    leftTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 40,
+                        getTitlesWidget: (value, meta) {
+                          if (value.toInt() % 10 == 0) {
+                            return Text(
+                              value.toInt().toString(),
+                              style: UnifiedTypography.bodySmall.copyWith(
+                                color: AppColors.textSecondary,
+                                fontSize: 10,
+                              ),
+                            );
+                          }
+                          return const Text('');
+                        },
+                      ),
+                    ),
+                  ),
+                  gridData: FlGridData(
+                    show: true,
+                    drawVerticalLine: false,
+                    horizontalInterval: 10,
+                    getDrawingHorizontalLine: (value) {
+                      return FlLine(
+                        color: AppColors.lightGray.withOpacity(0.2),
+                        strokeWidth: 1,
+                      );
+                    },
+                  ),
+                  borderData: FlBorderData(
+                    show: true,
+                    border: Border(
+                      bottom: BorderSide(
+                        color: AppColors.lightGray.withOpacity(0.3),
+                        width: 1,
+                      ),
+                      left: BorderSide(
+                        color: AppColors.lightGray.withOpacity(0.3),
+                        width: 1,
+                      ),
+                    ),
+                  ),
+                  barGroups: weeklyData.asMap().entries.map((entry) {
+                    final index = entry.key;
+                    final data = entry.value;
+                    final total = (data['messages'] as int) + 
+                                 (data['calls'] as int) + 
+                                 (data['alerts'] as int);
+                    
+                    return BarChartGroupData(
+                      x: index,
+                      barRods: [
+                        BarChartRodData(
+                          toY: total.toDouble(),
+                          gradient: LinearGradient(
+                            begin: Alignment.bottomCenter,
+                            end: Alignment.topCenter,
+                            colors: [
+                              AppColors.info,
+                              AppColors.info.withOpacity(0.7),
+                            ],
+                          ),
+                          width: 24,
+                          borderRadius: const BorderRadius.vertical(
+                            top: Radius.circular(4),
+                          ),
+                          backDrawRodData: BackgroundBarChartRodData(
+                            show: true,
+                            toY: 30,
+                            color: AppColors.lightGray.withOpacity(0.1),
+                          ),
+                        ),
+                      ],
+                    );
+                  }).toList(),
+                ),
+              ),
+            ),
+            
+            // Legend
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _buildLegendItem('Messages', AppColors.info),
+                const SizedBox(width: 16),
+                _buildLegendItem('Calls', AppColors.success),
+                const SizedBox(width: 16),
+                _buildLegendItem('Alerts', AppColors.warning),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLegendItem(String label, Color color) {
+    return Row(
+      children: [
+        Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: UnifiedTypography.bodySmall.copyWith(
+            color: AppColors.textSecondary,
+            fontSize: 11,
+          ),
+        ),
+      ],
     );
   }
 
@@ -485,7 +823,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
               onTap: () => _showHelpCenterModal(context),
             ),
             _buildSettingsItem(
-              icon: Icons.info,
+              icon: IconSystem.info,
               title: 'About',
               subtitle: 'App version and information',
               onTap: () => _showAboutModal(context),

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../services/simple_bluetooth_service.dart';
-import '../providers/auth_provider.dart';
 import '../constants/app_colors.dart';
 import '../constants/app_typography.dart';
 

@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 import '../providers/chat_provider.dart';
 import '../constants/app_colors.dart';
 import '../constants/app_typography.dart';
-import '../constants/soft_ui_design.dart';
 
 /// Modern Connected Users Modal with Cyan Blue Design
 class ConnectedUsersListModal extends StatelessWidget {

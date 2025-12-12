@@ -534,7 +534,7 @@ class _BluetoothRadarModalState extends State<BluetoothRadarModal>
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        '${signalStrength}/5',
+                        '$signalStrength/5',
                         style: TextStyle(
                           color: AppColors.textSecondary,
                           fontSize: 11,

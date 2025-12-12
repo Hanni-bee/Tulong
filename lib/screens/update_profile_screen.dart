@@ -10,6 +10,7 @@ import '../services/location_service.dart';
 import '../utils/input_validator.dart';
 import '../widgets/custom_button.dart';
 import '../widgets/custom_text_field.dart';
+import '../widgets/enhanced_micro_interactions.dart' as micro;
 
 class UpdateProfileScreen extends StatefulWidget {
   const UpdateProfileScreen({super.key});
@@ -297,7 +298,7 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
         lastName: _nameController.text.trim().split(' ').skip(1).join(' '),
         address: _addressController.text.trim(),
         // Normalize phone: store as 0 + 10 digits
-        phone: (() { final d = _phoneController.text.replaceAll(RegExp(r'\\D'), ''); return d.isEmpty ? '' : ('0' + d); })(),
+        phone: (() { final d = _phoneController.text.replaceAll(RegExp(r'\\D'), ''); return d.isEmpty ? '' : ('0$d'); })(),
         province: provinceName,
         region: regionName,
         city: cityName,
@@ -313,7 +314,7 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
           name: _nameController.text.trim(),
           email: _emailController.text.trim(),
           // Normalize phone locally as well
-          phone: (() { final d = _phoneController.text.replaceAll(RegExp(r'\\D'), ''); return d.isEmpty ? null : ('0' + d); })(),
+          phone: (() { final d = _phoneController.text.replaceAll(RegExp(r'\\D'), ''); return d.isEmpty ? null : ('0$d'); })(),
           street: _addressController.text.trim(),
           barangay: barangayName,
           city: cityName,
@@ -325,13 +326,8 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
       HapticFeedback.mediumImpact();
       
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Profile updated successfully!'),
-            backgroundColor: AppColors.success,
-          ),
-        );
-        Navigator.of(context).pop();
+        // Show success animation before navigating back
+        _showSuccessAnimation(context);
       }
     } catch (e) {
       HapticFeedback.heavyImpact();
@@ -348,6 +344,66 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
         setState(() => _isLoading = false);
       }
     }
+  }
+
+  void _showSuccessAnimation(BuildContext context) {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black.withOpacity(0.7),
+      barrierDismissible: false,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Success checkmark
+            micro.SuccessAnimation(
+              size: 100,
+              color: AppColors.success,
+              onComplete: () {
+                Future.delayed(const Duration(milliseconds: 500), () {
+                  if (context.mounted) {
+                    Navigator.of(context).pop(); // Close animation
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Profile updated successfully!'),
+                        backgroundColor: AppColors.success,
+                        behavior: SnackBarBehavior.floating,
+                        duration: Duration(seconds: 2),
+                      ),
+                    );
+                    Navigator.of(context).pop(); // Close profile screen
+                  }
+                });
+              },
+            ),
+            const SizedBox(height: 24),
+            // Success message
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 20,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
+              ),
+              child: Text(
+                'Profile Updated!',
+                style: UnifiedTypography.titleMedium.copyWith(
+                  color: AppColors.textPrimary,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildLocationDropdown({
@@ -387,7 +443,7 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
             ],
           ),
           child: DropdownButtonFormField<String>(
-            value: value,
+            initialValue: value,
             decoration: InputDecoration(
               contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               border: OutlineInputBorder(

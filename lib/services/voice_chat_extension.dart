@@ -692,7 +692,7 @@ class VoiceChatExtension {
         _voiceReceiveTimeout?.cancel();
         if (_voiceBuffer.isNotEmpty) {
           // Create a special marker for the complete voice message
-          messages.add('VOICE_MESSAGE:' + _voiceBuffer);
+          messages.add('VOICE_MESSAGE:$_voiceBuffer');
           _debugController.add('Voice message end detected (${_voiceBuffer.length} chars)');
         } else {
           _debugController.add('Voice message end detected but buffer is empty!');
@@ -808,7 +808,7 @@ class VoiceMessage {
       final totalSeconds = duration!.inMilliseconds / 1000.0;
       final seconds = totalSeconds.floor();
       final milliseconds = ((totalSeconds - seconds) * 1000).round();
-      return '${seconds}.${milliseconds.toString().padLeft(3, '0')}s';
+      return '$seconds.${milliseconds.toString().padLeft(3, '0')}s';
     }
     return '0.000s';
   }

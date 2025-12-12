@@ -25,6 +25,7 @@ class _QuickActionCardState extends State<QuickActionCard>
     with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
   late Animation<double> _scaleAnimation;
+  late Animation<double> _glowAnimation;
 
   @override
   void initState() {
@@ -39,6 +40,14 @@ class _QuickActionCardState extends State<QuickActionCard>
     ).animate(CurvedAnimation(
       parent: _animationController,
       curve: Curves.easeInOut,
+    ));
+
+    _glowAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeOut,
     ));
   }
 
@@ -67,12 +76,26 @@ class _QuickActionCardState extends State<QuickActionCard>
               width: 120,
               height: 100,
               margin: const EdgeInsets.only(right: 12),
-              decoration: SoftUIDesign.cardDecoration(
-                backgroundColor: AppColors.white,
-                borderRadius: SoftUIDesign.cardBorderRadius,
-                elevation: 3.0,
-                borderColor: widget.color.withOpacity(0.25),
-                showBorder: true,
+              decoration: BoxDecoration(
+                color: AppColors.white,
+                borderRadius: BorderRadius.circular(SoftUIDesign.cardBorderRadius),
+                border: Border.all(
+                  color: widget.color.withOpacity(0.25),
+                  width: 1.0,
+                ),
+                boxShadow: [
+                  // Glow effect on press
+                  BoxShadow(
+                    color: widget.color.withOpacity(_glowAnimation.value * 0.4),
+                    blurRadius: 15 * _glowAnimation.value,
+                    spreadRadius: 3 * _glowAnimation.value,
+                  ),
+                  // Standard shadow
+                  ...SoftUIDesign.getSoftShadow(
+                    elevation: 3.0,
+                    shadowColor: Colors.black.withOpacity(0.1),
+                  ),
+                ],
               ),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,

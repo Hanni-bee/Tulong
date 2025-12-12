@@ -1,11 +1,23 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz;
+import '../constants/app_colors.dart';
+
+// Notification style enum
+enum NotificationStyle {
+  defaultStyle,
+  bigText,
+  bigPicture,
+  inbox,
+  messaging,
+}
 
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
@@ -62,7 +74,8 @@ class NotificationService {
   }
 
   Future<void> _initializeLocalNotifications() async {
-    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    // Use app logo for notification icon
+    const androidSettings = AndroidInitializationSettings('@mipmap/launcher_icon');
     const iosSettings = DarwinInitializationSettings(
       requestAlertPermission: true,
       requestBadgePermission: true,
@@ -194,13 +207,24 @@ class NotificationService {
   }
 
   void _handleForegroundMessage(RemoteMessage message) {
-    // Show local notification for foreground messages
+    // Extract image URL from notification or data
+    final imageUrl = message.notification?.android?.imageUrl ?? 
+                     message.data['imageUrl'];
+    
+    // Determine style based on content
+    final style = imageUrl != null 
+        ? NotificationStyle.bigPicture 
+        : NotificationStyle.bigText;
+    
+    // Show local notification for foreground messages with enhanced styling
     _showLocalNotification(
       id: message.hashCode,
       title: message.notification?.title ?? 'New Message',
       body: message.notification?.body ?? 'You have a new message',
       payload: jsonEncode(message.data),
       channelId: _getChannelIdFromMessage(message),
+      imageUrl: imageUrl,
+      style: style,
     );
 
     // Emit to stream
@@ -224,30 +248,68 @@ class NotificationService {
     _onNotificationTapController.add(response);
   }
 
-  // Show local notification
+  // Show local notification with enhanced styling
   Future<void> _showLocalNotification({
     required int id,
     required String title,
     required String body,
     String? payload,
     required String channelId,
+    String? imageUrl,
+    Color? color,
+    String? largeIcon,
+    NotificationStyle style = NotificationStyle.defaultStyle,
   }) async {
-    const androidDetails = AndroidNotificationDetails(
-      emergencyChannelId,
-      'Emergency Alerts',
-      channelDescription: 'Critical emergency notifications',
-      importance: Importance.max,
-      priority: Priority.high,
-      icon: '@mipmap/ic_launcher',
+    // Determine color based on channel
+    final notificationColor = color ?? _getColorForChannel(channelId);
+    
+    // Create Android notification details with app's design system
+    final androidDetails = AndroidNotificationDetails(
+      channelId,
+      _getChannelName(channelId),
+      channelDescription: _getChannelDescription(channelId),
+      importance: _getImportanceForChannel(channelId),
+      priority: _getPriorityForChannel(channelId),
+      icon: '@mipmap/launcher_icon', // App logo - visible in status bar
+      color: notificationColor,
+      colorized: true, // Enable colored notification background
+      largeIcon: largeIcon != null 
+          ? DrawableResourceAndroidBitmap(largeIcon)
+          : const DrawableResourceAndroidBitmap('@mipmap/launcher_icon'), // App logo as large icon
+      styleInformation: _getStyleInformation(style, body, imageUrl),
+      enableVibration: true,
+      vibrationPattern: Int64List.fromList([0, 250, 250, 250]),
+      playSound: true,
+      channelShowBadge: true,
+      autoCancel: true,
+      ongoing: channelId == emergencyChannelId, // Emergency notifications are ongoing
+      showWhen: true,
+      when: DateTime.now().millisecondsSinceEpoch,
+      ticker: title, // Text that appears in status bar
+      // App design system styling
+      subText: 'T.U.L.O.N.G', // App name as subtitle
+      category: AndroidNotificationCategory.message,
+      visibility: NotificationVisibility.public,
+      // Neumorphic/Soft UI inspired rounded corners
+      channelAction: AndroidNotificationChannelAction.createIfNotExists,
     );
 
-    const iosDetails = DarwinNotificationDetails(
+    final iosDetails = DarwinNotificationDetails(
       presentAlert: true,
       presentBadge: true,
       presentSound: true,
+      sound: 'default',
+      badgeNumber: 1,
+      threadIdentifier: channelId,
+      categoryIdentifier: channelId,
+      attachments: imageUrl != null
+          ? [
+              DarwinNotificationAttachment(imageUrl),
+            ]
+          : null,
     );
 
-    const details = NotificationDetails(
+    final details = NotificationDetails(
       android: androidDetails,
       iOS: iosDetails,
     );
@@ -260,12 +322,101 @@ class NotificationService {
       payload: payload,
     );
   }
+  
+  // Get color for notification based on channel (using app colors)
+  Color _getColorForChannel(String channelId) {
+    switch (channelId) {
+      case emergencyChannelId:
+        return AppColors.primaryRed; // App's primary red for emergency
+      case messageChannelId:
+        return AppColors.info; // App's info blue for messages
+      case reminderChannelId:
+        return AppColors.warning; // App's warning orange for reminders
+      default:
+        return AppColors.mediumGray; // App's medium gray for system
+    }
+  }
+  
+  // Get importance level for channel
+  Importance _getImportanceForChannel(String channelId) {
+    switch (channelId) {
+      case emergencyChannelId:
+        return Importance.max;
+      case messageChannelId:
+        return Importance.high;
+      default:
+        return Importance.defaultImportance;
+    }
+  }
+  
+  // Get priority for channel
+  Priority _getPriorityForChannel(String channelId) {
+    switch (channelId) {
+      case emergencyChannelId:
+        return Priority.max;
+      case messageChannelId:
+        return Priority.high;
+      default:
+        return Priority.defaultPriority;
+    }
+  }
+  
+  // Get style information for notification
+  StyleInformation? _getStyleInformation(
+    NotificationStyle style,
+    String body,
+    String? imageUrl,
+  ) {
+    switch (style) {
+      case NotificationStyle.bigPicture:
+        if (imageUrl != null) {
+          return BigPictureStyleInformation(
+            FilePathAndroidBitmap(imageUrl),
+            largeIcon: const DrawableResourceAndroidBitmap('@mipmap/launcher_icon'), // App logo
+            contentTitle: body,
+            summaryText: body,
+            htmlFormatContentTitle: true,
+            htmlFormatSummaryText: true,
+          );
+        }
+        return null;
+      case NotificationStyle.bigText:
+        return BigTextStyleInformation(
+          body,
+          contentTitle: body,
+          summaryText: 'T.U.L.O.N.G', // App name
+          htmlFormatBigText: true,
+          htmlFormatContentTitle: true,
+        );
+      case NotificationStyle.inbox:
+        return InboxStyleInformation(
+          [body],
+          contentTitle: body,
+          summaryText: 'T.U.L.O.N.G', // App name
+          htmlFormatLines: true,
+          htmlFormatContentTitle: true,
+        );
+      case NotificationStyle.messaging:
+        // Use BigText style for messaging as fallback
+        return BigTextStyleInformation(
+          body,
+          contentTitle: body,
+          summaryText: 'T.U.L.O.N.G', // App name
+          htmlFormatBigText: true,
+          htmlFormatContentTitle: true,
+        );
+      default:
+        return null;
+    }
+  }
 
-  // Public methods for showing notifications
+  // Public methods for showing notifications with app's design system
   Future<void> showEmergencyAlert({
     required String title,
     required String body,
     String? payload,
+    String? imageUrl,
+    Color? color,
   }) async {
     await _showLocalNotification(
       id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
@@ -273,6 +424,9 @@ class NotificationService {
       body: body,
       payload: payload,
       channelId: emergencyChannelId,
+      imageUrl: imageUrl,
+      color: color ?? AppColors.primaryRed, // App's primary red
+      style: imageUrl != null ? NotificationStyle.bigPicture : NotificationStyle.bigText,
     );
   }
 
@@ -280,6 +434,9 @@ class NotificationService {
     required String sender,
     required String message,
     String? payload,
+    String? imageUrl,
+    String? avatarUrl,
+    Color? color,
   }) async {
     await _showLocalNotification(
       id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
@@ -287,6 +444,12 @@ class NotificationService {
       body: message,
       payload: payload,
       channelId: messageChannelId,
+      imageUrl: imageUrl,
+      largeIcon: avatarUrl ?? '@mipmap/launcher_icon', // Use app logo if no avatar
+      color: color ?? AppColors.info, // App's info blue
+      style: imageUrl != null 
+          ? NotificationStyle.bigPicture 
+          : NotificationStyle.messaging,
     );
   }
 
@@ -294,6 +457,9 @@ class NotificationService {
     required String title,
     required String body,
     String? payload,
+    String? imageUrl,
+    Color? color,
+    NotificationStyle style = NotificationStyle.defaultStyle,
   }) async {
     await _showLocalNotification(
       id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
@@ -301,6 +467,39 @@ class NotificationService {
       body: body,
       payload: payload,
       channelId: systemChannelId,
+      imageUrl: imageUrl,
+      color: color ?? AppColors.mediumGray, // App's medium gray
+      style: style,
+    );
+  }
+  
+  // Enhanced notification with full customization
+  Future<void> showCustomNotification({
+    required int id,
+    required String title,
+    required String body,
+    required String channelId,
+    String? payload,
+    String? imageUrl,
+    String? largeIcon,
+    Color? color,
+    NotificationStyle style = NotificationStyle.defaultStyle,
+    Importance? importance,
+    Priority? priority,
+    bool? enableVibration,
+    bool? playSound,
+    bool? ongoing,
+  }) async {
+    await _showLocalNotification(
+      id: id,
+      title: title,
+      body: body,
+      payload: payload,
+      channelId: channelId,
+      imageUrl: imageUrl,
+      largeIcon: largeIcon,
+      color: color,
+      style: style,
     );
   }
 

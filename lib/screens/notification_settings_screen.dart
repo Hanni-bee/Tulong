@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
 import '../services/notification_service.dart';
 import '../services/offline_sync_service.dart';
+import '../widgets/accessible_text.dart';
+import '../utils/standardized_spacing.dart';
+import '../utils/icon_system.dart';
 
 class NotificationSettingsScreen extends StatefulWidget {
   const NotificationSettingsScreen({super.key});
@@ -135,12 +138,11 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
     return Scaffold(
       backgroundColor: AppColors.backgroundLight,
       appBar: AppBar(
-        title: const Text(
+        title: AccessibleHeading(
           'Notifications & Sync',
-          style: TextStyle(
-            color: AppColors.textPrimary,
-            fontWeight: FontWeight.bold,
-          ),
+          level: HeadingLevel.h2,
+          color: AppColors.textPrimary,
+          backgroundColor: AppColors.backgroundLight,
         ),
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -152,7 +154,7 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
+              padding: StandardizedSpacing.screenPadding(context),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -172,7 +174,7 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
                   // Sync Settings Section
                   _buildSectionHeader(
                     'Offline Sync',
-                    Icons.sync,
+                    IconSystem.refresh,
                     Colors.blue,
                   ),
                   
@@ -185,7 +187,7 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
                   // Test Section
                   _buildSectionHeader(
                     'Test & Actions',
-                    Icons.settings,
+                    IconSystem.settings,
                     Colors.green,
                   ),
                   
@@ -210,13 +212,11 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
           child: Icon(icon, color: color, size: 20),
         ),
         const SizedBox(width: 12),
-        Text(
+        AccessibleHeading(
           title,
-          style: const TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            color: AppColors.textPrimary,
-          ),
+          level: HeadingLevel.h3,
+          color: AppColors.textPrimary,
+          backgroundColor: AppColors.backgroundLight,
         ),
       ],
     );
@@ -249,7 +249,7 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
           _buildSettingTile(
             'Chat Messages',
             'New messages in conversations',
-            Icons.chat,
+            IconSystem.message,
             Colors.blue,
             'messages',
           ),
@@ -257,7 +257,7 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
           _buildSettingTile(
             'System Notifications',
             'App updates and system messages',
-            Icons.info,
+            IconSystem.info,
             Colors.orange,
             'system',
           ),
@@ -265,7 +265,7 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
           _buildSettingTile(
             'Reminders',
             'Scheduled reminders and alerts',
-            Icons.alarm,
+            IconSystem.clock,
             Colors.green,
             'reminders',
           ),
@@ -273,7 +273,7 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
           _buildSettingTile(
             'Sound',
             'Play notification sounds',
-            Icons.volume_up,
+            IconSystem.volume,
             Colors.purple,
             'sound',
           ),
@@ -281,7 +281,7 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
           _buildSettingTile(
             'Vibration',
             'Vibrate on notifications',
-            Icons.vibration,
+            IconSystem.signal,
             Colors.teal,
             'vibration',
           ),
@@ -312,20 +312,17 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
+              AccessibleHeading(
                 title,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textPrimary,
-                ),
+                level: HeadingLevel.h5,
+                color: AppColors.textPrimary,
+                backgroundColor: AppColors.white,
               ),
-              Text(
+              AccessibleBodyText(
                 subtitle,
-                style: const TextStyle(
-                  fontSize: 14,
-                  color: AppColors.textSecondary,
-                ),
+                size: BodySize.medium,
+                color: AppColors.textSecondary,
+                backgroundColor: AppColors.white,
               ),
             ],
           ),

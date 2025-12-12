@@ -10,9 +10,11 @@ import '../providers/chat_provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/voice_chat_extension.dart' as voice;
 import '../widgets/unified_top_bar.dart';
-import '../widgets/special_animations.dart';
 import '../widgets/connected_users_list_modal.dart';
 import '../widgets/sender_info_modal.dart';
+import '../widgets/enhanced_skeleton_loaders.dart';
+import '../widgets/enhanced_empty_state.dart';
+import '../widgets/accessible_text.dart';
 
 /// Local Chat Screen - Polished UI with Working Backend
 class LocalChatScreen extends StatefulWidget {
@@ -34,7 +36,14 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      context.read<ChatProvider>().loadPairedDevices();
+      final chatProvider = context.read<ChatProvider>();
+      
+      // Load paired devices
+      chatProvider.loadPairedDevices();
+      
+      // Load messages with progressive loading (shows cached first)
+      chatProvider.loadMessages();
+      
       // Set current user name from database/storage (signup information)
       final authProvider = context.read<AuthProvider>();
       String? userName;
@@ -62,7 +71,7 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
         userName = authProvider.userEmail?.split('@')[0] ?? 'Me';
       }
       
-      context.read<ChatProvider>().setCurrentUserName(userName);
+      chatProvider.setCurrentUserName(userName);
     });
     
     // Listen to voice extension recording state
@@ -75,10 +84,23 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
     });
   }
 
-  void _sendMessage() {
+  void _sendMessage() async {
     if (_messageController.text.trim().isNotEmpty) {
-      context.read<ChatProvider>().sendMessage(_messageController.text);
+      final messageText = _messageController.text;
       _messageController.clear();
+      
+      final success = await context.read<ChatProvider>().sendMessage(
+        messageText,
+        context: context,
+      );
+      
+      if (success && mounted) {
+        // Show subtle success feedback (not full screen animation for messages)
+        HapticFeedback.lightImpact();
+        // Message appears in chat, so no need for full animation
+        // Just haptic feedback is enough for message sending
+      }
+      
       _scrollToBottom();
     }
   }
@@ -156,6 +178,7 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
                     }
                     // Removed radar modal - now on home screen
                   },
+                  onRefresh: () => provider.smartRefresh(),
                 );
               },
             ),
@@ -164,41 +187,104 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
             Expanded(
               child: Consumer<ChatProvider>(
                 builder: (context, provider, child) {
-                  return provider.messages.isEmpty
-                      ? EmptyStateEntrance(
-                          iconWidget: Icon(
-                            Icons.chat_bubble_outline,
-                            size: 64,
-                            color: AppColors.lightGray,
-                          ),
-                          textWidget: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                'No messages yet',
-                                style: AppTypography.bodyLarge.copyWith(
-                                  color: AppColors.mediumGray,
+                  // Show loading skeleton if initial load
+                  if (provider.isLoadingMessages && provider.messages.isEmpty) {
+                    return const SkeletonMessageList(itemCount: 5);
+                  }
+                  
+                  // Show empty state if no messages
+                  if (provider.messages.isEmpty) {
+                    return EmptyStatePresets.noMessages(
+                      onStartChatting: provider.isConnected
+                          ? () {
+                              // Focus on message input
+                              FocusScope.of(context).requestFocus(FocusNode());
+                            }
+                          : null,
+                      onConnectDevice: !provider.isConnected
+                          ? () {
+                              // Show paired devices modal
+                              _showConnectedUsersModal();
+                            }
+                          : null,
+                    );
+                  }
+                  
+                  // Show messages with refresh indicator overlay
+                  return Stack(
+                    children: [
+                      ListView.builder(
+                        controller: _scrollController,
+                        padding: const EdgeInsets.all(16),
+                        itemCount: provider.messages.length + (provider.isTyping ? 1 : 0),
+                        itemBuilder: (context, index) {
+                          // Show typing indicator at the end
+                          if (index == provider.messages.length && provider.isTyping) {
+                            return _buildTypingIndicator();
+                          }
+                          
+                          final message = provider.messages[index];
+                          // Auto-scroll to bottom when new messages arrive
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (_scrollController.hasClients && index == provider.messages.length - 1) {
+                              _scrollController.animateTo(
+                                _scrollController.position.maxScrollExtent,
+                                duration: const Duration(milliseconds: 300),
+                                curve: Curves.easeOut,
+                              );
+                            }
+                          });
+                          return _buildMessageBubble(message);
+                        },
+                      ),
+                      // Refresh indicator overlay (only show if refreshing, not when receiving real-time messages)
+                      if (provider.isRefreshingMessages && !provider.isConnected)
+                        Positioned(
+                          top: 16,
+                          left: 0,
+                          right: 0,
+                          child: Container(
+                            margin: const EdgeInsets.symmetric(horizontal: 16),
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: AppColors.info.withOpacity(0.9),
+                              borderRadius: BorderRadius.circular(20),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.1),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2),
                                 ),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                'Connect to ESP32 and start chatting!',
-                                style: AppTypography.bodyMedium.copyWith(
-                                  color: AppColors.lightGray,
+                              ],
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                  ),
                                 ),
-                              ),
-                            ],
+                                const SizedBox(width: 8),
+                                Text(
+                                  provider.hasCachedMessages 
+                                      ? 'Refreshing...' 
+                                      : 'Loading...',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                          accentColor: AppColors.online,
-                        )
-                      : ListView.builder(
-                          controller: _scrollController,
-                          padding: const EdgeInsets.all(16),
-                          itemCount: provider.messages.length,
-                          itemBuilder: (context, index) {
-                            return _buildMessageBubble(provider.messages[index]);
-                          },
-                        );
+                        ),
+                    ],
+                  );
                 },
               ),
             ),
@@ -284,6 +370,23 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
   }
 
   Widget _buildMessageBubble(ChatMessage message) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0.0, end: 1.0),
+      duration: const Duration(milliseconds: 400),
+      curve: Curves.easeOutCubic,
+      builder: (context, value, child) {
+        return Transform.translate(
+          offset: Offset(0, 20 * (1 - value)),
+          child: Opacity(
+            opacity: value,
+            child: _buildMessageBubbleContent(message),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildMessageBubbleContent(ChatMessage message) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       child: Row(
@@ -339,11 +442,13 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
                 if (message.type == voice.MessageType.voice && message.voiceMessage != null)
                   _buildVoiceMessageContent(message.voiceMessage!)
                 else
-                  Text(
+                  AccessibleChatText(
                     message.text,
-                    style: AppTypography.bodyMedium.copyWith(
-                      color: message.isMe ? Colors.white : AppColors.darkGray,
-                    ),
+                    isMe: message.isMe,
+                    backgroundColor: message.isMe
+                        ? AppColors.primaryRed
+                        : AppColors.white,
+                    maxLines: null,
                   ),
                 const SizedBox(height: 4),
                 Row(
@@ -479,6 +584,76 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
     } else {
       return DateFormat('MMM dd, HH:mm').format(dateTime);
     }
+  }
+
+  Widget _buildTypingIndicator() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12, left: 8),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 16,
+            backgroundColor: AppColors.primaryRed.withOpacity(0.1),
+            child: Text(
+              'ESP',
+              style: AppTypography.bodySmall.copyWith(
+                color: AppColors.primaryRed,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20).copyWith(
+                bottomLeft: const Radius.circular(4),
+              ),
+              border: Border.all(
+                color: AppColors.lightGray.withOpacity(0.5),
+                width: 1.5,
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildTypingDot(0),
+                const SizedBox(width: 4),
+                _buildTypingDot(1),
+                const SizedBox(width: 4),
+                _buildTypingDot(2),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTypingDot(int index) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0.0, end: 1.0),
+      duration: const Duration(milliseconds: 1200),
+      curve: Curves.easeInOut,
+      onEnd: () {
+        if (mounted) {
+          setState(() {});
+        }
+      },
+      builder: (context, value, child) {
+        final delay = index * 0.2;
+        final adjustedValue = ((value + delay) % 1.0);
+        return Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(
+            color: AppColors.primaryRed.withOpacity(0.3 + (adjustedValue * 0.7)),
+            shape: BoxShape.circle,
+          ),
+        );
+      },
+    );
   }
 
   Widget _buildMessageInput() {
@@ -974,7 +1149,7 @@ class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
                                               )
                                             : ElevatedButton(
                                                 onPressed: provider.isConnecting ? null : () async {
-                                                  bool success = await provider.connectToDevice(device);
+                                                  bool success = await provider.connectToDevice(device, context: context);
                                                   if (success && mounted) {
                                                     Navigator.pop(context);
                                                   }

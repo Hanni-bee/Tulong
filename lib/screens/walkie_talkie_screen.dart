@@ -2,10 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../constants/app_colors.dart';
-import '../constants/app_typography.dart';
 import '../widgets/unified_top_bar.dart';
 import '../widgets/solid_divider.dart';
 import '../utils/prototype_animations.dart';
+import '../widgets/enhanced_skeleton_loaders.dart';
+import '../widgets/enhanced_empty_state.dart';
+import '../widgets/accessible_text.dart';
+import '../widgets/enhanced_search_bar.dart';
+import '../utils/search_helper.dart';
+import '../utils/icon_system.dart';
 
 class WalkieTalkieScreen extends StatefulWidget {
   const WalkieTalkieScreen({super.key});
@@ -23,7 +28,7 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
   late Animation<double> _recordingAnimation;
 
   // Filter state
-  String _userFilter = 'All'; // All, Online, Muted
+  final String _userFilter = 'All'; // All, Online, Muted
   
   // Pagination
   int _currentPage = 0;
@@ -41,7 +46,7 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
 
   // Search + Sort
   final TextEditingController _searchCtrl = TextEditingController();
-  String _sortBy = 'Status'; // Status | Name
+  final String _sortBy = 'Status'; // Status | Name
 
   // Demo data
   final List<Map<String, dynamic>> _connectedUsers = [
@@ -249,12 +254,11 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
               // Stats Header
               Row(
                 children: [
-                  Text(
+                  AccessibleHeading(
                     'Active Channels',
-                    style: AppTypography.sectionTitle.copyWith(
-                      color: AppColors.textPrimary,
-                      fontSize: 18,
-                    ),
+                    level: HeadingLevel.h3,
+                    color: AppColors.textPrimary,
+                    backgroundColor: AppColors.backgroundLight,
                   ),
                   const Spacer(),
                   Container(
@@ -274,13 +278,11 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                           ),
                         ),
                         const SizedBox(width: 6),
-                        Text(
+                        AccessibleBodyText(
                           '${_connectedUsers.where((u) => u['isActive'] == true).length} Connected',
-                          style: const TextStyle(
-                            color: AppColors.online,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 12,
-                          ),
+                          size: BodySize.small,
+                          color: AppColors.online,
+                          backgroundColor: AppColors.online.withOpacity(0.1),
                         ),
                       ],
                     ),
@@ -293,38 +295,27 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
 
         const SizedBox(height: 16),
 
-        // 2. Search Bar
+        // 2. Enhanced Search Bar
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Container(
-            height: 44,
-            decoration: BoxDecoration(
-              color: AppColors.lightGray.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: TextField(
-              controller: _searchCtrl,
-              decoration: InputDecoration(
-                hintText: 'Search users...',
-                hintStyle: TextStyle(
-                  color: AppColors.textSecondary.withOpacity(0.7),
-                  fontSize: 14,
-                ),
-                prefixIcon: Icon(
-                  Icons.search,
-                  color: AppColors.textSecondary.withOpacity(0.7),
-                  size: 20,
-                ),
-                border: InputBorder.none,
-                contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                suffixIcon: _searchCtrl.text.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear, size: 16),
-                        onPressed: () => _searchCtrl.clear(),
-                      )
-                    : null,
-              ),
-            ),
+          child: EnhancedSearchBar(
+            controller: _searchCtrl,
+            hintText: 'Search users...',
+            onChanged: (value) {
+              setState(() {
+                _currentPage = 0;
+                _updateUserListStagger();
+                _userListStagger?.replay();
+              });
+            },
+            onSubmitted: (value) {
+              if (value.trim().isNotEmpty) {
+                SearchHelper.saveRecentSearch(value, context: 'walkie_talkie');
+              }
+            },
+            suggestions: _connectedUsers.map((u) => u['name'] as String).toList(),
+            showRecentSearches: true,
+            searchContext: 'walkie_talkie',
           ),
         ),
 
@@ -347,57 +338,33 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
 
   Widget _buildUsersList() {
     if (_isLoading) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 40),
-        child: Center(
-          child: Column(
-            children: [
-              const CircularProgressIndicator(
-                color: AppColors.primaryRed,
-                strokeWidth: 3,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'Refreshing channels...',
-                style: TextStyle(
-                  color: AppColors.textSecondary.withOpacity(0.7),
-                  fontWeight: FontWeight.w500,
-                  fontSize: 13,
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
+      return const SkeletonUserList(itemCount: 5);
     }
 
     final paged = _getPaginatedUsers();
 
     if (paged.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 24),
-                                                  child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: const [
-              Icon(Icons.search_off, size: 28, color: Colors.black38),
-              SizedBox(height: 8),
-                                                          Text(
-                'No matching users',
-                                                            style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  color: Colors.black54,
-                                                            ),
-                                                          ),
-              SizedBox(height: 4),
-                                                      Text(
-                'Try a different filter or keyword.',
-                style: TextStyle(color: Colors.black45),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ),
-      );
+      // Determine if it's a search result or no users at all
+      final isSearchResult = _searchCtrl.text.isNotEmpty;
+      
+      if (isSearchResult) {
+        return EmptyStatePresets.noSearchResults(
+          onClearSearch: () {
+            setState(() {
+              _searchCtrl.clear();
+            });
+          },
+          searchQuery: _searchCtrl.text,
+        );
+      } else {
+        return EmptyStatePresets.noUsersConnected(
+          onRefresh: _refreshConnections,
+          onScanDevices: () {
+            // Could open device scanner if needed
+            _refreshConnections();
+          },
+        );
+      }
     }
 
     // Use Column with fixed height to enforce pagination (no infinite scroll)
@@ -415,24 +382,19 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
         itemBuilder: (context, index) {
           final user = paged[index];
 
-          if (_userListStagger != null && index < paged.length) {
-            return _userListStagger!.buildAnimatedItem(
-              index,
-              _UserTile(
-                name: user['name'] as String,
-                isActive: user['isActive'] == true,
-                isMuted: user['isMuted'] == true,
-                isSpeaking: user['isSpeaking'] == true,
-              ),
-            );
-          }
-          
-          return _UserTile(
+          final userTile = _UserTile(
             name: user['name'] as String,
             isActive: user['isActive'] == true,
             isMuted: user['isMuted'] == true,
             isSpeaking: user['isSpeaking'] == true,
+            searchQuery: _searchCtrl.text.trim().isNotEmpty ? _searchCtrl.text.trim() : null,
           );
+
+          if (_userListStagger != null && index < paged.length) {
+            return _userListStagger!.buildAnimatedItem(index, userTile);
+          }
+          
+          return userTile;
         },
       ),
     );
@@ -769,12 +731,14 @@ class _UserTile extends StatefulWidget {
     required this.isActive,
     required this.isMuted,
     required this.isSpeaking,
+    this.searchQuery,
   });
 
   final String name;
   final bool isActive;
   final bool isMuted;
   final bool isSpeaking;
+  final String? searchQuery;
 
   @override
   State<_UserTile> createState() => _UserTileState();
@@ -844,34 +808,55 @@ class _UserTileState extends State<_UserTile> with SingleTickerProviderStateMixi
   Widget build(BuildContext context) {
     final initials = _initials(widget.name);
 
-    return Container(
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
       decoration: BoxDecoration(
         color: _fill,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(
-            color: _borderColor, width: widget.isSpeaking || widget.isMuted ? 2 : 1),
+            color: _borderColor, width: widget.isSpeaking || widget.isMuted ? 2.5 : 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: _borderColor.withOpacity(0.2),
+            blurRadius: widget.isSpeaking ? 12 : 6,
+            offset: const Offset(0, 4),
+            spreadRadius: widget.isSpeaking ? 2 : 0,
+          ),
+        ],
       ),
       child: ListTile(
         dense: true,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         leading: Stack(
           alignment: Alignment.center,
+          clipBehavior: Clip.none,
           children: [
-            // Speaking Pulse Effect
+            // Enhanced Speaking Pulse Effect with multiple rings
             if (widget.isSpeaking)
-              AnimatedBuilder(
-                animation: _pulseAnimation,
-                builder: (context, child) {
-                  return Container(
-                    width: 36 * _pulseAnimation.value,
-                    height: 36 * _pulseAnimation.value,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF27AE60).withOpacity(0.3),
-                      shape: BoxShape.circle,
-                    ),
-                  );
-                },
-              ),
+              ...List.generate(3, (index) {
+                return AnimatedBuilder(
+                  animation: _pulseAnimation,
+                  builder: (context, child) {
+                    final delay = index * 0.3;
+                    final adjustedValue = ((_pulseAnimation.value + delay) % 1.0);
+                    return Positioned.fill(
+                      child: Container(
+                        width: 40 * (1.0 + adjustedValue * 0.4),
+                        height: 40 * (1.0 + adjustedValue * 0.4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF27AE60).withOpacity(0.2 * (1 - adjustedValue)),
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: const Color(0xFF27AE60).withOpacity(0.3 * (1 - adjustedValue)),
+                            width: 2,
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                );
+              }),
             
             // Avatar
             Container(
@@ -923,14 +908,24 @@ class _UserTileState extends State<_UserTile> with SingleTickerProviderStateMixi
             ),
           ],
         ),
-        title: Text(
-          widget.name,
-          style: TextStyle(
-            fontWeight: FontWeight.w700,
-            color: widget.isActive ? AppColors.textPrimary : AppColors.textSecondary,
-            fontSize: 13,
-          ),
-        ),
+        title: widget.searchQuery != null && widget.searchQuery!.isNotEmpty
+            ? HighlightedText(
+                text: widget.name,
+                query: widget.searchQuery!,
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: widget.isActive ? AppColors.textPrimary : AppColors.textSecondary,
+                  fontSize: 13,
+                ),
+              )
+            : Text(
+                widget.name,
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: widget.isActive ? AppColors.textPrimary : AppColors.textSecondary,
+                  fontSize: 13,
+                ),
+              ),
         subtitle: Text(
           _statusText,
           style: TextStyle(

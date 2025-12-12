@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import '../constants/app_colors.dart';
 import '../constants/soft_ui_design.dart';
 import '../utils/navigation_helper.dart';
@@ -9,9 +8,6 @@ import '../widgets/typing_indicator.dart';
 import '../widgets/modern_floating_layout.dart';
 import '../widgets/enhanced_text_styles.dart';
 import '../widgets/enhanced_shadows.dart' as shadows;
-import '../widgets/micro_interactions.dart';
-import '../widgets/enhanced_icons.dart';
-import '../widgets/floating_background_elements.dart';
 import 'walkie_talkie_screen.dart';
 import '../constants/unified_typography.dart';
 

@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../constants/app_colors.dart';
 import '../utils/navigation_helper.dart';
 import '../utils/performance_optimizer.dart';
 import '../widgets/modern_message_bubble.dart';
 import '../widgets/typing_indicator.dart';
 import 'private_call_screen.dart';
+import '../providers/notification_provider.dart';
+import '../providers/auth_provider.dart';
 
 class ModernPersonalChatScreen extends StatefulWidget {
   final String contactName;
@@ -73,10 +76,41 @@ class _ModernPersonalChatScreenState extends State<ModernPersonalChatScreen> {
     
     _messageController.addListener(_onTextChanged);
     _scrollController.addListener(_onScroll);
+    
+    // Start listening to private chat messages for notifications
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _startListeningToPrivateChat();
+    });
+  }
+  
+  void _startListeningToPrivateChat() {
+    final authProvider = context.read<AuthProvider>();
+    final currentUserId = authProvider.currentUser ?? authProvider.userEmail ?? '';
+    
+    // Create chat ID (sorted to ensure consistency)
+    final chatId = _createChatId(currentUserId, widget.contactId);
+    
+    // Start listening via notification provider
+    final notificationProvider = context.read<NotificationProvider>();
+    notificationProvider.startListeningToPrivateChat(chatId, widget.contactName);
+  }
+  
+  String _createChatId(String userId1, String userId2) {
+    // Sort IDs to ensure consistent chat ID regardless of order
+    final ids = [userId1, userId2]..sort();
+    return '${ids[0]}_${ids[1]}';
   }
 
   @override
   void dispose() {
+    // Stop listening to private chat when screen is disposed
+    final authProvider = context.read<AuthProvider>();
+    final currentUserId = authProvider.currentUser ?? authProvider.userEmail ?? '';
+    final chatId = _createChatId(currentUserId, widget.contactId);
+    
+    final notificationProvider = context.read<NotificationProvider>();
+    notificationProvider.stopListeningToPrivateChat(chatId);
+    
     _messageController.dispose();
     _scrollController.dispose();
     super.dispose();

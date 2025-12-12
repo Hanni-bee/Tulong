@@ -4,13 +4,16 @@ import 'package:provider/provider.dart';
 import '../constants/app_colors.dart';
 import '../constants/soft_ui_design.dart';
 import '../providers/network_provider.dart';
+import '../providers/notification_provider.dart';
 import '../utils/prototype_animations.dart';
 import '../widgets/solid_badge.dart';
+import '../utils/icon_system.dart';
 import 'modern_home_screen.dart';
 import 'local_chat_screen.dart';
 import 'walkie_talkie_screen.dart';
 // Hardware screen removed - using pure Bluetooth only
 import 'modern_profile_screen.dart';
+import '../models/notification_model.dart';
 
 class MainNavigation extends StatefulWidget {
   const MainNavigation({super.key});
@@ -46,9 +49,9 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
   late AnimationController _glowPulseController;
   late Animation<double> _glowPulseAnimation;
   
-  // Badge counts - can be updated from providers/state later
-  int _messagesUnreadCount = 0; // Example: will be connected to real data
-  int _callsActiveCount = 0; // Example: active calls or emergency alerts
+  // Badge counts - connected to NotificationProvider
+  int _messagesUnreadCount = 0;
+  int _callsActiveCount = 0;
   
   final List<Widget> _screens = [
     const ModernHomeScreen(),
@@ -59,26 +62,26 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
 
   final List<NavigationItem> _navigationItems = [
     const NavigationItem(
-      icon: Icons.home_outlined,
-      activeIcon: Icons.home,
+      icon: IconSystem.navHome,
+      activeIcon: IconSystem.navHomeActive,
       label: 'Home',
       color: AppColors.primaryRed,
     ),
     const NavigationItem(
-      icon: Icons.chat_outlined,
-      activeIcon: Icons.chat,
+      icon: IconSystem.navChat,
+      activeIcon: IconSystem.navChatActive,
       label: 'Local Chat',
       color: AppColors.online,
     ),
     const NavigationItem(
-      icon: Icons.call_outlined,
-      activeIcon: Icons.call,
+      icon: IconSystem.navCalls,
+      activeIcon: IconSystem.navCallsActive,
       label: 'Calls',
       color: AppColors.warning,
     ),
     const NavigationItem(
-      icon: Icons.person_outlined,
-      activeIcon: Icons.person,
+      icon: IconSystem.navProfile,
+      activeIcon: IconSystem.navProfileActive,
       label: 'Profile',
       color: AppColors.info,
     ),
@@ -253,6 +256,13 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
       final networkProvider = Provider.of<NetworkProvider>(context, listen: false);
       networkProvider.connectToNetwork();
     });
+
+    // Listen to notification provider for badge updates
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final notificationProvider = Provider.of<NotificationProvider>(context, listen: false);
+      notificationProvider.addListener(_updateBadgeCounts);
+      _updateBadgeCounts();
+    });
   }
 
   @override
@@ -266,7 +276,27 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
     for (final controller in _iconWobbleControllers.values) {
       controller.dispose();
     }
+    // Remove notification listener
+    try {
+      final notificationProvider = Provider.of<NotificationProvider>(context, listen: false);
+      notificationProvider.removeListener(_updateBadgeCounts);
+    } catch (_) {
+      // Provider might not be available during dispose
+    }
     super.dispose();
+  }
+
+  void _updateBadgeCounts() {
+    if (!mounted) return;
+    try {
+      final notificationProvider = Provider.of<NotificationProvider>(context, listen: false);
+      setState(() {
+        _messagesUnreadCount = notificationProvider.getBadgeCountForType(NotificationType.message);
+        _callsActiveCount = notificationProvider.getBadgeCountForType(NotificationType.emergency);
+      });
+    } catch (_) {
+      // Provider might not be available
+    }
   }
 
   void _onTabTapped(int index) {

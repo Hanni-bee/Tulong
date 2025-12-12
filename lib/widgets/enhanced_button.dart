@@ -221,10 +221,10 @@ class _EnhancedButtonState extends State<EnhancedButton>
                   children: [
                     if (widget.isLoading) ...[
                       SizedBox(
-                        width: 16,
-                        height: 16,
+                        width: 18,
+                        height: 18,
                         child: CircularProgressIndicator(
-                          strokeWidth: 2,
+                          strokeWidth: 2.5,
                           valueColor: AlwaysStoppedAnimation<Color>(
                             widget.variant == ButtonVariant.primary ||
                                     widget.variant == ButtonVariant.secondary ||
@@ -235,7 +235,15 @@ class _EnhancedButtonState extends State<EnhancedButton>
                           ),
                         ),
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 10),
+                      Text(
+                        'Loading...',
+                        style: AppTypography.buttonText.copyWith(
+                          color: isDisabled ? AppColors.mediumGray : _getTextColor(),
+                          fontSize: _getFontSize() - 1,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
                     ] else if (widget.icon != null) ...[
                       Icon(
                         widget.icon,

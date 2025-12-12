@@ -2,10 +2,13 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_bluetooth_serial_plus/flutter_bluetooth_serial_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/bluetooth_service.dart';
 import '../services/voice_chat_extension.dart' as voice;
-import 'auth_provider.dart';
-import '../services/sqlite_service.dart';
+// import '../services/sqlite_service.dart'; // Reserved for future cached message loading
+import 'package:connectivity_plus/connectivity_plus.dart';
+import '../utils/enhanced_error_handler.dart';
+import '../services/notification_service.dart';
 
 class ChatProvider with ChangeNotifier {
   final BluetoothService _bluetoothService = BluetoothService();
@@ -14,12 +17,18 @@ class ChatProvider with ChangeNotifier {
   List<BluetoothDevice> _pairedDevices = [];
   BluetoothDevice? _selectedDevice;
   bool _isConnected = false;
-  List<ChatMessage> _messages = [];
-  List<String> _debugLogs = [];
+  final List<ChatMessage> _messages = [];
+  final List<String> _debugLogs = [];
   bool _isConnecting = false;
   
+  // Loading states
+  bool _isLoadingMessages = false;
+  bool _isRefreshingMessages = false;
+  bool _hasCachedMessages = false;
+  final bool _isTyping = false;
+  
   // Connected users on the channel (extracted from messages)
-  Set<String> _connectedUsers = {};
+  final Set<String> _connectedUsers = {};
   String? _currentUserName;
 
   List<BluetoothDevice> get pairedDevices => _pairedDevices;
@@ -28,6 +37,10 @@ class ChatProvider with ChangeNotifier {
   List<ChatMessage> get messages => _messages;
   List<String> get debugLogs => _debugLogs;
   bool get isConnecting => _isConnecting;
+  bool get isLoadingMessages => _isLoadingMessages;
+  bool get isRefreshingMessages => _isRefreshingMessages;
+  bool get hasCachedMessages => _hasCachedMessages;
+  bool get isTyping => _isTyping;
   String? get currentUserName => _currentUserName;
   
   // Get connected users including current user
@@ -99,7 +112,7 @@ class ChatProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  Future<bool> connectToDevice(BluetoothDevice device) async {
+  Future<bool> connectToDevice(BluetoothDevice device, {BuildContext? context}) async {
     _isConnecting = true;
     notifyListeners();
     try {
@@ -109,8 +122,34 @@ class ChatProvider with ChangeNotifier {
         _isConnected = true;
         // Get current user name from database/storage
         await _updateCurrentUserNameFromDatabase();
+      } else if (context != null) {
+        // Show error if connection failed
+        final error = AppError(
+          category: ErrorCategory.bluetooth,
+          severity: ErrorSeverity.medium,
+          userMessage: 'Failed to connect to device. Please try again.',
+          canRetry: true,
+        );
+        EnhancedErrorHandler.showError(
+          context,
+          error,
+          onRetry: () => connectToDevice(device, context: context),
+        );
       }
       return success;
+    } catch (e) {
+      if (context != null) {
+        final error = AppError.fromException(
+          e,
+          category: ErrorCategory.bluetooth,
+        );
+        EnhancedErrorHandler.showError(
+          context,
+          error,
+          onRetry: () => connectToDevice(device, context: context),
+        );
+      }
+      return false;
     } finally {
       _isConnecting = false;
       notifyListeners();
@@ -121,13 +160,6 @@ class ChatProvider with ChangeNotifier {
   Future<void> _updateCurrentUserNameFromDatabase() async {
     try {
       // Try to get from SQLite database first (where signup info is stored)
-      final sqliteService = SQLiteService();
-      
-      // Get user email from AuthProvider if available
-      // Since we don't have direct access to AuthProvider here,
-      // we'll rely on setCurrentUserName() being called from UI
-      // But we can try to get from SQLite if we have the email
-      
       // For now, the UI will call setCurrentUserName() with the correct name
       // from the database, so this method is mainly for future use
     } catch (e) {
@@ -141,6 +173,121 @@ class ChatProvider with ChangeNotifier {
     _currentUserName = userName;
     notifyListeners();
   }
+  
+  /// Load messages with progressive loading (show cached first, then refresh)
+  Future<void> loadMessages({bool forceRefresh = false}) async {
+    // Check network state for smart loading
+    final connectivity = Connectivity();
+    final connectivityResults = await connectivity.checkConnectivity();
+    final isOnline = connectivityResults.any((result) => result != ConnectivityResult.none);
+    
+    // If not forcing refresh and we have cached messages, show them immediately
+    if (!forceRefresh && _messages.isNotEmpty) {
+      _hasCachedMessages = true;
+      notifyListeners();
+      // Refresh in background if online
+      if (isOnline) {
+        _refreshMessagesInBackground();
+      }
+      return;
+    }
+    
+    // Initial load - show cached messages first if available
+    if (!forceRefresh) {
+      await _loadCachedMessages();
+    }
+    
+    // Set loading state
+    if (forceRefresh) {
+      _isRefreshingMessages = true;
+    } else {
+      _isLoadingMessages = true;
+    }
+    notifyListeners();
+    
+    try {
+      // If online, try to fetch new messages
+      if (isOnline) {
+        await _fetchMessagesFromNetwork();
+      } else {
+        // Offline mode - only use cached messages
+        if (_messages.isEmpty) {
+          await _loadCachedMessages();
+        }
+      }
+    } catch (e) {
+      print('Error loading messages: $e');
+      // Fallback to cached messages on error
+      if (_messages.isEmpty) {
+        await _loadCachedMessages();
+      }
+    } finally {
+      _isLoadingMessages = false;
+      _isRefreshingMessages = false;
+      notifyListeners();
+    }
+  }
+  
+  /// Load cached messages from SQLite
+  Future<void> _loadCachedMessages() async {
+    try {
+      // Load messages from local database
+      // For now, we'll use the existing messages list
+      // In a full implementation, you'd load from SQLite here
+      // Example: final cached = await SQLiteService().getMessagesByChatId('local_chat');
+      _hasCachedMessages = _messages.isNotEmpty;
+      notifyListeners();
+    } catch (e) {
+      print('Error loading cached messages: $e');
+    }
+  }
+  
+  /// Fetch messages from network (Bluetooth/ESP32)
+  Future<void> _fetchMessagesFromNetwork() async {
+    // In a real implementation, this would fetch from network
+    // For now, messages come through the Bluetooth stream
+    // This method is a placeholder for future network sync
+    await Future.delayed(const Duration(milliseconds: 500));
+  }
+  
+  /// Refresh messages in background (progressive loading)
+  Future<void> _refreshMessagesInBackground() async {
+    try {
+      final connectivity = Connectivity();
+      final connectivityResults = await connectivity.checkConnectivity();
+      final isOnline = connectivityResults.any((result) => result != ConnectivityResult.none);
+      
+      if (isOnline) {
+        _isRefreshingMessages = true;
+        notifyListeners();
+        
+        await _fetchMessagesFromNetwork();
+        
+        _isRefreshingMessages = false;
+        notifyListeners();
+      }
+    } catch (e) {
+      print('Error refreshing messages: $e');
+      _isRefreshingMessages = false;
+      notifyListeners();
+    }
+  }
+  
+  /// Smart refresh - only refresh if online and not already refreshing
+  Future<void> smartRefresh() async {
+    if (_isRefreshingMessages) return;
+    
+    final connectivity = Connectivity();
+    final connectivityResults = await connectivity.checkConnectivity();
+    final isOnline = connectivityResults.any((result) => result != ConnectivityResult.none);
+    
+    if (isOnline) {
+      await loadMessages(forceRefresh: true);
+    } else {
+      // Offline - just reload cached messages
+      await _loadCachedMessages();
+    }
+  }
 
   Future<void> disconnect() async {
     await _bluetoothService.disconnect();
@@ -150,7 +297,7 @@ class ChatProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  Future<bool> sendMessage(String text) async {
+  Future<bool> sendMessage(String text, {BuildContext? context}) async {
     if (text.trim().isEmpty) return false;
 
     ChatMessage message = ChatMessage(
@@ -162,16 +309,48 @@ class ChatProvider with ChangeNotifier {
     );
 
     _addMessage(message.text, true, message: message);
-    bool success = await _bluetoothService.sendMessage(text);
     
-    if (success) {
-      message.status = voice.MessageStatus.sent;
-    } else {
+    try {
+      bool success = await _bluetoothService.sendMessage(text);
+      
+      if (success) {
+        message.status = voice.MessageStatus.sent;
+      } else {
+        message.status = voice.MessageStatus.failed;
+        if (context != null) {
+          final error = AppError(
+            category: ErrorCategory.bluetooth,
+            severity: ErrorSeverity.medium,
+            userMessage: 'Failed to send message. Please try again.',
+            canRetry: true,
+          );
+          EnhancedErrorHandler.showError(
+            context,
+            error,
+            onRetry: () => sendMessage(text, context: context),
+          );
+        }
+      }
+      
+      notifyListeners();
+      return success;
+    } catch (e) {
       message.status = voice.MessageStatus.failed;
+      notifyListeners();
+      
+      if (context != null) {
+        final error = AppError.fromException(
+          e,
+          category: ErrorCategory.bluetooth,
+        );
+        EnhancedErrorHandler.showError(
+          context,
+          error,
+          onRetry: () => sendMessage(text, context: context),
+        );
+      }
+      return false;
     }
-    
-    notifyListeners();
-    return success;
   }
 
   /// Process incoming message and handle voice messages
@@ -477,8 +656,77 @@ class ChatProvider with ChangeNotifier {
       );
     }
     
+    // Add message to list (real-time from ESP32)
     _messages.add(message);
+    
+    // Show notification for received messages (not from current user)
+    if (!isMe) {
+      _showMessageNotification(message, senderName);
+    }
+    
+    // Clear loading states when real-time messages arrive (indicates connection is working)
+    if (_isLoadingMessages && _messages.isNotEmpty) {
+      _isLoadingMessages = false;
+    }
+    
+    // Mark as having messages (for cached state)
+    _hasCachedMessages = true;
+    
     notifyListeners();
+  }
+  
+  Future<void> _showMessageNotification(ChatMessage message, String? senderName) async {
+    try {
+      // Check notification settings
+      final prefs = await SharedPreferences.getInstance();
+      final messageNotificationsEnabled = prefs.getBool('notification_messages') ?? true;
+      
+      if (!messageNotificationsEnabled) {
+        return;
+      }
+      
+      // Get current user to avoid notifying for own messages
+      final currentUserEmail = prefs.getString('user_email') ?? '';
+      final currentUserName = prefs.getString('user_name') ?? '';
+      
+      // Don't notify if sender is current user
+      if (senderName == currentUserName || senderName == currentUserEmail) {
+        return;
+      }
+      
+      // Show notification
+      final displayName = senderName ?? 'Unknown User';
+      final messageText = message.text;
+      
+      // Handle voice messages
+      if (message.type == voice.MessageType.voice && message.voiceMessage != null) {
+        await NotificationService().showMessageNotification(
+          sender: displayName,
+          message: 'Voice message',
+          payload: jsonEncode({
+            'type': 'message',
+            'chatType': 'local',
+            'senderName': displayName,
+            'messageType': 'voice',
+            'timestamp': message.timestamp.toIso8601String(),
+          }),
+        );
+      } else {
+        await NotificationService().showMessageNotification(
+          sender: displayName,
+          message: messageText,
+          payload: jsonEncode({
+            'type': 'message',
+            'chatType': 'local',
+            'senderName': displayName,
+            'message': messageText,
+            'timestamp': message.timestamp.toIso8601String(),
+          }),
+        );
+      }
+    } catch (e) {
+      print('Error showing message notification: $e');
+    }
   }
 
   void clearMessages() {

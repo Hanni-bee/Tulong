@@ -22,8 +22,8 @@ class _EnhancedGlobalChatScreenState extends State<EnhancedGlobalChatScreen>
   final FocusNode _focusNode = FocusNode();
   
   bool _isTyping = false;
-  bool _isConnected = true;
-  String _typingUser = '';
+  final bool _isConnected = true;
+  final String _typingUser = '';
   
   late AnimationController _sendButtonController;
   late Animation<double> _sendButtonScale;
