@@ -23,18 +23,21 @@ class LocalChatScreen extends StatefulWidget {
   State<LocalChatScreen> createState() => _LocalChatScreenState();
 }
 
-class _LocalChatScreenState extends State<LocalChatScreen> {
+class _LocalChatScreenState extends State<LocalChatScreen> with WidgetsBindingObserver {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final ScrollController _debugScrollController = ScrollController();
   
   bool _isDebugConsoleVisible = false;
   bool _isRecording = false;
+  int _lastMessageCount = 0;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      context.read<ChatProvider>().setChatScreenActive(true);
       context.read<ChatProvider>().loadPairedDevices();
       // Set current user name from database/storage (signup information)
       final authProvider = context.read<AuthProvider>();
@@ -177,6 +180,14 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
             Expanded(
               child: Consumer<ChatProvider>(
                 builder: (context, provider, child) {
+                  // Auto-scroll when a new message arrives (incoming or outgoing)
+                  if (provider.messages.length != _lastMessageCount) {
+                    _lastMessageCount = provider.messages.length;
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      _scrollToBottom();
+                    });
+                  }
+                  
                   return provider.messages.isEmpty
                       ? EmptyStateEntrance(
                           iconWidget: Icon(
@@ -636,10 +647,23 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    // Mark chat screen as inactive to re-enable notifications elsewhere
+    context.read<ChatProvider>().setChatScreenActive(false);
     _messageController.dispose();
     _scrollController.dispose();
     _debugScrollController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Only suppress notifications when app is in foreground and chat is visible
+    if (state == AppLifecycleState.resumed) {
+      context.read<ChatProvider>().setChatScreenActive(true);
+    } else {
+      context.read<ChatProvider>().setChatScreenActive(false);
+    }
   }
 }
 

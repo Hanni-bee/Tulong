@@ -2,10 +2,12 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_bluetooth_serial_plus/flutter_bluetooth_serial_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/bluetooth_service.dart';
 import '../services/voice_chat_extension.dart' as voice;
 import 'auth_provider.dart';
 import '../services/sqlite_service.dart';
+import '../services/notification_service.dart';
 
 class ChatProvider with ChangeNotifier {
   final BluetoothService _bluetoothService = BluetoothService();
@@ -17,10 +19,12 @@ class ChatProvider with ChangeNotifier {
   List<ChatMessage> _messages = [];
   List<String> _debugLogs = [];
   bool _isConnecting = false;
+  bool _isChatScreenActive = false;
   
   // Connected users on the channel (extracted from messages)
   Set<String> _connectedUsers = {};
   String? _currentUserName;
+  int _maxConnectedDevicesCount = 0;
 
   List<BluetoothDevice> get pairedDevices => _pairedDevices;
   BluetoothDevice? get selectedDevice => _selectedDevice;
@@ -28,6 +32,7 @@ class ChatProvider with ChangeNotifier {
   List<ChatMessage> get messages => _messages;
   List<String> get debugLogs => _debugLogs;
   bool get isConnecting => _isConnecting;
+  bool get isChatScreenActive => _isChatScreenActive;
   
   // Get connected users including current user
   List<String> get connectedUsers {
@@ -56,6 +61,9 @@ class ChatProvider with ChangeNotifier {
   voice.VoiceChatExtension get voiceExtension => _voiceExtension;
   bool get isRecording => _voiceExtension.isRecording;
   bool get isPlaying => _voiceExtension.isPlaying;
+  
+  // Maximum connected devices count (highest number reached)
+  int get maxConnectedDevicesCount => _maxConnectedDevicesCount;
 
   StreamSubscription<String>? _messageSubscription;
   StreamSubscription<bool>? _connectionSubscription;
@@ -66,6 +74,8 @@ class ChatProvider with ChangeNotifier {
   }
 
   void _init() {
+    _loadMaxConnectedDevicesCount();
+    
     _messageSubscription = _bluetoothService.messageStream.listen((message) {
       _processIncomingMessage(message);
     });
@@ -138,7 +148,13 @@ class ChatProvider with ChangeNotifier {
   /// Set current user name (called from UI)
   void setCurrentUserName(String? userName) {
     _currentUserName = userName;
+    _updateMaxConnectedDevicesCount();
     notifyListeners();
+  }
+
+  /// Mark chat screen visibility to control notifications
+  void setChatScreenActive(bool active) {
+    _isChatScreenActive = active;
   }
 
   Future<void> disconnect() async {
@@ -232,15 +248,32 @@ class ChatProvider with ChangeNotifier {
           final messageText = parts.sublist(1).join(':').trim();
           _addConnectedUser(sender);
           _addMessage(messageText, false, senderName: sender);
+          _maybeShowNotification(senderName: sender, body: messageText);
         } else {
           _addMessage(message, false);
+          _maybeShowNotification(senderName: null, body: message);
         }
       } else {
         // Regular text message - try to extract user info
         String? extractedSender = _extractUserFromMessage(message);
-        _addMessage(message, false, senderName: extractedSender);
+        final body = _extractMessageBody(message);
+        _addMessage(body, false, senderName: extractedSender);
+        _maybeShowNotification(senderName: extractedSender, body: body);
       }
     }
+  }
+
+  String _extractMessageBody(String rawMessage) {
+    // Try JSON first to get the 'message' field
+    try {
+      final jsonData = json.decode(rawMessage);
+      if (jsonData is Map && jsonData['message'] is String) {
+        return (jsonData['message'] as String).trim();
+      }
+    } catch (_) {
+      // Not JSON or no message field, fall back
+    }
+    return rawMessage.trim();
   }
   
   /// Extract and track user from message, returns sender name if found
@@ -264,11 +297,30 @@ class ChatProvider with ChangeNotifier {
     }
     return null;
   }
+
+  void _maybeShowNotification({String? senderName, required String body}) {
+    if (_isChatScreenActive) return; // Suppress when chat screen is open
+    if (body.isEmpty) return;
+    try {
+      // Fire-and-forget local notification
+      unawaited(NotificationService().showMessageNotification(
+        sender: senderName ?? 'New message',
+        message: body,
+      ));
+    } catch (e) {
+      addStructuredDebug({
+        'source': 'NOTIFY',
+        'event': 'Failed to show notification',
+        'metrics': {'error': e.toString()},
+      });
+    }
+  }
   
   /// Add connected user to the list
   void _addConnectedUser(String user) {
     if (user.isNotEmpty && user != 'Me' && user != 'ESP') {
       _connectedUsers.add(user);
+      _updateMaxConnectedDevicesCount();
       notifyListeners();
     }
   }
@@ -288,6 +340,38 @@ class ChatProvider with ChangeNotifier {
   void clearConnectedUsers() {
     _connectedUsers.clear();
     notifyListeners();
+  }
+
+  /// Load maximum connected devices count from SharedPreferences
+  Future<void> _loadMaxConnectedDevicesCount() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _maxConnectedDevicesCount = prefs.getInt('max_connected_devices_count') ?? 0;
+      
+      // After loading, check if current count is higher and update if needed
+      // This handles the case where app was closed while devices were connected
+      // Use a small delay to ensure connectedUsersCount is calculated correctly
+      Future.delayed(const Duration(milliseconds: 100), () {
+        _updateMaxConnectedDevicesCount();
+      });
+    } catch (e) {
+      _maxConnectedDevicesCount = 0;
+    }
+  }
+
+  /// Update maximum connected devices count if current count is higher
+  Future<void> _updateMaxConnectedDevicesCount() async {
+    final currentCount = connectedUsersCount;
+    if (currentCount > _maxConnectedDevicesCount) {
+      _maxConnectedDevicesCount = currentCount;
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setInt('max_connected_devices_count', _maxConnectedDevicesCount);
+        notifyListeners();
+      } catch (e) {
+        // Silently handle errors
+      }
+    }
   }
 
   /// Add voice message to chat
@@ -558,4 +642,5 @@ class ChatMessage {
 }
 
 // voice.MessageStatus is defined in voice_chat_extension.dart
+
 

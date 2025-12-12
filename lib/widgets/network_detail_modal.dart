@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../providers/chat_provider.dart';
 import '../services/simple_bluetooth_service.dart';
 import '../constants/app_colors.dart';
 import '../constants/app_typography.dart';
@@ -67,10 +68,11 @@ class NetworkDetailModal extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 4),
-                        Consumer<SimpleBluetoothService>(
-                          builder: (context, btService, child) {
+                        Consumer2<SimpleBluetoothService, ChatProvider>(
+                          builder: (context, btService, chatProvider, child) {
+                            final isConnected = btService.isConnected || chatProvider.isConnected;
                             return Text(
-                              btService.isConnected ? 'Connected' : 'Disconnected',
+                              isConnected ? 'Connected' : 'Disconnected',
                               style: UnifiedTypography.bodySmall.copyWith(
                                 color: Colors.white.withOpacity(0.9),
                                 fontSize: 13,
@@ -91,8 +93,57 @@ class NetworkDetailModal extends StatelessWidget {
             
             // Content
             Expanded(
-              child: Consumer<SimpleBluetoothService>(
-                builder: (context, btService, child) {
+              child: Consumer2<SimpleBluetoothService, ChatProvider>(
+                builder: (context, btService, chatProvider, child) {
+                  final bool isConnectedService = btService.isConnected;
+                  final bool isConnectedChat = chatProvider.isConnected;
+                  final bool isConnected = isConnectedService || isConnectedChat;
+
+                  final String deviceName = isConnectedService
+                      ? (btService.pairedDeviceName.isNotEmpty
+                          ? btService.pairedDeviceName
+                          : 'N/A')
+                      : (chatProvider.selectedDevice?.name ?? 'N/A');
+
+                  final String nodeId = isConnectedService
+                      ? (btService.esp32NodeId.isNotEmpty
+                          ? btService.esp32NodeId
+                          : 'N/A')
+                      : (chatProvider.selectedDevice?.address ?? 'N/A');
+
+                  final String connectionStatus = isConnectedService
+                      ? btService.connectionStatus
+                      : (isConnectedChat ? 'Connected via Local Chat' : 'Disconnected');
+
+                  final String authenticationLabel;
+                  final Color authenticationColor;
+
+                  if (isConnectedService) {
+                    authenticationLabel = btService.isAuthenticated ? 'Authenticated' : 'Pending';
+                    authenticationColor = btService.isAuthenticated
+                        ? AppColors.success
+                        : AppColors.warning;
+                  } else if (isConnectedChat) {
+                    authenticationLabel = 'Local Chat Active';
+                    authenticationColor = AppColors.info;
+                  } else {
+                    authenticationLabel = 'Disconnected';
+                    authenticationColor = AppColors.error;
+                  }
+
+                  final List<Map<String, dynamic>> userEntries = isConnectedService
+                      ? btService.connectedUsers
+                      : chatProvider.connectedUsers
+                          .map((name) => {
+                                'name': name,
+                                'nodeId': '',
+                                'signalStrength': 0,
+                                'isOnline': true,
+                              })
+                          .toList();
+
+                  final String lastError = isConnectedService ? btService.lastError : '';
+
                   return SingleChildScrollView(
                     padding: const EdgeInsets.all(20),
                     child: Column(
@@ -105,32 +156,29 @@ class NetworkDetailModal extends StatelessWidget {
                           children: [
                             _buildDetailRow(
                               label: 'Status',
-                              value: btService.isConnected ? 'Connected' : 'Disconnected',
-                              valueColor: btService.isConnected 
-                                  ? AppColors.success 
-                                  : AppColors.error,
+                              value: isConnected ? 'Connected' : 'Disconnected',
+                              valueColor: isConnected ? AppColors.success : AppColors.error,
                             ),
-                            if (btService.isConnected) ...[
+                            _buildDetailRow(
+                              label: 'Connection Source',
+                              value: connectionStatus,
+                            ),
+                            if (isConnected && nodeId.isNotEmpty) ...[
                               _buildDetailRow(
                                 label: 'Node ID',
-                                value: btService.esp32NodeId.isNotEmpty 
-                                    ? btService.esp32NodeId 
-                                    : 'N/A',
+                                value: nodeId,
                               ),
                               _buildDetailRow(
                                 label: 'Device Name',
-                                value: btService.pairedDeviceName.isNotEmpty 
-                                    ? btService.pairedDeviceName 
-                                    : 'N/A',
-                              ),
-                              _buildDetailRow(
-                                label: 'Authentication',
-                                value: btService.isAuthenticated ? 'Authenticated' : 'Pending',
-                                valueColor: btService.isAuthenticated 
-                                    ? AppColors.success 
-                                    : AppColors.warning,
+                                value: deviceName,
                               ),
                             ],
+                            if (isConnected)
+                              _buildDetailRow(
+                                label: 'Authentication',
+                                value: authenticationLabel,
+                                valueColor: authenticationColor,
+                              ),
                           ],
                         ),
                         
@@ -143,38 +191,33 @@ class NetworkDetailModal extends StatelessWidget {
                           children: [
                             _buildDetailRow(
                               label: 'Connected Users',
-                              value: '${btService.connectedUsers.length}',
+                              value: '${userEntries.length}',
                               valueColor: AppColors.info,
                             ),
                             _buildDetailRow(
                               label: 'Connection Status',
-                              value: btService.connectionStatus,
+                              value: connectionStatus,
                             ),
-                            if (btService.isConnected) ...[
+                            if (isConnectedService && lastError.isNotEmpty)
                               _buildDetailRow(
                                 label: 'Last Error',
-                                value: btService.lastError.isNotEmpty 
-                                    ? btService.lastError 
-                                    : 'None',
-                                valueColor: btService.lastError.isNotEmpty 
-                                    ? AppColors.error 
-                                    : AppColors.success,
+                                value: lastError,
+                                valueColor: AppColors.error,
                               ),
-                            ],
                           ],
                         ),
                         
                         const SizedBox(height: 20),
                         
                         // Connected Users List
-                        if (btService.connectedUsers.isNotEmpty) ...[
+                        if (userEntries.isNotEmpty) ...[
                           _buildDetailSection(
                             title: 'Connected Users',
                             icon: Icons.people,
                             children: [
-                              ...btService.connectedUsers.map((user) {
+                              ...userEntries.map((user) {
                                 final name = user['name'] ?? 'Unknown';
-                                final nodeId = user['nodeId'] ?? 'N/A';
+                                final node = user['nodeId'] ?? 'N/A';
                                 final signal = user['signalStrength'] ?? 0;
                                 final isOnline = user['isOnline'] ?? false;
                                 
@@ -198,14 +241,13 @@ class NetworkDetailModal extends StatelessWidget {
                                           height: 40,
                                           decoration: BoxDecoration(
                                             color: isOnline 
-                                                ? AppColors.success.withOpacity(0.1)
-                                                : Colors.grey.withOpacity(0.1),
+                                                ? AppColors.success.withOpacity(0.2)
+                                                : Colors.grey.withOpacity(0.2),
                                             shape: BoxShape.circle,
                                           ),
                                           child: Icon(
-                                            Icons.person,
-                                            color: isOnline ? AppColors.success : Colors.grey,
-                                            size: 20,
+                                            isOnline ? Icons.wifi : Icons.wifi_off,
+                                            color: isOnline ? AppColors.success : AppColors.mediumGray,
                                           ),
                                         ),
                                         const SizedBox(width: 12),
@@ -215,45 +257,60 @@ class NetworkDetailModal extends StatelessWidget {
                                             children: [
                                               Text(
                                                 name,
-                                                style: AppTypography.titleSmall.copyWith(
-                                                  fontWeight: FontWeight.w700,
+                                                style: AppTypography.bodyMedium.copyWith(
+                                                  fontWeight: FontWeight.w600,
+                                                  color: AppColors.textPrimary,
                                                 ),
                                               ),
+                                              const SizedBox(height: 4),
                                               Text(
-                                                nodeId,
+                                                'Node: ${node.isNotEmpty ? node : 'N/A'}',
                                                 style: AppTypography.bodySmall.copyWith(
                                                   color: AppColors.textSecondary,
-                                                  fontSize: 11,
+                                                  fontSize: 12,
                                                 ),
                                               ),
                                             ],
                                           ),
                                         ),
-                                        if (signal > 0) ...[
-                                          Icon(
-                                            Icons.signal_cellular_alt,
-                                            size: 16,
-                                            color: _getSignalColorFromStrength(signal),
-                                          ),
-                                          const SizedBox(width: 4),
-                                          Text(
-                                            '$signal/5',
-                                            style: TextStyle(
-                                              fontSize: 11,
-                                              color: AppColors.textSecondary,
+                                        const SizedBox(width: 12),
+                                        Column(
+                                          crossAxisAlignment: CrossAxisAlignment.end,
+                                          children: [
+                                            Text(
+                                              signal is int && signal > 0 ? 'Signal: $signal' : 'Signal: N/A',
+                                              style: AppTypography.bodySmall.copyWith(
+                                                color: AppColors.textSecondary,
+                                                fontSize: 11,
+                                              ),
                                             ),
-                                          ),
-                                        ],
+                                            const SizedBox(height: 4),
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                              decoration: BoxDecoration(
+                                                color: isOnline 
+                                                    ? AppColors.success.withOpacity(0.15)
+                                                    : Colors.grey.withOpacity(0.1),
+                                                borderRadius: BorderRadius.circular(12),
+                                              ),
+                                              child: Text(
+                                                isOnline ? 'Online' : 'Offline',
+                                                style: AppTypography.bodySmall.copyWith(
+                                                  fontSize: 11,
+                                                  color: isOnline ? AppColors.success : AppColors.mediumGray,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
                                       ],
                                     ),
                                   ),
                                 );
-                              }).toList(),
+                              }),
                             ],
                           ),
                         ],
-                        
-                        const SizedBox(height: 20),
                       ],
                     ),
                   );

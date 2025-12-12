@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import '../providers/chat_provider.dart';
 import '../services/simple_bluetooth_service.dart';
 import '../constants/app_colors.dart';
 import '../constants/app_typography.dart';
@@ -51,18 +52,34 @@ class _NetworkStatusDashboardState extends State<NetworkStatusDashboard> {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<SimpleBluetoothService>(
-      builder: (context, btService, child) {
-        final isConnected = btService.isConnected;
-        final isAuthenticated = btService.isAuthenticated;
-        final connectedUsers = btService.connectedUsers;
-        final nodeId = btService.esp32NodeId;
-        final status = btService.connectionStatus;
-        
-        // Calculate average signal strength from connected users
-        final signalStrength = _calculateSignalStrength(connectedUsers);
+    return Consumer2<SimpleBluetoothService, ChatProvider>(
+      builder: (context, btService, chatProvider, child) {
+        final bool isConnectedViaService = btService.isConnected;
+        final bool isConnectedViaChat = chatProvider.isConnected;
+        final bool isConnected = isConnectedViaService || isConnectedViaChat;
+
+        final bool isAuthenticated = isConnectedViaService && btService.isAuthenticated;
+
+        final String nodeId = isConnectedViaService
+            ? btService.esp32NodeId
+            : (chatProvider.selectedDevice?.name ?? '');
+
+        final String status = isConnectedViaService
+            ? btService.connectionStatus
+            : isConnectedViaChat
+                ? 'Connected via Local Chat'
+                : btService.connectionStatus;
+
+        final int connectedUsersCount = isConnectedViaService
+            ? btService.connectedUsers.length
+            : chatProvider.connectedUsersCount;
+
+        final int signalStrength = isConnectedViaService
+            ? _calculateSignalStrength(btService.connectedUsers)
+            : 0;
+
         // Battery level placeholder (would come from ESP32 if available)
-        final batteryLevel = isConnected ? 85 : 0; // Mock value
+        final int batteryLevel = isConnectedViaService ? 85 : 0; // Mock value
 
         return GestureDetector(
           onTap: () => _showNetworkDetails(context),
@@ -110,7 +127,6 @@ class _NetworkStatusDashboardState extends State<NetworkStatusDashboard> {
                     const Spacer(),
                     _buildStatusIndicator(isConnected),
                     const SizedBox(width: 8),
-                    // Refresh Button
                     IconButton(
                       icon: _isRefreshing
                           ? SizedBox(
@@ -132,7 +148,6 @@ class _NetworkStatusDashboardState extends State<NetworkStatusDashboard> {
                       tooltip: 'Refresh network status',
                     ),
                     const SizedBox(width: 4),
-                    // Tap indicator
                     Icon(
                       Icons.chevron_right,
                       size: 18,
@@ -140,33 +155,27 @@ class _NetworkStatusDashboardState extends State<NetworkStatusDashboard> {
                     ),
                   ],
                 ),
-              
-              const SizedBox(height: 16),
-              
-              // Connection Status Card
-              _buildConnectionCard(
-                isConnected: isConnected,
-                isAuthenticated: isAuthenticated,
-                status: status,
-                nodeId: nodeId,
-              ),
-              
-              const SizedBox(height: 12),
-              
-              // Network Stats Grid
-              _buildStatsGrid(
-                connectedUsers: connectedUsers.length,
-                signalStrength: signalStrength,
-                batteryLevel: batteryLevel,
-                isConnected: isConnected,
-              ),
-            ],
+                const SizedBox(height: 16),
+                _buildConnectionCard(
+                  isConnected: isConnected,
+                  isAuthenticated: isAuthenticated,
+                  status: status,
+                  nodeId: nodeId,
+                ),
+                const SizedBox(height: 12),
+                _buildStatsGrid(
+                  connectedUsers: connectedUsersCount,
+                  signalStrength: signalStrength,
+                  batteryLevel: batteryLevel,
+                  isConnected: isConnected,
+                ),
+              ],
+            ),
           ),
-        ),
-      );
-    },
-  );
-}
+        );
+      },
+    );
+  }
 
   int _calculateSignalStrength(List<Map<String, dynamic>> users) {
     if (users.isEmpty) return 0;

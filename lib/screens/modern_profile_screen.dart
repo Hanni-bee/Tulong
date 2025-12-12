@@ -6,6 +6,7 @@ import 'package:tulong_app/constants/app_colors.dart';
 import 'package:tulong_app/constants/unified_typography.dart';
 import 'package:tulong_app/constants/soft_ui_design.dart';
 import 'package:tulong_app/providers/auth_provider.dart';
+import 'package:tulong_app/providers/chat_provider.dart';
 import 'package:tulong_app/models/user_model.dart';
 import 'package:tulong_app/screens/notification_settings_screen.dart';
 import 'package:tulong_app/widgets/animated_neumorphic_card.dart';
@@ -293,9 +294,10 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
   }
 
   Widget _buildStatsSection() {
-    return Consumer<AuthProvider>(
-      builder: (context, auth, child) {
+    return Consumer2<AuthProvider, ChatProvider>(
+      builder: (context, auth, chatProvider, child) {
         final userModel = auth.currentUserModel;
+        final maxDevicesCount = chatProvider.maxConnectedDevicesCount;
         
         return Container(
           margin: const EdgeInsets.only(bottom: 32),
@@ -316,17 +318,11 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
               Expanded(
                 child: _statCardsStagger.buildAnimatedItem(
                   1,
-                  FutureBuilder<String>(
-                    future: _getConnectedDevicesCountAsync(),
-                    builder: (context, snapshot) {
-                      final deviceCount = snapshot.data ?? '0';
-                      return _buildStatCard(
-                        title: 'Connected Devices',
-                        value: deviceCount,
-                        icon: Icons.bluetooth_connected,
-                        color: AppColors.primaryRed,
-                      );
-                    },
+                  _buildStatCard(
+                    title: 'Connected Devices',
+                    value: maxDevicesCount.toString(),
+                    icon: Icons.bluetooth_connected,
+                    color: AppColors.primaryRed,
                   ),
                 ),
               ),

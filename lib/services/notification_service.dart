@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/timezone.dart' as tz;
@@ -30,6 +32,7 @@ class NotificationService {
 
   bool _isInitialized = false;
   String? _fcmToken;
+  bool _hasPermission = false;
 
   Future<void> initialize() async {
     if (_isInitialized) return;
@@ -148,11 +151,29 @@ class NotificationService {
       provisional: false,
     );
 
-    if (settings.authorizationStatus == AuthorizationStatus.authorized) {
+    _hasPermission = settings.authorizationStatus == AuthorizationStatus.authorized ||
+        settings.authorizationStatus == AuthorizationStatus.provisional;
+
+    // On Android 13+, also request the POST_NOTIFICATIONS permission via plugin
+    final androidImpl = _localNotifications
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+    if (androidImpl != null) {
+      final androidGranted = await androidImpl.requestNotificationsPermission();
+      _hasPermission = _hasPermission || (androidGranted ?? false);
+    }
+
+    if (_hasPermission) {
       debugPrint('✅ Notification permissions granted');
     } else {
       debugPrint('❌ Notification permissions denied');
     }
+  }
+
+  /// Ensure we have notification permission; if not, prompt the user.
+  Future<bool> ensurePermissionGranted() async {
+    if (_hasPermission) return true;
+    await _requestPermissions();
+    return _hasPermission;
   }
 
   Future<void> _getFCMToken() async {
@@ -232,10 +253,17 @@ class NotificationService {
     String? payload,
     required String channelId,
   }) async {
-    const androidDetails = AndroidNotificationDetails(
-      emergencyChannelId,
-      'Emergency Alerts',
-      channelDescription: 'Critical emergency notifications',
+    // Check/ask permission before attempting to show
+    final permitted = await ensurePermissionGranted();
+    if (!permitted) {
+      debugPrint('❌ Notifications not permitted; skipping local notification');
+      return;
+    }
+
+    final androidDetails = AndroidNotificationDetails(
+      channelId,
+      _getChannelName(channelId),
+      channelDescription: _getChannelDescription(channelId),
       importance: Importance.max,
       priority: Priority.high,
       icon: '@mipmap/ic_launcher',
@@ -247,7 +275,7 @@ class NotificationService {
       presentSound: true,
     );
 
-    const details = NotificationDetails(
+    final details = NotificationDetails(
       android: androidDetails,
       iOS: iosDetails,
     );
@@ -279,14 +307,47 @@ class NotificationService {
   Future<void> showMessageNotification({
     required String sender,
     required String message,
+    DateTime? sentAt,
     String? payload,
   }) async {
-    await _showLocalNotification(
-      id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
-      title: 'New message from $sender',
-      body: message,
-      payload: payload,
-      channelId: messageChannelId,
+    if (!await ensurePermissionGranted()) {
+      debugPrint('❌ Notifications not permitted; skipping message notification');
+      return;
+    }
+
+    final androidDetails = AndroidNotificationDetails(
+      messageChannelId,
+      _getChannelName(messageChannelId),
+      channelDescription: _getChannelDescription(messageChannelId),
+      importance: Importance.max,
+      priority: Priority.high,
+      category: AndroidNotificationCategory.message,
+      styleInformation: BigTextStyleInformation(
+        message,
+        contentTitle: sender,
+        summaryText: 'T.U.L.O.N.G',
+      ),
+      largeIcon: const DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
+      color: const Color(0xFFD32F2F),
+      showWhen: true,
+      when: (sentAt ?? DateTime.now()).millisecondsSinceEpoch,
+    );
+
+    const iosDetails = DarwinNotificationDetails(
+      presentAlert: true,
+      presentBadge: true,
+      presentSound: true,
+      subtitle: 'T.U.L.O.N.G',
+    );
+
+    final details = NotificationDetails(android: androidDetails, iOS: iosDetails);
+
+    await _localNotifications.show(
+      DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      sender,
+      message,
+      details,
+      payload: payload ?? jsonEncode({'sender': sender, 'message': message}),
     );
   }
 
@@ -443,6 +504,46 @@ class NotificationService {
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   debugPrint('📨 Handling background message: ${message.messageId}');
   
-  // You can perform background tasks here
-  // Note: This function must be a top-level function
+  // Ensure Firebase is initialized in background isolate
+  try {
+    await Firebase.initializeApp();
+  } catch (_) {
+    // Ignore if already initialized
+  }
+
+  // Show a simple local notification for background FCM messages
+  final flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
+
+  const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+  const iosSettings = DarwinInitializationSettings(
+    requestAlertPermission: true,
+    requestBadgePermission: true,
+    requestSoundPermission: true,
+  );
+  const initSettings = InitializationSettings(android: androidSettings, iOS: iosSettings);
+
+  await flutterLocalNotificationsPlugin.initialize(initSettings);
+
+  const androidDetails = AndroidNotificationDetails(
+    NotificationService.messageChannelId,
+    'Chat Messages',
+    channelDescription: 'New messages in chats',
+    importance: Importance.high,
+    priority: Priority.high,
+    icon: '@mipmap/ic_launcher',
+  );
+  const iosDetails = DarwinNotificationDetails(
+    presentAlert: true,
+    presentBadge: true,
+    presentSound: true,
+  );
+  const details = NotificationDetails(android: androidDetails, iOS: iosDetails);
+
+  await flutterLocalNotificationsPlugin.show(
+    message.hashCode,
+    message.notification?.title ?? 'New Message',
+    message.notification?.body ?? 'You have a new message',
+    details,
+    payload: jsonEncode(message.data),
+  );
 }
