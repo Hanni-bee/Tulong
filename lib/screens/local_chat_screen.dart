@@ -15,6 +15,8 @@ import '../widgets/sender_info_modal.dart';
 import '../widgets/enhanced_skeleton_loaders.dart';
 import '../widgets/enhanced_empty_state.dart';
 import '../widgets/accessible_text.dart';
+import '../widgets/enhanced_message_status.dart';
+import '../widgets/enhanced_voice_message_view.dart';
 
 /// Local Chat Screen - Polished UI with Working Backend
 class LocalChatScreen extends StatefulWidget {
@@ -37,6 +39,10 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final chatProvider = context.read<ChatProvider>();
+      
+      // Mark chat screen as visible and mark all messages as read
+      chatProvider.setLocalChatScreenVisible(true);
+      chatProvider.markAllMessagesAsRead();
       
       // Load paired devices
       chatProvider.loadPairedDevices();
@@ -131,6 +137,10 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
 
   Future<void> _playVoiceMessage(voice.VoiceMessage voiceMessage) async {
     final provider = context.read<ChatProvider>();
+    // Stop any currently playing message first
+    if (provider.isPlaying) {
+      await provider.stopPlayback();
+    }
     await provider.playVoiceMessage(voiceMessage);
   }
 
@@ -387,8 +397,10 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
   }
 
   Widget _buildMessageBubbleContent(ChatMessage message) {
+    final isEmergency = message.isEmergency;
+    
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: EdgeInsets.only(bottom: isEmergency ? 16 : 12),
       child: Row(
         mainAxisAlignment: message.isMe 
             ? MainAxisAlignment.end 
@@ -401,17 +413,37 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
                       _showSenderInfoModal(message.senderName!);
                     }
                   : null,
-              child: CircleAvatar(
-                radius: 16,
-                backgroundColor: AppColors.primaryRed.withOpacity(0.1),
-                child: Text(
-                  message.senderName?.isNotEmpty == true 
-                      ? (message.senderName![0].toUpperCase())
-                      : 'ESP',
-                  style: AppTypography.bodySmall.copyWith(
-                    color: AppColors.primaryRed,
-                    fontWeight: FontWeight.bold,
-                  ),
+              child: Container(
+                decoration: isEmergency ? BoxDecoration(
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.error.withOpacity(0.5),
+                      blurRadius: 12,
+                      spreadRadius: 2,
+                    ),
+                  ],
+                ) : null,
+                child: CircleAvatar(
+                  radius: isEmergency ? 18 : 16,
+                  backgroundColor: isEmergency 
+                      ? AppColors.error.withOpacity(0.2)
+                      : AppColors.primaryRed.withOpacity(0.1),
+                  child: isEmergency
+                      ? const Icon(
+                          Icons.emergency,
+                          color: AppColors.error,
+                          size: 20,
+                        )
+                      : Text(
+                          message.senderName?.isNotEmpty == true 
+                              ? (message.senderName![0].toUpperCase())
+                              : 'ESP',
+                          style: AppTypography.bodySmall.copyWith(
+                            color: isEmergency ? AppColors.error : AppColors.primaryRed,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                 ),
               ),
             ),
@@ -421,35 +453,81 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
             constraints: BoxConstraints(
               maxWidth: MediaQuery.of(context).size.width * 0.7,
             ),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: EdgeInsets.symmetric(
+              horizontal: isEmergency ? 18 : 16,
+              vertical: isEmergency ? 14 : 12,
+            ),
             decoration: BoxDecoration(
-              color: message.isMe ? AppColors.primaryRed : Colors.white,
+              color: isEmergency
+                  ? (message.isMe ? AppColors.error : AppColors.error.withOpacity(0.1))
+                  : (message.isMe ? AppColors.primaryRed : Colors.white),
               borderRadius: BorderRadius.circular(20).copyWith(
                 bottomLeft: message.isMe ? const Radius.circular(20) : const Radius.circular(4),
                 bottomRight: message.isMe ? const Radius.circular(4) : const Radius.circular(20),
               ),
               border: Border.all(
-                color: message.isMe 
-                    ? Colors.white.withOpacity(0.2)
-                    : AppColors.lightGray.withOpacity(0.5),
-                width: 1.5,
+                color: isEmergency
+                    ? AppColors.error.withOpacity(0.8)
+                    : (message.isMe 
+                        ? Colors.white.withOpacity(0.2)
+                        : AppColors.lightGray.withOpacity(0.5)),
+                width: isEmergency ? 2.5 : 1.5,
               ),
+              boxShadow: isEmergency ? [
+                BoxShadow(
+                  color: AppColors.error.withOpacity(0.3),
+                  blurRadius: 12,
+                  spreadRadius: 2,
+                  offset: const Offset(0, 4),
+                ),
+              ] : null,
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Emergency badge
+                if (isEmergency) ...[
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.sos_rounded,
+                        color: AppColors.error,
+                        size: 18,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        'EMERGENCY ALERT',
+                        style: AppTypography.bodySmall.copyWith(
+                          color: AppColors.error,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 1.2,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                ],
                 // Message content
                 if (message.type == voice.MessageType.voice && message.voiceMessage != null)
-                  _buildVoiceMessageContent(message.voiceMessage!)
+                  _buildVoiceMessageContent(message.voiceMessage!, message.timestamp.millisecondsSinceEpoch.toString(), message.isMe)
                 else
-                  AccessibleChatText(
-                    message.text,
-                    isMe: message.isMe,
-                    backgroundColor: message.isMe
-                        ? AppColors.primaryRed
-                        : AppColors.white,
-                    maxLines: null,
-                  ),
+                  isEmergency
+                      ? Text(
+                          message.text,
+                          style: AppTypography.bodyLarge.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: message.isMe ? Colors.white : AppColors.error,
+                          ),
+                        )
+                      : AccessibleChatText(
+                          message.text,
+                          isMe: message.isMe,
+                          backgroundColor: message.isMe
+                              ? AppColors.primaryRed
+                              : AppColors.white,
+                          maxLines: null,
+                        ),
                 const SizedBox(height: 4),
                 Row(
                   mainAxisSize: MainAxisSize.min,
@@ -457,12 +535,14 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
                     Text(
                       _formatDateTime(message.timestamp),
                       style: AppTypography.bodySmall.copyWith(
-                        color: message.isMe ? Colors.white70 : AppColors.lightGray,
+                        color: isEmergency
+                            ? (message.isMe ? Colors.white70 : AppColors.error.withOpacity(0.8))
+                            : (message.isMe ? Colors.white70 : AppColors.lightGray),
                       ),
                     ),
                     if (message.isMe) ...[
                       const SizedBox(width: 8),
-                      _buildMessageStatus(message.status),
+                      _buildMessageStatus(message.status, message.isRead),
                     ],
                   ],
                 ),
@@ -471,15 +551,35 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
           ),
           if (message.isMe) ...[
             const SizedBox(width: 8),
-            CircleAvatar(
-              radius: 16,
-              backgroundColor: AppColors.primaryRed.withOpacity(0.1),
-              child: Text(
-                'Me',
-                style: AppTypography.bodySmall.copyWith(
-                  color: AppColors.primaryRed,
-                  fontWeight: FontWeight.bold,
-                ),
+            Container(
+              decoration: isEmergency ? BoxDecoration(
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.error.withOpacity(0.5),
+                    blurRadius: 12,
+                    spreadRadius: 2,
+                  ),
+                ],
+              ) : null,
+              child: CircleAvatar(
+                radius: isEmergency ? 18 : 16,
+                backgroundColor: isEmergency
+                    ? AppColors.error.withOpacity(0.2)
+                    : AppColors.primaryRed.withOpacity(0.1),
+                child: isEmergency
+                    ? const Icon(
+                        Icons.emergency,
+                        color: AppColors.error,
+                        size: 20,
+                      )
+                    : Text(
+                        'Me',
+                        style: AppTypography.bodySmall.copyWith(
+                          color: isEmergency ? AppColors.error : AppColors.primaryRed,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
               ),
             ),
           ],
@@ -488,50 +588,19 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
     );
   }
 
-  Widget _buildVoiceMessageContent(voice.VoiceMessage voiceMessage) {
-    return GestureDetector(
-      onTap: () => _playVoiceMessage(voiceMessage),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: AppColors.primaryRed.withOpacity(0.3),
-            width: 1,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.play_arrow,
-              color: AppColors.primaryRed,
-              size: 20,
-            ),
-            const SizedBox(width: 8),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Voice Message',
-                  style: AppTypography.bodySmall.copyWith(
-                    color: AppColors.primaryRed,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                Text(
-                  '${voiceMessage.formattedSize} • ${voiceMessage.formattedDuration}',
-                  style: AppTypography.bodySmall.copyWith(
-                    color: AppColors.primaryRed.withOpacity(0.7),
-                    fontSize: 11,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
+  Widget _buildVoiceMessageContent(voice.VoiceMessage voiceMessage, String messageId, bool isMe) {
+    final provider = context.watch<ChatProvider>();
+    // For now, we'll use a simple check - if any voice message is playing
+    // TODO: Add message ID tracking in ChatProvider for more accurate tracking
+    final isPlaying = provider.isPlaying;
+    
+    return EnhancedVoiceMessageView(
+      voiceMessage: voiceMessage,
+      isMe: isMe,
+      isPlaying: isPlaying,
+      currentPosition: null, // TODO: Add position tracking if needed
+      onPlay: () => _playVoiceMessage(voiceMessage),
+      onPause: () => provider.stopPlayback(),
     );
   }
 
@@ -542,34 +611,19 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
     );
   }
 
-  Widget _buildMessageStatus(voice.MessageStatus status) {
-    IconData icon;
-    Color color;
-    
-    switch (status) {
-      case voice.MessageStatus.sending:
-        icon = Icons.access_time;
-        color = Colors.white70;
-        break;
-      case voice.MessageStatus.sent:
-        icon = Icons.check;
-        color = Colors.white70;
-        break;
-      case voice.MessageStatus.delivered:
-        icon = Icons.done_all;
-        color = Colors.white70;
-        break;
-      case voice.MessageStatus.received:
-        icon = Icons.done_all;
-        color = Colors.blue[300]!;
-        break;
-      case voice.MessageStatus.failed:
-        icon = Icons.error;
-        color = Colors.red[300]!;
-        break;
-    }
-    
-    return Icon(icon, color: color, size: 16);
+  Widget _buildMessageStatus(voice.MessageStatus status, bool isRead) {
+    return EnhancedMessageStatus(
+      status: status,
+      isRead: isRead,
+      onRetry: status == voice.MessageStatus.failed
+          ? () {
+              // TODO: Implement retry logic for failed messages
+              // You can access the message from the parent widget if needed
+            }
+          : null,
+      iconColor: Colors.white70,
+      size: 16.0,
+    );
   }
 
   String _formatDateTime(DateTime dateTime) {
@@ -798,6 +852,10 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
 
   @override
   void dispose() {
+    // Mark chat screen as not visible
+    final chatProvider = context.read<ChatProvider>();
+    chatProvider.setLocalChatScreenVisible(false);
+    
     _messageController.dispose();
     _scrollController.dispose();
     _debugScrollController.dispose();
@@ -813,13 +871,40 @@ class _DeviceSelectionDialog extends StatefulWidget {
 
 class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
   bool _showAllDevices = false;
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
   
   @override
   void initState() {
     super.initState();
+    _searchController.addListener(() {
+      setState(() {
+        _searchQuery = _searchController.text;
+      });
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<ChatProvider>().loadPairedDevices();
     });
+  }
+  
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+  
+  List<dynamic> _filterPairedDevices(List<dynamic> devices) {
+    if (_searchQuery.isEmpty) return devices;
+    return devices.where((device) {
+      try {
+        final name = (device?.name ?? '').toString().toLowerCase();
+        final address = (device?.address ?? '').toString().toLowerCase();
+        final query = _searchQuery.toLowerCase();
+        return name.contains(query) || address.contains(query);
+      } catch (e) {
+        return false;
+      }
+    }).toList();
   }
 
   @override
@@ -950,9 +1035,15 @@ class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
                               Text(
                                 provider.isConnected 
                                     ? 'Connected' 
-                                    : 'Not Connected',
+                                    : (provider.selectedDevice != null
+                                        ? 'Disconnected'
+                                        : 'Not Connected'),
                                 style: AppTypography.bodyLarge.copyWith(
-                                  color: provider.isConnected ? cyanBlue : Colors.grey,
+                                  color: provider.isConnected 
+                                      ? cyanBlue 
+                                      : (provider.selectedDevice != null 
+                                          ? Colors.orange 
+                                          : Colors.grey),
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
@@ -960,9 +1051,15 @@ class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
                               Text(
                                 provider.isConnected 
                                     ? 'Device: ${provider.selectedDevice?.name ?? "ESP32"}' 
-                                    : 'No device connected',
+                                    : (provider.selectedDevice != null
+                                        ? 'Disconnected from ${provider.selectedDevice?.name ?? "ESP32"}\nTap "Reconnect" to connect again'
+                                        : 'No device connected'),
                                 style: AppTypography.bodySmall.copyWith(
-                                  color: AppColors.mediumGray,
+                                  color: provider.isConnected 
+                                      ? AppColors.mediumGray 
+                                      : (provider.selectedDevice != null 
+                                          ? Colors.orange.shade700 
+                                          : AppColors.mediumGray),
                                 ),
                               ),
                             ],
@@ -1015,40 +1112,66 @@ class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
                 ),
                 const SizedBox(height: 16),
                 
+                // Search Bar
+                if (provider.pairedDevices.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: TextField(
+                      controller: _searchController,
+                      decoration: InputDecoration(
+                        hintText: 'Search paired devices...',
+                        prefixIcon: const Icon(Icons.search, color: AppColors.textSecondary, size: 20),
+                        suffixIcon: _searchQuery.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(Icons.clear, size: 20),
+                                onPressed: () {
+                                  _searchController.clear();
+                                },
+                                color: AppColors.textSecondary,
+                              )
+                            : null,
+                        filled: true,
+                        fillColor: AppColors.backgroundLight,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: AppColors.lightGray),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: AppColors.lightGray),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: cyanBlue, width: 2),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      ),
+                    ),
+                  ),
+                if (provider.pairedDevices.isNotEmpty) const SizedBox(height: 16),
+                
                 // Device list
                 Expanded(
-                  child: provider.pairedDevices.isEmpty
-                      ? Center(
-                          child: SingleChildScrollView(
-                            child: Padding(
-                              padding: const EdgeInsets.all(40),
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                Container(
-                                  padding: const EdgeInsets.all(24),
-                                  decoration: BoxDecoration(
-                                    color: Colors.grey.withOpacity(0.1),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: Icon(
-                                    Icons.bluetooth_searching,
-                                    size: 64,
-                                    color: Colors.grey,
-                                  ),
+                  child: Builder(
+                    builder: (context) {
+                      final filteredDevices = _filterPairedDevices(provider.pairedDevices);
+                      
+                      if (filteredDevices.isEmpty && _searchQuery.isNotEmpty) {
+                        return Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(40),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.search_off,
+                                  size: 64,
+                                  color: Colors.grey.withOpacity(0.5),
                                 ),
-                                const SizedBox(height: 24),
+                                const SizedBox(height: 16),
                                 Text(
-                                  'No paired devices found',
-                                  style: AppTypography.headlineSmall.copyWith(
-                                    color: AppColors.darkGray,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  'Please pair with ESP32 device first',
-                                  style: AppTypography.bodyMedium.copyWith(
+                                  'No devices match "$_searchQuery"',
+                                  style: AppTypography.bodyLarge.copyWith(
                                     color: AppColors.mediumGray,
                                   ),
                                   textAlign: TextAlign.center,
@@ -1056,9 +1179,53 @@ class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
                               ],
                             ),
                           ),
-                        ),
-                      )
-                      : Column(
+                        );
+                      }
+                      
+                      if (provider.pairedDevices.isEmpty) {
+                        return Center(
+                          child: SingleChildScrollView(
+                            child: Padding(
+                              padding: const EdgeInsets.all(40),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(24),
+                                    decoration: BoxDecoration(
+                                      color: Colors.grey.withOpacity(0.1),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Icon(
+                                      Icons.bluetooth_searching,
+                                      size: 64,
+                                      color: Colors.grey,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 24),
+                                  Text(
+                                    'No paired devices found',
+                                    style: AppTypography.headlineSmall.copyWith(
+                                      color: AppColors.darkGray,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'Please pair with ESP32 device first',
+                                    style: AppTypography.bodyMedium.copyWith(
+                                      color: AppColors.mediumGray,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      }
+                      
+                      return Column(
                           children: [
                             Expanded(
                               child: Container(
@@ -1070,12 +1237,13 @@ class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
                                 child: ListView.builder(
                                   padding: const EdgeInsets.all(8),
                                   itemCount: _showAllDevices 
-                                      ? provider.pairedDevices.length 
-                                      : (provider.pairedDevices.length > 5 ? 5 : provider.pairedDevices.length),
+                                      ? filteredDevices.length 
+                                      : (filteredDevices.length > 5 ? 5 : filteredDevices.length),
                                   itemBuilder: (context, index) {
-                                    final device = provider.pairedDevices[index];
+                                    final device = filteredDevices[index];
                                     final isSelected = provider.selectedDevice?.address == device.address;
                                     final isConnected = provider.isConnected && isSelected;
+                                    final wasDisconnected = isSelected && !provider.isConnected; // Previously connected but now disconnected
                                     
                                     return Container(
                                       margin: const EdgeInsets.only(bottom: 8),
@@ -1085,10 +1253,12 @@ class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
                                         border: Border.all(
                                           color: isConnected 
                                               ? cyanBlue.withOpacity(0.5) 
-                                              : (isSelected 
-                                                  ? cyanBlue.withOpacity(0.3) 
-                                                  : Colors.grey.withOpacity(0.2)),
-                                          width: isConnected || isSelected ? 1.5 : 1,
+                                              : (wasDisconnected 
+                                                  ? Colors.orange.withOpacity(0.4) // Orange border for disconnected devices
+                                                  : (isSelected 
+                                                      ? cyanBlue.withOpacity(0.3) 
+                                                      : Colors.grey.withOpacity(0.2))),
+                                          width: isConnected || wasDisconnected || isSelected ? 1.5 : 1,
                                         ),
                                         boxShadow: [
                                           BoxShadow(
@@ -1108,13 +1278,19 @@ class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
                                               end: Alignment.bottomRight,
                                               colors: isConnected
                                                   ? [cyanBlue, cyanBlue.withOpacity(0.7)]
-                                                  : [Colors.grey.withOpacity(0.3), Colors.grey.withOpacity(0.1)],
+                                                  : (wasDisconnected
+                                                      ? [Colors.orange.withOpacity(0.3), Colors.orange.withOpacity(0.1)]
+                                                      : [Colors.grey.withOpacity(0.3), Colors.grey.withOpacity(0.1)]),
                                             ),
                                             borderRadius: BorderRadius.circular(10),
                                           ),
                                           child: Icon(
-                                            isConnected ? Icons.bluetooth_connected : Icons.bluetooth,
-                                            color: isConnected ? Colors.white : AppColors.mediumGray,
+                                            isConnected 
+                                                ? Icons.bluetooth_connected 
+                                                : (wasDisconnected ? Icons.bluetooth_disabled : Icons.bluetooth),
+                                            color: isConnected 
+                                                ? Colors.white 
+                                                : (wasDisconnected ? Colors.orange : AppColors.mediumGray),
                                             size: 24,
                                           ),
                                         ),
@@ -1132,11 +1308,14 @@ class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
                                           ),
                                         ),
                                         trailing: isConnected
-                                            ? ElevatedButton(
-                                                onPressed: () {
-                                                  provider.disconnect();
-                                                  Navigator.pop(context);
+                                            ? ElevatedButton.icon(
+                                                onPressed: () async {
+                                                  await provider.disconnect();
+                                                  if (mounted) {
+                                                    setState(() {}); // Refresh UI
+                                                  }
                                                 },
+                                                icon: const Icon(Icons.bluetooth_disabled, size: 18),
                                                 style: ElevatedButton.styleFrom(
                                                   backgroundColor: Colors.red,
                                                   foregroundColor: Colors.white,
@@ -1145,24 +1324,65 @@ class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
                                                     borderRadius: BorderRadius.circular(8),
                                                   ),
                                                 ),
-                                                child: const Text('Disconnect'),
+                                                label: const Text('Disconnect'),
                                               )
-                                            : ElevatedButton(
+                                            : ElevatedButton.icon(
                                                 onPressed: provider.isConnecting ? null : () async {
+                                                  HapticFeedback.mediumImpact();
                                                   bool success = await provider.connectToDevice(device, context: context);
                                                   if (success && mounted) {
+                                                    HapticFeedback.heavyImpact();
+                                                    ScaffoldMessenger.of(context).showSnackBar(
+                                                      SnackBar(
+                                                        content: Row(
+                                                          children: [
+                                                            const Icon(Icons.check_circle, color: Colors.white, size: 20),
+                                                            const SizedBox(width: 8),
+                                                            Text('Connected to ${device.name ?? "ESP32"}'),
+                                                          ],
+                                                        ),
+                                                        backgroundColor: Colors.green,
+                                                        behavior: SnackBarBehavior.floating,
+                                                        duration: const Duration(seconds: 2),
+                                                      ),
+                                                    );
+                                                    await Future.delayed(const Duration(milliseconds: 500));
                                                     Navigator.pop(context);
+                                                  } else if (mounted) {
+                                                    HapticFeedback.heavyImpact();
+                                                    ScaffoldMessenger.of(context).showSnackBar(
+                                                      SnackBar(
+                                                        content: Row(
+                                                          children: [
+                                                            const Icon(Icons.error, color: Colors.white, size: 20),
+                                                            const SizedBox(width: 8),
+                                                            const Text('Failed to connect. Please try again.'),
+                                                          ],
+                                                        ),
+                                                        backgroundColor: Colors.red,
+                                                        behavior: SnackBarBehavior.floating,
+                                                        duration: const Duration(seconds: 3),
+                                                      ),
+                                                    );
                                                   }
                                                 },
+                                                icon: Icon(
+                                                  wasDisconnected ? Icons.refresh : Icons.bluetooth,
+                                                  size: 18,
+                                                ),
                                                 style: ElevatedButton.styleFrom(
-                                                  backgroundColor: cyanBlue,
+                                                  backgroundColor: wasDisconnected ? Colors.orange : cyanBlue,
                                                   foregroundColor: Colors.white,
                                                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                                                   shape: RoundedRectangleBorder(
                                                     borderRadius: BorderRadius.circular(8),
                                                   ),
                                                 ),
-                                                child: Text(provider.isConnecting ? 'Connecting...' : 'Connect'),
+                                                label: Text(
+                                                  provider.isConnecting 
+                                                      ? 'Connecting...' 
+                                                      : (wasDisconnected ? 'Reconnect' : 'Connect'),
+                                                ),
                                               ),
                                       ),
                                     );
@@ -1195,7 +1415,7 @@ class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
                             ],
                             
                             // Show less button
-                            if (_showAllDevices && provider.pairedDevices.length > 5) ...[
+                            if (_showAllDevices && filteredDevices.length > 5) ...[
                               const SizedBox(height: 8),
                               Padding(
                                 padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -1217,7 +1437,9 @@ class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
                               ),
                             ],
                           ],
-                        ),
+                        );
+                    },
+                  ),
                 ),
                 
                 // Close button

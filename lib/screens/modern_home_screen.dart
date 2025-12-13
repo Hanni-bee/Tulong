@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
 import '../constants/app_colors.dart';
@@ -17,7 +18,6 @@ import '../utils/page_transitions.dart';
 import '../utils/phone_responsive_helper.dart';
 import '../providers/auth_provider.dart';
 import '../providers/chat_provider.dart';
-import '../services/offline_messaging_service.dart';
 import '../utils/prototype_animations.dart';
 import '../widgets/special_animations.dart';
 import 'local_chat_screen.dart';
@@ -28,10 +28,10 @@ import '../widgets/radar_scan_modal.dart';
 import '../widgets/enhanced_skeleton_loaders.dart';
 import '../widgets/enhanced_micro_interactions.dart' as micro;
 import '../widgets/accessible_text.dart';
+import '../widgets/animated_neumorphic_card.dart';
 import '../utils/icon_system.dart';
 import '../utils/enhanced_page_transitions.dart';
-import '../services/notification_service.dart';
-import 'dart:convert';
+import '../services/simple_bluetooth_service.dart';
 
 class ModernHomeScreen extends StatefulWidget {
   const ModernHomeScreen({super.key});
@@ -260,14 +260,12 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                       PolishedFadeIn(
                         delay: const Duration(milliseconds: 300),
                         child: _isLoadingStats 
-                            ? Container(
+                              ? Container(
                                 margin: const EdgeInsets.symmetric(horizontal: 16),
                                 child: Row(
                                   children: [
                                     Expanded(child: SkeletonStatCard()),
-                                    const SizedBox(width: 12),
-                                    Expanded(child: SkeletonStatCard()),
-                                    const SizedBox(width: 12),
+                                    const SizedBox(width: 16),
                                     Expanded(child: SkeletonStatCard()),
                                   ],
                                 ),
@@ -527,12 +525,35 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
       builder: (context, screenSize) {
         return Container(
           padding: PhoneResponsiveHelper.getPhonePadding(context),
-          decoration: SoftUIDesign.cardDecoration(
-            backgroundColor: AppColors.white,
-            borderRadius: PhoneResponsiveHelper.getPhoneBorderRadius(context),
-            elevation: 4.0,
-            borderColor: AppColors.lightGray.withOpacity(0.3),
-            showBorder: true,
+          decoration: BoxDecoration(
+            color: AppColors.white,
+            borderRadius: BorderRadius.circular(PhoneResponsiveHelper.getPhoneBorderRadius(context)),
+            border: Border.all(
+              color: AppColors.lightGray.withOpacity(0.2),
+              width: 1.5,
+            ),
+            boxShadow: [
+              // Enhanced shadow with depth
+              BoxShadow(
+                color: Colors.black.withOpacity(0.08),
+                blurRadius: 20,
+                spreadRadius: 2,
+                offset: const Offset(0, 8),
+              ),
+              // Subtle inner highlight
+              BoxShadow(
+                color: Colors.white.withOpacity(0.8),
+                blurRadius: 10,
+                offset: const Offset(-2, -2),
+              ),
+              // Colored glow from primary red
+              BoxShadow(
+                color: AppColors.primaryRed.withOpacity(0.05),
+                blurRadius: 15,
+                spreadRadius: 1,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -540,66 +561,114 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
               Row(
                 children: [
                   Container(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: PhoneResponsiveHelper.getPhoneSpacing(context) * 0.5,
-                      vertical: PhoneResponsiveHelper.getPhoneSpacing(context) * 0.25,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
                     ),
                     decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          AppColors.primaryRed.withOpacity(0.15),
+                          AppColors.primaryRed.withOpacity(0.08),
+                        ],
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: AppColors.primaryRed.withOpacity(0.3),
+                        width: 1.5,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
                       color: AppColors.primaryRed.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(PhoneResponsiveHelper.getPhoneBorderRadius(context) * 0.5),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
                     ),
-                    child: Text(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.flash_on_rounded,
+                          color: AppColors.primaryRed,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
                       'Quick Actions',
                       style: AppTypography.cardTitle.copyWith(
                         color: AppColors.primaryRed,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.3,
                       ),
+                        ),
+                      ],
                     ),
                   ),
                   const Spacer(),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryRed.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.touch_app_rounded,
+                          color: AppColors.primaryRed.withOpacity(0.8),
+                          size: 14,
+                        ),
+                        const SizedBox(width: 4),
                   Text(
                     'Tap to use',
                     style: AppTypography.captionText.copyWith(
-                      color: AppColors.primaryRed.withOpacity(0.7),
+                            color: AppColors.primaryRed.withOpacity(0.8),
+                            fontWeight: FontWeight.w600,
+                            fontSize: 11,
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
-              SizedBox(
-                height: 100, // Reduced height for more compact layout
-                child: Builder(
-                  builder: (context) {
-                    final quickActions = _getQuickActions();
-                    return Center(
-                      child: ListView.builder(
-                        shrinkWrap: true,
-                        scrollDirection: Axis.horizontal,
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
-                        itemCount: quickActions.length,
-                        itemBuilder: (context, index) {
-                          final action = quickActions[index];
-                          return _quickActionsStagger.buildAnimatedItem(
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Builder(
+                builder: (context) {
+                  final quickActions = _getQuickActions();
+                  return Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: quickActions.asMap().entries.map((entry) {
+                      final index = entry.key;
+                      final action = entry.value;
+                      return Expanded(
+                        child: Padding(
+                          padding: EdgeInsets.only(
+                            left: index == 0 ? 0 : 8,
+                            right: index == quickActions.length - 1 ? 0 : 8,
+                          ),
+                          child: _quickActionsStagger.buildAnimatedItem(
                             index,
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                _buildUniformActionButton(
-                                  onPressed: action['onPressed'] as VoidCallback,
-                                  backgroundColor: action['backgroundColor'] as Color,
-                                  icon: action['icon'] as IconData,
-                                  title: action['title'] as String,
-                                  subtitle: action['subtitle'] as String,
-                                ),
-                                if (index < quickActions.length - 1)
-                                  const SizedBox(width: 8), // Reduced spacing between buttons
-                              ],
+                            _buildUniformActionButton(
+                              onPressed: action['onPressed'] as VoidCallback,
+                              backgroundColor: action['backgroundColor'] as Color,
+                              icon: action['icon'] as IconData,
+                              title: action['title'] as String,
+                              subtitle: action['subtitle'] as String,
                             ),
-                          );
-                        },
-                      ),
-                    );
-                  },
-                ),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  );
+                },
               ),
             ],
           ),
@@ -617,50 +686,109 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
   }) {
     return PhoneResponsiveBuilder(
       builder: (context, screenSize) {
-        return micro.EnhancedInteractiveButton(
-          onPressed: onPressed,
-          backgroundColor: backgroundColor,
-          padding: const EdgeInsets.all(12),
-          borderRadius: BorderRadius.circular(SoftUIDesign.buttonBorderRadius),
-          glowColor: backgroundColor,
-          enableHaptic: true,
-          hapticType: micro.HapticFeedbackType.medium,
-          child: SizedBox(
-            width: 80, // More compact width
-            height: 80, // More compact height
-            child: Column(
+        return Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () {
+              HapticFeedback.mediumImpact();
+              onPressed();
+            },
+            borderRadius: BorderRadius.circular(20),
+            child: Container(
+              width: 100,
+              height: 70,
+              decoration: BoxDecoration(
+                // Cleaner gradient background
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    backgroundColor,
+                    backgroundColor.withOpacity(0.9),
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  // SoftUI shadow system
+                  ...SoftUIDesign.getSoftShadow(
+                    elevation: 4.0,
+                    shadowColor: backgroundColor.withOpacity(0.25),
+                  ),
+                  // Subtle color glow
+                  BoxShadow(
+                    color: backgroundColor.withOpacity(0.2),
+                    blurRadius: 12,
+                    offset: const Offset(0, 6),
+                    spreadRadius: 0,
+                  ),
+                ],
+                border: Border.all(
+                  color: Colors.white.withOpacity(0.2),
+                  width: 1,
+                ),
+              ),
+              child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  icon, 
-                  color: AppColors.white, 
-                  size: 24, // Slightly smaller icon
-                ),
-                const SizedBox(height: 6), // Reduced spacing
-                Text(
-                  title,
-                  style: AppTypography.buttonLabel.copyWith(
-                    color: AppColors.white,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 12, // Smaller font size
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Icon directly on button - no container
+                  Icon(
+                    icon,
+                    color: Colors.white,
+                    size: 26,
                   ),
-                  textAlign: TextAlign.center,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 1), // Minimal spacing
-                Text(
-                  subtitle,
-                  style: AppTypography.captionText.copyWith(
-                    color: AppColors.white,
-                    fontWeight: FontWeight.w500,
-                    fontSize: 10, // Smaller font size
+                  const SizedBox(width: 8),
+                  // Title and subtitle in column
+                  Flexible(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Title
+                        Text(
+                          title,
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 13,
+                            letterSpacing: 0.3,
+                            shadows: [
+                              Shadow(
+                                color: Colors.black.withOpacity(0.3),
+                                offset: const Offset(0, 1),
+                                blurRadius: 2,
+                              ),
+                            ],
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 1),
+                        // Subtitle
+                        Text(
+                          subtitle,
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.9),
+                            fontWeight: FontWeight.w600,
+                            fontSize: 10,
+                            letterSpacing: 0.2,
+                            shadows: [
+                              Shadow(
+                                color: Colors.black.withOpacity(0.2),
+                                offset: const Offset(0, 1),
+                                blurRadius: 1,
+                              ),
+                            ],
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
                   ),
-                  textAlign: TextAlign.center,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         );
@@ -671,11 +799,13 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
   Widget _buildCompactStatus() {
     return Consumer<ChatProvider>(
       builder: (context, chatProvider, child) {
+        // Get real-time connection status
         final isConnected = chatProvider.isConnected;
-        // Only count other users, not the current user
+        
+        // Get real-time user count - only count other users, not the current user
         final allUsers = chatProvider.connectedUsers;
         final currentUser = chatProvider.currentUserName;
-        final nearbyUsers = allUsers.where((user) => user != currentUser).toList();
+        final nearbyUsers = allUsers.where((user) => user != currentUser && user.isNotEmpty).toList();
         final userCount = nearbyUsers.length;
         
         return Container(
@@ -684,7 +814,6 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
             children: [
               // 1. Connection Status - Shows Paired Devices List when clicked
               Expanded(
-                flex: 1,
                 child: _buildStatusCard(
                   icon: isConnected ? Icons.bluetooth_connected : Icons.bluetooth_disabled,
                   label: isConnected ? 'Connected' : 'Offline',
@@ -693,30 +822,16 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                   onTap: () => _showDeviceDialog(),
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 16),
               
               // 2. People Nearby - Shows Radar Modal when clicked
               Expanded(
-                flex: 1,
                 child: _buildStatusCard(
                   icon: IconSystem.actionPeople,
                   label: '$userCount',
-                  subLabel: 'Nearby',
+                  subLabel: userCount == 1 ? 'Nearby User' : 'Nearby Users',
                   color: AppColors.info,
                   onTap: () => _showRadarModal(),
-                ),
-              ),
-              const SizedBox(width: 12),
-              
-              // 3. System Health
-              Expanded(
-                flex: 1,
-                child: _buildStatusCard(
-                  icon: Icons.battery_charging_full_rounded,
-                  label: 'Good',
-                  subLabel: 'Health',
-                  color: AppColors.warning,
-                  onTap: () {},
                 ),
               ),
             ],
@@ -739,19 +854,19 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
         onTap();
       },
       child: Container(
-        height: 100, // Increased height
-        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+        height: 110, // Increased height for better visibility
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.08),
-          borderRadius: BorderRadius.circular(16),
+          color: color.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(18),
           border: Border.all(
-            color: color.withOpacity(0.3),
-            width: 1.5,
+            color: color.withOpacity(0.4),
+            width: 2,
           ),
           boxShadow: [
             BoxShadow(
-              color: color.withOpacity(0.05),
-              blurRadius: 8,
+              color: color.withOpacity(0.08),
+              blurRadius: 12,
               offset: const Offset(0, 4),
             ),
           ],
@@ -766,7 +881,7 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
               children: [
                 Icon(
                   icon,
-                  size: 24,
+                  size: 28,
                   color: color,
                 ),
                 if (label == 'Connected' || label == 'Offline')
@@ -774,17 +889,17 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                     top: -2,
                     right: -6,
                     child: Container(
-                      width: 8,
-                      height: 8,
+                      width: 10,
+                      height: 10,
                       decoration: BoxDecoration(
                         color: color,
                         shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 1.5),
+                        border: Border.all(color: Colors.white, width: 2),
                         boxShadow: [
                           BoxShadow(
-                            color: color.withOpacity(0.4),
-                            blurRadius: 4,
-                            spreadRadius: 1,
+                            color: color.withOpacity(0.5),
+                            blurRadius: 6,
+                            spreadRadius: 1.5,
                           ),
                         ],
                       ),
@@ -798,24 +913,27 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
               child: Text(
                 label,
                 style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w900,
                   color: color,
-                  height: 1.1,
+                  height: 1.2,
+                  letterSpacing: 0.5,
                 ),
                 textAlign: TextAlign.center,
               ),
             ),
-            const SizedBox(height: 2),
+            const SizedBox(height: 3),
             Text(
               subLabel,
               style: TextStyle(
-                fontSize: 10,
+                fontSize: 12,
                 fontWeight: FontWeight.w600,
-                color: color.withOpacity(0.8),
+                color: color.withOpacity(0.85),
+                height: 1.2,
+                letterSpacing: 0.3,
               ),
               textAlign: TextAlign.center,
-              maxLines: 1,
+              maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
           ],
@@ -837,9 +955,9 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
       },
       onLongPressEnd: (_) {
         if (_emergencyHoldController.status == AnimationStatus.completed) {
-          // Show success animation when hold completes
+          // Ring completed - send emergency message
           HapticFeedback.heavyImpact();
-          _showEmergencySuccessAnimation(context);
+          _sendEmergencyMessageOnRingComplete(context);
         } else {
           _emergencyHoldController.reverse(from: _emergencyHoldController.value);
         }
@@ -1118,6 +1236,8 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
   }
 
 
+  /// Show edit emergency message dialog
+  /// Seamlessly integrated with profile settings - uses same AuthProvider methods
   void _showEditEmergencyMessageDialog(BuildContext context) {
     final authProvider = context.read<AuthProvider>();
     final messages = authProvider.emergencyMessages;
@@ -1134,7 +1254,7 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
     
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         backgroundColor: Colors.white,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(SoftUIDesign.cardBorderRadius),
@@ -1159,6 +1279,7 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
             TextField(
               controller: controller,
               maxLines: 3,
+              autofocus: true,
               decoration: InputDecoration(
                 hintText: 'Enter your emergency message...',
                 border: OutlineInputBorder(
@@ -1177,11 +1298,30 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                 fillColor: AppColors.backgroundLight.withOpacity(0.5),
               ),
             ),
+            if (messages.length > 1) ...[
+              const SizedBox(height: 12),
+              TextButton.icon(
+                onPressed: () {
+                  // Close this dialog and open full emergency messages manager
+                  Navigator.of(dialogContext).pop();
+                  _showFullEmergencyMessagesManager(context);
+                },
+                icon: const Icon(Icons.list_alt, size: 16),
+                label: const Text('Manage all messages'),
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.primaryRed,
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                ),
+              ),
+            ],
           ],
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () {
+              HapticFeedback.lightImpact();
+              Navigator.pop(dialogContext);
+            },
             child: const Text(
               'Cancel',
               style: TextStyle(
@@ -1193,18 +1333,25 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
           ElevatedButton(
             onPressed: () async {
               final newMessage = controller.text.trim();
-              if (newMessage.isEmpty) return;
+              if (newMessage.isEmpty) {
+                ModernToastManager.showError(
+                  context,
+                  'Message cannot be empty',
+                );
+                return;
+              }
               
-              HapticFeedback.lightImpact();
-              Navigator.pop(context);
+              HapticFeedback.mediumImpact();
               
+              // Use same AuthProvider methods as profile screen for seamless sync
               if (messages.isEmpty) {
                 await authProvider.addEmergencyMessage(newMessage, makeDefault: true);
               } else {
                 await authProvider.updateEmergencyMessage(defaultIndex, newMessage);
               }
               
-              if (mounted) {
+              if (dialogContext.mounted) {
+                Navigator.pop(dialogContext);
                 ModernToastManager.showSuccess(
                   context,
                   'Emergency message updated',
@@ -1225,66 +1372,533 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
     );
   }
 
-  Future<void> _sendEmergencyAlertDirectly(BuildContext context, String emergencyMessage) async {
+  /// Show full emergency messages manager (same as profile screen)
+  /// This ensures seamless integration between ring and profile
+  void _showFullEmergencyMessagesManager(BuildContext context) {
+    final auth = context.read<AuthProvider>();
+    final TextEditingController controller = TextEditingController(
+      text: auth.emergencyMessage ?? 'I need help. Please contact me immediately.'
+    );
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+          child: AnimatedNeumorphicCard(
+            margin: const EdgeInsets.all(16),
+            child: StatefulBuilder(
+              builder: (context, setStateSheet) {
+                final messages = context.read<AuthProvider>().emergencyMessages;
+                final defaultIndex = context.read<AuthProvider>().defaultEmergencyMessageIndex;
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      child: Text(
+                        'Emergency Messages',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                    ),
+                    // Current list
+                    if (messages.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: ListView.separated(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: messages.length,
+                          separatorBuilder: (_, __) => const SizedBox(height: 8),
+                          itemBuilder: (context, index) {
+                            final isDefault = defaultIndex == index;
+                            return Container(
+                              decoration: SoftUIDesign.cardDecoration(
+                                backgroundColor: isDefault ? AppColors.primaryRed.withOpacity(0.06) : AppColors.white,
+                                borderRadius: SoftUIDesign.buttonBorderRadius,
+                                elevation: isDefault ? 3.0 : 2.0,
+                                borderColor: isDefault ? AppColors.primaryRed.withOpacity(0.4) : AppColors.lightGray.withOpacity(0.3),
+                                showBorder: true,
+                              ),
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      messages[index],
+                                      style: const TextStyle(color: AppColors.textPrimary, fontSize: 14, height: 1.3),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  IconButton(
+                                    tooltip: 'Set default',
+                                    icon: Icon(isDefault ? Icons.star : Icons.star_border, color: isDefault ? AppColors.primaryRed : AppColors.mediumGray),
+                                    onPressed: () async {
+                                      await context.read<AuthProvider>().setDefaultEmergencyMessage(index);
+                                      setStateSheet(() {});
+                                    },
+                                  ),
+                                  IconButton(
+                                    tooltip: 'Edit',
+                                    icon: const Icon(Icons.edit_outlined, color: AppColors.mediumGray),
+                                    onPressed: () async {
+                                      final editController = TextEditingController(text: messages[index]);
+                                      await showDialog(
+                                        context: context,
+                                        builder: (_) => AlertDialog(
+                                          backgroundColor: Colors.white,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(SoftUIDesign.cardBorderRadius),
+                                          ),
+                                          title: const Text('Edit Message'),
+                                          content: TextField(
+                                            controller: editController,
+                                            maxLines: 4,
+                                            decoration: SoftUIDesign.inputDecoration(
+                                              hintText: 'Enter message',
+                                            ),
+                                          ),
+                                          actions: [
+                                            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+                                            ElevatedButton(
+                                              onPressed: () async {
+                                                final newText = editController.text.trim();
+                                                if (newText.isEmpty) return;
+                                                await context.read<AuthProvider>().updateEmergencyMessage(index, newText);
+                                                if (!context.mounted) return;
+                                                Navigator.pop(context);
+                                                setStateSheet(() {});
+                                              },
+                                              style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryRed, foregroundColor: AppColors.white),
+                                              child: const Text('Save'),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                  IconButton(
+                                    tooltip: 'Delete',
+                                    icon: const Icon(Icons.delete_outline, color: AppColors.error),
+                                    onPressed: () async {
+                                      await context.read<AuthProvider>().deleteEmergencyMessage(index);
+                                      setStateSheet(() {});
+                                    },
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                      )
+                    else
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                        child: Text('No saved messages yet. Add one below.', style: TextStyle(color: AppColors.textSecondary)),
+                      ),
+
+                    const SizedBox(height: 12),
+                    // Add new
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: TextField(
+                        controller: controller,
+                        maxLines: 3,
+                        decoration: InputDecoration(
+                          hintText: 'Type a new emergency message to save...',
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                          filled: true,
+                          fillColor: AppColors.white,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text('Close'),
+                        ),
+                        const SizedBox(width: 8),
+                        ElevatedButton.icon(
+                          onPressed: () async {
+                            final text = controller.text.trim();
+                            if (text.isEmpty) return;
+                            await context.read<AuthProvider>().addEmergencyMessage(text, makeDefault: messages.isEmpty);
+                            controller.clear();
+                            setStateSheet(() {});
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Message saved'), backgroundColor: AppColors.success));
+                          },
+                          icon: const Icon(Icons.add, size: 18),
+                          label: const Text('Add'),
+                          style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryRed, foregroundColor: AppColors.white),
+                        ),
+                        const SizedBox(width: 12),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                );
+              },
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  /// Send emergency message when SOS ring completes
+  /// Shows confirmation modal first, then sends to local chat if ESP32 is connected
+  Future<void> _sendEmergencyMessageOnRingComplete(BuildContext context) async {
+    // Show confirmation modal before sending
+    final confirmed = await _showEmergencyConfirmationModal(context);
+    
+    if (!confirmed) {
+      // User cancelled, just return
+      return;
+    }
+    
+    // Proceed with sending the message
+    await _sendEmergencyMessageConfirmed(context);
+  }
+
+  /// Show confirmation modal for emergency message
+  /// Offline-first: Only works with ESP32 connection
+  Future<bool> _showEmergencyConfirmationModal(BuildContext context) async {
+      final authProvider = context.read<AuthProvider>();
+    
+    // Get the user's emergency message (use default if not set)
+    String emergencyMessage = authProvider.emergencyMessage ?? 
+        '🚨 EMERGENCY: I need immediate assistance!';
+    
+    // Ensure message is not empty
+    if (emergencyMessage.trim().isEmpty) {
+      emergencyMessage = '🚨 EMERGENCY: I need immediate assistance!';
+    }
+    
+    // Check if ESP32 is connected
+    final bluetoothService = SimpleBluetoothService();
+    final isESP32Connected = bluetoothService.isConnected && bluetoothService.isAuthenticated;
+    
+    // If ESP32 not connected, show error and return false
+    if (!isESP32Connected) {
+      if (context.mounted) {
+        _showESP32ConnectionRequiredDialog(context);
+      }
+      return false;
+    }
+    
+    return await showDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      barrierColor: Colors.black.withOpacity(0.7),
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(SoftUIDesign.cardBorderRadius),
+        ),
+        title: const SolidModalHeader(
+          icon: Icons.emergency,
+          iconColor: AppColors.error,
+          title: 'Confirm Emergency Alert',
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Are you sure you want to send this emergency message?',
+              style: TextStyle(
+                color: AppColors.textPrimary,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.backgroundLight.withOpacity(0.5),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: AppColors.error.withOpacity(0.3),
+                  width: 1.5,
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Message:',
+                        style: TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      TextButton.icon(
+                        onPressed: () {
+                          // Close confirmation modal and open edit dialog
+                          Navigator.of(dialogContext).pop(false);
+                          _showEditEmergencyMessageDialog(context);
+                        },
+                        icon: const Icon(Icons.edit_note_rounded, size: 16),
+                        label: const Text('Edit'),
+                        style: TextButton.styleFrom(
+                          foregroundColor: AppColors.primaryRed,
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    emergencyMessage,
+                    style: const TextStyle(
+                      color: AppColors.textPrimary,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.info.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: AppColors.info.withOpacity(0.3),
+                ),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.bluetooth_connected,
+                    color: AppColors.info,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Will send via local chat network (ESP32)',
+                      style: TextStyle(
+                        color: AppColors.info,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              HapticFeedback.lightImpact();
+              Navigator.of(dialogContext).pop(false);
+            },
+            style: TextButton.styleFrom(
+              foregroundColor: AppColors.textSecondary,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            ),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              HapticFeedback.mediumImpact();
+              Navigator.of(dialogContext).pop(true);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.error,
+              foregroundColor: AppColors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            ),
+            child: const Text(
+              'Send Emergency',
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    ) ?? false; // Return false if dialog is dismissed
+  }
+
+  /// Send emergency message after confirmation
+  /// Offline-first: Only sends via ESP32 when connected
+  Future<void> _sendEmergencyMessageConfirmed(BuildContext context) async {
     try {
       final authProvider = context.read<AuthProvider>();
-      final user = authProvider.currentUserModel;
-      final userId = authProvider.currentUser ?? authProvider.userEmail ?? 'unknown';
       
-      // Build location string from user's address data
-      String location = 'Unknown Location';
-      if (user != null) {
-        final locationParts = <String>[];
-        if (user.street.isNotEmpty) locationParts.add(user.street);
-        if (user.barangay.isNotEmpty) locationParts.add(user.barangay);
-        if (user.city.isNotEmpty) locationParts.add(user.city);
-        if (user.province.isNotEmpty) locationParts.add(user.province);
-        if (user.region.isNotEmpty) locationParts.add(user.region);
-        
-        if (locationParts.isNotEmpty) {
-          location = locationParts.join(', ');
-        } else {
-          location = 'Location not set';
-        }
+      // Get the user's emergency message (use default if not set)
+      String emergencyMessage = authProvider.emergencyMessage ?? 
+          '🚨 EMERGENCY: I need immediate assistance!';
+      
+      // Ensure message is not empty
+      if (emergencyMessage.trim().isEmpty) {
+        emergencyMessage = '🚨 EMERGENCY: I need immediate assistance!';
       }
       
-      HapticFeedback.heavyImpact();
+      // Check if ESP32 is connected via SimpleBluetoothService
+      final bluetoothService = SimpleBluetoothService();
+      final isESP32Connected = bluetoothService.isConnected && bluetoothService.isAuthenticated;
       
-      // Send emergency alert using OfflineMessagingService
-      final messagingService = OfflineMessagingService();
-      await messagingService.sendEmergencyAlert(
-        message: emergencyMessage,
-        location: location,
-        userId: userId,
-      );
-      
-      // Send push notification for emergency alert
-      await NotificationService().showEmergencyAlert(
-        title: '🚨 Emergency Alert Sent',
-        body: emergencyMessage,
-        payload: jsonEncode({
-          'type': 'emergency',
-          'userId': userId,
-          'location': location,
-          'timestamp': DateTime.now().toIso8601String(),
-          'message': emergencyMessage,
-        }),
-      );
+      if (isESP32Connected) {
+        // Send via local chat to ESP32 with emergency flag
+        try {
+          await bluetoothService.sendGroupMessage(emergencyMessage, isEmergency: true);
       
       if (context.mounted) {
         ModernToastManager.showSuccess(
           context,
-          'Emergency alert sent: "$emergencyMessage"',
+              'Emergency message sent to local chat network',
         );
+            // Show success animation
+            _showEmergencySuccessAnimation(context);
       }
     } catch (e) {
+          // ESP32 send failed
+          debugPrint('Failed to send via ESP32: $e');
       if (context.mounted) {
         ModernToastManager.showError(
           context,
-          'Failed to send emergency alert: ${e.toString()}',
+              'Failed to send emergency message. Please check ESP32 connection.',
+            );
+          }
+        }
+      } else {
+        // ESP32 not connected - show error message
+        if (context.mounted) {
+          ModernToastManager.showError(
+            context,
+            'ESP32 not connected. Please connect to ESP32 to send emergency messages.',
+          );
+          
+          // Show dialog with connection instructions
+          _showESP32ConnectionRequiredDialog(context);
+        }
+      }
+      
+    } catch (e) {
+      debugPrint('Error sending emergency message: $e');
+      if (context.mounted) {
+        ModernToastManager.showError(
+          context,
+          'Failed to send emergency message: ${e.toString()}',
         );
       }
     }
+  }
+
+  /// Show dialog when ESP32 connection is required
+  void _showESP32ConnectionRequiredDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(SoftUIDesign.cardBorderRadius),
+        ),
+        title: const SolidModalHeader(
+          icon: Icons.bluetooth_disabled,
+          iconColor: AppColors.warning,
+          title: 'ESP32 Connection Required',
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Emergency messages can only be sent when connected to ESP32.',
+              style: TextStyle(
+                color: AppColors.textPrimary,
+                fontSize: 16,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.warning.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: AppColors.warning.withOpacity(0.3),
+                ),
+              ),
+              child: const Row(
+                children: [
+                  Icon(
+                    Icons.info_outline,
+                    color: AppColors.warning,
+                    size: 20,
+                  ),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Please connect to ESP32 to send emergency messages through the local mesh network.',
+                      style: TextStyle(
+                        color: AppColors.warning,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              HapticFeedback.lightImpact();
+              Navigator.of(dialogContext).pop();
+            },
+            style: TextButton.styleFrom(
+              foregroundColor: AppColors.textSecondary,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            ),
+            child: const Text(
+              'OK',
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showEmergencySuccessAnimation(BuildContext context) {
@@ -1493,13 +2107,39 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                       
                       HapticFeedback.heavyImpact();
                       
-                      // Use the direct send method with the message from profile
-                      await _sendEmergencyAlertDirectly(context, emergencyMessage);
+                      // Check ESP32 connection first (offline-first approach)
+                      final bluetoothService = SimpleBluetoothService();
+                      final isESP32Connected = bluetoothService.isConnected && bluetoothService.isAuthenticated;
+                      
+                      if (isESP32Connected) {
+                        // Send via ESP32
+                        try {
+                          await bluetoothService.sendGroupMessage(emergencyMessage, isEmergency: true);
                       
                       if (dialogContext.mounted) {
                         Navigator.of(dialogContext).pop();
-                        // Show success animation
-                        _showSuccessAnimation(context, 'Emergency alert sent!');
+                            _showSuccessAnimation(context, 'Emergency message sent to local chat network!');
+                          }
+                        } catch (e) {
+                          if (dialogContext.mounted) {
+                            setDialogState(() {
+                              isSending = false;
+                            });
+                            ModernToastManager.showError(
+                              context,
+                              'Failed to send. Please check ESP32 connection.',
+                            );
+                          }
+                        }
+                      } else {
+                        // ESP32 not connected
+                        if (dialogContext.mounted) {
+                          setDialogState(() {
+                            isSending = false;
+                          });
+                          Navigator.of(dialogContext).pop();
+                          _showESP32ConnectionRequiredDialog(context);
+                        }
                       }
                     },
                     style: ElevatedButton.styleFrom(

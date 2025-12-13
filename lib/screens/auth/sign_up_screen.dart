@@ -600,7 +600,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 elevation: 0,
                 leading: IconButton(
                   icon: const Icon(Icons.arrow_back, color: AppColors.primaryRed),
-                  onPressed: () => Navigator.of(context).pop(),
+                  onPressed: () {
+                    HapticFeedback.selectionClick();
+                    Navigator.of(context).pop();
+                  },
                 ),
                 title: AccessibleHeading(
                   'Create Account',
@@ -1608,6 +1611,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
         ),
         GestureDetector(
           onTap: () {
+            HapticFeedback.selectionClick();
             Navigator.of(context).pop();
           },
           child: Text(

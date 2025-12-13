@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:typed_data';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
@@ -42,6 +41,9 @@ class NotificationService {
 
   bool _isInitialized = false;
   String? _fcmToken;
+  
+  // App lifecycle state tracking
+  bool _isAppInForeground = true; // Default to true (assume foreground on init)
 
   Future<void> initialize() async {
     if (_isInitialized) return;
@@ -207,41 +209,27 @@ class NotificationService {
   }
 
   void _handleForegroundMessage(RemoteMessage message) {
-    // Extract image URL from notification or data
-    final imageUrl = message.notification?.android?.imageUrl ?? 
-                     message.data['imageUrl'];
+    // When app is in foreground, don't show notification
+    // User can see the information directly in the app
+    // Only emit to stream for in-app handling
+    debugPrint('📨 Received message while app is in foreground. Notification suppressed.');
     
-    // Determine style based on content
-    final style = imageUrl != null 
-        ? NotificationStyle.bigPicture 
-        : NotificationStyle.bigText;
-    
-    // Show local notification for foreground messages with enhanced styling
-    _showLocalNotification(
-      id: message.hashCode,
-      title: message.notification?.title ?? 'New Message',
-      body: message.notification?.body ?? 'You have a new message',
-      payload: jsonEncode(message.data),
-      channelId: _getChannelIdFromMessage(message),
-      imageUrl: imageUrl,
-      style: style,
-    );
-
-    // Emit to stream
+    // Emit to stream so UI can handle it directly
     _onMessageController.add(message);
+    
+    // DO NOT show notification when app is in foreground
   }
+  
+  /// Set app lifecycle state
+  /// Called from main app when lifecycle changes
+  void setAppLifecycleState(bool isInForeground) {
+    _isAppInForeground = isInForeground;
+    debugPrint('📱 App lifecycle changed: ${isInForeground ? "Foreground" : "Background"}');
+  }
+  
+  /// Check if app is currently in foreground
+  bool get isAppInForeground => _isAppInForeground;
 
-  String _getChannelIdFromMessage(RemoteMessage message) {
-    final data = message.data;
-    if (data['type'] == 'emergency') {
-      return emergencyChannelId;
-    } else if (data['type'] == 'message') {
-      return messageChannelId;
-    } else if (data['type'] == 'reminder') {
-      return reminderChannelId;
-    }
-    return systemChannelId;
-  }
 
   void _onNotificationResponse(NotificationResponse response) {
     debugPrint('👆 Local notification tapped: ${response.id}');
@@ -259,7 +247,14 @@ class NotificationService {
     Color? color,
     String? largeIcon,
     NotificationStyle style = NotificationStyle.defaultStyle,
+    bool forceShow = false, // Allow forcing notification even in foreground (emergency only)
   }) async {
+    // Don't show notification if app is in foreground (unless forced for emergencies)
+    if (_isAppInForeground && !forceShow) {
+      debugPrint('🔕 Notification suppressed - app is in foreground: $title');
+      return;
+    }
+    
     // Determine color based on channel
     final notificationColor = color ?? _getColorForChannel(channelId);
     
@@ -418,6 +413,7 @@ class NotificationService {
     String? imageUrl,
     Color? color,
   }) async {
+    // Emergency alerts can still show in foreground if needed, but by default follow app state
     await _showLocalNotification(
       id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
       title: title,
@@ -427,6 +423,7 @@ class NotificationService {
       imageUrl: imageUrl,
       color: color ?? AppColors.primaryRed, // App's primary red
       style: imageUrl != null ? NotificationStyle.bigPicture : NotificationStyle.bigText,
+      forceShow: false, // Don't force - respect app state
     );
   }
 

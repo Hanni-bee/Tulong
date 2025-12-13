@@ -3,14 +3,12 @@ import 'package:flutter/services.dart';
 
 import '../constants/app_colors.dart';
 import '../widgets/unified_top_bar.dart';
-import '../widgets/solid_divider.dart';
 import '../utils/prototype_animations.dart';
 import '../widgets/enhanced_skeleton_loaders.dart';
 import '../widgets/enhanced_empty_state.dart';
 import '../widgets/accessible_text.dart';
 import '../widgets/enhanced_search_bar.dart';
 import '../utils/search_helper.dart';
-import '../utils/icon_system.dart';
 
 class WalkieTalkieScreen extends StatefulWidget {
   const WalkieTalkieScreen({super.key});
@@ -32,7 +30,8 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
   
   // Pagination
   int _currentPage = 0;
-  static const int _itemsPerPage = 5;
+  static const int _itemsPerPage = 10; // Increased for better UX
+  static const int _paginationThreshold = 10; // Only paginate if more than 10 users
   
   // Stagger animations for list
   StaggeredListAnimations? _userListStagger;
@@ -119,11 +118,15 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
   
   void _updateUserListStagger() {
     _userListStagger?.dispose();
-    final currentUsers = _getPaginatedUsers();
+    final currentUsers = _shouldUsePagination() ? _getPaginatedUsers() : _getFilteredSortedSearched();
     _userListStagger = StaggeredListAnimations(
       vsync: this,
       itemCount: currentUsers.length,
     );
+  }
+  
+  bool _shouldUsePagination() {
+    return _getFilteredSortedSearched().length > _paginationThreshold;
   }
 
   @override
@@ -324,8 +327,8 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
         // 3. User List
         _buildUsersList(),
         
-        // 4. Pagination
-        if (_getFilteredSortedSearched().length > _itemsPerPage)
+        // 4. Pagination (only show if more than threshold)
+        if (_shouldUsePagination())
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
             child: _buildPaginationControls(),
@@ -338,65 +341,74 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
 
   Widget _buildUsersList() {
     if (_isLoading) {
-      return const SkeletonUserList(itemCount: 5);
+      return const Padding(
+        padding: EdgeInsets.all(16),
+        child: SkeletonUserList(itemCount: 5),
+      );
     }
 
-    final paged = _getPaginatedUsers();
+    final users = _shouldUsePagination() ? _getPaginatedUsers() : _getFilteredSortedSearched();
 
-    if (paged.isEmpty) {
+    if (users.isEmpty) {
       // Determine if it's a search result or no users at all
       final isSearchResult = _searchCtrl.text.isNotEmpty;
       
       if (isSearchResult) {
-        return EmptyStatePresets.noSearchResults(
-          onClearSearch: () {
-            setState(() {
-              _searchCtrl.clear();
-            });
-          },
-          searchQuery: _searchCtrl.text,
+        return Padding(
+          padding: const EdgeInsets.all(32),
+          child: EmptyStatePresets.noSearchResults(
+            onClearSearch: () {
+              setState(() {
+                _searchCtrl.clear();
+                HapticFeedback.lightImpact();
+              });
+            },
+            searchQuery: _searchCtrl.text,
+          ),
         );
       } else {
-        return EmptyStatePresets.noUsersConnected(
-          onRefresh: _refreshConnections,
-          onScanDevices: () {
-            // Could open device scanner if needed
-            _refreshConnections();
-          },
+        return Padding(
+          padding: const EdgeInsets.all(32),
+          child: EmptyStatePresets.noUsersConnected(
+            onRefresh: () {
+              HapticFeedback.mediumImpact();
+              _refreshConnections();
+            },
+            onScanDevices: () {
+              HapticFeedback.mediumImpact();
+              _refreshConnections();
+            },
+          ),
         );
       }
     }
 
-    // Use Column with fixed height to enforce pagination (no infinite scroll)
-    return ConstrainedBox(
-      constraints: BoxConstraints(
-        maxHeight: paged.length * 80.0, // Approximate height per item
-      ),
-      child: ListView.separated(
-        physics: const NeverScrollableScrollPhysics(), // Disable scrolling - pagination only
-        shrinkWrap: true,
-        padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
-        itemCount: paged.length,
-        separatorBuilder: (context, _) =>
-            const SolidDivider(indent: 12, endIndent: 12),
-        itemBuilder: (context, index) {
-          final user = paged[index];
+    // Scrollable list - no pagination constraints for small lists
+    return ListView.separated(
+      physics: _shouldUsePagination() 
+          ? const NeverScrollableScrollPhysics() // Disable scrolling when paginated
+          : const BouncingScrollPhysics(), // Allow scrolling for small lists
+      shrinkWrap: true,
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+      itemCount: users.length,
+      separatorBuilder: (context, _) => const SizedBox(height: 12), // Spacing instead of dividers
+      itemBuilder: (context, index) {
+        final user = users[index];
 
-          final userTile = _UserTile(
-            name: user['name'] as String,
-            isActive: user['isActive'] == true,
-            isMuted: user['isMuted'] == true,
-            isSpeaking: user['isSpeaking'] == true,
-            searchQuery: _searchCtrl.text.trim().isNotEmpty ? _searchCtrl.text.trim() : null,
-          );
+        final userTile = _UserTile(
+          name: user['name'] as String,
+          isActive: user['isActive'] == true,
+          isMuted: user['isMuted'] == true,
+          isSpeaking: user['isSpeaking'] == true,
+          searchQuery: _searchCtrl.text.trim().isNotEmpty ? _searchCtrl.text.trim() : null,
+        );
 
-          if (_userListStagger != null && index < paged.length) {
-            return _userListStagger!.buildAnimatedItem(index, userTile);
-          }
-          
-          return userTile;
-        },
-      ),
+        if (_userListStagger != null && index < users.length) {
+          return _userListStagger!.buildAnimatedItem(index, userTile);
+        }
+        
+        return userTile;
+      },
     );
   }
 
@@ -425,7 +437,7 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              // Main Mic Button (Center - Large)
+              // Main Mic Button (Center - Large, Enhanced)
               Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -448,51 +460,68 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                         final double scale = _isTransmitting
                             ? _recordingAnimation.value
                             : 1.0;
-                        final double pulseScale = _isTransmitting
-                            ? 1.0 + (_pulseAnimation.value - 1.0) * 0.5
-                            : 1.0;
                         
                         return Transform.scale(
                           scale: scale,
                           child: Stack(
                             alignment: Alignment.center,
                             children: [
-                              // Pulse Effect
+                              // Enhanced Pulse Effect with multiple rings
                               if (_isTransmitting)
-                                Container(
-                                  width: 88 * pulseScale,
-                                  height: 88 * pulseScale,
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFE53935).withOpacity(0.2),
-                                    shape: BoxShape.circle,
-                                  ),
-                                ),
+                                ...List.generate(2, (index) {
+                                  final delay = index * 0.4;
+                                  final adjustedValue = ((_pulseAnimation.value + delay) % 1.0);
+                                  return Container(
+                                    width: 110 * (1.0 + adjustedValue * 0.3),
+                                    height: 110 * (1.0 + adjustedValue * 0.3),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFE53935).withOpacity(0.15 * (1 - adjustedValue)),
+                                      shape: BoxShape.circle,
+                                    ),
+                                  );
+                                }),
                               
-                              // Main Button
+                              // Main Button (Larger - 100px)
                               Container(
-                                width: 88,
-                                height: 88,
+                                width: 100,
+                                height: 100,
                                 decoration: BoxDecoration(
                                   gradient: LinearGradient(
                                     begin: Alignment.topLeft,
                                     end: Alignment.bottomRight,
                                     colors: _isTransmitting
                                         ? [const Color(0xFFEF5350), const Color(0xFFD32F2F)]
-                                        : [const Color(0xFFEF5350).withOpacity(0.8), const Color(0xFFD32F2F).withOpacity(0.8)],
+                                        : [const Color(0xFFEF5350), const Color(0xFFD32F2F)],
                                   ),
                                   shape: BoxShape.circle,
                                   boxShadow: [
+                                    // Color glow shadow
                                     BoxShadow(
-                                      color: const Color(0xFFD32F2F).withOpacity(_isTransmitting ? 0.5 : 0.3),
-                                      blurRadius: _isTransmitting ? 20 : 16,
+                                      color: const Color(0xFFD32F2F).withOpacity(_isTransmitting ? 0.6 : 0.4),
+                                      blurRadius: _isTransmitting ? 24 : 20,
                                       offset: const Offset(0, 8),
+                                      spreadRadius: _isTransmitting ? 4 : 2,
+                                    ),
+                                    // Depth shadow
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.2),
+                                      blurRadius: 12,
+                                      offset: const Offset(0, 4),
+                                      spreadRadius: 0,
+                                    ),
+                                    // Highlight
+                                    BoxShadow(
+                                      color: Colors.white.withOpacity(0.1),
+                                      blurRadius: 6,
+                                      offset: const Offset(0, -2),
+                                      spreadRadius: 0,
                                     ),
                                   ],
                                 ),
                                 child: Icon(
                                   _isTransmitting ? Icons.mic : Icons.mic_none_rounded,
                                   color: Colors.white,
-                                  size: 40,
+                                  size: 44,
                                 ),
                               ),
                             ],
@@ -506,8 +535,8 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                     _isTransmitting ? 'Transmitting...' : 'Hold to Speak',
                     style: TextStyle(
                       color: _isTransmitting ? const Color(0xFFE53935) : AppColors.textSecondary,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 14,
                       letterSpacing: 0.5,
                     ),
                   ),
@@ -783,51 +812,72 @@ class _UserTileState extends State<_UserTile> with SingleTickerProviderStateMixi
     super.dispose();
   }
 
+  // Status colors matching design: green for connected, orange for muted, grey for disconnected
   Color get _borderColor {
-    if (widget.isSpeaking) return const Color(0xFF27AE60);
-    if (widget.isMuted) return const Color(0xFFFFA000); // Orange for Muted
-    if (widget.isActive) return const Color(0xFFE53935).withOpacity(0.2);
-    return const Color(0xFF7F8C8D).withOpacity(0.5);
+    if (widget.isSpeaking) return AppColors.online; // Green for speaking (connected and active)
+    if (widget.isMuted) return AppColors.warning; // Orange for muted
+    if (widget.isActive) return AppColors.online; // Green for connected/active
+    return AppColors.mediumGray; // Grey for disconnected/offline
   }
 
   Color get _fill {
-    if (widget.isSpeaking) return const Color(0xFF27AE60).withOpacity(0.12);
-    if (widget.isMuted) return const Color(0xFFFFA000).withOpacity(0.12); // Orange bg for Muted
-    if (!widget.isActive) return const Color(0xFF7F8C8D).withOpacity(0.08);
+    if (widget.isSpeaking) return AppColors.online.withOpacity(0.08);
+    if (widget.isMuted) return AppColors.warning.withOpacity(0.08);
+    if (!widget.isActive) return AppColors.mediumGray.withOpacity(0.06);
     return Colors.white;
   }
 
   String get _statusText {
     if (widget.isSpeaking) return 'Speaking';
     if (widget.isMuted) return 'Muted';
-    if (widget.isActive) return 'Active';
-    return 'Offline';
+    if (widget.isActive) return 'Connected'; // Changed from 'Active' to 'Connected'
+    return 'Disconnected'; // Changed from 'Offline' to 'Disconnected'
   }
+  
+  // Helper to determine if user is idle (connected but not speaking)
+  bool get _isIdle => widget.isActive && !widget.isMuted && !widget.isSpeaking;
 
   @override
   Widget build(BuildContext context) {
     final initials = _initials(widget.name);
 
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeInOut,
-      decoration: BoxDecoration(
-        color: _fill,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-            color: _borderColor, width: widget.isSpeaking || widget.isMuted ? 2.5 : 1.5),
-        boxShadow: [
-          BoxShadow(
-            color: _borderColor.withOpacity(0.2),
-            blurRadius: widget.isSpeaking ? 12 : 6,
-            offset: const Offset(0, 4),
-            spreadRadius: widget.isSpeaking ? 2 : 0,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          HapticFeedback.lightImpact();
+          // Could navigate to user detail or start call
+        },
+        borderRadius: BorderRadius.circular(16),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+          decoration: BoxDecoration(
+            color: _fill,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: _borderColor,
+              width: 2.5, // Consistent thicker border for visibility
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: _borderColor.withOpacity(0.15),
+                blurRadius: widget.isSpeaking ? 12 : 8,
+                offset: const Offset(0, 4),
+                spreadRadius: widget.isSpeaking ? 2 : 0,
+              ),
+              // Soft highlight
+              BoxShadow(
+                color: Colors.white.withOpacity(0.5),
+                blurRadius: 4,
+                offset: const Offset(0, -1),
+                spreadRadius: 0,
+              ),
+            ],
           ),
-        ],
-      ),
-      child: ListTile(
-        dense: true,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          child: ListTile(
+            dense: true,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         leading: Stack(
           alignment: Alignment.center,
           clipBehavior: Clip.none,
@@ -886,7 +936,7 @@ class _UserTileState extends State<_UserTile> with SingleTickerProviderStateMixi
               ),
             ),
             
-            // Status Dot
+            // Status Dot (matches border color)
             Positioned(
               right: -2,
               bottom: -2,
@@ -894,13 +944,7 @@ class _UserTileState extends State<_UserTile> with SingleTickerProviderStateMixi
                 width: 14,
                 height: 14,
                 decoration: BoxDecoration(
-                  color: widget.isSpeaking
-                      ? const Color(0xFF27AE60)
-                      : widget.isMuted
-                          ? const Color(0xFFFFA000)
-                          : widget.isActive
-                              ? const Color(0xFF27AE60)
-                              : const Color(0xFF7F8C8D),
+                  color: _borderColor, // Use same color as border
                   shape: BoxShape.circle,
                   border: Border.all(color: Colors.white, width: 2),
                 ),
@@ -926,17 +970,69 @@ class _UserTileState extends State<_UserTile> with SingleTickerProviderStateMixi
                   fontSize: 13,
                 ),
               ),
-        subtitle: Text(
-          _statusText,
-          style: TextStyle(
-            fontSize: 11,
-            color: widget.isSpeaking
-                ? const Color(0xFF27AE60)
-                : widget.isMuted
-                    ? const Color(0xFFFFA000)
-                    : AppColors.textSecondary,
-          ),
+        subtitle: Row(
+          children: [
+            Text(
+              _statusText,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: _borderColor, // Match border color
+              ),
+            ),
+            if (_isIdle) ...[
+              const SizedBox(width: 6),
+              Text(
+                '• Idle',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: AppColors.textSecondary,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ],
         ),
+        trailing: _buildTrailingIcon(),
+      ),
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildTrailingIcon() {
+    IconData icon;
+    Color iconColor;
+    
+    if (widget.isSpeaking) {
+      icon = Icons.volume_up;
+      iconColor = AppColors.online;
+    } else if (widget.isMuted) {
+      icon = Icons.volume_off;
+      iconColor = AppColors.warning;
+    } else if (widget.isActive) {
+      icon = Icons.check_circle;
+      iconColor = AppColors.online;
+    } else {
+      icon = Icons.remove_circle;
+      iconColor = AppColors.mediumGray;
+    }
+    
+    return Container(
+      width: 36,
+      height: 36,
+      decoration: BoxDecoration(
+        color: iconColor.withOpacity(0.1),
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: iconColor.withOpacity(0.3),
+          width: 1.5,
+        ),
+      ),
+      child: Icon(
+        icon,
+        size: 18,
+        color: iconColor,
       ),
     );
   }

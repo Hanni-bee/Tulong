@@ -14,7 +14,8 @@ import 'package:tulong_app/utils/prototype_animations.dart';
 import 'package:tulong_app/widgets/enhanced_skeleton_loaders.dart';
 import 'package:tulong_app/widgets/accessible_text.dart';
 import 'package:tulong_app/utils/icon_system.dart';
-import 'package:fl_chart/fl_chart.dart';
+import '../widgets/user_engagement_dashboard.dart';
+import '../providers/chat_provider.dart';
 
 class ModernProfileScreen extends StatefulWidget {
   const ModernProfileScreen({super.key});
@@ -125,7 +126,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                         const SizedBox(height: 20),
                         _buildStatsSection(),
                         const SizedBox(height: 20),
-                        _buildWeeklyActivityChart(),
+                        _buildUserEngagementDashboard(),
                         const SizedBox(height: 20),
                         _buildSettingsSections(),
                         const SizedBox(height: 20),
@@ -173,12 +174,31 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
          return Container(
           margin: const EdgeInsets.only(bottom: 16),
               decoration: BoxDecoration(
-            color: AppColors.primaryRed, // Solid color instead of gradient
+            // Enhanced gradient background
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                AppColors.primaryRed,
+                AppColors.primaryRed.withOpacity(0.85),
+                AppColors.primaryDark,
+              ],
+              stops: const [0.0, 0.5, 1.0],
+            ),
             borderRadius: BorderRadius.circular(SoftUIDesign.cardBorderRadius),
-            boxShadow: SoftUIDesign.getCardShadow(elevation: 6.0),
+            boxShadow: [
+              // Enhanced shadow for depth
+              BoxShadow(
+                color: AppColors.primaryRed.withOpacity(0.3),
+                blurRadius: 20,
+                offset: const Offset(0, 8),
+                spreadRadius: 2,
+              ),
+              ...SoftUIDesign.getCardShadow(elevation: 6.0),
+            ],
             border: Border.all(
-              color: Colors.white.withOpacity(0.2),
-              width: 1.0,
+              color: Colors.white.withOpacity(0.25),
+              width: 1.5,
             ),
              ),
           child: Stack(
@@ -196,43 +216,79 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Container(
-                      width: 64,
-                      height: 64,
+                      width: 72,
+                      height: 72,
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.08),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: Colors.white.withOpacity(0.35), width: 1.2),
+                        color: Colors.white.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: Colors.white.withOpacity(0.4),
+                          width: 2.0,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.2),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                          BoxShadow(
+                            color: Colors.white.withOpacity(0.1),
+                            blurRadius: 8,
+                            offset: const Offset(0, -2),
+                          ),
+                        ],
                       ),
                       child: Center(
-                   child: AccessibleText(
-                     _getInitials(userName),
-                     baseStyle: UnifiedTypography.displaySmall,
-                     color: Colors.white,
-                     backgroundColor: AppColors.primaryRed,
-                     isHeading: true,
-                   ),
-            ),
-          ),
+                        child: AccessibleText(
+                          _getInitials(userName),
+                          baseStyle: UnifiedTypography.displaySmall.copyWith(
+                            fontSize: 28,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 1.2,
+                          ),
+                          color: Colors.white,
+                          backgroundColor: AppColors.primaryRed,
+                          isHeading: true,
+                        ),
+                      ),
+                    ),
                  const SizedBox(width: 14),
                  Expanded(
               child: Column(
                      crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                       AccessibleHeading(
-                         userName,
-                         level: HeadingLevel.h2,
-                         color: Colors.white,
-                         backgroundColor: AppColors.primaryRed,
-                         maxLines: 1,
-                         overflow: TextOverflow.ellipsis,
+                       Tooltip(
+                         message: userName, // Show full name on hover
+                        child: AccessibleHeading(
+                          userName,
+                          level: HeadingLevel.h2,
+                          color: Colors.white,
+                          backgroundColor: AppColors.primaryRed,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                        ),
                           const SizedBox(height: 6),
                           Row(
-                            children: const [
-                              Icon(Icons.circle, color: Colors.greenAccent, size: 10),
-                              SizedBox(width: 6),
-                              AccessibleBodyText(
-                                'Active',
+                            children: [
+                              Container(
+                                width: 10,
+                                height: 10,
+                                decoration: BoxDecoration(
+                                  color: Colors.greenAccent,
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.greenAccent.withOpacity(0.6),
+                                      blurRadius: 8,
+                                      spreadRadius: 2,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              const AccessibleBodyText(
+                                'Connected',
                                 size: BodySize.small,
                                 color: Colors.white,
                                 backgroundColor: AppColors.primaryRed,
@@ -263,53 +319,31 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                 Container(height: 1, color: Colors.white.withOpacity(0.25)),
                 const SizedBox(height: 12),
 
-                         Row(
-                           children: [
-                    const Icon(Icons.mail_outline, color: Colors.white, size: 18),
-                    const SizedBox(width: 10),
-                             Expanded(
-                               child: AccessibleBodyText(
-                                 userEmail,
-                                 color: Colors.white,
-                                 backgroundColor: AppColors.primaryRed,
-                                 maxLines: 1,
-                                 overflow: TextOverflow.ellipsis,
-                               ),
-                             ),
-                           ],
+                         _buildClickableContactInfo(
+                           context,
+                           icon: Icons.mail_outline,
+                           text: userEmail,
+                           onTap: () => _copyToClipboard(context, userEmail, 'Email copied'),
+                           onLongPress: () => _openEmailApp(context, userEmail),
                          ),
                 const SizedBox(height: 8),
-                if (phone.isNotEmpty) Row(
-                  children: [
-                    Icon(IconSystem.phone, color: Colors.white, size: IconSystem.sm),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: AccessibleBodyText(
-                        phone,
-                        color: Colors.white,
-                        backgroundColor: AppColors.primaryRed,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
+                if (phone.isNotEmpty)
+                  _buildClickableContactInfo(
+                    context,
+                    icon: IconSystem.phone,
+                    text: phone,
+                    onTap: () => _copyToClipboard(context, phone, 'Phone number copied'),
+                    onLongPress: () => _makePhoneCall(context, phone),
+                  ),
                 if (phone.isNotEmpty) const SizedBox(height: 8),
-                if (location.isNotEmpty) Row(
-                      children: [
-                    Icon(IconSystem.location, color: Colors.white, size: IconSystem.sm),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: AccessibleBodyText(
-                        location,
-                        color: Colors.white,
-                        backgroundColor: AppColors.primaryRed,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                        ),
+                if (location.isNotEmpty)
+                  _buildClickableContactInfo(
+                    context,
+                    icon: IconSystem.location,
+                    text: location,
+                    onTap: () => _copyToClipboard(context, location, 'Address copied'),
+                    onLongPress: () => _openMaps(context, location),
+                  ),
                       ],
                     ),
                   ),
@@ -379,301 +413,68 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
     );
   }
 
-  Widget _buildWeeklyActivityChart() {
-    if (_isLoadingProfile) {
-      return AnimatedNeumorphicCard(
-        child: Container(
-          height: 220,
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header skeleton
-              Row(
-                children: [
-                  EnhancedSkeletonLoader(
-                    width: 40,
-                    height: 40,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        EnhancedSkeletonLoader(
-                          width: 150,
-                          height: 16,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        const SizedBox(height: 8),
-                        EnhancedSkeletonLoader(
-                          width: 100,
-                          height: 12,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-              // Chart skeleton
-              Expanded(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: List.generate(7, (index) {
-                    return Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
-                        child: EnhancedSkeletonLoader(
-                          height: 80 + (index % 3) * 20.0,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                      ),
-                    );
-                  }),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    // Sample weekly activity data (in real app, fetch from database/analytics)
-    final weeklyData = [
-      {'day': 'Mon', 'messages': 12, 'calls': 3, 'alerts': 1},
-      {'day': 'Tue', 'messages': 18, 'calls': 5, 'alerts': 2},
-      {'day': 'Wed', 'messages': 8, 'calls': 2, 'alerts': 0},
-      {'day': 'Thu', 'messages': 22, 'calls': 6, 'alerts': 1},
-      {'day': 'Fri', 'messages': 15, 'calls': 4, 'alerts': 1},
-      {'day': 'Sat', 'messages': 25, 'calls': 7, 'alerts': 3},
-      {'day': 'Sun', 'messages': 10, 'calls': 3, 'alerts': 0},
-    ];
-
-    return AnimatedNeumorphicCard(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Header
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: AppColors.info.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(
-                    Icons.bar_chart,
-                    color: AppColors.info,
-                    size: 20,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  'Weekly Activity',
-                  style: UnifiedTypography.titleLarge.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                const Spacer(),
-                TextButton(
-                  onPressed: () {
-                    // TODO: Show detailed stats or date range picker
-                  },
-                  child: Text(
-                    'View Details',
-                    style: UnifiedTypography.bodySmall.copyWith(
-                      color: AppColors.info,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-            
-            // Chart
-            SizedBox(
-              height: 180,
-              child: BarChart(
-                BarChartData(
-                  alignment: BarChartAlignment.spaceAround,
-                  maxY: 30,
-                  barTouchData: BarTouchData(
-                    enabled: true,
-                    touchTooltipData: BarTouchTooltipData(
-                      tooltipBgColor: AppColors.primaryRed.withOpacity(0.9),
-                      getTooltipItem: (group, groupIndex, rod, rodIndex) {
-                        final day = weeklyData[groupIndex]['day'] as String;
-                        final value = rod.toY.toInt();
-                        return BarTooltipItem(
-                          '$day\n$value activities',
-                          const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  titlesData: FlTitlesData(
-                    show: true,
-                    rightTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false),
-                    ),
-                    topTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false),
-                    ),
-                    bottomTitles: AxisTitles(
-                      sideTitles: SideTitles(
-                        showTitles: true,
-                        getTitlesWidget: (value, meta) {
-                          final index = value.toInt();
-                          if (index >= 0 && index < weeklyData.length) {
-                            return Padding(
-                              padding: const EdgeInsets.only(top: 8),
-                              child: Text(
-                                weeklyData[index]['day'] as String,
-                                style: UnifiedTypography.bodySmall.copyWith(
-                                  color: AppColors.textSecondary,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            );
-                          }
-                          return const Text('');
-                        },
-                        reservedSize: 30,
-                      ),
-                    ),
-                    leftTitles: AxisTitles(
-                      sideTitles: SideTitles(
-                        showTitles: true,
-                        reservedSize: 40,
-                        getTitlesWidget: (value, meta) {
-                          if (value.toInt() % 10 == 0) {
-                            return Text(
-                              value.toInt().toString(),
-                              style: UnifiedTypography.bodySmall.copyWith(
-                                color: AppColors.textSecondary,
-                                fontSize: 10,
-                              ),
-                            );
-                          }
-                          return const Text('');
-                        },
-                      ),
-                    ),
-                  ),
-                  gridData: FlGridData(
-                    show: true,
-                    drawVerticalLine: false,
-                    horizontalInterval: 10,
-                    getDrawingHorizontalLine: (value) {
-                      return FlLine(
-                        color: AppColors.lightGray.withOpacity(0.2),
-                        strokeWidth: 1,
-                      );
-                    },
-                  ),
-                  borderData: FlBorderData(
-                    show: true,
-                    border: Border(
-                      bottom: BorderSide(
-                        color: AppColors.lightGray.withOpacity(0.3),
-                        width: 1,
-                      ),
-                      left: BorderSide(
-                        color: AppColors.lightGray.withOpacity(0.3),
-                        width: 1,
-                      ),
-                    ),
-                  ),
-                  barGroups: weeklyData.asMap().entries.map((entry) {
-                    final index = entry.key;
-                    final data = entry.value;
-                    final total = (data['messages'] as int) + 
-                                 (data['calls'] as int) + 
-                                 (data['alerts'] as int);
-                    
-                    return BarChartGroupData(
-                      x: index,
-                      barRods: [
-                        BarChartRodData(
-                          toY: total.toDouble(),
-                          gradient: LinearGradient(
-                            begin: Alignment.bottomCenter,
-                            end: Alignment.topCenter,
-                            colors: [
-                              AppColors.info,
-                              AppColors.info.withOpacity(0.7),
-                            ],
-                          ),
-                          width: 24,
-                          borderRadius: const BorderRadius.vertical(
-                            top: Radius.circular(4),
-                          ),
-                          backDrawRodData: BackgroundBarChartRodData(
-                            show: true,
-                            toY: 30,
-                            color: AppColors.lightGray.withOpacity(0.1),
-                          ),
-                        ),
-                      ],
-                    );
-                  }).toList(),
-                ),
-              ),
-            ),
-            
-            // Legend
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _buildLegendItem('Messages', AppColors.info),
-                const SizedBox(width: 16),
-                _buildLegendItem('Calls', AppColors.success),
-                const SizedBox(width: 16),
-                _buildLegendItem('Alerts', AppColors.warning),
-              ],
-            ),
-          ],
-        ),
-      ),
+  Widget _buildUserEngagementDashboard() {
+    return Consumer2<AuthProvider, ChatProvider>(
+      builder: (context, auth, chatProvider, child) {
+        // Get real data from providers
+        final messages = chatProvider.messages;
+        final sentMessages = messages.where((m) => m.isMe).length;
+        final receivedMessages = messages.where((m) => !m.isMe).length;
+        final connectionsCount = chatProvider.connectedUsersCount;
+        
+        // TODO: Get emergency alerts count from OfflineMessagingService or SQLite
+        // For now using estimated values based on messages
+        final estimatedAlertsSent = (sentMessages * 0.1).round(); // Estimate 10% are alerts
+        final estimatedAlertsReceived = (receivedMessages * 0.08).round();
+        
+        // TODO: Calculate average response time from message timestamps
+        // For now, using a placeholder
+        double avgResponseTime = 0.0;
+        if (messages.isNotEmpty && messages.length > 1) {
+          // Simple calculation: average time between sent and received messages
+          final sentTimes = messages.where((m) => m.isMe).map((m) => m.timestamp).toList()..sort();
+          final receivedTimes = messages.where((m) => !m.isMe).map((m) => m.timestamp).toList()..sort();
+          
+          if (sentTimes.isNotEmpty && receivedTimes.isNotEmpty) {
+            // Calculate average time difference
+            int totalDiff = 0;
+            int count = 0;
+            for (var sentTime in sentTimes) {
+              var closestReceived = receivedTimes.firstWhere(
+                (rt) => rt.isAfter(sentTime),
+                orElse: () => sentTime,
+              );
+              if (closestReceived != sentTime && closestReceived.isAfter(sentTime)) {
+                totalDiff += closestReceived.difference(sentTime).inMinutes;
+                count++;
+              }
+            }
+            if (count > 0) {
+              avgResponseTime = (totalDiff / count).toDouble();
+            }
+          }
+        }
+        
+        // TODO: Track help provided/received - for now using placeholder
+        final helpProvided = 0; // Track in future updates
+        final helpReceived = 0; // Track in future updates
+        
+        return UserEngagementDashboard(
+          isLoading: _isLoadingProfile,
+          emergencyAlertsSent: estimatedAlertsSent,
+          emergencyAlertsReceived: estimatedAlertsReceived,
+          messagesSent: sentMessages,
+          messagesReceived: receivedMessages,
+          connectionsMade: connectionsCount,
+          averageResponseTime: avgResponseTime,
+          helpProvided: helpProvided,
+          helpReceived: helpReceived,
+        );
+      },
     );
   }
 
-  Widget _buildLegendItem(String label, Color color) {
-    return Row(
-      children: [
-        Container(
-          width: 12,
-          height: 12,
-          decoration: BoxDecoration(
-            color: color,
-            shape: BoxShape.circle,
-          ),
-        ),
-        const SizedBox(width: 6),
-        Text(
-          label,
-          style: UnifiedTypography.bodySmall.copyWith(
-            color: AppColors.textSecondary,
-            fontSize: 11,
-          ),
-        ),
-      ],
-    );
-  }
+  // Old weekly activity chart removed - replaced with UserEngagementDashboard
 
   Widget _buildStatCard({
     required String title,
@@ -1662,6 +1463,129 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
     List<String> parts = name.split(' ');
     return (parts[0].isNotEmpty ? parts[0][0] : '') +
         (parts.length > 1 && parts[1].isNotEmpty ? parts[1][0] : '');
+  }
+
+  // Clickable contact info widget with copy functionality
+  Widget _buildClickableContactInfo(
+    BuildContext context, {
+    required IconData icon,
+    required String text,
+    required VoidCallback onTap,
+    VoidCallback? onLongPress,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        onLongPress: onLongPress,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Row(
+            children: [
+              Icon(icon, color: Colors.white, size: 18),
+              const SizedBox(width: 10),
+              Expanded(
+                child: AccessibleBodyText(
+                  text,
+                  color: Colors.white,
+                  backgroundColor: AppColors.primaryRed,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(
+                Icons.copy,
+                color: Colors.white.withOpacity(0.7),
+                size: 16,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Copy to clipboard helper
+  Future<void> _copyToClipboard(BuildContext context, String text, String message) async {
+    await Clipboard.setData(ClipboardData(text: text));
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle, color: Colors.white, size: 20),
+              const SizedBox(width: 8),
+              Text(message),
+            ],
+          ),
+          backgroundColor: AppColors.success,
+          duration: const Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+        ),
+      );
+    }
+    HapticFeedback.lightImpact();
+  }
+
+  // Open email app
+  Future<void> _openEmailApp(BuildContext context, String email) async {
+    final uri = Uri.parse('mailto:$email');
+    try {
+      // In a real app, you might use url_launcher package
+      // For now, just copy the email
+      await _copyToClipboard(context, email, 'Email copied');
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not open email app: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
+  }
+
+  // Make phone call
+  Future<void> _makePhoneCall(BuildContext context, String phone) async {
+    final uri = Uri.parse('tel:$phone');
+    try {
+      // In a real app, you might use url_launcher package
+      // For now, just copy the phone number
+      await _copyToClipboard(context, phone, 'Phone number copied');
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not make call: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
+  }
+
+  // Open maps
+  Future<void> _openMaps(BuildContext context, String location) async {
+    try {
+      // In a real app, you might use url_launcher package with maps URL
+      // For now, just copy the location
+      await _copyToClipboard(context, location, 'Address copied');
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not open maps: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
   }
 
   // Dynamic stats calculation methods using real data

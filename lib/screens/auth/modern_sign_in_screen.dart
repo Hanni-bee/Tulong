@@ -5,15 +5,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:animations/animations.dart'; // Material motion (SharedAxis/FadeThrough)
 
 import '../../constants/app_colors.dart';
 import '../../constants/unified_typography.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/firebase_service.dart';
 import '../../constants/soft_ui_design.dart';
-import '../../utils/prototype_animations.dart';
-import '../../utils/animation_controller.dart' as AppAnim;
 
 import 'sign_up_screen.dart';
 import '../enhanced_splash_screen.dart';
@@ -40,8 +37,6 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
 
-  late AnimationController _routeFadeController;
-  late Animation<double> _routeFadeAnimation;
 
   // Keyboard + sheet motion
   late AnimationController _keyboardAnimationController;
@@ -54,6 +49,7 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
 
   bool _obscurePassword = true;
   bool _isLoading = false;
+  bool _isGoogleLoading = false;
   bool _isKeyboardVisible = false;
 
   // Material 3 motion curves
@@ -81,28 +77,24 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
     _slideAnimation = Tween<Offset>(begin: const Offset(0, .3), end: Offset.zero)
         .animate(CurvedAnimation(parent: _slideController, curve: kEnter));
 
-    _routeFadeController = AnimationController(
-      duration: const Duration(milliseconds: 220),
-      vsync: this,
-    );
-    _routeFadeAnimation = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(parent: _routeFadeController, curve: kEnter),
-    );
 
     _keyboardAnimationController = AnimationController(
-      duration: const Duration(milliseconds: 350),
-      reverseDuration: const Duration(milliseconds: 300),
+      duration: const Duration(milliseconds: 400),
+      reverseDuration: const Duration(milliseconds: 350),
       vsync: this,
     );
 
     _formTopPct = Tween<double>(begin: 0.35, end: 0.05).animate(
-      CurvedAnimation(parent: _keyboardAnimationController, curve: kEmphasized),
+      CurvedAnimation(
+        parent: _keyboardAnimationController,
+        curve: Curves.easeInOutCubicEmphasized,
+      ),
     );
 
     _headerOpacityAnimation =
-        Tween<double>(begin: 1.0, end: 0.65).animate(CurvedAnimation(
+        Tween<double>(begin: 1.0, end: 0.7).animate(CurvedAnimation(
       parent: _keyboardAnimationController,
-      curve: const Interval(0.0, 0.9, curve: kEmphasized),
+      curve: const Interval(0.0, 0.85, curve: Curves.easeInOutCubic),
     ));
 
     _emailFocusNode.addListener(_onFocusChange);
@@ -110,9 +102,9 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
 
     _shakeController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 180),
+      duration: const Duration(milliseconds: 300),
     );
-    _shakeAnim = CurvedAnimation(parent: _shakeController, curve: Curves.linear);
+    _shakeAnim = CurvedAnimation(parent: _shakeController, curve: Curves.easeOutCubic);
   }
 
   // Reliable keyboard detection
@@ -160,7 +152,6 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
     _passwordFocusNode.dispose();
     _fadeController.dispose();
     _slideController.dispose();
-    _routeFadeController.dispose();
     _keyboardAnimationController.dispose();
     _shakeController.dispose();
     super.dispose();
@@ -262,6 +253,11 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
   }
 
   void _showErrorSnackbar(String message) {
+    final keyboardInset = MediaQuery.of(context).viewInsets.bottom;
+    final truncatedMessage = message.length > 100 
+        ? '${message.substring(0, 97)}...' 
+        : message;
+    
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Row(
@@ -270,8 +266,28 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
             const SizedBox(width: 12),
             Expanded(
               child: Text(
-                message,
+                truncatedMessage,
                 style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 8),
+            TextButton(
+              onPressed: () {
+                ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                if (message.contains('email') || message.contains('password')) {
+                  _signIn();
+                } else if (message.contains('Google')) {
+                  _signInWithGoogle();
+                }
+              },
+              child: const Text(
+                'Retry',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
           ],
@@ -279,78 +295,204 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
         backgroundColor: AppColors.primary,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        margin: const EdgeInsets.all(16),
+        margin: EdgeInsets.only(
+          left: 16,
+          right: 16,
+          bottom: keyboardInset > 0 ? keyboardInset + 16 : 16,
+        ),
+        duration: const Duration(seconds: 4),
       ),
     );
   }
 
   Widget _buildGoogleSignInButton(double height) {
-    return GestureDetector(
-      onTap: _signInWithGoogle,
-      child: Container(
-        height: height,
-        decoration: SoftUIDesign.cardDecoration(
-          backgroundColor: AppColors.white,
-          borderRadius: SoftUIDesign.buttonBorderRadius,
-          elevation: 2.0,
-          borderColor: const Color(0xFFE0E3E7),
-          showBorder: true,
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            // Embedded Google logo for offline support
-            Container(
-              width: 20,
-              height: 20,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(4),
-                color: AppColors.white,
-                border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
+    final textSize = (height * 0.4).clamp(14.0, 18.0); // Scale text with button height
+    
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeOutCubic,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: _isGoogleLoading ? null : _signInWithGoogle,
+          borderRadius: BorderRadius.circular(SoftUIDesign.buttonBorderRadius),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOutCubic,
+            height: height,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: _isGoogleLoading
+                    ? [
+                        AppColors.white.withOpacity(0.7),
+                        AppColors.white.withOpacity(0.65),
+                      ]
+                    : [
+                        AppColors.white,
+                        AppColors.white.withOpacity(0.95),
+                      ],
               ),
-              child: SvgPicture.string(
-                '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>',
-                width: 20,
-                height: 20,
+              borderRadius: BorderRadius.circular(SoftUIDesign.buttonBorderRadius),
+              border: Border.all(
+                color: _isGoogleLoading
+                    ? const Color(0xFFE0E3E7).withOpacity(0.5)
+                    : const Color(0xFFE0E3E7),
+                width: 1.5,
               ),
+              boxShadow: _isGoogleLoading
+                  ? [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.04),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                        spreadRadius: 0,
+                      ),
+                    ]
+                  : [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.08),
+                        blurRadius: 8,
+                        offset: const Offset(0, 4),
+                        spreadRadius: 0,
+                      ),
+                      BoxShadow(
+                        color: Colors.white.withOpacity(0.5),
+                        blurRadius: 4,
+                        offset: const Offset(0, -2),
+                        spreadRadius: 0,
+                      ),
+                    ],
             ),
-            const SizedBox(width: 12),
-            Text(
-              'Continue with Google',
-              style: UnifiedTypography.buttonMedium
-                  .copyWith(color: const Color(0xFF3C4043)),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (_isGoogleLoading)
+                  const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.5,
+                      valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF1F1F1F)),
+                    ),
+                  )
+                else
+                  Container(
+                    width: 20,
+                    height: 20,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(4),
+                      color: AppColors.white,
+                      border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
+                    ),
+                    child: SvgPicture.string(
+                      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>',
+                      width: 20,
+                      height: 20,
+                    ),
+                  ),
+                const SizedBox(width: 12),
+                Text(
+                  _isGoogleLoading ? 'Signing in...' : 'Continue with Google',
+                  style: UnifiedTypography.buttonMedium.copyWith(
+                    color: const Color(0xFF1F1F1F), // Darker for better contrast (WCAG AA)
+                    fontSize: textSize,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
   }
 
   Widget _buildEmailSignInButton(double height) {
-    return FilledButton.icon(
-      onPressed: _isLoading ? null : _signIn,
-      style: FilledButton.styleFrom(
-        minimumSize: Size.fromHeight(height),
-        animationDuration: const Duration(milliseconds: 200),
-        backgroundColor: const Color(0xFFFF3B3B),
-        foregroundColor: Colors.white,
-        shape: RoundedRectangleBorder(
+    final textSize = (height * 0.4).clamp(14.0, 18.0); // Scale text with button height
+    
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeOutCubic,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: _isLoading ? null : () {
+            HapticFeedback.mediumImpact();
+            _signIn();
+          },
           borderRadius: BorderRadius.circular(SoftUIDesign.buttonBorderRadius),
-        ),
-      ),
-      icon: _isLoading
-          ? const SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(strokeWidth: 2.5),
-            )
-          : const Icon(Icons.login),
-      label: Text(
-        _isLoading ? 'Signing In...' : 'Sign In',
-        style: UnifiedTypography.buttonLarge.copyWith(
-          color: Colors.white,
-          fontSize: 18,
-          fontWeight: FontWeight.w700,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOutCubic,
+            height: height,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: _isLoading
+                    ? [
+                        const Color(0xFFFF3B3B).withOpacity(0.6),
+                        const Color(0xFFD90E0E).withOpacity(0.6),
+                      ]
+                    : [
+                        const Color(0xFFFF3B3B),
+                        const Color(0xFFD90E0E),
+                      ],
+              ),
+              borderRadius: BorderRadius.circular(SoftUIDesign.buttonBorderRadius),
+              boxShadow: _isLoading
+                  ? [
+                      // Keep subtle shadow in loading state
+                      BoxShadow(
+                        color: const Color(0xFFFF3B3B).withOpacity(0.2),
+                        blurRadius: 8,
+                        offset: const Offset(0, 3),
+                        spreadRadius: 0,
+                      ),
+                    ]
+                  : [
+                      BoxShadow(
+                        color: const Color(0xFFFF3B3B).withOpacity(0.4),
+                        blurRadius: 12,
+                        offset: const Offset(0, 6),
+                        spreadRadius: 0,
+                      ),
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 8,
+                        offset: const Offset(0, 4),
+                        spreadRadius: 0,
+                      ),
+                    ],
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (_isLoading)
+                  const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.5,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  )
+                else
+                  Icon(Icons.login, color: Colors.white, size: textSize * 1.2),
+                const SizedBox(width: 12),
+                Text(
+                  _isLoading ? 'Signing In...' : 'Sign In',
+                  style: UnifiedTypography.buttonLarge.copyWith(
+                    color: Colors.white,
+                    fontSize: textSize,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -384,30 +526,21 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
                   child: LayoutBuilder(
                     builder: (context, constraints) {
                       final totalHeight = constraints.maxHeight;
-                      final isShort = totalHeight < 760;
+                      // Simplified breakpoints: small < 700, medium < 900, large >= 900
                       final isSmall = totalHeight < 700;
-                      final isTiny = totalHeight < 620;
-                      final isUltraTiny = totalHeight < 560;
+                      final isMedium = totalHeight < 900;
+                      
+                      // Spacing helper using 8px base scale (8, 16, 24, 32)
+                      double spacing(double small, double medium, double large) {
+                        return isSmall ? small : (isMedium ? medium : large);
+                      }
 
-                      final logoSize = isUltraTiny
-                          ? 70.0
-                          : (isTiny
-                              ? 75.0
-                              : (isSmall
-                                  ? 80.0
-                                  : (isShort ? 85.0 : 90.0)));
-                      final headerBottomPad = isUltraTiny
-                          ? 16.0
-                          : (isTiny ? 20.0 : (isSmall ? 28.0 : (isShort ? 32.0 : 48.0)));
-                      final titleSize = isUltraTiny
-                          ? 20.0
-                          : (isTiny ? 22.0 : (isSmall ? 24.0 : (isShort ? 26.0 : 28.0)));
-                      final subtitleSize =
-                          isUltraTiny ? 11.0 : (isTiny ? 12.0 : (isShort ? 13.0 : 14.0));
-                      final verticalGap =
-                          isUltraTiny ? 6.0 : (isTiny ? 8.0 : (isShort ? 10.0 : 16.0));
-                      final controlHeight =
-                          isUltraTiny ? 42.0 : (isTiny ? 44.0 : (isShort ? 46.0 : 48.0));
+                      final logoSize = spacing(75.0, 85.0, 90.0);
+                      final headerBottomPad = spacing(24.0, 32.0, 48.0);
+                      final titleSize = spacing(22.0, 24.0, 28.0);
+                      final subtitleSize = spacing(13.0, 14.0, 16.0);
+                      final verticalGap = spacing(8.0, 12.0, 16.0);
+                      final controlHeight = spacing(44.0, 46.0, 48.0);
 
                       return Stack(
                         children: [
@@ -419,38 +552,52 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
                                 AnimatedBuilder(
                                   animation: _keyboardAnimationController,
                                   builder: (context, _) {
+                                    final progress = _keyboardAnimationController.value;
                                     final opacity = _headerOpacityAnimation.value;
-                                    final compress = 1.0 -
-                                        ((opacity - 0.65) / 0.35)
-                                            .clamp(0.0, 1.0);
-                                    final scale = (1.0 - (compress * 0.35))
-                                        .clamp(0.65, 1.0);
-                                    final translateY = -15.0 * compress;
+                                    
+                                    // Smooth compression calculation
+                                    final compress = 1.0 - ((opacity - 0.7) / 0.3).clamp(0.0, 1.0);
+                                    
+                                    // Smoother scale transition
+                                    final scale = 1.0 - (compress * 0.3);
+                                    
+                                    // Smoother vertical translation
+                                    final translateY = -20.0 * compress * (1 - progress * 0.3);
 
                                     return Opacity(
-                                      opacity: opacity.clamp(0.65, 1.0),
+                                      opacity: opacity.clamp(0.7, 1.0),
                                       child: Transform.scale(
-                                        scale: scale,
+                                        scale: scale.clamp(0.7, 1.0),
                                         alignment: Alignment.topCenter,
                                         child: Transform.translate(
                                           offset: Offset(0, translateY),
                                           child: AnimatedSwitcher(
-                                            duration: const Duration(milliseconds: 250),
-                                            switchInCurve: kEnter,
-                                            switchOutCurve: kExit,
-                                            transitionBuilder: (child, anim) =>
-                                                FadeTransition(
-                                                  opacity: anim,
-                                                  child: ScaleTransition(
-                                                    scale: anim,
-                                                    child: child,
-                                                  ),
+                                            duration: const Duration(milliseconds: 400),
+                                            reverseDuration: const Duration(milliseconds: 350),
+                                            switchInCurve: Curves.easeOutCubic,
+                                            switchOutCurve: Curves.easeInCubic,
+                                            transitionBuilder: (child, anim) {
+                                              return FadeTransition(
+                                                opacity: CurvedAnimation(
+                                                  parent: anim,
+                                                  curve: Curves.easeInOut,
                                                 ),
+                                                child: ScaleTransition(
+                                                  scale: CurvedAnimation(
+                                                    parent: anim,
+                                                    curve: Interval(0.0, 1.0, curve: Curves.easeOutBack),
+                                                  ),
+                                                  alignment: Alignment.topCenter,
+                                                  child: child,
+                                                ),
+                                              );
+                                            },
                                             child: _isKeyboardVisible
                                                 ? _PillHeader(
                                                     key: const ValueKey('pill'),
-                                                    logoSize: logoSize * 0.8,
+                                                    logoSize: logoSize * 0.9,
                                                     titleSize: titleSize * 0.85,
+                                                    subtitleSize: subtitleSize * 0.75,
                                                   )
                                                 : _TallHeader(
                                                     key: const ValueKey('tall'),
@@ -485,17 +632,17 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
                               // when keyboard is visible, keep some red header visible above the sheet:
                               // safe area + pill height + breathing space.
                               const double kPillVisualHeight = 72.0; // approx height of pill header
-                              const double kTopBreathing = 12.0;      // small red band above the sheet
+                              const double kTopBreathing = 20.0;      // breathing space above the sheet
                               final double minTopWhenKeyboard =
                                   media.padding.top + kPillVisualHeight + kTopBreathing;
 
-                              // choose top based on state:
+                              // choose top based on state: ensure minimum breathing space when keyboard is visible
                               final double targetTop = _isKeyboardVisible
                                   ? math.max(animatedTop, minTopWhenKeyboard)
                                   : animatedTop;
 
                               return AnimatedPositioned(
-                                duration: const Duration(milliseconds: 350),
+                                duration: const Duration(milliseconds: 400),
                                 curve: Curves.easeInOutCubicEmphasized,
                                 top: targetTop,
                                 left: 0,
@@ -539,30 +686,23 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
                                                 textAlign: TextAlign.center,
                                                 style: UnifiedTypography.headlineLarge
                                                     .copyWith(
-                                                  fontSize:
-                                                      isUltraTiny ? 20 : (isTiny ? 21 : 22),
+                                                  fontSize: spacing(22.0, 24.0, 26.0),
                                                   color: AppColors.textPrimary,
+                                                  fontWeight: FontWeight.w700,
                                                 ),
                                               ),
-                                              SizedBox(
-                                                  height:
-                                                      isUltraTiny ? 8 : (isTiny ? 10 : 12)),
+                                              SizedBox(height: spacing(8.0, 10.0, 12.0)),
                                               Text(
                                                 'Sign in to continue',
                                                 textAlign: TextAlign.center,
                                                 style:
                                                     UnifiedTypography.bodyMedium.copyWith(
-                                                  fontSize: isUltraTiny ? 13 : 14,
+                                                  fontSize: spacing(15.0, 15.0, 16.0),
                                                   color: AppColors.textSecondary,
+                                                  fontWeight: FontWeight.w500,
                                                 ),
                                               ),
-                                              SizedBox(
-                                                height: isUltraTiny
-                                                    ? 12
-                                                    : (isTiny
-                                                        ? 16
-                                                        : (isShort ? 18 : 20)),
-                                              ),
+                                              SizedBox(height: spacing(16.0, 18.0, 20.0)),
 
                                               // Email — Autofill + suggestions
                                               _buildTextField(
@@ -588,13 +728,7 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
                                                   return null;
                                                 },
                                               ),
-                                              SizedBox(
-                                                height: isUltraTiny
-                                                    ? 12
-                                                    : (isTiny
-                                                        ? 14
-                                                        : (isShort ? 16 : 18)),
-                                              ),
+                                              SizedBox(height: spacing(16.0, 18.0, 20.0)),
 
                                               // Password — press & hold to peek + autofill
                                               _buildTextField(
@@ -610,16 +744,47 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
                                                 enableSuggestions: false,
                                                 autocorrect: false,
                                                 // press & hold to peek
-                                                suffixIcon: GestureDetector(
-                                                  onLongPressStart: (_) => setState(
-                                                      () => _obscurePassword = false),
-                                                  onLongPressEnd: (_) => setState(
-                                                      () => _obscurePassword = true),
-                                                  child: Icon(
-                                                    _obscurePassword
-                                                        ? Icons.visibility_off_outlined
-                                                        : Icons.visibility_outlined,
-                                                    color: AppColors.mediumGray,
+                                                suffixIcon: Tooltip(
+                                                  message: 'Tap to toggle, long-press to peek',
+                                                  child: Semantics(
+                                                    label: _obscurePassword 
+                                                        ? 'Show password' 
+                                                        : 'Hide password',
+                                                    hint: 'Long press to temporarily reveal password',
+                                                    child: GestureDetector(
+                                                      onTap: () {
+                                                        HapticFeedback.lightImpact();
+                                                        setState(() {
+                                                          _obscurePassword = !_obscurePassword;
+                                                        });
+                                                      },
+                                                      onLongPressStart: (_) => setState(
+                                                          () => _obscurePassword = false),
+                                                      onLongPressEnd: (_) => setState(
+                                                          () => _obscurePassword = true),
+                                                      child: AnimatedSwitcher(
+                                                        duration: const Duration(milliseconds: 300),
+                                                        transitionBuilder: (child, animation) {
+                                                          return ScaleTransition(
+                                                            scale: animation,
+                                                            child: RotationTransition(
+                                                              turns: Tween<double>(begin: 0.0, end: 0.5).animate(animation),
+                                                              child: FadeTransition(
+                                                                opacity: animation,
+                                                                child: child,
+                                                              ),
+                                                            ),
+                                                          );
+                                                        },
+                                                        child: Icon(
+                                                          _obscurePassword
+                                                              ? Icons.visibility_off_outlined
+                                                              : Icons.visibility_outlined,
+                                                          key: ValueKey(_obscurePassword),
+                                                          color: AppColors.mediumGray,
+                                                        ),
+                                                      ),
+                                                    ),
                                                   ),
                                                 ),
                                                 validator: (value) {
@@ -633,13 +798,7 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
                                                 },
                                               ),
 
-                                              SizedBox(
-                                                height: isUltraTiny
-                                                    ? 8
-                                                    : (isTiny
-                                                        ? 10
-                                                        : (isShort ? 12 : 12)),
-                                              ),
+                                              SizedBox(height: spacing(8.0, 10.0, 12.0)),
 
                                               Align(
                                                 alignment: Alignment.centerRight,
@@ -652,39 +811,40 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
                                                   style: TextButton.styleFrom(
                                                     padding:
                                                         const EdgeInsets.symmetric(
-                                                            horizontal: 8, vertical: 4),
-                                                    minimumSize: Size.zero,
+                                                            horizontal: 12, vertical: 8),
+                                                    minimumSize: const Size(44, 44),
                                                     tapTargetSize:
                                                         MaterialTapTargetSize.shrinkWrap,
                                                   ),
-                                                  child: Text(
-                                                    'Forgot Password?',
-                                                    style: UnifiedTypography.labelMedium
-                                                        .copyWith(
-                                                      color: AppColors.primaryRed,
-                                                      fontWeight: FontWeight.w700,
-                                                      fontSize: 13,
-                                                    ),
+                                                  child: Row(
+                                                    mainAxisSize: MainAxisSize.min,
+                                                    children: [
+                                                      Text(
+                                                        'Forgot Password?',
+                                                        style: UnifiedTypography.labelMedium
+                                                            .copyWith(
+                                                          color: AppColors.primaryRed,
+                                                          fontWeight: FontWeight.w700,
+                                                          fontSize: 14,
+                                                          decoration: TextDecoration.underline,
+                                                          decorationColor: AppColors.primaryRed.withOpacity(0.5),
+                                                        ),
+                                                      ),
+                                                      const SizedBox(width: 4),
+                                                      Icon(
+                                                        Icons.arrow_forward_ios,
+                                                        size: 12,
+                                                        color: AppColors.primaryRed,
+                                                      ),
+                                                    ],
                                                   ),
                                                 ),
                                               ),
-                                              SizedBox(
-                                                height: isUltraTiny
-                                                    ? 12
-                                                    : (isTiny
-                                                        ? 14
-                                                        : (isShort ? 16 : 18)),
-                                              ),
+                                              SizedBox(height: spacing(16.0, 18.0, 20.0)),
 
                                               _buildEmailSignInButton(controlHeight),
 
-                                              SizedBox(
-                                                height: isUltraTiny
-                                                    ? 8
-                                                    : (isTiny
-                                                        ? 10
-                                                        : (isShort ? 12 : 14)),
-                                              ),
+                                              SizedBox(height: spacing(12.0, 14.0, 16.0)),
 
                                               Center(
                                                 child: TextButton(
@@ -697,23 +857,76 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
                                                             const SignUpScreen(),
                                                         transitionDuration:
                                                             const Duration(
-                                                                milliseconds: 300),
+                                                                milliseconds: 500),
                                                         reverseTransitionDuration:
                                                             const Duration(
-                                                                milliseconds: 250),
+                                                                milliseconds: 400),
                                                         transitionsBuilder: (context,
                                                             animation,
                                                             secondaryAnimation,
                                                             child) {
-                                                          return SharedAxisTransition(
-                                                            animation: animation,
-                                                            secondaryAnimation:
-                                                                secondaryAnimation,
-                                                            transitionType:
-                                                                SharedAxisTransitionType
-                                                                    .horizontal,
-                                                            fillColor: Colors.transparent,
-                                                            child: child,
+                                                          // Horizontal slide transition
+                                                          final slideAnimation = Tween<Offset>(
+                                                            begin: const Offset(1.0, 0),
+                                                            end: Offset.zero,
+                                                          ).animate(
+                                                            CurvedAnimation(
+                                                              parent: animation,
+                                                              curve: Curves.easeOutCubic,
+                                                            ),
+                                                          );
+
+                                                          // Fade transition
+                                                          final fadeAnimation = Tween<double>(
+                                                            begin: 0.0,
+                                                            end: 1.0,
+                                                          ).animate(
+                                                            CurvedAnimation(
+                                                              parent: animation,
+                                                              curve: Interval(0.0, 0.7, curve: Curves.easeOut),
+                                                            ),
+                                                          );
+
+                                                          // Exiting sign-in screen
+                                                          final exitFade = Tween<double>(
+                                                            begin: 1.0,
+                                                            end: 0.0,
+                                                          ).animate(
+                                                            CurvedAnimation(
+                                                              parent: secondaryAnimation,
+                                                              curve: Interval(0.0, 0.6, curve: Curves.easeIn),
+                                                            ),
+                                                          );
+
+                                                          final exitSlide = Tween<Offset>(
+                                                            begin: Offset.zero,
+                                                            end: const Offset(-0.3, 0),
+                                                          ).animate(
+                                                            CurvedAnimation(
+                                                              parent: secondaryAnimation,
+                                                              curve: Interval(0.0, 0.6, curve: Curves.easeIn),
+                                                            ),
+                                                          );
+
+                                                          return Stack(
+                                                            children: [
+                                                              // Exiting sign-in screen
+                                                              FadeTransition(
+                                                                opacity: exitFade,
+                                                                child: SlideTransition(
+                                                                  position: exitSlide,
+                                                                  child: Container(color: AppColors.primaryRed),
+                                                                ),
+                                                              ),
+                                                              // Entering sign-up screen
+                                                              FadeTransition(
+                                                                opacity: fadeAnimation,
+                                                                child: SlideTransition(
+                                                                  position: slideAnimation,
+                                                                  child: child,
+                                                                ),
+                                                              ),
+                                                            ],
                                                           );
                                                         },
                                                       ),
@@ -722,10 +935,17 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
                                                   style: TextButton.styleFrom(
                                                     padding:
                                                         const EdgeInsets.symmetric(
-                                                            horizontal: 16, vertical: 12),
-                                                    minimumSize: const Size(120, 44),
+                                                            horizontal: 20, vertical: 12),
+                                                    minimumSize: const Size(140, 44),
                                                     tapTargetSize:
                                                         MaterialTapTargetSize.shrinkWrap,
+                                                    shape: RoundedRectangleBorder(
+                                                      borderRadius: BorderRadius.circular(8),
+                                                      side: BorderSide(
+                                                        color: AppColors.primaryRed.withOpacity(0.2),
+                                                        width: 1,
+                                                      ),
+                                                    ),
                                                   ),
                                                   child: RichText(
                                                     text: TextSpan(
@@ -737,7 +957,7 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
                                                       children: [
                                                         const TextSpan(
                                                             text:
-                                                                "Don't have an account? "),
+                                                                "New user? "),
                                                         TextSpan(
                                                           text: 'Sign Up',
                                                           style: UnifiedTypography
@@ -756,37 +976,21 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
                                                 ),
                                               ),
 
-                                              SizedBox(
-                                                height: isUltraTiny
-                                                    ? 12
-                                                    : (isTiny
-                                                        ? 14
-                                                        : (isShort ? 16 : 18)),
-                                              ),
+                                              SizedBox(height: spacing(16.0, 18.0, 20.0)),
 
                                               // Divider
+                                              SizedBox(height: spacing(20.0, 20.0, 24.0)),
                                               Row(
                                                 children: [
                                                   Expanded(
                                                     child: Container(
                                                       height: 1,
-                                                      decoration: BoxDecoration(
-                                                        gradient: LinearGradient(
-                                                          begin:
-                                                              Alignment.centerLeft,
-                                                          end: Alignment.centerRight,
-                                                          colors: [
-                                                            Colors.transparent,
-                                                            AppColors.mediumGray
-                                                                .withOpacity(0.3),
-                                                          ],
-                                                        ),
-                                                      ),
+                                                      color: AppColors.mediumGray.withOpacity(0.3),
                                                     ),
                                                   ),
                                                   Padding(
                                                     padding: const EdgeInsets.symmetric(
-                                                        horizontal: 12),
+                                                        horizontal: 16),
                                                     child: Text(
                                                       'OR',
                                                       style: UnifiedTypography
@@ -794,36 +998,19 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
                                                           .copyWith(
                                                         color: AppColors.mediumGray,
                                                         fontWeight: FontWeight.w600,
-                                                        fontSize: isTiny ? 10 : 11,
+                                                        fontSize: 12,
                                                       ),
                                                     ),
                                                   ),
                                                   Expanded(
                                                     child: Container(
                                                       height: 1,
-                                                      decoration: BoxDecoration(
-                                                        gradient: LinearGradient(
-                                                          begin: Alignment.centerRight,
-                                                          end: Alignment.centerLeft,
-                                                          colors: [
-                                                            Colors.transparent,
-                                                            AppColors.mediumGray
-                                                                .withOpacity(0.3),
-                                                          ],
-                                                        ),
-                                                      ),
+                                                      color: AppColors.mediumGray.withOpacity(0.3),
                                                     ),
                                                   ),
                                                 ],
                                               ),
-
-                                              SizedBox(
-                                                height: isUltraTiny
-                                                    ? 12
-                                                    : (isTiny
-                                                        ? 14
-                                                        : (isShort ? 16 : 18)),
-                                              ),
+                                              SizedBox(height: spacing(20.0, 20.0, 24.0)),
 
                                               _buildGoogleSignInButton(controlHeight),
                                             ],
@@ -851,11 +1038,6 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
 
   Future<void> _playRouteFadeAndNavigate(String route) async {
     if (!mounted) return;
-    try {
-      await _routeFadeController.forward();
-    } catch (_) {}
-
-    if (!mounted) return;
 
     Widget? routeWidget;
     switch (route) {
@@ -870,49 +1052,101 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
         break;
       default:
         Navigator.of(context).pushReplacementNamed(route);
-        try {
-          _routeFadeController.value = 0.0;
-        } catch (_) {}
         return;
     }
 
+    // Smooth transition with success feedback
+    HapticFeedback.mediumImpact();
+    
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(
         pageBuilder: (context, animation, secondaryAnimation) => routeWidget!,
-        transitionDuration: AppAnim.AppAnimationController.slowAnimation, // ~600ms
-        reverseTransitionDuration: PrototypeAnimations.floatingBarDuration, // ~400ms
+        transitionDuration: const Duration(milliseconds: 700),
+        reverseTransitionDuration: const Duration(milliseconds: 500),
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          final curve = AppAnim.AppAnimationController.smoothCurve;
+          final curve = Curves.easeInOutCubic;
 
-          var fadeAnimation = Tween(begin: 0.0, end: 1.0).animate(
-            CurvedAnimation(parent: animation, curve: curve),
-          );
-
-          var scaleAnimation = Tween(begin: 0.95, end: 1.0).animate(
-            CurvedAnimation(parent: animation, curve: curve),
-          );
-
-          var slideAnimation =
-              Tween(begin: const Offset(0, 0.08), end: Offset.zero)
-                  .animate(CurvedAnimation(parent: animation, curve: curve));
-
-          return FadeTransition(
-            opacity: fadeAnimation,
-            child: SlideTransition(
-              position: slideAnimation,
-              child: ScaleTransition(
-                scale: scaleAnimation,
-                child: child,
-              ),
+          // Enhanced fade animation with staggered timing
+          final fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+            CurvedAnimation(
+              parent: animation,
+              curve: Interval(0.0, 0.85, curve: curve),
             ),
+          );
+
+          // Smooth horizontal slide animation
+          final slideAnimation = Tween<Offset>(
+            begin: const Offset(1.0, 0),
+            end: Offset.zero,
+          ).animate(
+            CurvedAnimation(
+              parent: animation,
+              curve: Interval(0.1, 1.0, curve: curve),
+            ),
+          );
+
+          // Subtle scale for depth
+          final scaleAnimation = Tween<double>(begin: 0.97, end: 1.0).animate(
+            CurvedAnimation(
+              parent: animation,
+              curve: Interval(0.0, 0.9, curve: curve),
+            ),
+          );
+
+          // Exiting sign-in screen - smooth fade out
+          final exitFade = Tween<double>(begin: 1.0, end: 0.0).animate(
+            CurvedAnimation(
+              parent: secondaryAnimation,
+              curve: Interval(0.0, 0.7, curve: Curves.easeIn),
+            ),
+          );
+
+          final exitSlide = Tween<Offset>(
+            begin: Offset.zero,
+            end: const Offset(-0.25, 0),
+          ).animate(
+            CurvedAnimation(
+              parent: secondaryAnimation,
+              curve: Interval(0.0, 0.7, curve: Curves.easeIn),
+            ),
+          );
+
+          final exitScale = Tween<double>(begin: 1.0, end: 0.95).animate(
+            CurvedAnimation(
+              parent: secondaryAnimation,
+              curve: Interval(0.0, 0.7, curve: Curves.easeIn),
+            ),
+          );
+
+          return Stack(
+            children: [
+              // Exiting sign-in screen
+              FadeTransition(
+                opacity: exitFade,
+                child: SlideTransition(
+                  position: exitSlide,
+                  child: ScaleTransition(
+                    scale: exitScale,
+                    child: Container(color: AppColors.primaryRed),
+                  ),
+                ),
+              ),
+              // Entering new screen
+              FadeTransition(
+                opacity: fadeAnimation,
+                child: SlideTransition(
+                  position: slideAnimation,
+                  child: ScaleTransition(
+                    scale: scaleAnimation,
+                    child: child,
+                  ),
+                ),
+              ),
+            ],
           );
         },
       ),
     );
-
-    try {
-      _routeFadeController.value = 0.0;
-    } catch (_) {}
   }
 
   // --- Sub-widgets -----------------------------------------------------------
@@ -933,83 +1167,178 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
   }) {
     final baseBorder = OutlineInputBorder(
       borderRadius: BorderRadius.circular(12),
-      borderSide: const BorderSide(color: Colors.transparent, width: 0),
+      borderSide: BorderSide(
+        color: AppColors.lightGray.withOpacity(0.4),
+        width: 1.0,
+      ),
     );
+    
     return Focus(
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 160),
-        curve: kEnter,
-        transform: Matrix4.identity()
-          ..translate(0.0, (focusNode?.hasFocus ?? false) ? -2.0 : 0.0),
-        decoration: BoxDecoration(
-          boxShadow: (focusNode?.hasFocus ?? false)
-              ? [BoxShadow(blurRadius: 12, spreadRadius: 1, color: Colors.black12)]
-              : [],
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: TextFormField(
-          controller: controller,
-          focusNode: focusNode,
-          obscureText: obscureText,
-          keyboardType: keyboardType,
-          textInputAction:
-              obscureText ? TextInputAction.done : TextInputAction.next,
-          onFieldSubmitted: (_) {
-            if (!obscureText) {
-              FocusScope.of(context).nextFocus();
-            } else {
-              _signIn();
-            }
-          },
-          validator: validator,
-          style: UnifiedTypography.formInput.copyWith(
-            color: AppColors.textPrimary,
-            fontWeight: FontWeight.w500,
-          ),
-          autovalidateMode: AutovalidateMode.onUserInteraction,
-          autofillHints: autofillHints,
-          enableSuggestions: enableSuggestions,
-          autocorrect: autocorrect,
-          smartDashesType: SmartDashesType.disabled,
-          decoration: InputDecoration(
-            labelText: label,
-            hintText: hint,
-            prefixIcon: Padding(
-              padding: const EdgeInsets.only(left: 8.0, right: 6.0),
-              child: Icon(icon, color: AppColors.textSecondary),
-            ),
-            suffixIcon: suffixIcon,
-            filled: true,
-            fillColor: AppColors.white,
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-            enabledBorder: baseBorder,
-            border: baseBorder,
-            focusedBorder: OutlineInputBorder(
+      onFocusChange: (hasFocus) {
+        if (hasFocus) {
+          HapticFeedback.selectionClick();
+        }
+      },
+      child: AnimatedBuilder(
+        animation: focusNode ?? FocusNode(),
+        builder: (context, child) {
+          final hasFocus = focusNode?.hasFocus ?? false;
+          final hasValue = controller.text.isNotEmpty;
+          final isValid = validator == null || validator(controller.text) == null;
+          
+          return AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOutCubic,
+            transform: Matrix4.identity()
+              ..translate(0.0, hasFocus ? -4.0 : 0.0),
+            decoration: BoxDecoration(
+              boxShadow: hasFocus
+                  ? [
+                      // Inner glow (appears first)
+                      BoxShadow(
+                        color: AppColors.primaryRed.withOpacity(0.2),
+                        blurRadius: 12,
+                        spreadRadius: 1,
+                        offset: const Offset(0, 2),
+                      ),
+                      // Outer shadow (appears after)
+                      BoxShadow(
+                        color: AppColors.primaryRed.withOpacity(0.15),
+                        blurRadius: 16,
+                        spreadRadius: 2,
+                        offset: const Offset(0, 4),
+                      ),
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.05),
+                        blurRadius: 8,
+                        spreadRadius: 0,
+                        offset: const Offset(0, 2),
+                      ),
+                    ]
+                  : [],
               borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppColors.primaryRed, width: 2.0),
             ),
-            errorBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppColors.error, width: 1.5),
+            child: Semantics(
+              label: label,
+              hint: hint,
+              value: controller.text.isEmpty ? null : controller.text,
+              onTap: () => focusNode?.requestFocus(),
+              child: TextFormField(
+                controller: controller,
+                focusNode: focusNode,
+                obscureText: obscureText,
+                keyboardType: keyboardType,
+                textInputAction:
+                    obscureText ? TextInputAction.done : TextInputAction.next,
+                onFieldSubmitted: (_) {
+                  if (!obscureText) {
+                    FocusScope.of(context).nextFocus();
+                  } else {
+                    _signIn();
+                  }
+                },
+                validator: validator,
+                style: UnifiedTypography.formInput.copyWith(
+                  color: AppColors.textPrimary,
+                  fontWeight: FontWeight.w500,
+                ),
+                autovalidateMode: AutovalidateMode.onUserInteraction,
+                autofillHints: autofillHints,
+                enableSuggestions: enableSuggestions,
+                autocorrect: autocorrect,
+                smartDashesType: SmartDashesType.disabled,
+              decoration: InputDecoration(
+                labelText: validator != null ? '$label *' : label,
+                hintText: hint,
+                prefixIcon: AnimatedContainer(
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeOutCubic,
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 8.0, right: 6.0),
+                    child: Icon(
+                      icon,
+                      color: hasFocus
+                          ? AppColors.primaryRed
+                          : AppColors.textSecondary,
+                    ),
+                  ),
+                ),
+                suffixIcon: suffixIcon != null
+                    ? AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 200),
+                        child: suffixIcon,
+                      )
+                    : (hasValue && isValid)
+                        ? Padding(
+                            padding: const EdgeInsets.only(right: 12.0),
+                            child: TweenAnimationBuilder<double>(
+                              key: ValueKey('check_${hasValue && isValid}'),
+                              tween: Tween<double>(begin: 0.0, end: 1.0),
+                              duration: const Duration(milliseconds: 300),
+                              curve: Curves.easeOutBack,
+                              builder: (context, value, child) {
+                                return Transform.scale(
+                                  scale: 0.6 + (0.4 * value),
+                                  child: Opacity(
+                                    opacity: value,
+                                    child: Icon(
+                                      Icons.check_circle,
+                                      color: AppColors.success,
+                                      size: 20,
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          )
+                        : null,
+                filled: true,
+                fillColor: AppColors.white,
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                enabledBorder: baseBorder,
+                border: baseBorder,
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(
+                    color: AppColors.primaryRed,
+                    width: 2.0,
+                  ),
+                ),
+                errorBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(
+                    color: AppColors.primaryRed,
+                    width: 1.5,
+                  ),
+                ),
+                focusedErrorBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(
+                    color: AppColors.primaryRed,
+                    width: 2.0,
+                  ),
+                ),
+                labelStyle: UnifiedTypography.formLabel.copyWith(
+                  color: hasFocus
+                      ? AppColors.primaryRed
+                      : AppColors.textPrimary,
+                  fontWeight: FontWeight.w600,
+                ),
+                hintStyle: UnifiedTypography.formHint.copyWith(
+                  color: AppColors.textSecondary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w400,
+                ),
+                errorStyle: UnifiedTypography.errorText.copyWith(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              ),
             ),
-            focusedErrorBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppColors.error, width: 2.0),
-            ),
-            labelStyle: UnifiedTypography.formLabel.copyWith(
-              color: AppColors.textPrimary,
-              fontWeight: FontWeight.w600,
-            ),
-            hintStyle: UnifiedTypography.formHint.copyWith(
-              color: AppColors.textSecondary,
-            ),
-            errorStyle: UnifiedTypography.errorText.copyWith(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
+          );
+        },
       ),
     );
   }
@@ -1073,40 +1402,84 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
 
 // --------------------- Decorative & Headers ---------------------
 
-class _DecorCircles extends StatelessWidget {
+class _DecorCircles extends StatefulWidget {
   const _DecorCircles();
+
+  @override
+  State<_DecorCircles> createState() => _DecorCirclesState();
+}
+
+class _DecorCirclesState extends State<_DecorCircles> with SingleTickerProviderStateMixin {
+  late AnimationController _pulseController;
+  late Animation<double> _pulseAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 3000),
+    )..repeat(reverse: true);
+    _pulseAnimation = Tween<double>(begin: 0.8, end: 1.0).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _pulseController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final h = MediaQuery.of(context).size.height;
-    Widget circle(double size, List<double> stops) => Container(
-          width: size,
-          height: size,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: RadialGradient(
-              colors: [
-                Colors.white.withOpacity(stops[0]),
-                Colors.white.withOpacity(stops[1]),
-                Colors.transparent,
-              ],
-              stops: const [0.0, 0.6, 1.0],
+    final bgBrightness = Theme.of(context).brightness == Brightness.dark ? 0.1 : 0.15;
+    
+    Widget circle(double size, List<double> stops, {Offset offset = Offset.zero}) {
+      return AnimatedBuilder(
+        animation: _pulseAnimation,
+        builder: (context, child) {
+          final scale = _pulseAnimation.value;
+          return Positioned(
+            top: offset.dy,
+            left: offset.dx,
+            child: Transform.scale(
+              scale: scale,
+              child: Container(
+                width: size,
+                height: size,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(
+                    colors: [
+                      Colors.white.withOpacity(stops[0] * bgBrightness),
+                      Colors.white.withOpacity(stops[1] * bgBrightness),
+                      Colors.transparent,
+                    ],
+                    stops: const [0.0, 0.6, 1.0],
+                  ),
+                ),
+              ),
             ),
-          ),
-        );
+          );
+        },
+      );
+    }
 
     return Positioned.fill(
-      child: IgnorePointer(
-        ignoring: true,
-        child: Stack(
-          children: [
-            Positioned(top: -100, right: -100, child: circle(250, [0.15, 0.08, 0.0])),
-            Positioned(top: 80, left: -50, child: circle(180, [0.12, 0.05, 0.0])),
-            Positioned(top: h * 0.25, left: 30, child: circle(140, [0.10, 0.04, 0.0])),
-            Positioned(top: h * 0.4, right: -30, child: circle(160, [0.12, 0.05, 0.0])),
-            Positioned(top: h * 0.5, left: h * 0.15, child: circle(120, [0.10, 0.04, 0.0])),
-            Positioned(top: 150, left: h * 0.3, child: circle(100, [0.08, 0.03, 0.0])),
-          ],
+      child: Semantics(
+        label: 'Decorative background elements',
+        excludeSemantics: true,
+        child: IgnorePointer(
+          ignoring: true,
+          child: Stack(
+            children: [
+              circle(250, [1.0, 0.5], offset: const Offset(-100, -100)),
+              circle(180, [0.8, 0.4], offset: Offset(-50, 80)),
+              circle(160, [0.7, 0.35], offset: Offset(-30, h * 0.4)),
+            ],
+          ),
         ),
       ),
     );
@@ -1177,10 +1550,12 @@ class _PillHeader extends StatelessWidget {
     super.key,
     required this.logoSize,
     required this.titleSize,
+    required this.subtitleSize,
   });
 
   final double logoSize;
   final double titleSize;
+  final double subtitleSize;
 
   @override
   Widget build(BuildContext context) {
@@ -1188,34 +1563,65 @@ class _PillHeader extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(24, 80, 24, 24),
       alignment: Alignment.center,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 36, vertical: 20),
+        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
         decoration: BoxDecoration(
-          color: AppColors.white,
+          color: Colors.white.withOpacity(0.95),
           borderRadius: BorderRadius.circular(50),
-          boxShadow: const [
-            BoxShadow(color: Colors.black26, blurRadius: 12, offset: Offset(0, 6)),
+          border: Border.all(
+            color: Colors.white.withOpacity(0.3),
+            width: 1.5,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.15),
+              blurRadius: 16,
+              offset: const Offset(0, 8),
+              spreadRadius: 2,
+            ),
+            BoxShadow(
+              color: Colors.white.withOpacity(0.1),
+              blurRadius: 8,
+              offset: const Offset(0, -4),
+            ),
           ],
         ),
-        child: Row(
+        child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _LogoSized(size: logoSize * 1.2),
-            const SizedBox(width: 20),
-            Text(
-              'T.U.L.O.N.G',
-              style: UnifiedTypography.displayMedium.copyWith(
-                color: AppColors.primaryRed,
-                fontSize: titleSize * 1.25,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 2.0,
-                shadows: [
-                  Shadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 4,
-                    offset: const Offset(0, 2),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _LogoSized(size: logoSize),
+                const SizedBox(width: 16),
+                Text(
+                  'T.U.L.O.N.G',
+                  style: UnifiedTypography.displayMedium.copyWith(
+                    color: AppColors.primaryRed,
+                    fontSize: titleSize,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.5,
+                    shadows: [
+                      Shadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
                   ),
-                ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Transmission Unit for Localized Offline Network Generation',
+              textAlign: TextAlign.center,
+              style: UnifiedTypography.bodySmall.copyWith(
+                color: AppColors.primaryRed.withOpacity(0.6),
+                fontSize: subtitleSize,
+                fontWeight: FontWeight.w500,
               ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
             ),
           ],
         ),

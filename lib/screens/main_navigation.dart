@@ -5,6 +5,7 @@ import '../constants/app_colors.dart';
 import '../constants/soft_ui_design.dart';
 import '../providers/network_provider.dart';
 import '../providers/notification_provider.dart';
+import '../providers/chat_provider.dart';
 import '../utils/prototype_animations.dart';
 import '../widgets/solid_badge.dart';
 import '../utils/icon_system.dart';
@@ -257,10 +258,14 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
       networkProvider.connectToNetwork();
     });
 
-    // Listen to notification provider for badge updates
+    // Listen to notification provider and chat provider for badge updates
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final notificationProvider = Provider.of<NotificationProvider>(context, listen: false);
       notificationProvider.addListener(_updateBadgeCounts);
+      
+      final chatProvider = Provider.of<ChatProvider>(context, listen: false);
+      chatProvider.addListener(_updateBadgeCounts);
+      
       _updateBadgeCounts();
     });
   }
@@ -276,12 +281,15 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
     for (final controller in _iconWobbleControllers.values) {
       controller.dispose();
     }
-    // Remove notification listener
+    // Remove listeners
     try {
       final notificationProvider = Provider.of<NotificationProvider>(context, listen: false);
       notificationProvider.removeListener(_updateBadgeCounts);
+      
+      final chatProvider = Provider.of<ChatProvider>(context, listen: false);
+      chatProvider.removeListener(_updateBadgeCounts);
     } catch (_) {
-      // Provider might not be available during dispose
+      // Providers might not be available during dispose
     }
     super.dispose();
   }
@@ -289,13 +297,15 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
   void _updateBadgeCounts() {
     if (!mounted) return;
     try {
+      final chatProvider = Provider.of<ChatProvider>(context, listen: false);
       final notificationProvider = Provider.of<NotificationProvider>(context, listen: false);
       setState(() {
-        _messagesUnreadCount = notificationProvider.getBadgeCountForType(NotificationType.message);
+        // Use ChatProvider's unread count for local chat (index 1)
+        _messagesUnreadCount = chatProvider.unreadMessageCount;
         _callsActiveCount = notificationProvider.getBadgeCountForType(NotificationType.emergency);
       });
     } catch (_) {
-      // Provider might not be available
+      // Providers might not be available
     }
   }
 

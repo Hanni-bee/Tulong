@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bluetooth_serial_plus/flutter_bluetooth_serial_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/bluetooth_service.dart';
@@ -30,7 +31,10 @@ class ChatProvider with ChangeNotifier {
   // Connected users on the channel (extracted from messages)
   final Set<String> _connectedUsers = {};
   String? _currentUserName;
-
+  
+  // Track if local chat screen is currently visible
+  bool _isLocalChatScreenVisible = false;
+  
   List<BluetoothDevice> get pairedDevices => _pairedDevices;
   BluetoothDevice? get selectedDevice => _selectedDevice;
   bool get isConnected => _isConnected;
@@ -42,6 +46,20 @@ class ChatProvider with ChangeNotifier {
   bool get hasCachedMessages => _hasCachedMessages;
   bool get isTyping => _isTyping;
   String? get currentUserName => _currentUserName;
+  
+  /// Get unread message count (messages not from current user that are unread)
+  int get unreadMessageCount {
+    return _messages.where((msg) => !msg.isMe && !msg.isRead).length;
+  }
+  
+  /// Set local chat screen visibility (called when screen is opened/closed)
+  void setLocalChatScreenVisible(bool isVisible) {
+    _isLocalChatScreenVisible = isVisible;
+    if (isVisible) {
+      // Mark all messages as read when screen becomes visible
+      markAllMessagesAsRead();
+    }
+  }
   
   // Get connected users including current user
   List<String> get connectedUsers {
@@ -81,6 +99,17 @@ class ChatProvider with ChangeNotifier {
 
   void _init() {
     _messageSubscription = _bluetoothService.messageStream.listen((message) {
+      // Try to parse as JSON first (for SimpleBluetoothService messages)
+      try {
+        final jsonData = json.decode(message);
+        if (jsonData is Map<String, dynamic>) {
+          _processIncomingMapMessage(jsonData);
+          return;
+        }
+      } catch (e) {
+        // Not JSON, process as regular string message
+      }
+      // Process as regular string message
       _processIncomingMessage(message);
     });
 
@@ -172,6 +201,20 @@ class ChatProvider with ChangeNotifier {
   void setCurrentUserName(String? userName) {
     _currentUserName = userName;
     notifyListeners();
+  }
+  
+  /// Mark all messages as read (called when user views the chat screen)
+  void markAllMessagesAsRead() {
+    bool hasChanges = false;
+    for (int i = 0; i < _messages.length; i++) {
+      if (!_messages[i].isRead && !_messages[i].isMe) {
+        _messages[i] = _messages[i].copyWith(isRead: true);
+        hasChanges = true;
+      }
+    }
+    if (hasChanges) {
+      notifyListeners();
+    }
   }
   
   /// Load messages with progressive loading (show cached first, then refresh)
@@ -291,9 +334,17 @@ class ChatProvider with ChangeNotifier {
 
   Future<void> disconnect() async {
     await _bluetoothService.disconnect();
-    _selectedDevice = null;
+    // Keep _selectedDevice so we can show "Reconnect" option in the UI
+    // Only clear it when connecting to a different device or explicitly clearing
     _isConnected = false;
     _connectedUsers.clear(); // Clear connected users on disconnect
+    notifyListeners();
+  }
+  
+  /// Clear selected device (for when user explicitly wants to remove selection)
+  void clearSelectedDevice() {
+    _selectedDevice = null;
+    _isConnected = false;
     notifyListeners();
   }
 
@@ -350,6 +401,42 @@ class ChatProvider with ChangeNotifier {
         );
       }
       return false;
+    }
+  }
+
+  /// Process incoming Map message (JSON format from ESP32)
+  void _processIncomingMapMessage(Map<String, dynamic> data) {
+    try {
+      final messageText = data['message'] ?? '';
+      final senderName = data['sender_name'] ?? 'Unknown';
+      final isEmergency = data['is_emergency'] == true || data['isEmergency'] == true;
+      
+      if (messageText.isEmpty) return;
+      
+      // Add connected user if sender name is available
+      if (senderName != 'Unknown') {
+        _addConnectedUser(senderName);
+      }
+      
+      // Add message with emergency flag
+      _addMessage(messageText, false, senderName: senderName, isEmergency: isEmergency);
+      
+      // Trigger haptic feedback and sound for emergency messages
+      if (isEmergency) {
+        HapticFeedback.heavyImpact();
+        // Emergency messages should be more noticeable
+        addStructuredDebug({
+          'source': 'EMERGENCY',
+          'event': 'Emergency message received',
+          'metrics': {'sender': senderName, 'message': messageText.substring(0, messageText.length > 50 ? 50 : messageText.length)}
+        });
+      }
+    } catch (e) {
+      addStructuredDebug({
+        'source': 'CHAT',
+        'event': 'Error processing map message',
+        'metrics': {'error': e.toString()}
+      });
     }
   }
 
@@ -502,6 +589,9 @@ class ChatProvider with ChangeNotifier {
       duration: messageDuration,
     );
 
+    // For incoming voice messages (!isMe), mark as read only if chat screen is visible
+    final shouldMarkAsRead = isMe || _isLocalChatScreenVisible;
+    
     final chatMessage = ChatMessage(
       text: '🎤 Voice message',
       isMe: isMe,
@@ -510,6 +600,7 @@ class ChatProvider with ChangeNotifier {
       type: voice.MessageType.voice,
       voiceMessage: voiceMessage,
       senderName: senderName,
+      isRead: shouldMarkAsRead,
     );
 
     _messages.add(chatMessage);
@@ -633,8 +724,12 @@ class ChatProvider with ChangeNotifier {
     await _voiceExtension.stopPlayback();
   }
 
-  void _addMessage(String text, bool isMe, {String? senderName, ChatMessage? message}) {
+  void _addMessage(String text, bool isMe, {String? senderName, ChatMessage? message, bool isEmergency = false}) {
     if (message == null) {
+      // For incoming messages (!isMe), mark as read only if chat screen is visible
+      // For outgoing messages (isMe), always mark as read
+      final shouldMarkAsRead = isMe || _isLocalChatScreenVisible;
+      
       message = ChatMessage(
         text: text,
         isMe: isMe,
@@ -642,17 +737,19 @@ class ChatProvider with ChangeNotifier {
         status: isMe ? voice.MessageStatus.sent : voice.MessageStatus.delivered,
         type: voice.MessageType.text,
         senderName: senderName,
+        isRead: shouldMarkAsRead, // Mark as read if sent by user or if screen is visible
+        isEmergency: isEmergency, // Set emergency flag
       );
     } else if (!isMe && senderName != null) {
-      // Update sender name if provided
-      message = ChatMessage(
-        text: message.text,
-        isMe: message.isMe,
-        timestamp: message.timestamp,
-        status: message.status,
-        type: message.type,
-        voiceMessage: message.voiceMessage,
+      // Update sender name if provided, preserve isRead status
+      message = message.copyWith(
         senderName: senderName,
+        isRead: message.isRead || _isLocalChatScreenVisible, // Mark as read if screen is visible
+      );
+    } else if (!message.isMe) {
+      // For existing incoming messages, update isRead based on screen visibility
+      message = message.copyWith(
+        isRead: message.isRead || _isLocalChatScreenVisible,
       );
     }
     
@@ -794,6 +891,8 @@ class ChatMessage {
   final voice.MessageType type;
   final voice.VoiceMessage? voiceMessage;
   final String? senderName; // Sender's name for received messages
+  bool isRead; // Track if message has been read
+  final bool isEmergency; // Flag to indicate emergency message from SOS ring
 
   ChatMessage({
     required this.text,
@@ -803,8 +902,35 @@ class ChatMessage {
     this.type = voice.MessageType.text,
     this.voiceMessage,
     this.senderName,
+    this.isRead = false, // Default to unread for incoming messages
+    this.isEmergency = false, // Default to false for normal messages
   });
+  
+  ChatMessage copyWith({
+    String? text,
+    bool? isMe,
+    DateTime? timestamp,
+    voice.MessageStatus? status,
+    voice.MessageType? type,
+    voice.VoiceMessage? voiceMessage,
+    String? senderName,
+    bool? isRead,
+    bool? isEmergency,
+  }) {
+    return ChatMessage(
+      text: text ?? this.text,
+      isMe: isMe ?? this.isMe,
+      timestamp: timestamp ?? this.timestamp,
+      status: status ?? this.status,
+      type: type ?? this.type,
+      voiceMessage: voiceMessage ?? this.voiceMessage,
+      senderName: senderName ?? this.senderName,
+      isRead: isRead ?? this.isRead,
+      isEmergency: isEmergency ?? this.isEmergency,
+    );
+  }
 }
 
 // voice.MessageStatus is defined in voice_chat_extension.dart
+
 

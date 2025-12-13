@@ -32,7 +32,6 @@ import 'services/offline_sync_service.dart';
 import 'services/philippine_location_service.dart';
 import 'services/app_initialization_service.dart';
 import 'services/sqlite_service.dart';
-import 'config/page_transition_config.dart';
 import 'utils/enhanced_page_transitions.dart';
 
 void main() async {
@@ -63,8 +62,36 @@ void main() async {
   runApp(const TulongApp());
 }
 
-class TulongApp extends StatelessWidget {
+class TulongApp extends StatefulWidget {
   const TulongApp({super.key});
+
+  @override
+  State<TulongApp> createState() => _TulongAppState();
+}
+
+class _TulongAppState extends State<TulongApp> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    // Assume app starts in foreground
+    NotificationService().setAppLifecycleState(true);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    // Update notification service with app state
+    final isInForeground = state == AppLifecycleState.resumed;
+    NotificationService().setAppLifecycleState(isInForeground);
+    debugPrint('📱 App lifecycle changed: $state (Foreground: $isInForeground)');
+  }
 
   @override
   Widget build(BuildContext context) {
