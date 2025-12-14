@@ -695,10 +695,10 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                   elevation: MaterialStateProperty.all(0),
                 ),
                 child: _isProcessing
-                    ? const Row(
+                    ? Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          SizedBox(
+                          const SizedBox(
                             width: 20,
                             height: 20,
                             child: CircularProgressIndicator(
@@ -706,7 +706,7 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                               valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                             ),
                           ),
-                          SizedBox(width: 12),
+                          const SizedBox(width: 12),
                           Text(
                             'Processing...',
                             style: AppTypography.bodyMedium.copyWith(
