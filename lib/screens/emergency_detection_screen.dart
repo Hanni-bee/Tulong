@@ -715,11 +715,11 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                           ),
                         ],
                       )
-                    : const Row(
+                    : Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.camera_alt, size: 28),
-                          SizedBox(width: 8),
+                          const Icon(Icons.camera_alt, size: 28),
+                          const SizedBox(width: 8),
                           Text(
                             'CAPTURE PHOTO',
                             style: AppTypography.titleMedium.copyWith(
