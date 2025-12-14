@@ -3,10 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import '../constants/app_colors.dart';
 import '../utils/permission_helper.dart';
-import '../models/emergency_type.dart';
 import '../models/emergency_detection_result.dart';
 import '../services/camera_service.dart';
 import '../services/image_preprocessing_service.dart';
+import '../services/emergency_detection_service.dart';
 
 /// Emergency Detection Screen - Replaces Calls Screen
 /// Allows users to capture photos and detect emergency types using AI/ML
@@ -20,6 +20,7 @@ class EmergencyDetectionScreen extends StatefulWidget {
 class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen> {
   final CameraService _cameraService = CameraService();
   final ImagePreprocessingService _preprocessingService = ImagePreprocessingService();
+  final EmergencyDetectionService _detectionService = EmergencyDetectionService();
   
   bool _isCameraInitialized = false;
   bool _isProcessing = false;
@@ -125,16 +126,10 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen> {
         return;
       }
       
-      // TODO: Phase 3 - Implement ML processing with preprocessed image
-      // For now, create a placeholder result
-      await Future.delayed(const Duration(milliseconds: 500)); // Simulate processing
-      
-      final result = EmergencyDetectionResult(
-        type: EmergencyType.general,
-        severity: SeverityLevel.medium,
-        confidence: 0.75,
-        timestamp: DateTime.now(),
-        imagePath: imagePath,
+      // Perform emergency detection using rule-based classification
+      final result = await _detectionService.detectEmergency(
+        preprocessed,
+        imagePath,
       );
 
       if (mounted) {

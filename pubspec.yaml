@@ -63,6 +63,7 @@ dependencies:
   
   # ML/AI dependencies (for future TensorFlow Lite integration)
   # tflite_flutter: ^0.10.4  # Uncomment when ready to add ML model
+  # Note: Currently using rule-based approach (no model needed)
 
 dev_dependencies:
   flutter_test:
