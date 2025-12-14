@@ -476,11 +476,16 @@ class _ModernPersonalChatScreenState extends State<ModernPersonalChatScreen> {
                 itemBuilder: (context, index) {
                   final message = _messages[index];
                   return ModernMessageBubble(
-                    text: message['text'],
+                    text: message['text'] ?? message['message'] ?? '',
                     senderName: message['isMe'] ? 'You' : widget.contactName,
-                    timestamp: message['timestamp'],
+                    timestamp: message['timestamp'] is DateTime 
+                        ? message['timestamp'] as DateTime
+                        : (message['timestamp'] is String
+                            ? DateTime.tryParse(message['timestamp'] as String) ?? DateTime.now()
+                            : DateTime.now()),
                     isMe: message['isMe'],
                     isEmergency: message['isEmergency'] ?? false,
+                    messageData: message, // Pass full message data for emergency parsing
                     isRead: message['isRead'] ?? false,
                     onLongPress: () {
                       _showMessageOptions(message);

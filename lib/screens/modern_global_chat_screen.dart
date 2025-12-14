@@ -395,13 +395,24 @@ class _ModernGlobalChatScreenState extends State<ModernGlobalChatScreen> {
                 itemCount: _messages.length,
                 itemBuilder: (context, index) {
                   final message = _messages[index];
+                  // Parse timestamp - handle both DateTime and ISO8601 string
+                  DateTime messageTimestamp;
+                  if (message['timestamp'] is DateTime) {
+                    messageTimestamp = message['timestamp'] as DateTime;
+                  } else if (message['timestamp'] is String) {
+                    messageTimestamp = DateTime.tryParse(message['timestamp'] as String) ?? DateTime.now();
+                  } else {
+                    messageTimestamp = DateTime.now();
+                  }
+                  
                   return ModernMessageBubble(
-                    text: message['text'],
-                    senderName: message['senderName'],
-                    timestamp: message['timestamp'],
-                    isMe: message['senderId'] == 'me',
+                    text: message['text'] ?? message['message'] ?? '',
+                    senderName: message['senderName'] ?? message['sender_name'] ?? 'Unknown',
+                    timestamp: messageTimestamp,
+                    isMe: message['senderId'] == 'me' || message['isLocal'] == true,
                     isEmergency: message['isEmergency'] ?? false,
                     isRead: message['isRead'] ?? false,
+                    messageData: message, // Pass full message data for emergency parsing
                     onLongPress: () {
                       // Show message options
                       _showMessageOptions(message);
