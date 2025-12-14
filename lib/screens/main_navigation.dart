@@ -76,8 +76,8 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
       color: AppColors.online,
     ),
     const NavigationItem(
-      icon: IconSystem.navCalls, // TODO: Replace with emergency detection icon
-      activeIcon: IconSystem.navCallsActive, // TODO: Replace with emergency detection icon
+      icon: IconSystem.actionEmergency,
+      activeIcon: IconSystem.actionEmergency,
       label: 'Emergency',
       color: AppColors.warning,
     ),
