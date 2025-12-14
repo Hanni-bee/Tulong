@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../constants/app_colors.dart';
+import 'emergency_badge.dart';
+import '../models/emergency_detection_result.dart';
+import '../models/emergency_type.dart';
+import '../utils/emergency_message_parser.dart';
 
 class ModernMessageBubble extends StatefulWidget {
   final String text;
@@ -9,6 +13,7 @@ class ModernMessageBubble extends StatefulWidget {
   final bool isMe;
   final bool isEmergency;
   final bool isRead;
+  final Map<String, dynamic>? messageData; // Full message data for emergency parsing
   final VoidCallback? onLongPress;
   final VoidCallback? onTap;
 
@@ -20,6 +25,7 @@ class ModernMessageBubble extends StatefulWidget {
     required this.isMe,
     this.isEmergency = false,
     this.isRead = false,
+    this.messageData,
     this.onLongPress,
     this.onTap,
   });
@@ -157,6 +163,12 @@ class _ModernMessageBubbleState extends State<ModernMessageBubble>
                             const SizedBox(height: 4),
                           ],
                           
+                          // Emergency badge (if emergency message)
+                          if (widget.isEmergency) ...[
+                            _buildEmergencyBadge(),
+                            const SizedBox(height: 8),
+                          ],
+                          
                           // Message text
                           Text(
                             widget.text,
@@ -265,5 +277,53 @@ class _ModernMessageBubbleState extends State<ModernMessageBubble>
     } else {
       return 'now';
     }
+  }
+
+  /// Build emergency badge widget
+  Widget _buildEmergencyBadge() {
+    EmergencyDetectionResult? emergencyResult;
+    
+    // Try to parse emergency detection from message data
+    if (widget.messageData != null) {
+      emergencyResult = EmergencyMessageParser.parseFromMessageData(widget.messageData!);
+    }
+    
+    // Fallback to parsing from text
+    if (emergencyResult == null) {
+      emergencyResult = EmergencyMessageParser.parseFromMessage(widget.text);
+    }
+    
+    if (emergencyResult != null) {
+      return EmergencyBadge(
+        result: emergencyResult,
+        showPulseAnimation: emergencyResult.severity == SeverityLevel.high ||
+            emergencyResult.severity == SeverityLevel.critical,
+      );
+    }
+    
+    // Fallback: simple emergency indicator
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: AppColors.error.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.error, width: 1.5),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.warning, size: 16, color: AppColors.error),
+          const SizedBox(width: 4),
+          const Text(
+            'Emergency',
+            style: TextStyle(
+              color: AppColors.error,
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

@@ -16,6 +16,7 @@ class PermissionHelper {
       Permission.storage,
       Permission.microphone,
       Permission.notification,
+      Permission.camera, // For emergency detection feature
     ];
     
     // Check which permissions are not granted
@@ -120,6 +121,7 @@ class PermissionHelper {
           '• Location - Required for Bluetooth scanning\n'
           '• Storage - To save messages and media\n'
           '• Microphone - For walkie-talkie feature\n'
+          '• Camera - For emergency detection feature\n'
           '• Notifications - For emergency alerts\n\n'
           'These permissions are essential for disaster communication.',
         ),
@@ -197,6 +199,48 @@ class PermissionHelper {
         ],
       ),
     );
+  }
+  
+  /// Request camera permission specifically for emergency detection
+  static Future<bool> requestCameraPermission(BuildContext context) async {
+    final status = await Permission.camera.status;
+    if (status.isGranted) {
+      return true;
+    }
+    
+    if (status.isPermanentlyDenied) {
+      if (context.mounted) {
+        await showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            backgroundColor: Colors.white,
+            title: const Text('Camera Permission Required'),
+            content: const Text(
+              'Camera access is needed for emergency detection.\n\n'
+              'Please enable it in:\n'
+              'Settings → Apps → TULONG → Permissions → Camera',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  openAppSettings();
+                },
+                child: const Text('Open Settings'),
+              ),
+            ],
+          ),
+        );
+      }
+      return false;
+    }
+    
+    final result = await Permission.camera.request();
+    return result.isGranted;
   }
 }
 
