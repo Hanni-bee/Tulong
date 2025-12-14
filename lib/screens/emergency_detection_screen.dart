@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
+import 'package:provider/provider.dart';
 import '../constants/app_colors.dart';
 import '../utils/permission_helper.dart';
 import '../models/emergency_type.dart';
@@ -8,6 +9,7 @@ import '../models/emergency_detection_result.dart';
 import '../services/camera_service.dart';
 import '../services/image_preprocessing_service.dart';
 import '../services/emergency_detection_service.dart';
+import '../services/simple_bluetooth_service.dart';
 
 /// Emergency Detection Screen - Replaces Calls Screen
 /// Allows users to capture photos and detect emergency types using AI/ML
@@ -477,21 +479,72 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
     );
   }
 
-  /// Send detection result to chat
-  void _sendToChat(EmergencyDetectionResult result) {
-    // TODO: Phase 5 - Integrate with chat system
-    // Create text message for ESP32/radio transmission
-    final message = result.getFormattedMessage();
-    
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Emergency detection sent: $message'),
-        backgroundColor: AppColors.success,
-        duration: const Duration(seconds: 2),
-      ),
-    );
-    
-    // TODO: Actually send via ESP32/radio and add to chat
+  /// Send detection result to chat via ESP32/radio
+  Future<void> _sendToChat(EmergencyDetectionResult result) async {
+    try {
+      final btService = Provider.of<SimpleBluetoothService>(context, listen: false);
+      
+      // Check if connected and authenticated
+      if (!btService.isConnected || !btService.isAuthenticated) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Not connected to ESP32. Please connect first.'),
+              backgroundColor: AppColors.error,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+        return;
+      }
+      
+      // Create formatted message for ESP32/radio transmission
+      // The message will be parsed on receiving end to extract emergency info
+      final formattedMessage = result.getFormattedMessage();
+      
+      // Include emergency detection metadata for local display
+      final emergencyMetadata = {
+        'isEmergency': true,
+        'emergency_detection': result.toJson(),
+      };
+      
+      // Send as group message (broadcast to all)
+      // The SimpleBluetoothService will handle adding it to message store
+      // Emergency detection will be parsed automatically on receiving end
+      await btService.sendGroupMessage(formattedMessage, additionalData: emergencyMetadata);
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                Text(result.type.emoji, style: const TextStyle(fontSize: 20)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Emergency detection sent to chat',
+                    style: const TextStyle(fontWeight: FontWeight.w500),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: AppColors.success,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error sending emergency detection to chat: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to send: ${e.toString()}'),
+            backgroundColor: AppColors.error,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
   }
 
   @override

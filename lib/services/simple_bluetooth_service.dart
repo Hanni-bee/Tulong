@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/auth_provider.dart';
+import '../utils/emergency_message_parser.dart';
 
 /// Simple Bluetooth Service for ESP32 Communication
 /// Uses platform channels to communicate with Android Bluetooth
@@ -415,6 +416,7 @@ class SimpleBluetoothService extends ChangeNotifier {
     required String message,
     required String type,
     String receiverId = 'all',
+    Map<String, dynamic>? additionalData, // For emergency detection metadata
   }) async {
     if (!_isConnected || !_isAuthenticated) {
       _addErrorLog('Cannot send message: Not connected or authenticated');
@@ -434,6 +436,11 @@ class SimpleBluetoothService extends ChangeNotifier {
         'id': messageId,
       };
 
+      // Add additional data (e.g., emergency detection metadata)
+      if (additionalData != null) {
+        messageData.addAll(additionalData);
+      }
+
       // Optimistic append to store for instant UI
       final localData = Map<String, dynamic>.from(messageData)
         ..['isLocal'] = true;
@@ -449,11 +456,12 @@ class SimpleBluetoothService extends ChangeNotifier {
     }
   }
 
-  Future<void> sendGroupMessage(String message) async {
+  Future<void> sendGroupMessage(String message, {Map<String, dynamic>? additionalData}) async {
     await sendChatMessage(
       message: message,
       type: 'group',
       receiverId: 'all',
+      additionalData: additionalData,
     );
   }
 
@@ -473,6 +481,20 @@ class SimpleBluetoothService extends ChangeNotifier {
 
       // Mark as remote by default unless explicitly local
       data['isLocal'] = data['isLocal'] == true;
+
+      // Check if message is an emergency detection
+      try {
+        if (EmergencyMessageParser.isEmergencyMessage(message)) {
+          data['isEmergency'] = true;
+          // Try to parse emergency detection
+          final emergencyResult = EmergencyMessageParser.parseFromMessage(message);
+          if (emergencyResult != null) {
+            data['emergency_detection'] = emergencyResult.toJson();
+          }
+        }
+      } catch (e) {
+        // Ignore emergency parsing errors, treat as regular message
+      }
 
       if (messageType == 'group') {
         _addStatusLog('📢 Group message from $senderName: $message');
