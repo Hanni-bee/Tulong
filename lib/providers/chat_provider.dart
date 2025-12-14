@@ -4,8 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bluetooth_serial_plus/flutter_bluetooth_serial_plus.dart';
 import '../services/bluetooth_service.dart';
 import '../services/voice_chat_extension.dart' as voice;
-import 'auth_provider.dart';
-import '../services/sqlite_service.dart';
 
 class ChatProvider with ChangeNotifier {
   final BluetoothService _bluetoothService = BluetoothService();
@@ -28,6 +26,18 @@ class ChatProvider with ChangeNotifier {
   List<ChatMessage> get messages => _messages;
   List<String> get debugLogs => _debugLogs;
   bool get isConnecting => _isConnecting;
+  
+  /// Get count of unread messages (messages not from current user)
+  int get unreadMessageCount {
+    // Count messages that are not from current user
+    // For local chat, we consider messages as "unread" if they're not from us
+    // Messages with status 'delivered' or 'received' are considered unread
+    return _messages.where((message) => 
+      !message.isMe && 
+      (message.status == voice.MessageStatus.delivered || 
+       message.status == voice.MessageStatus.received)
+    ).length;
+  }
   
   // Get connected users including current user
   List<String> get connectedUsers {
@@ -119,9 +129,6 @@ class ChatProvider with ChangeNotifier {
   /// Update current user name from database/storage (signup information)
   Future<void> _updateCurrentUserNameFromDatabase() async {
     try {
-      // Try to get from SQLite database first (where signup info is stored)
-      final sqliteService = SQLiteService();
-      
       // Get user email from AuthProvider if available
       // Since we don't have direct access to AuthProvider here,
       // we'll rely on setCurrentUserName() being called from UI
