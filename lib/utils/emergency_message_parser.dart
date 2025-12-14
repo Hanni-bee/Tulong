@@ -17,6 +17,7 @@ class EmergencyMessageParser {
 
   /// Parse emergency detection from message text
   /// Format: "Emergency: {emoji} {type} - {severity} Severity"
+  /// Handles edge cases: multiple emojis, invalid severity text
   static EmergencyDetectionResult? parseFromMessage(String message) {
     if (!isEmergencyMessage(message)) {
       return null;
@@ -26,32 +27,94 @@ class EmergencyMessageParser {
       // Pattern: "Emergency: {emoji} {type} - {severity} Severity"
       // Example: "Emergency: 🔥 Fire - High Severity"
       
-      // Extract emoji and match to emergency type
       EmergencyType? emergencyType;
       SeverityLevel? severity;
       
-      // Try to match by emoji
-      if (message.contains('🌋')) {
-        emergencyType = EmergencyType.calamity;
-      } else if (message.contains('🌍')) {
-        emergencyType = EmergencyType.earthquake;
-      } else if (message.contains('🌧️')) {
-        emergencyType = EmergencyType.flood;
-      } else if (message.contains('🔥')) {
-        emergencyType = EmergencyType.fire;
-      } else if (message.contains('🚑')) {
-        emergencyType = EmergencyType.accident;
-      } else if (message.contains('⚠️')) {
-        emergencyType = EmergencyType.general;
+      // IMPROVED: Handle multiple emojis with priority-based selection
+      // Priority: Fire > Accident > Flood > Earthquake > Calamity > General
+      // This ensures the most critical emergency is detected if multiple emojis exist
+      final emojiMatches = <String, EmergencyType>{
+        '🔥': EmergencyType.fire,        // Highest priority - immediate danger
+        '🚑': EmergencyType.accident,    // High priority - medical emergency
+        '🌧️': EmergencyType.flood,      // High priority - environmental
+        '🌍': EmergencyType.earthquake,  // High priority - structural
+        '🌋': EmergencyType.calamity,     // Medium priority - natural disaster
+        '⚠️': EmergencyType.general,     // Lowest priority - general warning
+      };
+      
+      // Find all matching emojis and select by priority
+      EmergencyType? matchedType;
+      int highestPriority = -1;
+      
+      for (final entry in emojiMatches.entries) {
+        if (message.contains(entry.key)) {
+          // Calculate priority (lower index = higher priority)
+          final priority = emojiMatches.keys.toList().indexOf(entry.key);
+          if (priority < highestPriority || highestPriority == -1) {
+            highestPriority = priority;
+            matchedType = entry.value;
+          }
+        }
       }
       
-      // Extract severity from message
-      final severityMatch = RegExp(r'-\s*(\w+)\s*Severity', caseSensitive: false)
-          .firstMatch(message);
-      if (severityMatch != null) {
-        final severityText = severityMatch.group(1)?.toLowerCase() ?? '';
-        severity = SeverityLevel.fromString(severityText);
+      // If no emoji found but message starts with "Emergency:", try to extract from text
+      if (matchedType == null && message.startsWith('Emergency:')) {
+        // Try to match emergency type from text label
+        final typeLabels = {
+          'fire': EmergencyType.fire,
+          'flood': EmergencyType.flood,
+          'earthquake': EmergencyType.earthquake,
+          'accident': EmergencyType.accident,
+          'calamity': EmergencyType.calamity,
+        };
+        
+        final lowerMessage = message.toLowerCase();
+        for (final entry in typeLabels.entries) {
+          if (lowerMessage.contains(entry.key)) {
+            matchedType = entry.value;
+            break;
+          }
+        }
       }
+      
+      emergencyType = matchedType;
+      
+      // IMPROVED: Extract severity with better regex and validation
+      // Support multiple formats: "High Severity", "High", "high", etc.
+      SeverityLevel? parsedSeverity;
+      
+      // Try strict format first: " - {severity} Severity"
+      var severityMatch = RegExp(r'-\s*(\w+)\s+Severity', caseSensitive: false)
+          .firstMatch(message);
+      
+      if (severityMatch == null) {
+        // Try relaxed format: " - {severity}"
+        severityMatch = RegExp(r'-\s*(\w+)(?:\s|$)', caseSensitive: false)
+            .firstMatch(message);
+      }
+      
+      if (severityMatch == null) {
+        // Try finding severity anywhere in message
+        final severityKeywords = {
+          'critical': SeverityLevel.critical,
+          'high': SeverityLevel.high,
+          'medium': SeverityLevel.medium,
+          'low': SeverityLevel.low,
+        };
+        
+        final lowerMessage = message.toLowerCase();
+        for (final entry in severityKeywords.entries) {
+          if (lowerMessage.contains(entry.key)) {
+            parsedSeverity = entry.value;
+            break;
+          }
+        }
+      } else {
+        final severityText = severityMatch.group(1)?.toLowerCase() ?? '';
+        parsedSeverity = SeverityLevel.fromString(severityText);
+      }
+      
+      severity = parsedSeverity;
       
       // Default values if parsing fails
       emergencyType ??= EmergencyType.general;
