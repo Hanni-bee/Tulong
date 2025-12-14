@@ -415,7 +415,6 @@ class SimpleBluetoothService extends ChangeNotifier {
     required String message,
     required String type,
     String receiverId = 'all',
-    bool isEmergency = false, // Flag for emergency messages from SOS ring
   }) async {
     if (!_isConnected || !_isAuthenticated) {
       _addErrorLog('Cannot send message: Not connected or authenticated');
@@ -433,7 +432,6 @@ class SimpleBluetoothService extends ChangeNotifier {
         'message': message,
         'timestamp': DateTime.now().toIso8601String(),
         'id': messageId,
-        'is_emergency': isEmergency, // Add emergency flag to message data
       };
 
       // Optimistic append to store for instant UI
@@ -444,19 +442,18 @@ class SimpleBluetoothService extends ChangeNotifier {
 
       sendMessage(messageData);
       
-      _addStatusLog('Sent ${isEmergency ? "EMERGENCY " : ""}$type message: $message');
+      _addStatusLog('Sent $type message: $message');
       
     } catch (e) {
       _addErrorLog('Error sending chat message: $e');
     }
   }
 
-  Future<void> sendGroupMessage(String message, {bool isEmergency = false}) async {
+  Future<void> sendGroupMessage(String message) async {
     await sendChatMessage(
       message: message,
       type: 'group',
       receiverId: 'all',
-      isEmergency: isEmergency,
     );
   }
 

@@ -5,9 +5,6 @@ import '../constants/app_colors.dart';
 import '../providers/auth_provider.dart';
 import '../utils/neumorphic_utils.dart';
 import '../utils/permission_helper.dart';
-import 'auth/modern_sign_in_screen.dart';
-import 'interactive_tutorial_screen.dart';
-import 'main_navigation.dart';
 
 class EnhancedSplashScreen extends StatefulWidget {
   const EnhancedSplashScreen({super.key});
@@ -23,8 +20,6 @@ class _EnhancedSplashScreenState extends State<EnhancedSplashScreen>
   late AnimationController _rippleController;
   late AnimationController _particleController;
   late AnimationController _textController;
-  late AnimationController _breathingController;
-  late AnimationController _glowController;
 
   late Animation<double> _logoScale;
   late Animation<double> _logoRotate;
@@ -32,8 +27,6 @@ class _EnhancedSplashScreenState extends State<EnhancedSplashScreen>
   late Animation<double> _rippleOpacity;
   late Animation<double> _textFade;
   late Animation<Offset> _textSlide;
-  late Animation<double> _breathingScale;
-  late Animation<double> _glowPulse;
 
   bool _showProgress = false;
   double _progress = 0.0;
@@ -132,32 +125,6 @@ class _EnhancedSplashScreenState extends State<EnhancedSplashScreen>
         curve: Curves.easeOutCubic,
       ),
     );
-
-    // Breathing animation for logo
-    _breathingController = AnimationController(
-      duration: const Duration(milliseconds: 2000),
-      vsync: this,
-    )..repeat(reverse: true);
-
-    _breathingScale = Tween<double>(begin: 1.0, end: 1.03).animate(
-      CurvedAnimation(
-        parent: _breathingController,
-        curve: Curves.easeInOut,
-      ),
-    );
-
-    // Glow pulse animation
-    _glowController = AnimationController(
-      duration: const Duration(milliseconds: 2500),
-      vsync: this,
-    )..repeat(reverse: true);
-
-    _glowPulse = Tween<double>(begin: 0.3, end: 0.5).animate(
-      CurvedAnimation(
-        parent: _glowController,
-        curve: Curves.easeInOut,
-      ),
-    );
   }
 
   void _startAnimationSequence() async {
@@ -176,11 +143,6 @@ class _EnhancedSplashScreenState extends State<EnhancedSplashScreen>
 
     await Future.delayed(const Duration(milliseconds: 1000));
     _particleController.repeat();
-
-    // Start breathing and glow after logo appears
-    await Future.delayed(const Duration(milliseconds: 500));
-    _breathingController.repeat(reverse: true);
-    _glowController.repeat(reverse: true);
 
     setState(() {
       _showProgress = true;
@@ -224,123 +186,14 @@ class _EnhancedSplashScreenState extends State<EnhancedSplashScreen>
       
       if (!tutorialRequired) {
         // User has completed tutorial, go to main app
-        Navigator.of(context).pushReplacement(
-          _createSmoothTransition('/main'),
-        );
+        Navigator.of(context).pushReplacementNamed('/main');
       } else {
         // User needs to complete tutorial
-        Navigator.of(context).pushReplacement(
-          _createSmoothTransition('/tutorial'),
-        );
+        Navigator.of(context).pushReplacementNamed('/tutorial');
       }
     } else {
-      Navigator.of(context).pushReplacement(
-        _createSmoothTransition('/signin'),
-      );
+      Navigator.of(context).pushReplacementNamed('/signin');
     }
-  }
-
-  PageRouteBuilder _createSmoothTransition(String route) {
-    Widget targetScreen;
-    switch (route) {
-      case '/signin':
-        targetScreen = const ModernSignInScreen();
-        break;
-      case '/main':
-        targetScreen = const MainNavigation();
-        break;
-      case '/tutorial':
-        targetScreen = const InteractiveTutorialScreen();
-        break;
-      default:
-        targetScreen = const ModernSignInScreen();
-    }
-
-    return PageRouteBuilder(
-      pageBuilder: (context, animation, secondaryAnimation) => targetScreen,
-      transitionDuration: const Duration(milliseconds: 900),
-      reverseTransitionDuration: const Duration(milliseconds: 600),
-      transitionsBuilder: (context, animation, secondaryAnimation, child) {
-        // Enhanced fade with staggered timing
-        final fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-          CurvedAnimation(
-            parent: animation,
-            curve: Interval(0.0, 0.75, curve: Curves.easeOut),
-          ),
-        );
-
-        // Smooth slide from bottom with easing
-        final slideAnimation = Tween<Offset>(
-          begin: const Offset(0, 0.12),
-          end: Offset.zero,
-        ).animate(
-          CurvedAnimation(
-            parent: animation,
-            curve: Interval(0.15, 1.0, curve: Curves.easeOutCubic),
-          ),
-        );
-
-        // Subtle scale for depth effect
-        final scaleAnimation = Tween<double>(begin: 0.98, end: 1.0).animate(
-          CurvedAnimation(
-            parent: animation,
-            curve: Interval(0.0, 0.85, curve: Curves.easeOut),
-          ),
-        );
-
-        // Exiting splash screen - smooth fade out
-        final exitFade = Tween<double>(begin: 1.0, end: 0.0).animate(
-          CurvedAnimation(
-            parent: secondaryAnimation,
-            curve: Interval(0.0, 0.65, curve: Curves.easeIn),
-          ),
-        );
-
-        final exitSlide = Tween<Offset>(
-          begin: Offset.zero,
-          end: const Offset(0, -0.12),
-        ).animate(
-          CurvedAnimation(
-            parent: secondaryAnimation,
-            curve: Interval(0.0, 0.65, curve: Curves.easeIn),
-          ),
-        );
-
-        final exitScale = Tween<double>(begin: 1.0, end: 0.96).animate(
-          CurvedAnimation(
-            parent: secondaryAnimation,
-            curve: Interval(0.0, 0.65, curve: Curves.easeIn),
-          ),
-        );
-
-        return Stack(
-          children: [
-            // Exiting splash screen
-            FadeTransition(
-              opacity: exitFade,
-              child: SlideTransition(
-                position: exitSlide,
-                child: ScaleTransition(
-                  scale: exitScale,
-                  child: Container(color: AppColors.neumorphicBase),
-                ),
-              ),
-            ),
-            // Entering new screen
-            FadeTransition(
-              opacity: fadeAnimation,
-              child: SlideTransition(
-                position: slideAnimation,
-                child: ScaleTransition(
-                  scale: scaleAnimation,
-                  child: child,
-                ),
-              ),
-            ),
-          ],
-        );
-      },
-    );
   }
 
   @override
@@ -350,8 +203,6 @@ class _EnhancedSplashScreenState extends State<EnhancedSplashScreen>
     _rippleController.dispose();
     _particleController.dispose();
     _textController.dispose();
-    _breathingController.dispose();
-    _glowController.dispose();
     super.dispose();
   }
 
@@ -404,16 +255,8 @@ class _EnhancedSplashScreenState extends State<EnhancedSplashScreen>
 
   Widget _buildAnimatedLogo() {
     return AnimatedBuilder(
-      animation: Listenable.merge([
-        _logoController,
-        _rippleController,
-        _breathingController,
-        _glowController,
-      ]),
+      animation: Listenable.merge([_logoController, _rippleController]),
       builder: (context, child) {
-        final breathingScale = _logoScale.value * _breathingScale.value;
-        final glowOpacity = _glowPulse.value * _logoScale.value;
-        
         return Stack(
           alignment: Alignment.center,
           children: [
@@ -451,7 +294,7 @@ class _EnhancedSplashScreenState extends State<EnhancedSplashScreen>
               ),
             ),
 
-            // Enhanced pulsing glow effect
+            // Glow effect
             Container(
               width: 160,
               height: 160,
@@ -459,22 +302,18 @@ class _EnhancedSplashScreenState extends State<EnhancedSplashScreen>
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                    color: AppColors.primaryRed.withOpacity(glowOpacity),
-                    blurRadius: 40 * breathingScale,
-                    spreadRadius: 10 * breathingScale,
-                  ),
-                  BoxShadow(
-                    color: AppColors.primaryRed.withOpacity(glowOpacity * 0.5),
-                    blurRadius: 60 * breathingScale,
-                    spreadRadius: 5 * breathingScale,
+                    color: AppColors.primaryRed
+                        .withOpacity(0.3 * _logoScale.value),
+                    blurRadius: 40 * _logoScale.value,
+                    spreadRadius: 10 * _logoScale.value,
                   ),
                 ],
               ),
             ),
 
-            // Main logo container with neumorphic effect and breathing
+            // Main logo container with neumorphic effect
             Transform.scale(
-              scale: breathingScale,
+              scale: _logoScale.value,
               child: Transform.rotate(
                 angle: _logoRotate.value * 0.1,
                 child: Container(
@@ -493,9 +332,9 @@ class _EnhancedSplashScreenState extends State<EnhancedSplashScreen>
                     boxShadow: [
                       ...NeumorphicUtils.getNeumorphicShadow(depth: 12),
                       BoxShadow(
-                        color: AppColors.primaryRed.withOpacity(0.2 + glowOpacity * 0.2),
-                        blurRadius: 20 * breathingScale,
-                        spreadRadius: 5 * breathingScale,
+                        color: AppColors.primaryRed.withOpacity(0.2),
+                        blurRadius: 20,
+                        spreadRadius: 5,
                       ),
                     ],
                   ),

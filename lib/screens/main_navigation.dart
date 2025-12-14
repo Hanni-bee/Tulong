@@ -12,6 +12,7 @@ import '../utils/icon_system.dart';
 import 'modern_home_screen.dart';
 import 'local_chat_screen.dart';
 import 'walkie_talkie_screen.dart';
+import 'emergency_detection_screen.dart';
 // Hardware screen removed - using pure Bluetooth only
 import 'modern_profile_screen.dart';
 import '../models/notification_model.dart';
@@ -57,7 +58,7 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
   final List<Widget> _screens = [
     const ModernHomeScreen(),
     const LocalChatScreen(),
-    const WalkieTalkieScreen(),
+    const EmergencyDetectionScreen(), // Replaces CallsScreen
     const ModernProfileScreen(),
   ];
 
@@ -75,9 +76,9 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
       color: AppColors.online,
     ),
     const NavigationItem(
-      icon: IconSystem.navCalls,
-      activeIcon: IconSystem.navCallsActive,
-      label: 'Calls',
+      icon: IconSystem.navCalls, // TODO: Replace with emergency detection icon
+      activeIcon: IconSystem.navCallsActive, // TODO: Replace with emergency detection icon
+      label: 'Emergency',
       color: AppColors.warning,
     ),
     const NavigationItem(

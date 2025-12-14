@@ -11,11 +11,6 @@ import 'package:tulong_app/screens/notification_settings_screen.dart';
 import 'package:tulong_app/widgets/animated_neumorphic_card.dart';
 import 'package:tulong_app/widgets/unified_top_bar.dart';
 import 'package:tulong_app/utils/prototype_animations.dart';
-import 'package:tulong_app/widgets/enhanced_skeleton_loaders.dart';
-import 'package:tulong_app/widgets/accessible_text.dart';
-import 'package:tulong_app/utils/icon_system.dart';
-import '../widgets/user_engagement_dashboard.dart';
-import '../providers/chat_provider.dart';
 
 class ModernProfileScreen extends StatefulWidget {
   const ModernProfileScreen({super.key});
@@ -33,9 +28,6 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
   
   // Stagger animations for Stat Cards (2 cards)
   late StaggeredListAnimations _statCardsStagger;
-  
-  // Loading state
-  bool _isLoadingProfile = true;
 
   // Dynamic user profile data will be fetched from AuthProvider
 
@@ -77,18 +69,11 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
     );
     
     // Load user model immediately when screen opens to ensure data is available
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       if (authProvider.userEmail != null) {
         // Always try to load user model, even if it exists (to refresh data)
-        await authProvider.loadUserModel();
-      }
-      // Simulate loading delay for better UX
-      await Future.delayed(const Duration(milliseconds: 500));
-      if (mounted) {
-        setState(() {
-          _isLoadingProfile = false;
-        });
+        authProvider.loadUserModel();
       }
     });
   }
@@ -126,8 +111,6 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                         const SizedBox(height: 20),
                         _buildStatsSection(),
                         const SizedBox(height: 20),
-                        _buildUserEngagementDashboard(),
-                        const SizedBox(height: 20),
                         _buildSettingsSections(),
                         const SizedBox(height: 20),
                         _buildActionButtons(),
@@ -144,10 +127,6 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
   }
 
   Widget _buildQuickStats() {
-    if (_isLoadingProfile) {
-      return SkeletonProfileHeader();
-    }
-    
     return Consumer<AuthProvider>(
       builder: (context, auth, child) {
         // Ensure user model is loaded
@@ -174,31 +153,12 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
          return Container(
           margin: const EdgeInsets.only(bottom: 16),
               decoration: BoxDecoration(
-            // Enhanced gradient background
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                AppColors.primaryRed,
-                AppColors.primaryRed.withOpacity(0.85),
-                AppColors.primaryDark,
-              ],
-              stops: const [0.0, 0.5, 1.0],
-            ),
+            color: AppColors.primaryRed, // Solid color instead of gradient
             borderRadius: BorderRadius.circular(SoftUIDesign.cardBorderRadius),
-            boxShadow: [
-              // Enhanced shadow for depth
-              BoxShadow(
-                color: AppColors.primaryRed.withOpacity(0.3),
-                blurRadius: 20,
-                offset: const Offset(0, 8),
-                spreadRadius: 2,
-              ),
-              ...SoftUIDesign.getCardShadow(elevation: 6.0),
-            ],
+            boxShadow: SoftUIDesign.getCardShadow(elevation: 6.0),
             border: Border.all(
-              color: Colors.white.withOpacity(0.25),
-              width: 1.5,
+              color: Colors.white.withOpacity(0.2),
+              width: 1.0,
             ),
              ),
           child: Stack(
@@ -216,83 +176,41 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Container(
-                      width: 72,
-                      height: 72,
+                      width: 64,
+                      height: 64,
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: Colors.white.withOpacity(0.4),
-                          width: 2.0,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.2),
-                            blurRadius: 12,
-                            offset: const Offset(0, 4),
-                          ),
-                          BoxShadow(
-                            color: Colors.white.withOpacity(0.1),
-                            blurRadius: 8,
-                            offset: const Offset(0, -2),
-                          ),
-                        ],
+                        color: Colors.white.withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.white.withOpacity(0.35), width: 1.2),
                       ),
                       child: Center(
-                        child: AccessibleText(
-                          _getInitials(userName),
-                          baseStyle: UnifiedTypography.displaySmall.copyWith(
-                            fontSize: 28,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 1.2,
+                   child: Text(
+                     _getInitials(userName),
+                     style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
                           ),
-                          color: Colors.white,
-                          backgroundColor: AppColors.primaryRed,
-                          isHeading: true,
-                        ),
-                      ),
-                    ),
+              ),
+            ),
+          ),
                  const SizedBox(width: 14),
                  Expanded(
               child: Column(
                      crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                       Tooltip(
-                         message: userName, // Show full name on hover
-                        child: AccessibleHeading(
-                          userName,
-                          level: HeadingLevel.h2,
-                          color: Colors.white,
-                          backgroundColor: AppColors.primaryRed,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                       ),
+                       Text(
+                         userName,
+                            maxLines: 1,
+                         overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800),
+                          ),
                           const SizedBox(height: 6),
                           Row(
-                            children: [
-                              Container(
-                                width: 10,
-                                height: 10,
-                                decoration: BoxDecoration(
-                                  color: Colors.greenAccent,
-                                  shape: BoxShape.circle,
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.greenAccent.withOpacity(0.6),
-                                      blurRadius: 8,
-                                      spreadRadius: 2,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              const AccessibleBodyText(
-                                'Connected',
-                                size: BodySize.small,
-                                color: Colors.white,
-                                backgroundColor: AppColors.primaryRed,
-                              ),
+                            children: const [
+                              Icon(Icons.circle, color: Colors.greenAccent, size: 10),
+                              SizedBox(width: 6),
+                              Text('Active', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
                             ],
                           ),
                         ],
@@ -319,31 +237,50 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                 Container(height: 1, color: Colors.white.withOpacity(0.25)),
                 const SizedBox(height: 12),
 
-                         _buildClickableContactInfo(
-                           context,
-                           icon: Icons.mail_outline,
-                           text: userEmail,
-                           onTap: () => _copyToClipboard(context, userEmail, 'Email copied'),
-                           onLongPress: () => _openEmailApp(context, userEmail),
+                         Row(
+                           children: [
+                    const Icon(Icons.mail_outline, color: Colors.white, size: 18),
+                    const SizedBox(width: 10),
+                             Expanded(
+                               child: Text(
+                        userEmail,
+                        style: const TextStyle(color: Colors.white),
+                                 maxLines: 1,
+                                 overflow: TextOverflow.ellipsis,
+                               ),
+                             ),
+                           ],
                          ),
                 const SizedBox(height: 8),
-                if (phone.isNotEmpty)
-                  _buildClickableContactInfo(
-                    context,
-                    icon: IconSystem.phone,
-                    text: phone,
-                    onTap: () => _copyToClipboard(context, phone, 'Phone number copied'),
-                    onLongPress: () => _makePhoneCall(context, phone),
-                  ),
+                if (phone.isNotEmpty) Row(
+                  children: [
+                    const Icon(Icons.call, color: Colors.white, size: 18),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        phone,
+                        style: const TextStyle(color: Colors.white),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
                 if (phone.isNotEmpty) const SizedBox(height: 8),
-                if (location.isNotEmpty)
-                  _buildClickableContactInfo(
-                    context,
-                    icon: IconSystem.location,
-                    text: location,
-                    onTap: () => _copyToClipboard(context, location, 'Address copied'),
-                    onLongPress: () => _openMaps(context, location),
-                  ),
+                if (location.isNotEmpty) Row(
+                      children: [
+                    const Icon(Icons.location_on_outlined, color: Colors.white, size: 18),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        location,
+                        style: const TextStyle(color: Colors.white),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                        ),
                       ],
                     ),
                   ),
@@ -356,19 +293,6 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
   }
 
   Widget _buildStatsSection() {
-    if (_isLoadingProfile) {
-        return Container(
-          margin: const EdgeInsets.only(bottom: 32),
-          child: Row(
-            children: const [
-              Expanded(child: SkeletonStatCard()),
-              SizedBox(width: 16),
-              Expanded(child: SkeletonStatCard()),
-            ],
-          ),
-        );
-    }
-    
     return Consumer<AuthProvider>(
       builder: (context, auth, child) {
         final userModel = auth.currentUserModel;
@@ -412,69 +336,6 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
       },
     );
   }
-
-  Widget _buildUserEngagementDashboard() {
-    return Consumer2<AuthProvider, ChatProvider>(
-      builder: (context, auth, chatProvider, child) {
-        // Get real data from providers
-        final messages = chatProvider.messages;
-        final sentMessages = messages.where((m) => m.isMe).length;
-        final receivedMessages = messages.where((m) => !m.isMe).length;
-        final connectionsCount = chatProvider.connectedUsersCount;
-        
-        // TODO: Get emergency alerts count from OfflineMessagingService or SQLite
-        // For now using estimated values based on messages
-        final estimatedAlertsSent = (sentMessages * 0.1).round(); // Estimate 10% are alerts
-        final estimatedAlertsReceived = (receivedMessages * 0.08).round();
-        
-        // TODO: Calculate average response time from message timestamps
-        // For now, using a placeholder
-        double avgResponseTime = 0.0;
-        if (messages.isNotEmpty && messages.length > 1) {
-          // Simple calculation: average time between sent and received messages
-          final sentTimes = messages.where((m) => m.isMe).map((m) => m.timestamp).toList()..sort();
-          final receivedTimes = messages.where((m) => !m.isMe).map((m) => m.timestamp).toList()..sort();
-          
-          if (sentTimes.isNotEmpty && receivedTimes.isNotEmpty) {
-            // Calculate average time difference
-            int totalDiff = 0;
-            int count = 0;
-            for (var sentTime in sentTimes) {
-              var closestReceived = receivedTimes.firstWhere(
-                (rt) => rt.isAfter(sentTime),
-                orElse: () => sentTime,
-              );
-              if (closestReceived != sentTime && closestReceived.isAfter(sentTime)) {
-                totalDiff += closestReceived.difference(sentTime).inMinutes;
-                count++;
-              }
-            }
-            if (count > 0) {
-              avgResponseTime = (totalDiff / count).toDouble();
-            }
-          }
-        }
-        
-        // TODO: Track help provided/received - for now using placeholder
-        final helpProvided = 0; // Track in future updates
-        final helpReceived = 0; // Track in future updates
-        
-        return UserEngagementDashboard(
-          isLoading: _isLoadingProfile,
-          emergencyAlertsSent: estimatedAlertsSent,
-          emergencyAlertsReceived: estimatedAlertsReceived,
-          messagesSent: sentMessages,
-          messagesReceived: receivedMessages,
-          connectionsMade: connectionsCount,
-          averageResponseTime: avgResponseTime,
-          helpProvided: helpProvided,
-          helpReceived: helpReceived,
-        );
-      },
-    );
-  }
-
-  // Old weekly activity chart removed - replaced with UserEngagementDashboard
 
   Widget _buildStatCard({
     required String title,
@@ -621,13 +482,13 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
               icon: Icons.help,
               title: 'Help Center',
               subtitle: 'Get help and support',
-              onTap: () => _showHelpCenterModal(context),
+              onTap: () {},
             ),
             _buildSettingsItem(
-              icon: IconSystem.info,
+              icon: Icons.info,
               title: 'About',
               subtitle: 'App version and information',
-              onTap: () => _showAboutModal(context),
+              onTap: () {},
             ),
           ],
         ),
@@ -760,6 +621,50 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                             ),
                           ],
                         ),
+                ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Container(
+            decoration: SoftUIDesign.cardDecoration(
+              backgroundColor: AppColors.white,
+              borderRadius: SoftUIDesign.buttonBorderRadius,
+              elevation: 3.0,
+              borderColor: AppColors.error.withOpacity(0.3),
+              showBorder: true,
+            ),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () => _deleteAccount(context),
+                borderRadius: BorderRadius.circular(12),
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 16, horizontal: 8),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.delete_forever,
+                        color: AppColors.error,
+                        size: 18,
+                      ),
+                      SizedBox(width: 6),
+                      Flexible(
+                        child: Text(
+                          'Delete Account',
+                          style: TextStyle(
+                            color: AppColors.error,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -1457,6 +1362,33 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
     );
   }
 
+  void _deleteAccount(BuildContext context) {
+    HapticFeedback.lightImpact();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Account'),
+        content: const Text('Are you sure you want to delete your account? This action cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              // TODO: Implement account deletion
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.error,
+              foregroundColor: AppColors.white,
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+  }
 
   String _getInitials(String? name) {
     if (name == null || name.isEmpty) return 'U';
@@ -1465,154 +1397,15 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
         (parts.length > 1 && parts[1].isNotEmpty ? parts[1][0] : '');
   }
 
-  // Clickable contact info widget with copy functionality
-  Widget _buildClickableContactInfo(
-    BuildContext context, {
-    required IconData icon,
-    required String text,
-    required VoidCallback onTap,
-    VoidCallback? onLongPress,
-  }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        onLongPress: onLongPress,
-        borderRadius: BorderRadius.circular(8),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          child: Row(
-            children: [
-              Icon(icon, color: Colors.white, size: 18),
-              const SizedBox(width: 10),
-              Expanded(
-                child: AccessibleBodyText(
-                  text,
-                  color: Colors.white,
-                  backgroundColor: AppColors.primaryRed,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Icon(
-                Icons.copy,
-                color: Colors.white.withOpacity(0.7),
-                size: 16,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  // Copy to clipboard helper
-  Future<void> _copyToClipboard(BuildContext context, String text, String message) async {
-    await Clipboard.setData(ClipboardData(text: text));
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const Icon(Icons.check_circle, color: Colors.white, size: 20),
-              const SizedBox(width: 8),
-              Text(message),
-            ],
-          ),
-          backgroundColor: AppColors.success,
-          duration: const Duration(seconds: 2),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-          ),
-        ),
-      );
-    }
-    HapticFeedback.lightImpact();
-  }
-
-  // Open email app
-  Future<void> _openEmailApp(BuildContext context, String email) async {
-    final uri = Uri.parse('mailto:$email');
-    try {
-      // In a real app, you might use url_launcher package
-      // For now, just copy the email
-      await _copyToClipboard(context, email, 'Email copied');
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Could not open email app: $e'),
-            backgroundColor: AppColors.error,
-          ),
-        );
-      }
-    }
-  }
-
-  // Make phone call
-  Future<void> _makePhoneCall(BuildContext context, String phone) async {
-    final uri = Uri.parse('tel:$phone');
-    try {
-      // In a real app, you might use url_launcher package
-      // For now, just copy the phone number
-      await _copyToClipboard(context, phone, 'Phone number copied');
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Could not make call: $e'),
-            backgroundColor: AppColors.error,
-          ),
-        );
-      }
-    }
-  }
-
-  // Open maps
-  Future<void> _openMaps(BuildContext context, String location) async {
-    try {
-      // In a real app, you might use url_launcher package with maps URL
-      // For now, just copy the location
-      await _copyToClipboard(context, location, 'Address copied');
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Could not open maps: $e'),
-            backgroundColor: AppColors.error,
-          ),
-        );
-      }
-    }
-  }
-
   // Dynamic stats calculation methods using real data
   String _getDaysActiveCount(UserModel? userModel) {
     if (userModel == null) return '0';
     // Calculate days since user joined using real data
     if (userModel.createdAt > 0) {
-      // Handle both milliseconds and seconds timestamps
-      int timestamp = userModel.createdAt;
-      
-      // If timestamp is less than a reasonable date (year 2000 in milliseconds),
-      // it's likely in seconds, so convert to milliseconds
-      if (timestamp < 946684800000) { // Jan 1, 2000 in milliseconds
-        timestamp = timestamp * 1000;
-      }
-      
-      try {
-        final createdAtDate = DateTime.fromMillisecondsSinceEpoch(timestamp);
-        final now = DateTime.now();
-        final daysSinceJoin = now.difference(createdAtDate).inDays;
-        
-        // Ensure non-negative result
-        return daysSinceJoin >= 0 ? daysSinceJoin.toString() : '0';
-      } catch (e) {
-        print('Error calculating days active: $e');
-        return '0';
-      }
+      final daysSinceJoin = DateTime.now().difference(
+        DateTime.fromMillisecondsSinceEpoch(userModel.createdAt)
+      ).inDays;
+      return daysSinceJoin.toString();
     }
     return '0';
   }
@@ -1646,361 +1439,5 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
     } catch (e) {
       return '0';
     }
-  }
-
-  // Help Center Modal
-  void _showHelpCenterModal(BuildContext context) {
-    showDialog(
-      context: context,
-      barrierDismissible: true,
-      barrierColor: Colors.black54,
-      builder: (context) => Dialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(24),
-        ),
-        child: Container(
-          constraints: const BoxConstraints(maxWidth: 400, maxHeight: 600),
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: AppColors.primaryRed.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(
-                      Icons.help_outline,
-                      color: AppColors.primaryRed,
-                      size: 28,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Help Center',
-                          style: UnifiedTypography.titleLarge.copyWith(
-                            color: AppColors.textPrimary,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Get help and support',
-                          style: UnifiedTypography.bodySmall.copyWith(
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close),
-                    onPressed: () => Navigator.pop(context),
-                    color: AppColors.textSecondary,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-              
-              // Help Topics
-              Expanded(
-                child: SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildHelpTopic(
-                        icon: Icons.emergency,
-                        title: 'Emergency Features',
-                        description: 'Learn how to send emergency alerts and SOS messages',
-                      ),
-                      const SizedBox(height: 16),
-                      _buildHelpTopic(
-                        icon: Icons.bluetooth,
-                        title: 'Bluetooth Connection',
-                        description: 'How to connect to ESP32 devices and mesh network',
-                      ),
-                      const SizedBox(height: 16),
-                      _buildHelpTopic(
-                        icon: Icons.chat_bubble,
-                        title: 'Local Chat',
-                        description: 'Send messages and voice recordings to nearby users',
-                      ),
-                      const SizedBox(height: 16),
-                      _buildHelpTopic(
-                        icon: Icons.radio,
-                        title: 'Voice Calls',
-                        description: 'Push-to-talk walkie-talkie style communication',
-                      ),
-                      const SizedBox(height: 16),
-                      _buildHelpTopic(
-                        icon: Icons.network_check,
-                        title: 'Network Status',
-                        description: 'Monitor connection status and nearby users',
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              
-              const SizedBox(height: 16),
-              
-              // Contact Support Button
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: () {
-                    Navigator.pop(context);
-                    // TODO: Open support email or contact form
-                  },
-                  icon: const Icon(Icons.email),
-                  label: const Text('Contact Support'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primaryRed,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildHelpTopic({
-    required IconData icon,
-    required String title,
-    required String description,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.lightGray.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: AppColors.lightGray.withOpacity(0.3),
-        ),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: AppColors.primaryRed.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(
-              icon,
-              color: AppColors.primaryRed,
-              size: 20,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: UnifiedTypography.bodyLarge.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  description,
-                  style: UnifiedTypography.bodySmall.copyWith(
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // About Modal
-  void _showAboutModal(BuildContext context) {
-    showDialog(
-      context: context,
-      barrierDismissible: true,
-      barrierColor: Colors.black54,
-      builder: (context) => Dialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(24),
-        ),
-        child: Container(
-          constraints: const BoxConstraints(maxWidth: 400),
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Header
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: AppColors.primaryRed.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(
-                      Icons.info_outline,
-                      color: AppColors.primaryRed,
-                      size: 28,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Text(
-                      'About',
-                      style: UnifiedTypography.titleLarge.copyWith(
-                        color: AppColors.textPrimary,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close),
-                    onPressed: () => Navigator.pop(context),
-                    color: AppColors.textSecondary,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-              
-              // App Logo/Icon
-              Container(
-                width: 80,
-                height: 80,
-                decoration: BoxDecoration(
-                  color: AppColors.primaryRed,
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.primaryRed.withOpacity(0.3),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: const Icon(
-                  Icons.emergency,
-                  color: Colors.white,
-                  size: 40,
-                ),
-              ),
-              const SizedBox(height: 16),
-              
-              // App Name
-              Text(
-                'T.U.L.O.N.G',
-                style: UnifiedTypography.headlineSmall.copyWith(
-                  color: AppColors.textPrimary,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 4),
-              
-              // Full Name
-              Text(
-                'Transmission Unit for Local\nOffline Network Generation',
-                textAlign: TextAlign.center,
-                style: UnifiedTypography.bodyMedium.copyWith(
-                  color: AppColors.textSecondary,
-                ),
-              ),
-              const SizedBox(height: 24),
-              
-              // Version Info
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: AppColors.lightGray.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Column(
-                  children: [
-                    _buildAboutRow('Version', '1.0.0'),
-                    const Divider(height: 24),
-                    _buildAboutRow('Build', 'Release'),
-                    const Divider(height: 24),
-                    _buildAboutRow('Platform', 'Android'),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-              
-              // Description
-              Text(
-                'A disaster-ready communication system for emergency situations. Connect with nearby users through mesh networking when traditional communication fails.',
-                textAlign: TextAlign.center,
-                style: UnifiedTypography.bodySmall.copyWith(
-                  color: AppColors.textSecondary,
-                  height: 1.5,
-                ),
-              ),
-              const SizedBox(height: 24),
-              
-              // Close Button
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () => Navigator.pop(context),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primaryRed,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child: const Text('Close'),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAboutRow(String label, String value) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(
-          label,
-          style: UnifiedTypography.bodyMedium.copyWith(
-            color: AppColors.textSecondary,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        Text(
-          value,
-          style: UnifiedTypography.bodyMedium.copyWith(
-            color: AppColors.textPrimary,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-      ],
-    );
   }
 }

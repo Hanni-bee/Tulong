@@ -106,6 +106,105 @@ class PermissionHelper {
     return bluetoothConnect && bluetoothScan && location;
   }
   
+  /// Request camera permission for Emergency Detection
+  static Future<bool> requestCameraPermission(BuildContext context) async {
+    final status = await Permission.camera.status;
+    
+    if (status.isGranted) {
+      return true;
+    }
+    
+    if (status.isDenied) {
+      // Show explanation dialog
+      if (context.mounted) {
+        final shouldRequest = await _showCameraPermissionDialog(context);
+        if (!shouldRequest) return false;
+      }
+      
+      final result = await Permission.camera.request();
+      return result.isGranted;
+    }
+    
+    if (status.isPermanentlyDenied) {
+      if (context.mounted) {
+        await _showCameraPermissionDeniedDialog(context);
+      }
+      return false;
+    }
+    
+    return false;
+  }
+  
+  /// Check if camera permission is granted
+  static Future<bool> hasCameraPermission() async {
+    return await Permission.camera.isGranted;
+  }
+  
+  /// Show camera permission explanation dialog
+  static Future<bool> _showCameraPermissionDialog(BuildContext context) async {
+    return await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        title: const Row(
+          children: [
+            Icon(Icons.camera_alt, color: Colors.blue),
+            SizedBox(width: 8),
+            Text('Camera Permission'),
+          ],
+        ),
+        content: const Text(
+          'TULONG needs camera access to detect emergencies in your surroundings.\n\n'
+          'The camera is used to:\n'
+          '• Capture photos of emergency situations\n'
+          '• Analyze emergency types (fire, flood, etc.)\n'
+          '• Determine severity levels\n\n'
+          'Photos are processed on your device and never shared.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Allow'),
+          ),
+        ],
+      ),
+    ) ?? false;
+  }
+  
+  /// Show camera permission denied dialog
+  static Future<void> _showCameraPermissionDeniedDialog(BuildContext context) async {
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        title: const Text('Camera Permission Denied'),
+        content: const Text(
+          'Camera permission is required for emergency detection.\n\n'
+          'Please enable it in:\n\n'
+          'Settings → Apps → TULONG → Permissions → Camera',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              openAppSettings();
+            },
+            child: const Text('Open Settings'),
+          ),
+        ],
+      ),
+    );
+  }
+  
   /// Show permission explanation dialog
   static Future<bool> _showPermissionDialog(BuildContext context) async {
     return await showDialog<bool>(
