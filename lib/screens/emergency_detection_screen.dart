@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:provider/provider.dart';
 import '../constants/app_colors.dart';
+import '../constants/app_typography.dart';
+import '../constants/soft_ui_design.dart';
 import '../utils/permission_helper.dart';
 import '../models/emergency_type.dart';
 import '../models/emergency_detection_result.dart';
@@ -552,15 +554,19 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
     return Scaffold(
       backgroundColor: AppColors.backgroundLight,
       appBar: AppBar(
-        title: const Text(
+        backgroundColor: AppColors.white,
+        elevation: 0,
+        title: Text(
           'Emergency Detection',
-          style: TextStyle(
+          style: AppTypography.titleLarge.copyWith(
+            color: AppColors.textPrimary,
             fontWeight: FontWeight.bold,
           ),
         ),
         actions: [
           IconButton(
             icon: const Icon(Icons.settings),
+            color: AppColors.textPrimary,
             onPressed: () {
               // TODO: Show settings dialog
             },
@@ -572,14 +578,13 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
           // Camera preview area
           Expanded(
             child: Container(
-              margin: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.black,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: AppColors.mediumGray,
-                  width: 2,
-                ),
+              margin: const EdgeInsets.all(SoftUIDesign.cardMargin * 2),
+              decoration: SoftUIDesign.cardDecoration(
+                backgroundColor: Colors.black,
+                borderRadius: SoftUIDesign.cardBorderRadius,
+                elevation: 4.0,
+                showBorder: true,
+                borderColor: AppColors.mediumGray.withOpacity(0.3),
               ),
               child: Stack(
                 children: [
@@ -606,9 +611,8 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                                   _isCameraInitialized
                                       ? 'Camera not ready'
                                       : 'Initializing camera...',
-                                  style: const TextStyle(
+                                  style: AppTypography.bodyMedium.copyWith(
                                     color: Colors.white70,
-                                    fontSize: 16,
                                   ),
                                 ),
                                 if (!_isCameraInitialized)
@@ -656,11 +660,10 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                               },
                             ),
                             const SizedBox(height: 16),
-                            const Text(
+                            Text(
                               'Analyzing emergency...',
-                              style: TextStyle(
+                              style: AppTypography.bodyMedium.copyWith(
                                 color: Colors.white,
-                                fontSize: 16,
                                 fontWeight: FontWeight.w500,
                               ),
                             ),
@@ -675,19 +678,21 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
 
           // Capture button
           Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(SoftUIDesign.cardPadding),
             child: SizedBox(
               width: double.infinity,
-              height: 60,
+              height: SoftUIDesign.buttonHeight,
               child: ElevatedButton(
                 onPressed: _isProcessing ? null : _capturePhoto,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primaryRed,
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(SoftUIDesign.buttonBorderRadius),
                   ),
-                  elevation: 4,
+                  elevation: 0,
+                ).copyWith(
+                  elevation: MaterialStateProperty.all(0),
                 ),
                 child: _isProcessing
                     ? const Row(
@@ -702,7 +707,12 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                             ),
                           ),
                           SizedBox(width: 12),
-                          Text('Processing...'),
+                          Text(
+                            'Processing...',
+                            style: AppTypography.bodyMedium.copyWith(
+                              color: Colors.white,
+                            ),
+                          ),
                         ],
                       )
                     : const Row(
@@ -712,8 +722,7 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                           SizedBox(width: 8),
                           Text(
                             'CAPTURE PHOTO',
-                            style: TextStyle(
-                              fontSize: 18,
+                            style: AppTypography.titleMedium.copyWith(
                               fontWeight: FontWeight.bold,
                             ),
                           ),
@@ -726,18 +735,12 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
           // Recent detections
           if (_recentDetections.isNotEmpty)
             Container(
-              margin: const EdgeInsets.all(16),
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.08),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
+              margin: const EdgeInsets.all(SoftUIDesign.cardMargin * 2),
+              padding: const EdgeInsets.all(SoftUIDesign.cardPadding),
+              decoration: SoftUIDesign.cardDecoration(
+                backgroundColor: AppColors.white,
+                borderRadius: SoftUIDesign.cardBorderRadius,
+                elevation: 4.0,
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
