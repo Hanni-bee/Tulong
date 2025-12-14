@@ -1,8 +1,12 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:camera/camera.dart';
 import '../constants/app_colors.dart';
 import '../utils/permission_helper.dart';
 import '../models/emergency_type.dart';
 import '../models/emergency_detection_result.dart';
+import '../services/camera_service.dart';
+import '../services/image_preprocessing_service.dart';
 
 /// Emergency Detection Screen - Replaces Calls Screen
 /// Allows users to capture photos and detect emergency types using AI/ML
@@ -14,6 +18,9 @@ class EmergencyDetectionScreen extends StatefulWidget {
 }
 
 class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen> {
+  final CameraService _cameraService = CameraService();
+  final ImagePreprocessingService _preprocessingService = ImagePreprocessingService();
+  
   bool _isCameraInitialized = false;
   bool _isProcessing = false;
   
@@ -26,65 +33,136 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen> {
     _initializeCamera();
   }
 
+  @override
+  void dispose() {
+    _cameraService.dispose();
+    super.dispose();
+  }
+
   /// Initialize camera and request permissions
   Future<void> _initializeCamera() async {
     // Request camera permission
     final hasPermission = await PermissionHelper.requestCameraPermission(context);
     
-    if (hasPermission && mounted) {
+    if (!hasPermission) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Camera permission is required for emergency detection'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+      return;
+    }
+    
+    // Initialize camera
+    final initialized = await _cameraService.initializeCamera();
+    
+    if (mounted) {
       setState(() {
-        _isCameraInitialized = true;
+        _isCameraInitialized = initialized;
       });
-      // TODO: Phase 2 - Initialize camera controller
-    } else if (mounted) {
-      // Show error if permission denied
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Camera permission is required for emergency detection'),
-          backgroundColor: AppColors.error,
-        ),
-      );
+      
+      if (!initialized) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to initialize camera. Please try again.'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
     }
   }
 
   /// Handle photo capture
   Future<void> _capturePhoto() async {
-    if (!_isCameraInitialized) {
+    if (!_isCameraInitialized || !_cameraService.isReady) {
       await _initializeCamera();
-      return;
+      if (!_cameraService.isReady) {
+        return;
+      }
     }
 
     setState(() {
       _isProcessing = true;
     });
 
-    // TODO: Phase 2 - Implement actual camera capture
-    // TODO: Phase 3 - Implement ML processing
-    
-    // Simulate processing delay
-    await Future.delayed(const Duration(seconds: 2));
-
-    // TODO: Replace with actual detection result
-    // For now, create a placeholder result
-    final result = EmergencyDetectionResult(
-      type: EmergencyType.general,
-      severity: SeverityLevel.medium,
-      confidence: 0.75,
-      timestamp: DateTime.now(),
-    );
-
-    if (mounted) {
-      setState(() {
-        _isProcessing = false;
-        _recentDetections.insert(0, result);
-        // Keep only last 10 detections
-        if (_recentDetections.length > 10) {
-          _recentDetections.removeLast();
+    try {
+      // Capture photo
+      final imagePath = await _cameraService.takePicture();
+      
+      if (imagePath == null) {
+        if (mounted) {
+          setState(() {
+            _isProcessing = false;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Failed to capture photo. Please try again.'),
+              backgroundColor: AppColors.error,
+            ),
+          );
         }
-      });
+        return;
+      }
+      
+      // Preprocess image for ML model
+      final preprocessed = await _preprocessingService.preprocessImage(imagePath);
+      
+      if (preprocessed == null) {
+        if (mounted) {
+          setState(() {
+            _isProcessing = false;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Failed to process image. Please try again.'),
+              backgroundColor: AppColors.error,
+            ),
+          );
+        }
+        return;
+      }
+      
+      // TODO: Phase 3 - Implement ML processing with preprocessed image
+      // For now, create a placeholder result
+      await Future.delayed(const Duration(milliseconds: 500)); // Simulate processing
+      
+      final result = EmergencyDetectionResult(
+        type: EmergencyType.general,
+        severity: SeverityLevel.medium,
+        confidence: 0.75,
+        timestamp: DateTime.now(),
+        imagePath: imagePath,
+      );
 
-      // Show result dialog
-      _showDetectionResult(result);
+      if (mounted) {
+        setState(() {
+          _isProcessing = false;
+          _recentDetections.insert(0, result);
+          // Keep only last 10 detections
+          if (_recentDetections.length > 10) {
+            _recentDetections.removeLast();
+          }
+        });
+
+        // Show result dialog
+        _showDetectionResult(result);
+      }
+    } catch (e) {
+      debugPrint('Error capturing photo: $e');
+      if (mounted) {
+        setState(() {
+          _isProcessing = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${e.toString()}'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
     }
   }
 
@@ -110,39 +188,62 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen> {
             ),
           ],
         ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Severity: ${result.severity.label}',
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Show captured image preview if available
+              if (result.imagePath != null)
+                Container(
+                  height: 200,
+                  width: double.infinity,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: AppColors.lightGray),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.file(
+                      File(result.imagePath!),
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                ),
+              Text(
+                'Severity: ${result.severity.label}',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Confidence: ${(result.confidence * 100).toStringAsFixed(1)}%',
-              style: const TextStyle(
-                fontSize: 14,
-                color: AppColors.darkGray,
+              const SizedBox(height: 8),
+              Text(
+                'Confidence: ${(result.confidence * 100).toStringAsFixed(1)}%',
+                style: const TextStyle(
+                  fontSize: 14,
+                  color: AppColors.darkGray,
+                ),
               ),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'Note: Image stays on device. Only detection result will be sent via ESP32/radio.',
-              style: TextStyle(
-                fontSize: 12,
-                fontStyle: FontStyle.italic,
-                color: AppColors.mediumGray,
+              const SizedBox(height: 16),
+              const Text(
+                'Note: Image stays on device. Only detection result will be sent via ESP32/radio.',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontStyle: FontStyle.italic,
+                  color: AppColors.mediumGray,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () {
+              Navigator.pop(context);
+              // Retake - camera is still initialized
+            },
             child: const Text('Retake'),
           ),
           ElevatedButton(
@@ -200,55 +301,61 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen> {
       ),
       body: Column(
         children: [
-          // Camera preview area (placeholder for Phase 2)
+          // Camera preview area
           Expanded(
             child: Container(
               margin: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: AppColors.lightGray,
+                color: Colors.black,
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
                   color: AppColors.mediumGray,
                   width: 2,
                 ),
               ),
-              child: _isCameraInitialized
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.camera_alt,
-                            size: 64,
-                            color: AppColors.mediumGray,
-                          ),
-                          const SizedBox(height: 16),
-                          const Text(
-                            'Camera Preview\n(Phase 2 Implementation)',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: AppColors.darkGray,
-                              fontSize: 16,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                child: _isCameraInitialized && _cameraService.isReady
+                    ? CameraPreview(_cameraService.controller!)
+                    : Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            if (!_isCameraInitialized)
+                              const CircularProgressIndicator(
+                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              )
+                            else
+                              const Icon(
+                                Icons.camera_alt,
+                                size: 64,
+                                color: Colors.white54,
+                              ),
+                            const SizedBox(height: 16),
+                            Text(
+                              _isCameraInitialized
+                                  ? 'Camera not ready'
+                                  : 'Initializing camera...',
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 16,
+                              ),
                             ),
-                          ),
-                        ],
+                            if (!_isCameraInitialized)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 8),
+                                child: TextButton(
+                                  onPressed: _initializeCamera,
+                                  child: const Text(
+                                    'Retry',
+                                    style: TextStyle(color: Colors.white),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
                       ),
-                    )
-                  : Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const CircularProgressIndicator(),
-                          const SizedBox(height: 16),
-                          const Text(
-                            'Initializing camera...',
-                            style: TextStyle(
-                              color: AppColors.darkGray,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+              ),
             ),
           ),
 
