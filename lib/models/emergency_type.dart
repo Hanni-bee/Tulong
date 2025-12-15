@@ -5,7 +5,8 @@ enum EmergencyType {
   flood('Flood', '🌧️'),
   fire('Fire', '🔥'),
   accident('Accident', '🚑'),
-  general('General Emergency', '⚠️');
+  general('General Emergency', '⚠️'),
+  noEmergency('No Emergency', '✅'); // Positive result - no emergency detected
 
   const EmergencyType(this.label, this.emoji);
   
@@ -19,6 +20,9 @@ enum EmergencyType {
       orElse: () => EmergencyType.general,
     );
   }
+  
+  /// Check if this is a real emergency (not "no emergency")
+  bool get isRealEmergency => this != EmergencyType.noEmergency;
 }
 
 /// Severity levels for emergency situations
