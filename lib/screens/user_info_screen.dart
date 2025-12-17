@@ -124,8 +124,7 @@ class _UserInfoScreenState extends State<UserInfoScreen>
                 // Debug logging
                 print('UserInfoScreen - User data: ${user?.toMap()}');
                 print('UserInfoScreen - User name: ${user?.name}');
-                print('UserInfoScreen - User email: ${user?.email}');
-                print('UserInfoScreen - User phone: ${user?.phone}');
+                print('UserInfoScreen - User username: ${user?.username}');
                 print('UserInfoScreen - User street: ${user?.street}');
                 print('UserInfoScreen - User barangay: ${user?.barangay}');
                 print('UserInfoScreen - User city: ${user?.city}');
@@ -197,19 +196,10 @@ class _UserInfoScreenState extends State<UserInfoScreen>
                     const SizedBox(height: 16),
 
                     _buildInfoCard(
-                      title: 'Email',
-                      value: user?.email ?? 'Not available',
-                      icon: Icons.email,
+                      title: 'Username',
+                      value: user?.username ?? 'Not available',
+                      icon: Icons.person,
                       color: AppColors.info,
-                    ),
-
-                    const SizedBox(height: 16),
-
-                    _buildInfoCard(
-                      title: 'Phone Number',
-                      value: user?.phone ?? 'Not available',
-                      icon: Icons.phone,
-                      color: AppColors.success,
                     ),
 
                     const SizedBox(height: 16),
@@ -296,13 +286,6 @@ class _UserInfoScreenState extends State<UserInfoScreen>
                               ),
                             ),
                             const SizedBox(height: 4),
-                            Text(
-                              'Is Google Auth: ${user?.isGoogleAuth ?? false}',
-                              style: AppTypography.bodySmall.copyWith(
-                                color: AppColors.textSecondary,
-                                fontFamily: 'monospace',
-                              ),
-                            ),
                             const SizedBox(height: 4),
                             Text(
                               'Address Setup Completed: ${user?.addressSetupCompleted ?? false}',

@@ -1,7 +1,10 @@
 import 'dart:io';
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:camera/camera.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/app_colors.dart';
 import '../constants/app_typography.dart';
 import '../constants/soft_ui_design.dart';
@@ -12,6 +15,7 @@ import '../services/camera_service.dart';
 import '../services/image_preprocessing_service.dart';
 import '../services/emergency_detection_service.dart';
 import '../services/simple_bluetooth_service.dart';
+import '../services/ml_model_service.dart';
 
 /// Emergency Detection Screen - Replaces Calls Screen
 /// Allows users to capture photos and detect emergency types using AI/ML
@@ -35,14 +39,31 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
   // Animation controllers
   late AnimationController _flashController;
   late AnimationController _processingController;
+  late AnimationController _captureButtonController;
   late Animation<double> _processingAnimation;
+  late Animation<double> _captureButtonScale;
+  late Animation<double> _captureButtonGlow;
   
   // Recent detections history
   final List<EmergencyDetectionResult> _recentDetections = [];
+  
+  // UI state
+  bool _isButtonPressed = false;
+  bool _showGrid = true;
+  
+  // Cooldown timer to prevent spam (1 minute)
+  static const Duration _cooldownDuration = Duration(minutes: 1);
+  DateTime? _lastCaptureTime;
+  Timer? _cooldownTimer;
+  int _cooldownSecondsRemaining = 0;
+  bool get _isOnCooldown => _cooldownSecondsRemaining > 0;
 
   @override
   void initState() {
     super.initState();
+    
+    // Load last capture time and initialize cooldown
+    _loadLastCaptureTime();
     
     // Initialize animation controllers
     _flashController = AnimationController(
@@ -62,15 +83,138 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
       ),
     );
     
+    // Capture button animation
+    _captureButtonController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 200),
+    );
+    
+    _captureButtonScale = Tween<double>(begin: 1.0, end: 0.95).animate(
+      CurvedAnimation(
+        parent: _captureButtonController,
+        curve: Curves.easeInOut,
+      ),
+    );
+    
+    _captureButtonGlow = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _captureButtonController,
+        curve: Curves.easeOut,
+      ),
+    );
+    
+    // Try to load ML model if available (optional, won't fail if not present)
+    _tryLoadMLModel();
+    
     _initializeCamera();
+  }
+  
+  /// Try to load ML model (optional enhancement)
+  Future<void> _tryLoadMLModel() async {
+    try {
+      // Try to load model - will fail silently if model not found
+      final loaded = await MLModelService.instance.loadModel('models/emergency_detector.tflite');
+      if (loaded) {
+        // Enable ML model usage in detection service
+        _detectionService.setUseMLModel(true);
+        debugPrint('✅ ML Model enabled for emergency detection');
+      } else {
+        debugPrint('ℹ️ ML Model not available, using rule-based detection');
+      }
+    } catch (e) {
+      // Model not found or other error - this is fine, rule-based will work
+      debugPrint('ℹ️ ML Model not available: $e (rule-based detection will be used)');
+    }
   }
 
   @override
   void dispose() {
+    _cooldownTimer?.cancel();
     _cameraService.dispose();
     _flashController.dispose();
     _processingController.dispose();
+    _captureButtonController.dispose();
     super.dispose();
+  }
+  
+  /// Load last capture time from SharedPreferences
+  Future<void> _loadLastCaptureTime() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final lastCaptureTimestamp = prefs.getInt('last_emergency_capture_time');
+      if (lastCaptureTimestamp != null) {
+        _lastCaptureTime = DateTime.fromMillisecondsSinceEpoch(lastCaptureTimestamp);
+        _updateCooldownState();
+      }
+    } catch (e) {
+      debugPrint('Error loading last capture time: $e');
+    }
+  }
+  
+  /// Save last capture time to SharedPreferences
+  Future<void> _saveLastCaptureTime() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('last_emergency_capture_time', DateTime.now().millisecondsSinceEpoch);
+    } catch (e) {
+      debugPrint('Error saving last capture time: $e');
+    }
+  }
+  
+  /// Update cooldown state and start timer if needed
+  void _updateCooldownState() {
+    if (_lastCaptureTime == null) {
+      setState(() {
+        _cooldownSecondsRemaining = 0;
+      });
+      return;
+    }
+    
+    final now = DateTime.now();
+    final timeSinceLastCapture = now.difference(_lastCaptureTime!);
+    
+    if (timeSinceLastCapture >= _cooldownDuration) {
+      // Cooldown expired
+      setState(() {
+        _cooldownSecondsRemaining = 0;
+        _lastCaptureTime = null;
+      });
+      _cooldownTimer?.cancel();
+      _saveLastCaptureTime(); // Clear saved time
+    } else {
+      // Still on cooldown
+      final remaining = _cooldownDuration - timeSinceLastCapture;
+      setState(() {
+        _cooldownSecondsRemaining = remaining.inSeconds;
+      });
+      
+      // Start timer to update countdown every second
+      _cooldownTimer?.cancel();
+      _cooldownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        if (!mounted) {
+          timer.cancel();
+          return;
+        }
+        
+        final now = DateTime.now();
+        final timeSinceLastCapture = now.difference(_lastCaptureTime!);
+        
+        if (timeSinceLastCapture >= _cooldownDuration) {
+          // Cooldown expired
+          timer.cancel();
+          setState(() {
+            _cooldownSecondsRemaining = 0;
+            _lastCaptureTime = null;
+          });
+          _saveLastCaptureTime(); // Clear saved time
+        } else {
+          final remaining = _cooldownDuration - timeSinceLastCapture;
+          setState(() {
+            _cooldownSecondsRemaining = remaining.inSeconds;
+          });
+        }
+      });
+    }
   }
 
   /// Initialize camera and request permissions
@@ -111,19 +255,42 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
 
   /// Handle photo capture
   Future<void> _capturePhoto() async {
+    // Check cooldown timer
+    if (_isOnCooldown) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Please wait ${_cooldownSecondsRemaining}s before capturing again'),
+            backgroundColor: AppColors.warning,
+            duration: const Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+      return;
+    }
+    
     if (!_isCameraInitialized || !_cameraService.isReady) {
       await _initializeCamera();
       if (!_cameraService.isReady) {
         return;
       }
     }
+    
+    // Haptic feedback for capture
+    HapticFeedback.mediumImpact();
+    
+    // Set last capture time and start cooldown
+    _lastCaptureTime = DateTime.now();
+    await _saveLastCaptureTime();
+    _updateCooldownState();
 
     setState(() {
       _isProcessing = true;
     });
 
     try {
-      // Flash animation
+      // Flash animation with enhanced effect
       setState(() {
         _showFlash = true;
       });
@@ -371,27 +538,112 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                     
                     const SizedBox(height: 16),
                     
-                    // Confidence indicator with interval
-                    Row(
+                    // Confidence indicator with progress bar
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Icon(
-                          Icons.analytics,
-                          size: 20,
-                          color: AppColors.darkGray,
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.analytics,
+                              size: 20,
+                              color: AppColors.darkGray,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Confidence: ${result.getConfidenceString()}',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                color: AppColors.darkGray,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Confidence: ${result.getConfidenceString()}',
-                          style: const TextStyle(
-                            fontSize: 14,
-                            color: AppColors.darkGray,
-                            fontWeight: FontWeight.w500,
+                        const SizedBox(height: 12),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Container(
+                            height: 8,
+                            decoration: BoxDecoration(
+                              color: AppColors.lightGray.withOpacity(0.3),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Stack(
+                              children: [
+                                // Background
+                                Container(width: double.infinity),
+                                // Progress
+                                FractionallySizedBox(
+                                  widthFactor: result.confidence,
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        colors: [
+                                          severityColor,
+                                          severityColor.withOpacity(0.7),
+                                        ],
+                                      ),
+                                      borderRadius: BorderRadius.circular(8),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: severityColor.withOpacity(0.3),
+                                          blurRadius: 4,
+                                          spreadRadius: 0,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ],
                     ),
                     
                     const SizedBox(height: 20),
+                    
+                    // Quick actions
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () {
+                              Navigator.pop(context);
+                              _showAnalysisDetails(result);
+                            },
+                            icon: const Icon(Icons.insights, size: 18),
+                            label: const Text('Details'),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () {
+                              Navigator.pop(context);
+                              _reportFalsePositive(result);
+                            },
+                            icon: const Icon(Icons.close, size: 18),
+                            label: const Text('Incorrect'),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    
+                    const SizedBox(height: 16),
                     
                     // Info note
                     Container(
@@ -477,27 +729,35 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                     Row(
                       children: [
                         Expanded(
-                          child: OutlinedButton(
+                          child: OutlinedButton.icon(
                             onPressed: () {
                               Navigator.pop(context);
                             },
+                            icon: const Icon(Icons.refresh, size: 18),
+                            label: const Text('Retake'),
                             style: OutlinedButton.styleFrom(
                               padding: const EdgeInsets.symmetric(vertical: 14),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
                               ),
                             ),
-                            child: const Text('Retake'),
                           ),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
                           flex: 2,
-                          child: ElevatedButton(
+                          child: ElevatedButton.icon(
                             onPressed: () {
                               Navigator.pop(context);
                               _sendToChat(result);
                             },
+                            icon: const Icon(Icons.send, size: 18),
+                            label: const Text(
+                              'Send to Chat',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: AppColors.primaryRed,
                               foregroundColor: Colors.white,
@@ -506,12 +766,6 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               elevation: 2,
-                            ),
-                            child: const Text(
-                              'Send to Chat',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                              ),
                             ),
                           ),
                         ),
@@ -627,19 +881,49 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
       appBar: AppBar(
         backgroundColor: AppColors.white,
         elevation: 0,
-        title: Text(
-          'Emergency Detection',
-          style: AppTypography.titleLarge.copyWith(
-            color: AppColors.textPrimary,
-            fontWeight: FontWeight.bold,
-          ),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppColors.primaryRed.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(
+                Icons.camera_alt_rounded,
+                color: AppColors.primaryRed,
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              'Emergency Detection',
+              style: AppTypography.titleLarge.copyWith(
+                color: AppColors.textPrimary,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
         ),
         actions: [
+          // Grid toggle
           IconButton(
-            icon: const Icon(Icons.settings),
+            icon: Icon(_showGrid ? Icons.grid_on_rounded : Icons.grid_off_rounded),
             color: AppColors.textPrimary,
+            tooltip: _showGrid ? 'Hide grid' : 'Show grid',
             onPressed: () {
-              // TODO: Show settings dialog
+              setState(() {
+                _showGrid = !_showGrid;
+              });
+              HapticFeedback.lightImpact();
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.info_outline_rounded),
+            color: AppColors.textPrimary,
+            tooltip: 'About Emergency Detection',
+            onPressed: () {
+              _showInfoDialog();
             },
           ),
         ],
@@ -664,7 +948,17 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                     ClipRRect(
                       borderRadius: BorderRadius.circular(SoftUIDesign.cardBorderRadius - 2),
                       child: _isCameraInitialized && _cameraService.isReady
-                          ? CameraPreview(_cameraService.controller!)
+                          ? Stack(
+                              children: [
+                                CameraPreview(_cameraService.controller!),
+                                // Grid lines overlay for composition
+                                if (_showGrid && !_isProcessing)
+                                  _buildCameraGrid(),
+                                // Center focus indicator
+                                if (!_isProcessing)
+                                  _buildFocusIndicator(),
+                              ],
+                            )
                           : Container(
                               decoration: BoxDecoration(
                                 gradient: LinearGradient(
@@ -730,41 +1024,71 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                             ),
                     ),
                     
-                    // Camera overlay guides
+                    // Camera overlay guides with enhanced design
                     if (_isCameraInitialized && _cameraService.isReady && !_isProcessing)
                       Positioned(
                         top: 16,
                         left: 16,
                         right: 16,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.5),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: Colors.white.withOpacity(0.3),
-                              width: 1,
-                            ),
-                          ),
-                          child: Row(
-                            children: [
-                              const Icon(
-                                Icons.info_outline,
-                                size: 16,
-                                color: Colors.white,
+                        child: TweenAnimationBuilder<double>(
+                          tween: Tween(begin: 0.0, end: 1.0),
+                          duration: const Duration(milliseconds: 500),
+                          curve: Curves.easeOut,
+                          builder: (context, value, child) {
+                            return Opacity(
+                              opacity: value,
+                              child: Transform.translate(
+                                offset: Offset(0, 10 * (1 - value)),
+                                child: child,
                               ),
-                              const SizedBox(width: 8),
-                              Flexible(
-                                child: Text(
-                                  'Point camera at emergency scene',
-                                  style: AppTypography.bodySmall.copyWith(
+                            );
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(0.6),
+                              borderRadius: BorderRadius.circular(24),
+                              border: Border.all(
+                                color: AppColors.primaryRed.withOpacity(0.4),
+                                width: 1.5,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: AppColors.primaryRed.withOpacity(0.2),
+                                  blurRadius: 12,
+                                  spreadRadius: 0,
+                                ),
+                              ],
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primaryRed.withOpacity(0.2),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(
+                                    Icons.camera_alt_rounded,
+                                    size: 16,
                                     color: Colors.white,
                                   ),
-                                  overflow: TextOverflow.ellipsis,
-                                  maxLines: 1,
                                 ),
-                              ),
-                            ],
+                                const SizedBox(width: 10),
+                                Flexible(
+                                  child: Text(
+                                    'Point camera at emergency scene',
+                                    style: AppTypography.bodySmall.copyWith(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                    maxLines: 1,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ),
@@ -778,51 +1102,99 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                         ),
                       ),
                     
-                    // Processing overlay with better design
+                    // Processing overlay with enhanced design and animations
                     if (_isProcessing)
-                      Container(
-                        decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.75),
-                          borderRadius: BorderRadius.circular(SoftUIDesign.cardBorderRadius - 2),
-                        ),
-                        child: Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(24),
-                                decoration: BoxDecoration(
-                                  color: AppColors.primaryRed.withOpacity(0.1),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: AnimatedBuilder(
+                      TweenAnimationBuilder<double>(
+                        tween: Tween(begin: 0.0, end: 1.0),
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeOut,
+                        builder: (context, value, child) {
+                          return Opacity(
+                            opacity: value,
+                            child: child,
+                          );
+                        },
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.85),
+                            borderRadius: BorderRadius.circular(SoftUIDesign.cardBorderRadius - 2),
+                            border: Border.all(
+                              color: AppColors.primaryRed.withOpacity(0.3),
+                              width: 2,
+                            ),
+                          ),
+                          child: Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                // Animated processing indicator with glow
+                                AnimatedBuilder(
                                   animation: _processingAnimation,
                                   builder: (context, child) {
-                                    return CircularProgressIndicator(
-                                      valueColor: AlwaysStoppedAnimation<Color>(
-                                        AppColors.primaryRed,
+                                    return Container(
+                                      padding: const EdgeInsets.all(28),
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        gradient: RadialGradient(
+                                          colors: [
+                                            AppColors.primaryRed.withOpacity(0.2 * _processingAnimation.value),
+                                            AppColors.primaryRed.withOpacity(0.05),
+                                          ],
+                                        ),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: AppColors.primaryRed.withOpacity(0.3 * _processingAnimation.value),
+                                            blurRadius: 20 + (10 * _processingAnimation.value),
+                                            spreadRadius: 5,
+                                          ),
+                                        ],
                                       ),
-                                      strokeWidth: 4,
+                                      child: CircularProgressIndicator(
+                                        valueColor: AlwaysStoppedAnimation<Color>(
+                                          AppColors.primaryRed,
+                                        ),
+                                        strokeWidth: 4,
+                                        value: _processingAnimation.value,
+                                      ),
                                     );
                                   },
                                 ),
-                              ),
-                              const SizedBox(height: 24),
-                              Text(
-                                'Analyzing emergency...',
-                                style: AppTypography.titleMedium.copyWith(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
+                                const SizedBox(height: 28),
+                                TweenAnimationBuilder<double>(
+                                  tween: Tween(begin: 0.0, end: 1.0),
+                                  duration: const Duration(milliseconds: 800),
+                                  curve: Curves.easeOut,
+                                  builder: (context, value, child) {
+                                    return Opacity(
+                                      opacity: value,
+                                      child: Transform.translate(
+                                        offset: Offset(0, 10 * (1 - value)),
+                                        child: child,
+                                      ),
+                                    );
+                                  },
+                                  child: Column(
+                                    children: [
+                                      Text(
+                                        'Analyzing emergency...',
+                                        style: AppTypography.titleMedium.copyWith(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.bold,
+                                          letterSpacing: 0.5,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 12),
+                                      Text(
+                                        'AI is processing your image',
+                                        style: AppTypography.bodySmall.copyWith(
+                                          color: Colors.white70,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                'Please wait',
-                                style: AppTypography.bodySmall.copyWith(
-                                  color: Colors.white70,
-                                ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
                       ),
@@ -831,21 +1203,58 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
               ),
             ),
 
-            // Capture button with improved styling
+            // Capture button with enhanced animations and interactions
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: _isProcessing ? null : _capturePhoto,
-                  borderRadius: BorderRadius.circular(SoftUIDesign.buttonBorderRadius),
-                  child: Container(
-                    width: double.infinity,
-                    height: SoftUIDesign.buttonHeight + 4,
-                    decoration: SoftUIDesign.buttonDecoration(
-                      backgroundColor: AppColors.primaryRed,
-                      shadowColor: AppColors.primaryRed,
-                    ),
+              child: GestureDetector(
+                onTapDown: (_) {
+                  if (!_isProcessing && !_isOnCooldown) {
+                    HapticFeedback.lightImpact();
+                    _captureButtonController.forward();
+                    setState(() => _isButtonPressed = true);
+                  }
+                },
+                onTapUp: (_) {
+                  if (!_isProcessing && !_isOnCooldown) {
+                    _captureButtonController.reverse();
+                    setState(() => _isButtonPressed = false);
+                    _capturePhoto();
+                  } else {
+                    _captureButtonController.reverse();
+                    setState(() => _isButtonPressed = false);
+                  }
+                },
+                onTapCancel: () {
+                  _captureButtonController.reverse();
+                  setState(() => _isButtonPressed = false);
+                },
+                child: AnimatedBuilder(
+                  animation: _captureButtonController,
+                  builder: (context, child) {
+                    return Transform.scale(
+                      scale: _captureButtonScale.value,
+                      child: Opacity(
+                        opacity: _isOnCooldown ? 0.6 : 1.0,
+                        child: Container(
+                          width: double.infinity,
+                          height: SoftUIDesign.buttonHeight + 4,
+                          decoration: SoftUIDesign.buttonDecoration(
+                            backgroundColor: _isOnCooldown ? AppColors.mediumGray : AppColors.primaryRed,
+                            shadowColor: _isOnCooldown ? AppColors.mediumGray : AppColors.primaryRed,
+                            isPressed: _isButtonPressed,
+                          ).copyWith(
+                            boxShadow: _isOnCooldown
+                                ? []
+                                : [
+                                    ...SoftUIDesign.getButtonShadow(color: AppColors.primaryRed),
+                                    // Pulsing glow effect
+                                    BoxShadow(
+                                      color: AppColors.primaryRed.withOpacity(0.4 * _captureButtonGlow.value),
+                                      blurRadius: 20 + (10 * _captureButtonGlow.value),
+                                      spreadRadius: 5 + (3 * _captureButtonGlow.value),
+                                    ),
+                                  ],
+                          ),
                     child: _isProcessing
                         ? Row(
                             mainAxisAlignment: MainAxisAlignment.center,
@@ -868,33 +1277,63 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                               ),
                             ],
                           )
-                        : Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(6),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.2),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: const Icon(
-                                  Icons.camera_alt,
-                                  size: 24,
-                                  color: Colors.white,
-                                ),
+                        : _isOnCooldown
+                            ? Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(6),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withOpacity(0.2),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: const Icon(
+                                      Icons.timer_outlined,
+                                      size: 24,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Text(
+                                    'Wait ${_cooldownSecondsRemaining}s',
+                                    style: AppTypography.titleMedium.copyWith(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      letterSpacing: 0.5,
+                                    ),
+                                  ),
+                                ],
+                              )
+                            : Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(6),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withOpacity(0.2),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: const Icon(
+                                      Icons.camera_alt,
+                                      size: 24,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Text(
+                                    'CAPTURE PHOTO',
+                                    style: AppTypography.titleMedium.copyWith(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      letterSpacing: 0.5,
+                                    ),
+                                  ),
+                                ],
                               ),
-                              const SizedBox(width: 12),
-                              Text(
-                                'CAPTURE PHOTO',
-                                style: AppTypography.titleMedium.copyWith(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  letterSpacing: 0.5,
-                                ),
-                              ),
-                            ],
-                          ),
-                  ),
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ),
             ),
@@ -964,33 +1403,81 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                                       mainAxisAlignment: MainAxisAlignment.center,
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        Container(
-                                          padding: const EdgeInsets.all(20),
-                                          decoration: BoxDecoration(
-                                            color: AppColors.lightGray.withOpacity(0.3),
-                                            shape: BoxShape.circle,
-                                          ),
-                                          child: Icon(
-                                            Icons.emergency_outlined,
-                                            size: 48,
-                                            color: AppColors.mediumGray.withOpacity(0.5),
+                                        TweenAnimationBuilder<double>(
+                                          tween: Tween(begin: 0.0, end: 1.0),
+                                          duration: const Duration(milliseconds: 800),
+                                          curve: Curves.easeOut,
+                                          builder: (context, value, child) {
+                                            return Transform.scale(
+                                              scale: 0.8 + (0.2 * value),
+                                              child: Opacity(
+                                                opacity: value,
+                                                child: child,
+                                              ),
+                                            );
+                                          },
+                                          child: Container(
+                                            padding: const EdgeInsets.all(24),
+                                            decoration: BoxDecoration(
+                                              color: AppColors.primaryRed.withOpacity(0.1),
+                                              shape: BoxShape.circle,
+                                              border: Border.all(
+                                                color: AppColors.primaryRed.withOpacity(0.2),
+                                                width: 2,
+                                              ),
+                                            ),
+                                            child: Icon(
+                                              Icons.camera_alt_rounded,
+                                              size: 48,
+                                              color: AppColors.primaryRed.withOpacity(0.6),
+                                            ),
                                           ),
                                         ),
-                                        const SizedBox(height: 16),
+                                        const SizedBox(height: 24),
                                         Text(
-                                          'No detections yet',
+                                          'Ready to Detect',
                                           style: AppTypography.titleMedium.copyWith(
-                                            color: AppColors.mediumGray,
-                                            fontWeight: FontWeight.w600,
+                                            color: AppColors.textPrimary,
+                                            fontWeight: FontWeight.bold,
                                           ),
                                         ),
                                         const SizedBox(height: 8),
                                         Text(
-                                          'Capture a photo to detect emergencies',
+                                          'Capture a photo to detect emergency situations',
                                           style: AppTypography.bodySmall.copyWith(
                                             color: AppColors.mediumGray,
                                           ),
                                           textAlign: TextAlign.center,
+                                        ),
+                                        const SizedBox(height: 16),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                          decoration: BoxDecoration(
+                                            color: AppColors.primaryRed.withOpacity(0.1),
+                                            borderRadius: BorderRadius.circular(20),
+                                            border: Border.all(
+                                              color: AppColors.primaryRed.withOpacity(0.2),
+                                              width: 1,
+                                            ),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(
+                                                Icons.auto_awesome,
+                                                size: 16,
+                                                color: AppColors.primaryRed,
+                                              ),
+                                              const SizedBox(width: 8),
+                                              Text(
+                                                'AI-Powered Detection',
+                                                style: AppTypography.bodySmall.copyWith(
+                                                  color: AppColors.primaryRed,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
                                         ),
                                       ],
                                     ),
@@ -1521,5 +2008,277 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
       ),
     );
   }
+  
+  /// Show info dialog about emergency detection
+  void _showInfoDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 400),
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryRed.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(
+                      Icons.info_outline_rounded,
+                      color: AppColors.primaryRed,
+                      size: 24,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Text(
+                      'Emergency Detection',
+                      style: AppTypography.titleLarge.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(context),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              _buildInfoRow(
+                icon: Icons.camera_alt_rounded,
+                title: 'Real-time Detection',
+                description: 'Capture photos using the in-app camera to detect emergency situations instantly.',
+              ),
+              const SizedBox(height: 16),
+              _buildInfoRow(
+                icon: Icons.smartphone,
+                title: '100% Offline',
+                description: 'All processing happens on your device. No internet required. Works during disasters.',
+              ),
+              const SizedBox(height: 16),
+              _buildInfoRow(
+                icon: Icons.security,
+                title: 'Privacy Protected',
+                description: 'Images stay on your device. Only detection results are shared via ESP32/radio.',
+              ),
+              const SizedBox(height: 16),
+              _buildInfoRow(
+                icon: Icons.auto_awesome,
+                title: 'AI-Powered',
+                description: 'Uses advanced image analysis to detect fires, floods, earthquakes, accidents, and more.',
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primaryRed,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Text('Got it'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildInfoRow({
+    required IconData icon,
+    required String title,
+    required String description,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: AppColors.primaryRed.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(
+            icon,
+            size: 20,
+            color: AppColors.primaryRed,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: AppTypography.titleSmall.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                description,
+                style: AppTypography.bodySmall.copyWith(
+                  color: AppColors.mediumGray,
+                  height: 1.4,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+  
+  /// Build camera grid lines for composition
+  Widget _buildCameraGrid() {
+    return IgnorePointer(
+      ignoring: true,
+      child: CustomPaint(
+        painter: _GridPainter(),
+      ),
+    );
+  }
+  
+  /// Build focus indicator at center
+  Widget _buildFocusIndicator() {
+    return IgnorePointer(
+      ignoring: true,
+      child: Center(
+        child: Container(
+          width: 80,
+          height: 80,
+          decoration: BoxDecoration(
+            border: Border.all(
+              color: Colors.white.withOpacity(0.6),
+              width: 2,
+            ),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Stack(
+            children: [
+              // Corner indicators
+              Positioned(
+                top: 4,
+                left: 4,
+                child: Container(
+                  width: 12,
+                  height: 12,
+                  decoration: BoxDecoration(
+                    border: Border(
+                      top: BorderSide(color: Colors.white.withOpacity(0.8), width: 2),
+                      left: BorderSide(color: Colors.white.withOpacity(0.8), width: 2),
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                top: 4,
+                right: 4,
+                child: Container(
+                  width: 12,
+                  height: 12,
+                  decoration: BoxDecoration(
+                    border: Border(
+                      top: BorderSide(color: Colors.white.withOpacity(0.8), width: 2),
+                      right: BorderSide(color: Colors.white.withOpacity(0.8), width: 2),
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                bottom: 4,
+                left: 4,
+                child: Container(
+                  width: 12,
+                  height: 12,
+                  decoration: BoxDecoration(
+                    border: Border(
+                      bottom: BorderSide(color: Colors.white.withOpacity(0.8), width: 2),
+                      left: BorderSide(color: Colors.white.withOpacity(0.8), width: 2),
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                bottom: 4,
+                right: 4,
+                child: Container(
+                  width: 12,
+                  height: 12,
+                  decoration: BoxDecoration(
+                    border: Border(
+                      bottom: BorderSide(color: Colors.white.withOpacity(0.8), width: 2),
+                      right: BorderSide(color: Colors.white.withOpacity(0.8), width: 2),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Custom painter for camera grid lines
+class _GridPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.white.withOpacity(0.3)
+      ..strokeWidth = 1.0
+      ..style = PaintingStyle.stroke;
+
+    // Rule of thirds grid (2 horizontal, 2 vertical lines)
+    final thirdWidth = size.width / 3;
+    final thirdHeight = size.height / 3;
+
+    // Vertical lines
+    canvas.drawLine(
+      Offset(thirdWidth, 0),
+      Offset(thirdWidth, size.height),
+      paint,
+    );
+    canvas.drawLine(
+      Offset(thirdWidth * 2, 0),
+      Offset(thirdWidth * 2, size.height),
+      paint,
+    );
+
+    // Horizontal lines
+    canvas.drawLine(
+      Offset(0, thirdHeight),
+      Offset(size.width, thirdHeight),
+      paint,
+    );
+    canvas.drawLine(
+      Offset(0, thirdHeight * 2),
+      Offset(size.width, thirdHeight * 2),
+      paint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_GridPainter oldDelegate) => false;
 }
 

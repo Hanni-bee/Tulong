@@ -1,9 +1,9 @@
 package com.activity2.tulong2
 
-import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 
-class MainActivity: FlutterActivity() {
+class MainActivity: FlutterFragmentActivity() {
     private var bluetoothHandler: SimpleBluetoothHandler? = null
     
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {

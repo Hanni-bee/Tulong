@@ -1,15 +1,28 @@
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:math' as math;
 import 'package:image/image.dart' as img;
 import 'package:flutter/foundation.dart';
 import '../models/emergency_type.dart';
 import '../models/emergency_detection_result.dart';
+import '../utils/hsv_color_converter.dart';
+import 'ml_model_service.dart';
 
 /// Service for detecting emergencies from images
-/// Uses rule-based classification (can be enhanced with ML model later)
+/// Uses rule-based classification with optional ML model enhancement
 class EmergencyDetectionService {
+  final MLModelService _mlModelService = MLModelService.instance;
+  bool _useMLModel = false;
+  /// Enable/disable ML model usage
+  /// ML model must be loaded separately using MLModelService.loadModel()
+  void setUseMLModel(bool useML) {
+    _useMLModel = useML && _mlModelService.isLoaded;
+    debugPrint('ML Model usage: ${_useMLModel ? "ENABLED" : "DISABLED"}');
+  }
+  
   /// Detect emergency type and severity from preprocessed image
   /// Uses multi-pass analysis with false positive prevention
+  /// Optionally uses ML model for feature extraction if available
   /// 
   /// [preprocessedImage] - Normalized Float32List from ImagePreprocessingService
   /// [originalImagePath] - Path to original image for additional analysis
@@ -33,8 +46,29 @@ class EmergencyDetectionService {
         return _createDefaultResult();
       }
       
-    // PASS 1: Full image analysis
-    final fullAnalysis = _analyzeImage(image);
+    // PASS 1: Full image analysis with adaptive threshold calculation
+    var fullAnalysis = _analyzeImage(image);
+    
+    // Calculate adaptive thresholds based on image characteristics
+    final adaptiveThresholds = _calculateAdaptiveThresholds(fullAnalysis);
+    fullAnalysis.addAll(adaptiveThresholds);
+    
+    // PASS 0.5: ML Model feature extraction (if enabled and available)
+    if (_useMLModel && _mlModelService.isLoaded) {
+      try {
+        final mlFeatures = await _mlModelService.extractFeatures(preprocessedImage);
+        if (mlFeatures != null) {
+          // Add ML features to analysis
+          fullAnalysis['ml_features_mean'] = mlFeatures.reduce((a, b) => a + b) / mlFeatures.length;
+          fullAnalysis['ml_features_max'] = mlFeatures.reduce((a, b) => a > b ? a : b);
+          fullAnalysis['ml_features_min'] = mlFeatures.reduce((a, b) => a < b ? a : b);
+          fullAnalysis['ml_features_variance'] = _calculateVariance(mlFeatures);
+          debugPrint('✅ ML features extracted: ${mlFeatures.length} features');
+        }
+      } catch (e) {
+        debugPrint('⚠️ ML feature extraction failed, using rule-based only: $e');
+      }
+    }
     
     // PASS 1.5: Multi-scale analysis (enhanced)
     final multiScaleAnalysis = _analyzeMultiScale(image);
@@ -63,37 +97,51 @@ class EmergencyDetectionService {
     final organizedPatterns = contextValidation['organized_patterns'] ?? 0.0;
     final falsePositiveRisk = contextValidation['false_positive_risk'] ?? 0.0;
     
-    // IMPROVED: More aggressive normal scene detection to reduce false positives
+    // IMPROVED: More aggressive normal scene detection to ALWAYS inform user about safe scenes
     // Check if this is clearly a normal scene with no emergency
     bool isNormalScene = false;
     
-    // Primary check: High normal scene likelihood
-    if (normalSceneLikelihood > 0.75) { // Lowered from 0.80
+    // Primary check: High normal scene likelihood (lowered threshold to catch more normal scenes)
+    if (normalSceneLikelihood > 0.70) { // Lowered from 0.75 to catch more normal scenes
       isNormalScene = true;
     }
     // Secondary check: Organized patterns + low emergency indicators
-    else if (organizedPatterns > 0.35 && // Increased from 0.3
-             normalSceneLikelihood > 0.65 && // Lowered from 0.70
-             falsePositiveRisk > 0.4) {
+    else if (organizedPatterns > 0.30 && // Lowered from 0.35
+             normalSceneLikelihood > 0.60 && // Lowered from 0.65
+             (falsePositiveRisk > 0.3 || organizedPatterns > 0.4)) {
       isNormalScene = true;
     }
-    // Tertiary check: Low confidence + moderate normal scene
-    else if (confidence < 0.55 && // Lowered from 0.5
-             normalSceneLikelihood > 0.68 && // Lowered from 0.70
-             organizedPatterns > 0.25) {
+    // Tertiary check: Low emergency confidence + moderate normal scene indicators
+    else if (confidence < 0.60 && // Slightly higher threshold
+             normalSceneLikelihood > 0.65 && // Lowered from 0.68
+             organizedPatterns > 0.20) { // Lowered from 0.25
       isNormalScene = true;
     }
     // Quaternary check: General type with low confidence and normal indicators
     else if (detectedType == EmergencyType.general && 
-             confidence < 0.55 && // Lowered from 0.5
-             normalSceneLikelihood > 0.62 && // Lowered from 0.65
-             organizedPatterns > 0.2) {
+             confidence < 0.60 && // Slightly higher
+             normalSceneLikelihood > 0.60 && // Lowered from 0.62
+             organizedPatterns > 0.15) { // Lowered from 0.2
       isNormalScene = true;
+    }
+    // NEW: Fifth check - Very low emergency indicators across the board
+    else {
+      final lowEmergencyIndicators = 
+          (fullAnalysis['red_ratio'] ?? 0.0) < 0.05 &&
+          (fullAnalysis['orange_ratio'] ?? 0.0) < 0.05 &&
+          (fullAnalysis['blue_ratio'] ?? 0.0) < 0.10 &&
+          (fullAnalysis['edge_density'] ?? 0.0) < 0.10 &&
+          normalSceneLikelihood > 0.55;
+      
+      if (lowEmergencyIndicators && organizedPatterns > 0.15) {
+        isNormalScene = true;
+      }
     }
     
     if (isNormalScene) {
-      // High confidence that this is a normal scene - reassure user
-      final noEmergencyConfidence = (1.0 - normalSceneLikelihood).clamp(0.75, 0.95); // Higher base confidence
+      // High confidence that this is a normal scene - ALWAYS reassure user
+      // Use higher confidence calculation to make it clear to the user
+      final noEmergencyConfidence = (0.70 + (1.0 - normalSceneLikelihood) * 0.25).clamp(0.70, 0.95);
       final noEmergencyInterval = _calculateConfidenceInterval(noEmergencyConfidence, fullAnalysis);
       return EmergencyDetectionResult(
         type: EmergencyType.noEmergency,
@@ -108,18 +156,37 @@ class EmergencyDetectionService {
     
     // Only proceed if confidence is high enough (prevent false alarms)
     if (confidence < 0.6) {
-      // Low confidence - likely not an emergency, but not certain enough to say "no emergency"
-      // Check if we can confidently say "no emergency"
-      if (normalSceneLikelihood > 0.75) {
+      // Low confidence - likely not an emergency
+      // IMPROVED: More aggressively detect "no emergency" in low confidence cases
+      if (normalSceneLikelihood > 0.65 || organizedPatterns > 0.25) { // Lowered thresholds
         return EmergencyDetectionResult(
           type: EmergencyType.noEmergency,
           severity: SeverityLevel.low,
-          confidence: 0.75,
+          confidence: 0.70 + (normalSceneLikelihood * 0.15).clamp(0.0, 0.25), // Higher confidence
           timestamp: DateTime.now(),
           imagePath: originalImagePath,
         );
       }
-      // Ambiguous - use general as fallback
+      // If we can't say "no emergency" but also can't confirm emergency, still try to be helpful
+      // Check if we have enough normal indicators
+      final lowEmergencyScore = 
+          ((fullAnalysis['red_ratio'] ?? 0.0) < 0.08 ? 1 : 0) +
+          ((fullAnalysis['orange_ratio'] ?? 0.0) < 0.08 ? 1 : 0) +
+          ((fullAnalysis['blue_ratio'] ?? 0.0) < 0.12 ? 1 : 0) +
+          ((fullAnalysis['edge_density'] ?? 0.0) < 0.10 ? 1 : 0);
+      
+      if (lowEmergencyScore >= 3 && normalSceneLikelihood > 0.55) {
+        // Most indicators suggest no emergency
+        return EmergencyDetectionResult(
+          type: EmergencyType.noEmergency,
+          severity: SeverityLevel.low,
+          confidence: 0.65 + (normalSceneLikelihood * 0.15).clamp(0.0, 0.20),
+          timestamp: DateTime.now(),
+          imagePath: originalImagePath,
+        );
+      }
+      
+      // Ambiguous - use general as fallback (but this should be rare now)
       return EmergencyDetectionResult(
         type: EmergencyType.general,
         severity: SeverityLevel.low,
@@ -767,18 +834,27 @@ class EmergencyDetectionService {
     };
   }
   
-  /// Analyze color distribution in image with improved algorithms
+  /// Analyze color distribution in image with IMPROVED HSV-based algorithms
+  /// HSV color space is more accurate for emergency detection than RGB
   Map<String, double> _analyzeColors(img.Image image) {
-    int redPixels = 0;
-    int orangePixels = 0;
-    int bluePixels = 0;
+    int firePixels = 0;
+    int waterPixels = 0;
+    int smokePixels = 0;
     int yellowPixels = 0;
     int grayPixels = 0;
     int darkPixels = 0;
     int brightPixels = 0;
     int totalPixels = image.width * image.height;
     
-    // Color intensity accumulators for better detection
+    // Intensity accumulators (using HSV-based scoring)
+    double fireIntensitySum = 0.0;
+    double waterIntensitySum = 0.0;
+    double smokeIntensitySum = 0.0;
+    
+    // For backward compatibility, also track RGB-based ratios
+    int redPixels = 0;
+    int orangePixels = 0;
+    int bluePixels = 0;
     double redIntensity = 0.0;
     double orangeIntensity = 0.0;
     double blueIntensity = 0.0;
@@ -790,58 +866,90 @@ class EmergencyDetectionService {
         final g = pixel.g.toDouble();
         final b = pixel.b.toDouble();
         
-        // Calculate luminance
+        // Calculate luminance (still used for some checks)
         final luminance = (0.299 * r + 0.587 * g + 0.114 * b);
         
-        // Fire detection: Enhanced red/orange with intensity scoring
-        // Bright red flames
-        if (r > 180 && r > g * 1.5 && r > b * 1.5 && luminance > 100) {
-          redPixels++;
-          redIntensity += (r / 255.0);
-        }
-        // Orange/yellow flames
-        else if (r > 150 && g > 80 && g < r * 1.2 && b < g * 0.8 && luminance > 120) {
-          orangePixels++;
-          orangeIntensity += ((r + g) / 2 / 255.0);
+        // IMPROVED: Convert to HSV for better color-based detection
+        final hsv = HSVColorConverter.rgbToHsv(r, g, b);
+        final h = hsv['h']!;
+        final s = hsv['s']!;
+        final v = hsv['v']!;
+        
+        // Fire detection using HSV (more accurate than RGB)
+        if (HSVColorConverter.isFireColor(h, s, v)) {
+          firePixels++;
+          final intensity = HSVColorConverter.getFireIntensity(h, s, v);
+          fireIntensitySum += intensity;
+          
+          // Also track for backward compatibility
+          if (h <= 30 || h >= 330) {
+            redPixels++;
+            redIntensity += intensity;
+          } else {
+            orangePixels++;
+            orangeIntensity += intensity;
+          }
         }
         
-        // Flood/Water detection: Enhanced blue/cyan with depth perception
-        // Deep water (darker blue)
-        if (b > 120 && b > r * 1.3 && b > g * 1.1 && luminance < 180) {
+        // Water/Flood detection using HSV (more accurate for blue/cyan)
+        if (HSVColorConverter.isWaterColor(h, s, v)) {
+          waterPixels++;
+          final intensity = HSVColorConverter.getWaterIntensity(h, s, v);
+          waterIntensitySum += intensity;
+          
+          // Also track for backward compatibility
           bluePixels++;
-          blueIntensity += (b / 255.0);
+          blueIntensity += intensity;
         }
-        // Shallow/flooded water (lighter cyan)
-        else if (b > 100 && g > 100 && b > r * 1.2 && luminance > 100 && luminance < 220) {
-          bluePixels++;
-          blueIntensity += ((b + g) / 2 / 255.0);
+        
+        // Smoke detection using HSV (low saturation = grayish)
+        if (HSVColorConverter.isSmokeColor(h, s, v)) {
+          smokePixels++;
+          smokeIntensitySum += s; // Lower saturation = more smoke-like
         }
         
         // Accident/Vehicle detection: Yellow/white (road markings, vehicles, signs)
+        // Yellow in HSV: Hue 45-65, high saturation and value
+        if ((h >= 45 && h <= 65) && s > 0.5 && v > 0.6) {
+          yellowPixels++;
+        }
+        // Also check RGB for white/yellow
         if (r > 180 && g > 180 && b < 120 && luminance > 150) {
           yellowPixels++;
         }
         
-        // Smoke/Debris detection: Enhanced gray detection
-        final grayValue = (r + g + b) / 3;
-        final colorVariance = ((r - grayValue).abs() + (g - grayValue).abs() + (b - grayValue).abs()) / 3;
-        if (grayValue > 60 && grayValue < 220 && colorVariance < 25) {
+        // Gray detection (using HSV: low saturation)
+        if (s < 0.3 && v > 0.2 && v < 0.8) {
           grayPixels++;
         }
         
-        // Dark areas (damage, shadows, debris)
-        if (luminance < 50) {
-          darkPixels++;
+        // Bright emergency indicators (fire, explosions)
+        if (HSVColorConverter.isBrightEmergency(v, s)) {
+          brightPixels++;
         }
         
-        // Very bright areas (fire, explosions, intense light)
-        if (luminance > 220) {
-          brightPixels++;
+        // Dark emergency indicators (damage, debris, smoke)
+        if (HSVColorConverter.isDarkEmergency(v, s)) {
+          darkPixels++;
         }
       }
     }
     
+    // Calculate average intensities
+    final fireIntensity = firePixels > 0 ? fireIntensitySum / firePixels : 0.0;
+    final waterIntensity = waterPixels > 0 ? waterIntensitySum / waterPixels : 0.0;
+    final smokeIntensity = smokePixels > 0 ? smokeIntensitySum / smokePixels : 0.0;
+    
     return {
+      // HSV-based ratios (more accurate)
+      'fire_ratio': firePixels / totalPixels,
+      'water_ratio': waterPixels / totalPixels,
+      'smoke_ratio': smokePixels / totalPixels,
+      'fire_intensity': fireIntensity,
+      'water_intensity': waterIntensity,
+      'smoke_intensity': smokeIntensity,
+      
+      // RGB-based ratios (backward compatibility)
       'red_ratio': redPixels / totalPixels,
       'orange_ratio': orangePixels / totalPixels,
       'blue_ratio': bluePixels / totalPixels,
@@ -849,9 +957,9 @@ class EmergencyDetectionService {
       'gray_ratio': grayPixels / totalPixels,
       'dark_ratio': darkPixels / totalPixels,
       'bright_ratio': brightPixels / totalPixels,
-      'red_intensity': redIntensity / (redPixels > 0 ? redPixels : 1),
-      'orange_intensity': orangeIntensity / (orangePixels > 0 ? orangePixels : 1),
-      'blue_intensity': blueIntensity / (bluePixels > 0 ? bluePixels : 1),
+      'red_intensity': redPixels > 0 ? redIntensity / redPixels : 0.0,
+      'orange_intensity': orangePixels > 0 ? orangeIntensity / orangePixels : 0.0,
+      'blue_intensity': bluePixels > 0 ? blueIntensity / bluePixels : 0.0,
     };
   }
   
@@ -1033,35 +1141,59 @@ class EmergencyDetectionService {
       EmergencyType.general: 0.0,
     };
     
-    // Fire scoring: Red/orange intensity + brightness + texture + histogram
+    // Fire scoring: IMPROVED with HSV-based detection + adaptive thresholds
+    final fireRatio = analysis['fire_ratio'] ?? redRatio + orangeRatio; // Use HSV if available
+    final fireIntensity = analysis['fire_intensity'] ?? (redIntensity + orangeIntensity) / 2;
+    final fireThreshold = analysis['adaptive_fire_threshold'] ?? 0.08;
     final redHistPeak = analysis['red_histogram_peak'] ?? 0.0;
     final redHistStrength = analysis['red_histogram_peak_strength'] ?? 0.0;
     final multiScaleConsistency = analysis['multi_scale_consistency'] ?? 0.5;
+    final smokeRatio = analysis['smoke_ratio'] ?? 0.0; // Smoke often accompanies fire
     
+    // Only score fire if ratio exceeds adaptive threshold
+    final effectiveFireRatio = math.max(0.0, fireRatio - fireThreshold);
+    
+    // Enhanced fire scoring with HSV-based detection and adaptive thresholds
     scores[EmergencyType.fire] = 
-        (redRatio * 3.0 + orangeRatio * 2.5) * (1.0 + redIntensity + orangeIntensity) +
+        (effectiveFireRatio * 4.0) * (1.0 + fireIntensity * 1.5) + // HSV-based (more accurate)
+        ((redRatio + orangeRatio) * 2.0) * (1.0 + redIntensity + orangeIntensity) + // RGB fallback
+        (smokeRatio * 1.5) + // Smoke is often present with fire
         (brightRatio * 2.0) +
         (brightness > 0.6 ? brightness * 1.5 : 0.0) +
         (textureVariance > 1500 ? 0.3 : 0.0) +
         (redHistPeak > 0.75 && redHistStrength > 0.1 ? 0.5 : 0.0) + // High red peak
         (multiScaleConsistency > 0.7 ? 0.3 : 0.0); // Consistent across scales
     
-    // Flood scoring: Blue intensity + moderate brightness + texture + histogram
+    // Flood scoring: IMPROVED with HSV-based water detection + adaptive thresholds
+    final waterRatio = analysis['water_ratio'] ?? blueRatio; // Use HSV if available
+    final waterIntensity = analysis['water_intensity'] ?? blueIntensity;
+    final waterThreshold = analysis['adaptive_water_threshold'] ?? 0.12;
     final blueHistPeak = analysis['blue_histogram_peak'] ?? 0.0;
     final blueHistStrength = analysis['blue_histogram_peak_strength'] ?? 0.0;
     
+    // Only score flood if ratio exceeds adaptive threshold
+    final effectiveWaterRatio = math.max(0.0, waterRatio - waterThreshold);
+    
+    // Enhanced flood scoring with HSV-based detection and adaptive thresholds
     scores[EmergencyType.flood] = 
-        (blueRatio * 3.5) * (1.0 + blueIntensity) +
+        (effectiveWaterRatio * 4.5) * (1.0 + waterIntensity * 1.3) + // HSV-based (more accurate)
+        (blueRatio * 3.0) * (1.0 + blueIntensity) + // RGB fallback
         (brightness > 0.3 && brightness < 0.75 ? 1.0 : 0.0) +
         (textureContrast > 20 ? 0.4 : 0.0) +
         (darkRatio > 0.15 ? 0.3 : 0.0) +
         (blueHistPeak > 0.5 && blueHistStrength > 0.15 ? 0.5 : 0.0) + // High blue peak
         (multiScaleConsistency > 0.7 ? 0.3 : 0.0); // Consistent across scales
     
-    // Earthquake scoring: Edge density + debris (gray) + high contrast
+    // Earthquake scoring: IMPROVED with smoke/debris detection + adaptive thresholds
+    final edgeThreshold = analysis['adaptive_edge_threshold'] ?? 0.10;
+    
+    // Only score earthquake if edge density exceeds adaptive threshold
+    final effectiveEdgeDensity = math.max(0.0, edgeDensity - edgeThreshold);
+    final effectiveStrongEdgeDensity = math.max(0.0, strongEdgeDensity - edgeThreshold * 0.7);
+    
     scores[EmergencyType.earthquake] = 
-        (edgeDensity * 4.0 + strongEdgeDensity * 6.0) +
-        (grayRatio * 2.5) +
+        (effectiveEdgeDensity * 4.5 + effectiveStrongEdgeDensity * 7.0) + // Adaptive threshold
+        (grayRatio * 2.5 + smokeRatio * 2.0) + // Smoke/debris often present
         (highContrastRatio * 3.0) +
         (textureVariance > 2500 ? 0.5 : 0.0) +
         (darkRatio > 0.2 ? 0.4 : 0.0);
@@ -1094,17 +1226,56 @@ class EmergencyDetectionService {
         (textureVariance > 1000 ? 0.3 : 0.0);
     
     // No Emergency: Strong normal scene indicators
-    // High score = very likely normal scene
+    // IMPROVED: More aggressive detection of normal scenes to always inform user
     final organizedPatterns = analysis['organized_patterns'] ?? 0.0;
     final normalSceneScore = analysis['normal_scene_likelihood'] ?? 0.0;
     
-    scores[EmergencyType.noEmergency] = 
-        (normalSceneScore * 2.0) + // Primary indicator
-        (organizedPatterns * 1.5) + // Organized = normal
-        (redRatio < 0.05 && orangeRatio < 0.05 && blueRatio < 0.1 ? 1.0 : 0.0) + // No emergency colors
-        (edgeDensity < 0.08 ? 0.8 : 0.0) + // Low edge density = normal
-        (brightness > 0.3 && brightness < 0.7 ? 0.6 : 0.0) + // Normal brightness
-        (textureVariance < 800 ? 0.5 : 0.0); // Low texture variance = normal
+    // Calculate "No Emergency" score with better weighting
+    double noEmergencyScore = 0.0;
+    
+    // Primary indicator: Normal scene likelihood (most important)
+    noEmergencyScore += normalSceneScore * 3.0;
+    
+    // Organized patterns strongly indicate normal scenes
+    noEmergencyScore += organizedPatterns * 2.0;
+    
+    // No emergency colors (no fire, flood indicators)
+    if (redRatio < 0.05 && orangeRatio < 0.05 && blueRatio < 0.1) {
+      noEmergencyScore += 1.5;
+    }
+    
+    // Low edge density = no structural damage
+    if (edgeDensity < 0.08) {
+      noEmergencyScore += 1.2;
+    }
+    
+    // Normal brightness range (not too dark, not too bright)
+    if (brightness > 0.3 && brightness < 0.7) {
+      noEmergencyScore += 1.0;
+    }
+    
+    // Low texture variance = organized, not chaotic
+    if (textureVariance < 800) {
+      noEmergencyScore += 1.0;
+    }
+    
+    // Low contrast = peaceful scene
+    if (textureContrast < 15) {
+      noEmergencyScore += 0.8;
+    }
+    
+    // Penalize if emergency indicators are present
+    if (redRatio > 0.1 || orangeRatio > 0.1) {
+      noEmergencyScore *= 0.3; // Strong penalty for fire colors
+    }
+    if (blueRatio > 0.15) {
+      noEmergencyScore *= 0.5; // Penalty for flood colors
+    }
+    if (edgeDensity > 0.12) {
+      noEmergencyScore *= 0.4; // Penalty for structural damage
+    }
+    
+    scores[EmergencyType.noEmergency] = noEmergencyScore;
     
     // Find highest scoring type
     EmergencyType bestType = EmergencyType.general;
@@ -1117,24 +1288,32 @@ class EmergencyDetectionService {
       }
     });
     
-    // Special handling for "No Emergency"
-    if (bestType == EmergencyType.noEmergency && bestScore > 2.5) {
-      // Strong "no emergency" signal - return it
+    // IMPROVED: Always report "No Emergency" if score is high enough (lowered threshold)
+    // This ensures users are informed when scenes are clearly safe
+    if (bestType == EmergencyType.noEmergency && bestScore >= 2.0) {
+      // Clear "no emergency" signal - always return it to inform user
       return EmergencyType.noEmergency;
     }
     
-    // Minimum threshold to avoid false positives
-    if (bestScore < 0.5) {
-      // Very low scores - likely no emergency
-      if (normalSceneScore > 0.7) {
-        return EmergencyType.noEmergency;
-      }
-      return EmergencyType.general;
+    // If no emergency scores highest but is close to threshold, still report it
+    if (bestType == EmergencyType.noEmergency && bestScore >= 1.5) {
+      // Moderate "no emergency" signal - still report it
+      return EmergencyType.noEmergency;
     }
     
-    // Don't return "no emergency" if other types scored higher
-    if (bestType == EmergencyType.noEmergency && bestScore < 3.0) {
-      // Weak "no emergency" - use general as fallback
+    // If all emergency types score very low AND normal scene indicators are strong
+    if (bestScore < 0.8 && normalSceneScore > 0.65) {
+      // Low emergency scores + strong normal indicators = no emergency
+      return EmergencyType.noEmergency;
+    }
+    
+    // Minimum threshold to avoid false positives for emergencies
+    if (bestScore < 0.5) {
+      // Very low scores - check if we can confidently say "no emergency"
+      if (normalSceneScore > 0.6 || organizedPatterns > 0.25) {
+        return EmergencyType.noEmergency;
+      }
+      // Ambiguous case - use general as fallback but with low confidence
       return EmergencyType.general;
     }
     
@@ -1328,6 +1507,69 @@ class EmergencyDetectionService {
       'lower': lowerBound,
       'upper': upperBound,
     };
+  }
+  
+  /// Calculate adaptive thresholds based on image characteristics
+  /// Adjusts detection sensitivity based on lighting, contrast, etc.
+  Map<String, double> _calculateAdaptiveThresholds(Map<String, double> analysis) {
+    final brightness = analysis['brightness'] ?? 0.5;
+    final contrast = analysis['overall_contrast'] ?? 0.5;
+    final textureVariance = analysis['texture_variance'] ?? 0.0;
+    
+    // Base thresholds (for normal lighting)
+    double fireThreshold = 0.08;
+    double waterThreshold = 0.12;
+    double edgeThreshold = 0.10;
+    
+    // Adjust based on brightness (low light = higher thresholds to reduce false positives)
+    if (brightness < 0.3) {
+      // Low light conditions - be more conservative
+      fireThreshold *= 1.3;
+      waterThreshold *= 1.4;
+      edgeThreshold *= 1.2;
+    } else if (brightness > 0.8) {
+      // Very bright conditions - can detect more easily
+      fireThreshold *= 0.9;
+      waterThreshold *= 0.85;
+      edgeThreshold *= 0.95;
+    }
+    
+    // Adjust based on contrast (low contrast = harder to detect)
+    if (contrast < 0.3) {
+      fireThreshold *= 1.2;
+      waterThreshold *= 1.2;
+      edgeThreshold *= 1.15;
+    } else if (contrast > 0.7) {
+      fireThreshold *= 0.95;
+      waterThreshold *= 0.95;
+      edgeThreshold *= 0.9;
+    }
+    
+    // Adjust based on texture variance (chaotic = might be emergency)
+    if (textureVariance > 2000) {
+      // High variance - could indicate emergency, lower thresholds slightly
+      fireThreshold *= 0.95;
+      waterThreshold *= 0.95;
+    } else if (textureVariance < 500) {
+      // Very low variance - likely normal scene, raise thresholds
+      fireThreshold *= 1.15;
+      waterThreshold *= 1.15;
+      edgeThreshold *= 1.1;
+    }
+    
+    return {
+      'adaptive_fire_threshold': fireThreshold,
+      'adaptive_water_threshold': waterThreshold,
+      'adaptive_edge_threshold': edgeThreshold,
+    };
+  }
+  
+  /// Calculate variance of a list of numbers
+  double _calculateVariance(List<double> values) {
+    if (values.isEmpty) return 0.0;
+    final mean = values.reduce((a, b) => a + b) / values.length;
+    final variance = values.map((v) => (v - mean) * (v - mean)).reduce((a, b) => a + b) / values.length;
+    return variance;
   }
   
   /// Create default result when detection fails

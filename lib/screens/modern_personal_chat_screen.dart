@@ -85,7 +85,7 @@ class _ModernPersonalChatScreenState extends State<ModernPersonalChatScreen> {
   
   void _startListeningToPrivateChat() {
     final authProvider = context.read<AuthProvider>();
-    final currentUserId = authProvider.currentUser ?? authProvider.userEmail ?? '';
+    final currentUserId = authProvider.currentUser ?? authProvider.userUsername ?? '';
     
     // Create chat ID (sorted to ensure consistency)
     final chatId = _createChatId(currentUserId, widget.contactId);
@@ -105,7 +105,7 @@ class _ModernPersonalChatScreenState extends State<ModernPersonalChatScreen> {
   void dispose() {
     // Stop listening to private chat when screen is disposed
     final authProvider = context.read<AuthProvider>();
-    final currentUserId = authProvider.currentUser ?? authProvider.userEmail ?? '';
+    final currentUserId = authProvider.currentUser ?? authProvider.userUsername ?? '';
     final chatId = _createChatId(currentUserId, widget.contactId);
     
     final notificationProvider = context.read<NotificationProvider>();

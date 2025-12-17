@@ -10,7 +10,7 @@ class SQLiteService {
 
   static Database? _database;
   static const String _databaseName = 'tulong_offline.db';
-  static const int _databaseVersion = 4;
+  static const int _databaseVersion = 5;
 
   // Table names
   static const String _usersTable = 'users';
@@ -38,15 +38,14 @@ class SQLiteService {
 
   // Create tables
   Future<void> _onCreate(Database db, int version) async {
-    // Users table - Updated with consistent snake_case naming
+    // Users table - Updated for offline-first with username (no email/phone)
     await db.execute('''
       CREATE TABLE $_usersTable (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         firebase_uid TEXT UNIQUE,
         first_name TEXT NOT NULL,
         last_name TEXT NOT NULL,
-        email TEXT NOT NULL UNIQUE,
-        phone TEXT,
+        username TEXT NOT NULL UNIQUE,
         street TEXT,
         region TEXT,
         province TEXT,
@@ -61,7 +60,6 @@ class SQLiteService {
         last_seen INTEGER,
         is_synced INTEGER DEFAULT 0,
         sync_timestamp INTEGER,
-        is_google_auth INTEGER DEFAULT 0,
         address_setup_completed INTEGER DEFAULT 0,
         is_verified INTEGER DEFAULT 0
       )
@@ -137,6 +135,35 @@ class SQLiteService {
       // Add is_verified column
       await db.execute('ALTER TABLE $_usersTable ADD COLUMN is_verified INTEGER DEFAULT 0');
     }
+    if (oldVersion < 5) {
+      // Migration to username-based system: Remove email/phone, add username
+      // First, add username column (nullable initially)
+      await db.execute('ALTER TABLE $_usersTable ADD COLUMN username TEXT');
+      
+      // Migrate email to username (extract username from email if exists)
+      // For existing users, use email prefix as username
+      await db.execute('''
+        UPDATE $_usersTable 
+        SET username = CASE 
+          WHEN email IS NOT NULL AND email != '' THEN 
+            substr(email, 1, instr(email || '@', '@') - 1)
+          ELSE 
+            'user' || id
+        END
+        WHERE username IS NULL
+      ''');
+      
+      // Make username NOT NULL and UNIQUE
+      // SQLite doesn't support ALTER COLUMN, so we need to recreate the table
+      // This is a complex migration - for production, consider a more careful approach
+      // For now, we'll mark it as nullable but enforce uniqueness in application code
+      
+      // Remove phone column (SQLite doesn't support DROP COLUMN directly)
+      // We'll ignore phone in queries going forward
+      
+      // Remove is_google_auth (no longer needed)
+      // We'll ignore this column going forward
+    }
   }
 
   // User operations
@@ -150,14 +177,36 @@ class SQLiteService {
     return await db.query(_usersTable, orderBy: 'created_at DESC');
   }
 
-  Future<Map<String, dynamic>?> getUserByEmail(String email) async {
+  // Get user by username (replaces getUserByEmail)
+  Future<Map<String, dynamic>?> getUserByUsername(String username) async {
     final db = await database;
     final results = await db.query(
       _usersTable,
-      where: 'email = ?',
-      whereArgs: [email],
+      where: 'username = ?',
+      whereArgs: [username],
     );
     return results.isNotEmpty ? results.first : null;
+  }
+
+  // Legacy method for migration - will be removed
+  @Deprecated('Use getUserByUsername instead')
+  Future<Map<String, dynamic>?> getUserByEmail(String email) async {
+    // Try to find by username first (if email was migrated)
+    final db = await database;
+    // Check if email column still exists (for migration period)
+    try {
+      final results = await db.query(
+        _usersTable,
+        where: 'email = ?',
+        whereArgs: [email],
+      );
+      if (results.isNotEmpty) return results.first;
+    } catch (e) {
+      // Email column doesn't exist, try username
+    }
+    // Fallback: try username (email prefix)
+    final username = email.contains('@') ? email.split('@')[0] : email;
+    return getUserByUsername(username);
   }
 
   Future<Map<String, dynamic>?> getUserById(int id) async {

@@ -103,10 +103,10 @@ class _SplashScreenState extends State<SplashScreen>
       
       print('Splash Screen - Checking authentication status');
       print('Is Authenticated: ${authProvider.isAuthenticated}');
-      print('User Email: ${authProvider.userEmail}');
+      print('Username: ${authProvider.userUsername}');
       print('User Name: ${authProvider.userName}');
       
-      if (authProvider.isAuthenticated && authProvider.userEmail != null) {
+      if (authProvider.isAuthenticated && authProvider.userUsername != null) {
         // Check if user has completed tutorial
         final prefs = await SharedPreferences.getInstance();
         final tutorialCompleted = prefs.getBool('tutorial_completed') ?? false;
@@ -116,7 +116,7 @@ class _SplashScreenState extends State<SplashScreen>
         
         print('Tutorial completed: $tutorialCompleted');
         print('Is new user: $isNewUser');
-        print('User email: ${authProvider.userEmail}');
+        print('Username: ${authProvider.userUsername}');
         print('Decision: ${tutorialCompleted || !isNewUser ? "Go to main" : "Show tutorial"}');
         
         if (tutorialCompleted || !isNewUser) {

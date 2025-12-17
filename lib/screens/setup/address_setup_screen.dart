@@ -8,7 +8,6 @@ import '../../services/unified_data_service.dart';
 import '../../services/location_service.dart';
 import '../../widgets/custom_button.dart';
 import '../../widgets/custom_text_field.dart';
-import '../../utils/input_validator.dart';
 
 class AddressSetupScreen extends StatefulWidget {
   const AddressSetupScreen({super.key});
@@ -20,7 +19,6 @@ class AddressSetupScreen extends StatefulWidget {
 class _AddressSetupScreenState extends State<AddressSetupScreen> {
   final _formKey = GlobalKey<FormState>();
   final _addressController = TextEditingController();
-  final TextEditingController _phoneController = TextEditingController();
   
   bool _isLoading = false;
   
@@ -51,16 +49,12 @@ class _AddressSetupScreenState extends State<AddressSetupScreen> {
     if (user != null) {
       // Pre-fill with existing data if available
       if (user.street.isNotEmpty) _addressController.text = user.street;
-      if (user.phone != null && user.phone!.startsWith('0') && user.phone!.length == 11) {
-        _phoneController.text = user.phone!.substring(1);
-      }
     }
   }
 
   @override
   void dispose() {
     _addressController.dispose();
-    _phoneController.dispose();
     super.dispose();
   }
 
@@ -179,48 +173,23 @@ class _AddressSetupScreenState extends State<AddressSetupScreen> {
         orElse: () => {'brgy_name': _selectedBarangay ?? ''},
       )['brgy_name'] ?? _selectedBarangay ?? '';
       
-      // For Google users, we need to create/update their profile in SQLite first
-      final userEmail = authProvider.userEmail;
-      if (userEmail == null) {
-        throw Exception('User email not found');
+      // Get username from auth provider
+      final username = authProvider.userUsername;
+      if (username == null) {
+        throw Exception('Username not found');
       }
       
-      // Check if user exists in SQLite, if not create them
-      var sqliteUser = await unifiedDataService.getUserByEmail(userEmail);
-      if (sqliteUser == null) {
-        // Create user in SQLite for Google auth users
-        final userModel = authProvider.currentUserModel!;
-        final digits = _phoneController.text.replaceAll(RegExp(r'\\D'), '');
-        final storedPhone = digits.isEmpty ? null : ('0$digits');
-        sqliteUser = await unifiedDataService.createUser(
-          email: userEmail,
-          password: '', // Google users don't have password initially
-          firstName: userModel.name.split(' ').first,
-          lastName: userModel.name.split(' ').skip(1).join(' '),
-          phone: storedPhone,
-          street: _addressController.text.trim(),
-          region: regionName,
-          province: provinceName,
-          city: cityName,
-          barangay: barangayName,
-          isGoogleAuth: true,
-        );
-      } else {
-        // Update existing user profile
-        final digits = _phoneController.text.replaceAll(RegExp(r'\\D'), '');
-        final storedPhone = digits.isEmpty ? null : ('0$digits');
-        await unifiedDataService.updateUserProfileWithMap(userEmail, {
-          'street': _addressController.text.trim(),
-          'region': regionName,
-          'province': provinceName,
-          'city': cityName,
-          'barangay': barangayName,
-          'phone': storedPhone,
-        });
-      }
+      // Update existing user profile
+      await unifiedDataService.updateUserProfileWithMap(username, {
+        'street': _addressController.text.trim(),
+        'region': regionName,
+        'province': provinceName,
+        'city': cityName,
+        'barangay': barangayName,
+      });
       
       // Mark address setup as completed
-      await unifiedDataService.markAddressSetupCompleted(userEmail);
+      await unifiedDataService.markAddressSetupCompleted(username);
       
       // Reload user model to ensure all saved data is loaded
       await authProvider.loadUserModel();
@@ -232,7 +201,6 @@ class _AddressSetupScreenState extends State<AddressSetupScreen> {
           barangay: barangayName,
           city: cityName,
           province: provinceName,
-          phone: (() { final d = _phoneController.text.replaceAll(RegExp(r'\\D'), ''); return d.isEmpty ? null : ('0$d'); })(),
           addressSetupCompleted: true,
         );
         authProvider.updateUser(updatedUser);
@@ -530,54 +498,6 @@ class _AddressSetupScreenState extends State<AddressSetupScreen> {
                     }
                     return null;
                   },
-                ),
-
-                const SizedBox(height: 16),
-
-                // Phone number (+63 prefix, 10 digits only) - styled like street address
-                TextFormField(
-                  controller: _phoneController,
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [
-                    FilteringTextInputFormatter.digitsOnly,
-                    LengthLimitingTextInputFormatter(10),
-                  ],
-                  decoration: const InputDecoration(
-                    labelText: 'Phone Number',
-                    hintText: '9123456789',
-                    prefixText: '+63 ',
-                    prefixIcon: Icon(Icons.phone_outlined, color: AppColors.primaryRed),
-                    labelStyle: TextStyle(
-                      color: AppColors.primaryRed,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.all(Radius.circular(12)),
-                      borderSide: BorderSide(color: AppColors.primaryRed, width: 1.5),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.all(Radius.circular(12)),
-                      borderSide: BorderSide(color: AppColors.primaryRed, width: 1.5),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.all(Radius.circular(12)),
-                      borderSide: BorderSide(color: AppColors.primaryRed, width: 2),
-                    ),
-                    errorBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.all(Radius.circular(12)),
-                      borderSide: BorderSide(color: AppColors.error, width: 1.5),
-                    ),
-                    focusedErrorBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.all(Radius.circular(12)),
-                      borderSide: BorderSide(color: AppColors.error, width: 2),
-                    ),
-                    filled: true,
-                    fillColor: Colors.white,
-                    contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                  ),
-                  validator: (value) => InputValidator.validatePhilippinePhoneNumber(value),
-                  autovalidateMode: AutovalidateMode.onUserInteraction,
                 ),
 
                 const SizedBox(height: 24),

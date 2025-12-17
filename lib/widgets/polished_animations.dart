@@ -76,10 +76,11 @@ class _PolishedBounceState extends State<PolishedBounce>
       onTapCancel: _handleTapCancel,
       child: AnimatedBuilder(
         animation: _scaleAnimation,
+        child: widget.child,
         builder: (context, child) {
           return Transform.scale(
             scale: _scaleAnimation.value,
-            child: widget.child,
+            child: child,
           );
         },
       ),
@@ -154,12 +155,13 @@ class _PolishedFadeInState extends State<PolishedFadeIn>
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: _controller,
+      child: widget.child,
       builder: (context, child) {
         return FadeTransition(
           opacity: _fadeAnimation,
           child: SlideTransition(
             position: _slideAnimation,
-            child: widget.child,
+            child: child!,
           ),
         );
       },
@@ -267,10 +269,11 @@ class _PolishedPulseState extends State<PolishedPulse>
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: _scaleAnimation,
+      child: widget.child,
       builder: (context, child) {
         return Transform.scale(
           scale: _scaleAnimation.value,
-          child: widget.child,
+          child: child,
         );
       },
     );
@@ -345,6 +348,8 @@ class _PolishedRippleState extends State<PolishedRipple>
               animation: _rippleAnimation,
               builder: (context, child) {
                 return Container(
+                  width: double.infinity,
+                  height: double.infinity,
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(widget.borderRadius),
                     color: (widget.rippleColor ?? Colors.white.withOpacity(0.3))

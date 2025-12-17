@@ -18,7 +18,8 @@ class _RadarScanModalState extends State<RadarScanModal> with SingleTickerProvid
   String _scanStatus = 'Scanning for nearby devices...';
   Timer? _statusTimer;
   StreamSubscription<BluetoothDiscoveryResult>? _discoverySubscription;
-  BluetoothState? _bluetoothState;
+  StreamSubscription<BluetoothState>? _stateSubscription;
+  BluetoothState _bluetoothState = BluetoothState.UNKNOWN;
   
   final List<BluetoothDiscoveryResult> _discoveredDevices = [];
   bool _isScanning = false;
@@ -66,8 +67,34 @@ class _RadarScanModalState extends State<RadarScanModal> with SingleTickerProvid
       });
     });
     
-    // Start dynamic scanning for ESP32 devices
-    _startDynamicScan();
+    // Listen to Bluetooth state changes
+    _stateSubscription = FlutterBluetoothSerial.instance.onStateChanged().listen((state) {
+      if (!mounted) return;
+      setState(() {
+        _bluetoothState = state;
+        if (state == BluetoothState.STATE_ON) {
+          _startDynamicScan();
+        } else {
+          _isScanning = false;
+          _scanStatus = 'Please enable Bluetooth';
+          _discoveredDevices.clear();
+        }
+      });
+    });
+
+    // Check initial state
+    FlutterBluetoothSerial.instance.state.then((state) {
+      if (mounted) {
+        setState(() {
+          _bluetoothState = state;
+          if (state == BluetoothState.STATE_ON) {
+            _startDynamicScan();
+          } else {
+            _scanStatus = 'Please enable Bluetooth';
+          }
+        });
+      }
+    });
     
     // Update status text based on scan progress
     _statusTimer = Timer.periodic(const Duration(milliseconds: 1500), (timer) {
@@ -98,10 +125,11 @@ class _RadarScanModalState extends State<RadarScanModal> with SingleTickerProvid
     
     try {
       // Check Bluetooth state
-      _bluetoothState = await FlutterBluetoothSerial.instance.state;
+      final state = await FlutterBluetoothSerial.instance.state;
       
-      if (_bluetoothState != BluetoothState.STATE_ON) {
+      if (state != BluetoothState.STATE_ON) {
         setState(() {
+          _bluetoothState = state;
           _scanStatus = 'Please enable Bluetooth';
           _isScanning = false;
         });
@@ -178,13 +206,29 @@ class _RadarScanModalState extends State<RadarScanModal> with SingleTickerProvid
     _controller.dispose();
     _statusTimer?.cancel();
     _discoverySubscription?.cancel();
+    _stateSubscription?.cancel();
     _searchController.dispose();
     FlutterBluetoothSerial.instance.cancelDiscovery();
     super.dispose();
   }
 
+  Future<void> _requestEnableBluetooth() async {
+    try {
+      await FlutterBluetoothSerial.instance.requestEnable();
+    } catch (e) {
+      // Fallback: Show a snackbar or alert if request fails
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please enable Bluetooth in your device settings')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final bool isBluetoothOff = _bluetoothState != BluetoothState.STATE_ON;
+
     return Dialog(
       backgroundColor: Colors.transparent,
       elevation: 0,
@@ -207,9 +251,10 @@ class _RadarScanModalState extends State<RadarScanModal> with SingleTickerProvid
             const Text(
               'Scanning Area',
               style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
+                fontSize: 22,
+                fontWeight: FontWeight.w900,
                 color: AppColors.textPrimary,
+                letterSpacing: -0.5,
               ),
             ),
             const SizedBox(height: 8),
@@ -218,55 +263,111 @@ class _RadarScanModalState extends State<RadarScanModal> with SingleTickerProvid
               child: Text(
                 _scanStatus,
                 key: ValueKey<String>(_scanStatus),
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 14,
-                  color: AppColors.textSecondary,
+                  fontWeight: FontWeight.w600,
+                  color: isBluetoothOff ? AppColors.error : AppColors.textSecondary,
                 ),
                 textAlign: TextAlign.center,
               ),
             ),
             const SizedBox(height: 32),
             
-            const SizedBox(height: 24),
-            
-            // Radar Animation with dynamic device indicators
+            // Radar Animation / Bluetooth Off Warning
             SizedBox(
               height: 200,
               width: 200,
               child: Stack(
                 alignment: Alignment.center,
                 children: [
-                  _buildRipple(0),
-                  _buildRipple(0.33),
-                  _buildRipple(0.66),
+                  if (!isBluetoothOff) ...[
+                    _buildRipple(0),
+                    _buildRipple(0.33),
+                    _buildRipple(0.66),
+                  ] else ...[
+                    // Static rings for "Off" state
+                    _buildStaticRing(1.0, AppColors.error.withOpacity(0.1)),
+                    _buildStaticRing(0.7, AppColors.error.withOpacity(0.05)),
+                  ],
                   Container(
-                    width: 60,
-                    height: 60,
+                    width: 80,
+                    height: 80,
                     decoration: BoxDecoration(
-                      color: AppColors.primaryRed,
+                      color: isBluetoothOff ? AppColors.error : AppColors.primaryRed,
                       shape: BoxShape.circle,
                       boxShadow: [
                         BoxShadow(
-                          color: AppColors.primaryRed.withOpacity(0.3),
-                          blurRadius: 10,
+                          color: (isBluetoothOff ? AppColors.error : AppColors.primaryRed).withOpacity(0.3),
+                          blurRadius: 15,
                           spreadRadius: 2,
                         ),
                       ],
                     ),
                     child: Icon(
-                      _isScanning ? Icons.radar : Icons.check_circle,
+                      isBluetoothOff 
+                          ? Icons.bluetooth_disabled_rounded 
+                          : (_isScanning ? Icons.radar : Icons.bluetooth_searching),
                       color: Colors.white,
-                      size: 30,
+                      size: 36,
                     ),
                   ),
-                  // Dynamic device indicators around radar
-                  ..._buildDeviceIndicators(),
+                  if (!isBluetoothOff) ..._buildDeviceIndicators(),
                 ],
               ),
             ),
             
+            const SizedBox(height: 32),
+
+            if (isBluetoothOff) ...[
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppColors.error.withOpacity(0.05),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AppColors.error.withOpacity(0.2)),
+                ),
+                child: Column(
+                  children: [
+                    const Text(
+                      'Bluetooth is Disabled',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.error,
+                        fontSize: 15,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Turn on Bluetooth to scan for nearby devices and ESP32 nodes.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: _requestEnableBluetooth,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.error,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          elevation: 0,
+                        ),
+                        child: const Text('Turn on Bluetooth', style: TextStyle(fontWeight: FontWeight.w800)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+            ],
+            
             // Discovered ESP32 Devices Section
-            if (_filteredDiscoveredDevices.isNotEmpty) ...[
+            if (!isBluetoothOff && _filteredDiscoveredDevices.isNotEmpty) ...[
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4),
                 child: Row(
@@ -306,54 +407,62 @@ class _RadarScanModalState extends State<RadarScanModal> with SingleTickerProvid
             ],
             
             // Empty state for discovered devices
-            if (_filteredDiscoveredDevices.isEmpty && 
+            if (!isBluetoothOff && 
+                _filteredDiscoveredDevices.isEmpty && 
                 !_isScanning &&
                 _searchQuery.isEmpty) ...[
               const SizedBox(height: 16),
-              Text(
+              const Text(
                 'No ESP32 devices found nearby',
-                style: const TextStyle(
+                style: TextStyle(
                   color: AppColors.textSecondary,
                   fontSize: 14,
+                  fontWeight: FontWeight.w700,
                 ),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 8),
-              Text(
+              const Text(
                 'Make sure ESP32 devices are powered on\nand in pairing mode',
-                style: const TextStyle(
+                style: TextStyle(
                   color: AppColors.textSecondary,
                   fontSize: 12,
+                  fontWeight: FontWeight.w500,
                 ),
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 24),
             ],
             
-            const SizedBox(height: 8),
-            
-            // View Paired Devices Button (to go to paired devices list)
+            // View Paired Devices Button
             SizedBox(
               width: double.infinity,
-              child: ElevatedButton.icon(
+              child: TextButton.icon(
                 onPressed: () {
                   Navigator.pop(context);
                   widget.onPairedDevicesTap();
                 },
-                icon: const Icon(Icons.bluetooth_connected),
-                label: const Text('View Paired Devices'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.info,
-                  foregroundColor: Colors.white,
+                icon: const Icon(Icons.bluetooth_connected, size: 18),
+                label: const Text('View Paired Devices', style: TextStyle(fontWeight: FontWeight.w800)),
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.info,
                   padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
                 ),
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildStaticRing(double scale, Color color) {
+    return Container(
+      width: 200 * scale,
+      height: 200 * scale,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(color: color, width: 2),
       ),
     );
   }

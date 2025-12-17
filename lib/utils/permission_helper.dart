@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Helper class for requesting and checking runtime permissions
 class PermissionHelper {
+  static const String _permissionDialogShownKey = 'permission_dialog_shown';
   
   /// Request all vital permissions for the app
-  static Future<bool> requestAllPermissions(BuildContext context) async {
+  /// Only shows the explanation dialog once for new users
+  static Future<bool> requestAllPermissions(BuildContext context, {bool forceShowDialog = false}) async {
     // List of required permissions
     final permissions = [
       Permission.bluetooth,
@@ -33,13 +36,27 @@ class PermissionHelper {
       return true;
     }
     
-    // Show explanation dialog
-    if (context.mounted) {
-      final shouldRequest = await _showPermissionDialog(context);
-      if (!shouldRequest) return false;
+    // Check if dialog has been shown before
+    final prefs = await SharedPreferences.getInstance();
+    final hasShownDialog = prefs.getBool(_permissionDialogShownKey) ?? false;
+    
+    // Only show explanation dialog for new users (first time) or if forced
+    bool shouldRequest = true;
+    if (!hasShownDialog || forceShowDialog) {
+      if (context.mounted) {
+        shouldRequest = await _showPermissionDialog(context);
+        // Mark dialog as shown after user sees it (whether they grant or cancel)
+        await prefs.setBool(_permissionDialogShownKey, true);
+        if (!shouldRequest) {
+          // User cancelled - still request permissions silently but return false
+          // This way permissions are requested but we respect user's choice
+          await permissionsToRequest.request();
+          return false;
+        }
+      }
     }
     
-    // Request permissions
+    // Request permissions (silently if dialog was already shown)
     Map<Permission, PermissionStatus> statuses = await permissionsToRequest.request();
     
     // Check if all are granted
@@ -199,6 +216,18 @@ class PermissionHelper {
         ],
       ),
     );
+  }
+  
+  /// Reset the permission dialog shown flag (useful for testing or if user wants to see it again)
+  static Future<void> resetPermissionDialogFlag() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_permissionDialogShownKey);
+  }
+  
+  /// Check if permission dialog has been shown before
+  static Future<bool> hasShownPermissionDialog() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_permissionDialogShownKey) ?? false;
   }
   
   /// Request camera permission specifically for emergency detection

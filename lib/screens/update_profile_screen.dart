@@ -7,7 +7,7 @@ import '../constants/unified_typography.dart';
 import '../models/user_model.dart';
 import '../providers/auth_provider.dart';
 import '../services/location_service.dart';
-import '../utils/input_validator.dart';
+import '../services/unified_data_service.dart';
 import '../widgets/custom_button.dart';
 import '../widgets/custom_text_field.dart';
 import '../widgets/enhanced_micro_interactions.dart' as micro;
@@ -21,9 +21,8 @@ class UpdateProfileScreen extends StatefulWidget {
 
 class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _nameController = TextEditingController();
-  final _emailController = TextEditingController();
-  final _phoneController = TextEditingController();
+  final _fullNameController = TextEditingController();
+  final _usernameController = TextEditingController();
   final _addressController = TextEditingController();
   
   bool _isLoading = false;
@@ -60,33 +59,24 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
       if (user != null) {
         print('✅ Loading user data for Update Profile:');
         print('  - Name: ${user.name}');
-        print('  - Email: ${user.email}');
-        print('  - Phone: ${user.phone}');
+        print('  - Username: ${user.username}');
         print('  - Street: ${user.street}');
         print('  - City: ${user.city}');
         print('  - Province: ${user.province}');
         print('  - Barangay: ${user.barangay}');
         
-        // Pre-fill basic info - ALWAYS set the text, even if empty
-        _nameController.text = user.name.isNotEmpty ? user.name : '';
-        _emailController.text = user.email.isNotEmpty ? user.email : '';
-        // Show only the 10 digits starting with 9 (strip a leading 0 if present)
-        if (user.phone != null && user.phone!.isNotEmpty) {
-          final digits = user.phone!.replaceAll(RegExp(r'\D'), '');
-          _phoneController.text = digits.startsWith('0') && digits.length >= 11
-              ? digits.substring(1)
-              : digits;
-        } else {
-          _phoneController.text = '';
-        }
+        // Pre-fill full name (concatenated, read-only)
+        _fullNameController.text = user.name.isNotEmpty ? user.name : '';
+        
+        // Pre-fill username (read-only)
+        _usernameController.text = user.username.isNotEmpty ? user.username : '';
         
         // Pre-fill address info - ALWAYS set the text, even if empty
         _addressController.text = user.street.isNotEmpty ? user.street : '';
         
         print('✅ Controllers set:');
-        print('  - Name Controller: "${_nameController.text}"');
-        print('  - Email Controller: "${_emailController.text}"');
-        print('  - Phone Controller: "${_phoneController.text}"');
+        print('  - Full Name Controller: "${_fullNameController.text}"');
+        print('  - Username Controller: "${_usernameController.text}"');
         print('  - Address Controller: "${_addressController.text}"');
       
       // Load and pre-select location data
@@ -213,9 +203,8 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
 
   @override
   void dispose() {
-    _nameController.dispose();
-    _emailController.dispose();
-    _phoneController.dispose();
+    _fullNameController.dispose();
+    _usernameController.dispose();
     _addressController.dispose();
     super.dispose();
   }
@@ -293,28 +282,25 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
       )['brgy_name'] ?? _selectedBarangay ?? '';
       
       // Use unified data service for profile update
-      await authProvider.updateUserProfile(
-        firstName: _nameController.text.trim().split(' ').first,
-        lastName: _nameController.text.trim().split(' ').skip(1).join(' '),
-        address: _addressController.text.trim(),
-        // Normalize phone: store as 0 + 10 digits
-        phone: (() { final d = _phoneController.text.replaceAll(RegExp(r'\\D'), ''); return d.isEmpty ? '' : ('0$d'); })(),
-        province: provinceName,
-        region: regionName,
-        city: cityName,
-        barangay: barangayName,
+      // Note: Name and username are read-only, so we only update address fields
+      final unifiedDataService = UnifiedDataService();
+      await unifiedDataService.updateUserProfileWithMap(
+        authProvider.userUsername!,
+        {
+          'street': _addressController.text.trim(),
+          'region': regionName,
+          'province': provinceName,
+          'city': cityName,
+          'barangay': barangayName,
+        },
       );
       
       // Reload user model to ensure all saved data is loaded from database
       await authProvider.loadUserModel();
       
-      // Update local user model with latest data
+      // Update local user model with latest data (keep existing name and username)
       if (authProvider.currentUserModel != null) {
         final updatedUser = authProvider.currentUserModel!.copyWith(
-          name: _nameController.text.trim(),
-          email: _emailController.text.trim(),
-          // Normalize phone locally as well
-          phone: (() { final d = _phoneController.text.replaceAll(RegExp(r'\\D'), ''); return d.isEmpty ? null : ('0$d'); })(),
           street: _addressController.text.trim(),
           barangay: barangayName,
           city: cityName,
@@ -586,58 +572,32 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
                 ),
                 const SizedBox(height: 16),
 
-                // Name (Read-only)
+                // Full Name (read-only, concatenated)
                 CustomTextField(
-                  controller: _nameController,
+                  controller: _fullNameController,
                   label: 'Full Name',
                   hint: 'Your full name',
                   prefixIcon: Icons.person_outline,
-                  enabled: false, // Make it read-only
+                  enabled: false, // Disabled for editing
                   validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'Please enter your full name';
-                    }
+                    // No validation needed since it's read-only
                     return null;
                   },
                 ),
 
                 const SizedBox(height: 16),
 
-                // Email
+                // Username (read-only)
                 CustomTextField(
-                  controller: _emailController,
-                  label: 'Email',
-                  hint: 'Enter your email',
-                  prefixIcon: Icons.email_outlined,
-                  keyboardType: TextInputType.emailAddress,
-                  enabled: false, // Email usually can't be changed
+                  controller: _usernameController,
+                  label: 'Username',
+                  hint: 'Your username',
+                  prefixIcon: Icons.alternate_email,
+                  enabled: false, // Disabled for editing
                   validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'Please enter your email';
-                    }
-                    if (!value.contains('@')) {
-                      return 'Please enter a valid email';
-                    }
+                    // No validation needed since it's read-only
                     return null;
                   },
-                ),
-
-                const SizedBox(height: 16),
-
-                // Phone (+63 prefix, 10 digits only) styled like others
-                CustomTextField(
-                  controller: _phoneController,
-                  label: 'Phone Number',
-                  hint: '9123456789',
-                  keyboardType: TextInputType.number,
-                  prefixIcon: Icons.phone_outlined,
-                  prefixText: '+63 ',
-                  inputFormatters: [
-                    FilteringTextInputFormatter.digitsOnly,
-                    LengthLimitingTextInputFormatter(10),
-                  ],
-                  validator: (value) => InputValidator.validatePhilippinePhoneNumber(value),
-                  autovalidateMode: AutovalidateMode.onUserInteraction,
                 ),
 
                 const SizedBox(height: 32),

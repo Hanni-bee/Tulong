@@ -17,7 +17,8 @@ import 'dart:io';
 import '../../services/location_service.dart';
 import '../../utils/input_validator.dart';
 import '../../utils/responsive_spacing.dart';
-import '../../services/emailjs_service.dart';
+import 'biometric_verification_screen.dart';
+import '../../services/firebase_service.dart';
 import '../../widgets/accessible_text.dart';
 import 'dart:math';
 
@@ -32,25 +33,15 @@ class _SignUpScreenState extends State<SignUpScreen> {
   final _formKey = GlobalKey<FormState>();
   final _firstNameController = TextEditingController();
   final _lastNameController = TextEditingController();
-  final _emailController = TextEditingController();
-  final _phoneController = TextEditingController();
+  final _usernameController = TextEditingController(); // Replaced email with username
   final _addressController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
-  final _verificationCodeController = TextEditingController();
   
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
   bool _isLoading = false;
   bool _acceptedTerms = false;
-  
-  // Email verification states
-  String? _generatedVerificationCode;
-  bool _isVerificationCodeSent = false;
-  bool _isEmailVerified = false;
-  bool _isSendingCode = false;
-  bool _isVerifyingCode = false;
-  String? _verificationMessage;
   
   // Real-time validation states
   bool _nameHasNumbers = false;
@@ -78,11 +69,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
   void dispose() {
     _firstNameController.dispose();
     _lastNameController.dispose();
-    _emailController.dispose();
+    _usernameController.dispose(); // Replaced email with username
     _addressController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
-    _verificationCodeController.dispose();
     super.dispose();
   }
 
@@ -180,17 +170,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
       );
       return;
     }
-    
-    // Check if email is verified
-    if (!_isEmailVerified) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please verify your email address first'),
-          backgroundColor: AppColors.error,
-        ),
-      );
-      return;
-    }
 
     setState(() {
       _isLoading = true;
@@ -199,18 +178,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
     try {
       final first = _firstNameController.text.trim();
       final last = _lastNameController.text.trim();
-      final email = _emailController.text.trim();
+      final username = _usernameController.text.trim();
       final pwd = _passwordController.text;
 
-      // Normalize phone for storage: 0 + 10 digits
-      final phoneDigits = _phoneController.text.replaceAll(RegExp(r'\D'), '');
-      final normalizedPhone = phoneDigits.isEmpty ? null : ('0$phoneDigits');
-
-      final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      final firebaseService = FirebaseService();
-      final isConnected = await _isConnected();
-
-      // Get region name from code (for validation - codes contain digits)
+      // Get region name from code
       String regionName = _selectedRegion ?? '';
       if (_selectedRegion != null) {
         final regionData = _regions.firstWhere(
@@ -230,183 +201,34 @@ class _SignUpScreenState extends State<SignUpScreen> {
         provinceName = provinceData['name'] ?? _selectedProvince!;
       }
 
-      // ONLINE-FIRST APPROACH: Firebase is the main source
-      if (isConnected) {
-        try {
-          print('🌐 Online mode detected - saving to Firebase Realtime Database FIRST...');
-          print('   Region code: $_selectedRegion -> Region name: $regionName');
-          
-          // STEP 1: Save to Firebase Realtime Database FIRST (main source)
-          final userCredential = await firebaseService.signUpWithEmail(
-            email: email,
-            password: pwd,
-            firstName: first,
-            lastName: last,
-            phone: normalizedPhone,
-            address: _addressController.text.trim(),
-            region: regionName, // Use name for validation, not code
-            province: provinceName, // Use name for validation, not code
-            city: _selectedCity ?? '',
-            barangay: _selectedBarangay ?? '',
-          );
+      // Hash password
+      final firebaseService = FirebaseService();
+      final hashedPassword = firebaseService.hashPassword(pwd);
 
-          if (userCredential?.user == null) {
-            throw Exception('Firebase signup failed - user credential is null');
-          }
+      // Prepare registration data to pass to biometric screen
+      final registrationData = {
+        'firstName': first,
+        'lastName': last,
+        'username': username,
+        'address': _addressController.text.trim(),
+        'region': regionName,
+        'province': provinceName,
+        'city': _selectedCity ?? '',
+        'barangay': _selectedBarangay ?? '',
+        'hashedPassword': hashedPassword,
+      };
 
-          // Verify Firebase save was successful
-          final userUid = userCredential!.user!.uid;
-          final verifyRef = firebaseService.database.ref('users/$userUid');
-          final verifySnapshot = await verifyRef.get();
-          
-          if (!verifySnapshot.exists) {
-            throw Exception('Firebase Realtime Database save verification failed - data not found');
-          }
-
-          print('✅ CONFIRMED: User data saved to Firebase Realtime Database at users/$userUid');
-          final savedData = verifySnapshot.value as Map<dynamic, dynamic>;
-          print('   Email: ${savedData['Email']}');
-          print('   Phone: ${savedData['Phone']}');
-          print('   FirstName: ${savedData['FirstName']}');
-          print('   LastName: ${savedData['LastName']}');
-
-          // STEP 2: Save to SQLite as offline backup (should already be done by _saveUserToSQLite in signUpWithEmail)
-          // Just verify SQLite has the data
-          try {
-            final sqliteService = SQLiteService();
-            await sqliteService.database; // Initialize
-            final existingUser = await sqliteService.getUserByEmail(email);
-            if (existingUser == null) {
-              print('📱 User not in SQLite yet, saving now as backup...');
-              // Save to SQLite manually if not already saved - ALL FIELDS INCLUDED
-              await sqliteService.insertUser({
-                'firebase_uid': userUid,
-                'email': email,
-                'first_name': first,
-                'last_name': last,
-                'phone': normalizedPhone,
-                'street': _addressController.text.trim(), // SQLite uses 'street' column
-                'region': regionName,
-                'province': provinceName,
-                'city': _selectedCity ?? '',
-                'barangay': _selectedBarangay ?? '',
-                'password': firebaseService.hashPassword(pwd), // Hashed password
-                'is_online': 1,
-                'account_status': 'active',
-                'created_at': DateTime.now().millisecondsSinceEpoch,
-                'last_seen': DateTime.now().millisecondsSinceEpoch,
-                'is_synced': 1, // Mark as synced since Firebase save succeeded
-                'sync_timestamp': DateTime.now().millisecondsSinceEpoch,
-                'is_google_auth': 0,
-                'address_setup_completed': 0,
-                'is_verified': 1, // Email verification completed
-              });
-              print('✅ User saved to SQLite as backup');
-            } else {
-              print('✅ User already exists in SQLite');
-            }
-          } catch (sqliteError) {
-            print('⚠️ SQLite backup save error (non-critical): $sqliteError');
-            // Continue anyway since Firebase save succeeded
-          }
-
-          // STEP 3: Set authenticated and navigate
-          if (!mounted) return;
-          
-          // Small delay to ensure Firebase data is fully saved
-          await Future.delayed(const Duration(milliseconds: 500));
-          
-          await authProvider.setAuthenticated(
-            email: email,
-            name: '$first $last',
-          );
-          
-          // Ensure user model is loaded before navigating
-          await authProvider.loadUserModel();
-          
-          if (!mounted) return;
-          Navigator.of(context).pushReplacementNamed('/');
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Row(
-                children: [
-                  const Icon(Icons.check_circle, color: Colors.white),
-                  const SizedBox(width: 12),
-                  const Expanded(
-                    child: Text('Account created successfully! Saved to Firebase.'),
-                  ),
-                ],
-              ),
-              backgroundColor: AppColors.success,
-              duration: const Duration(seconds: 4),
-            ),
-          );
-          return; // Success - exit early
-          
-        } catch (firebaseError) {
-          print('❌ Firebase signup failed: $firebaseError');
-          print('❌ Error details: ${firebaseError.toString()}');
-          
-          // If online but Firebase fails, show error - don't fall back to SQLite-only
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Row(
-                  children: [
-                    const Icon(Icons.error_outline, color: Colors.white),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text('Failed to create account: ${firebaseError.toString()}'),
-                    ),
-                  ],
-                ),
-                backgroundColor: AppColors.error,
-                duration: const Duration(seconds: 5),
-              ),
-            );
-          }
-          return; // Don't proceed with SQLite-only signup
-        }
-      } else {
-        // OFFLINE MODE: Only allow SQLite signup if truly offline
-        print('📴 Offline mode detected - saving to SQLite only');
-        
-        await authProvider.signupOffline(
-          email: email,
-          password: pwd,
-          firstName: first,
-          lastName: last,
-          phone: normalizedPhone,
-          address: _addressController.text.trim(),
-          region: regionName,
-          province: provinceName,
-          city: _selectedCity ?? '',
-          barangay: _selectedBarangay ?? '',
-        );
-
-        if (!mounted) return;
-        await authProvider.setAuthenticated(
-          email: email,
-          name: '$first $last',
-        );
-        
-        Navigator.of(context).pushReplacementNamed('/');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.check_circle, color: Colors.white),
-                const SizedBox(width: 12),
-                const Expanded(
-                  child: Text('Account created offline. Will sync to Firebase when online.'),
-                ),
-              ],
-            ),
-            backgroundColor: AppColors.success,
-            duration: const Duration(seconds: 4),
+      // Navigate to biometric verification screen
+      // Data will be saved after successful biometric verification
+      if (!mounted) return;
+      
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => BiometricVerificationScreen(
+            registrationData: registrationData,
           ),
-        );
-      }
+        ),
+      );
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -425,164 +247,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
     }
   }
 
-  // Simple connectivity check
-  Future<bool> _isConnected() async {
-    try {
-      final result = await InternetAddress.lookup('example.com');
-      return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  // Generate 6-digit verification code
-  String _generateVerificationCode() {
-    final random = Random();
-    return (100000 + random.nextInt(900000)).toString();
-  }
-
-  // Send verification code via EmailJS
-  Future<void> _sendVerificationCode() async {
-    final email = _emailController.text.trim();
-    
-    // Validate email first
-    if (email.isEmpty || !email.contains('@')) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter a valid email address'),
-          backgroundColor: AppColors.error,
-        ),
-      );
-      return;
-    }
-
-    setState(() {
-      _isSendingCode = true;
-      _verificationMessage = null;
-    });
-
-    try {
-      // Generate 6-digit code
-      _generatedVerificationCode = _generateVerificationCode();
-      
-      // Send via EmailJS
-      final emailJSService = EmailJSService();
-      final success = await emailJSService.sendVerificationCode(
-        email: email,
-        passcode: _generatedVerificationCode!,
-      );
-
-      if (success) {
-        setState(() {
-          _isVerificationCodeSent = true;
-          _isEmailVerified = false;
-          _verificationMessage = 'Check your email for the verification code.';
-        });
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Verification code sent! Check your email.'),
-            backgroundColor: AppColors.success,
-            duration: Duration(seconds: 3),
-          ),
-        );
-      } else {
-        setState(() {
-          _verificationMessage = 'Failed to send verification code. Please try again.';
-        });
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Failed to send verification code. Please try again.'),
-            backgroundColor: AppColors.error,
-          ),
-        );
-      }
-    } catch (e) {
-      setState(() {
-        _verificationMessage = 'Error sending verification code: ${e.toString()}';
-      });
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error: ${e.toString()}'),
-          backgroundColor: AppColors.error,
-        ),
-      );
-    } finally {
-      setState(() {
-        _isSendingCode = false;
-      });
-    }
-  }
-
-  // Verify the entered code
-  Future<void> _verifyCode() async {
-    final enteredCode = _verificationCodeController.text.trim();
-    
-    if (enteredCode.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter the verification code'),
-          backgroundColor: AppColors.error,
-        ),
-      );
-      return;
-    }
-
-    setState(() {
-      _isVerifyingCode = true;
-      _verificationMessage = null;
-    });
-
-    // Simulate a small delay for better UX
-    await Future.delayed(const Duration(milliseconds: 500));
-
-    if (enteredCode == _generatedVerificationCode) {
-      setState(() {
-        _isEmailVerified = true;
-        _verificationMessage = 'Verification successful.';
-      });
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Row(
-            children: [
-              Icon(Icons.check_circle, color: Colors.white),
-              SizedBox(width: 12),
-              Text('Verification successful.'),
-            ],
-          ),
-          backgroundColor: AppColors.success,
-          duration: Duration(seconds: 2),
-        ),
-      );
-    } else {
-      setState(() {
-        _isEmailVerified = false;
-        _verificationMessage = 'Wrong code, please try again.';
-        _verificationCodeController.clear();
-      });
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Row(
-            children: [
-              Icon(Icons.error_outline, color: Colors.white),
-              SizedBox(width: 12),
-              Text('Wrong code, please try again.'),
-            ],
-          ),
-          backgroundColor: AppColors.error,
-          duration: Duration(seconds: 2),
-        ),
-      );
-    }
-
-    setState(() {
-      _isVerifyingCode = false;
-    });
-  }
 
 
   @override
@@ -780,197 +444,16 @@ class _SignUpScreenState extends State<SignUpScreen> {
           
           const SizedBox(height: 20),
           
-          // Email field
+          // Username field (replaced email)
           CustomTextField(
-            controller: _emailController,
-            label: 'Email',
-            hint: 'Enter your email',
-            keyboardType: TextInputType.emailAddress,
-            prefixIcon: Icons.email_outlined,
+            controller: _usernameController,
+            label: 'Username',
+            hint: 'Enter your username (min 6 characters, letters and numbers only)',
+            keyboardType: TextInputType.text,
+            prefixIcon: Icons.person_outline,
             validator: (value) {
-              return InputValidator.validateEmail(value);
+              return InputValidator.validateUsername(value);
             },
-            onChanged: (value) {
-              // Reset verification state when email changes
-              if (value != _emailController.text.trim()) {
-                setState(() {
-                  _isVerificationCodeSent = false;
-                  _isEmailVerified = false;
-                  _generatedVerificationCode = null;
-                  _verificationCodeController.clear();
-                  _verificationMessage = null;
-                });
-              }
-            },
-          ),
-          
-          // Send Verification Code button
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: _isSendingCode ? null : _sendVerificationCode,
-              icon: _isSendingCode
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Icon(Icons.send, color: Colors.white),
-              label: Text(
-                _isSendingCode ? 'Sending...' : 'Send Verification Code',
-                style: UnifiedTypography.titleMedium,
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primaryRed,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-            ),
-          ),
-          
-          // Verification message
-          if (_verificationMessage != null) ...[
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: _isEmailVerified 
-                    ? Colors.green.shade50 
-                    : Colors.blue.shade50,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: _isEmailVerified 
-                      ? Colors.green.shade200 
-                      : Colors.blue.shade200,
-                ),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    _isEmailVerified ? Icons.check_circle : Icons.info_outline,
-                    color: _isEmailVerified 
-                        ? Colors.green.shade700 
-                        : Colors.blue.shade700,
-                    size: 20,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      _verificationMessage!,
-                      style: TextStyle(
-                        color: _isEmailVerified 
-                            ? Colors.green.shade700 
-                            : Colors.blue.shade700,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-          
-          // Verification Code Input (only show after code is sent)
-          if (_isVerificationCodeSent && !_isEmailVerified) ...[
-            const SizedBox(height: 20),
-            Row(
-              children: [
-                Expanded(
-                  child: CustomTextField(
-                    controller: _verificationCodeController,
-                    label: 'Verification Code',
-                    hint: 'Enter 6-digit code',
-                    keyboardType: TextInputType.number,
-                    prefixIcon: Icons.verified_user_outlined,
-                    inputFormatters: [
-                      FilteringTextInputFormatter.digitsOnly,
-                      LengthLimitingTextInputFormatter(6),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 12),
-                SizedBox(
-                  width: 100,
-                  child: ElevatedButton(
-                    onPressed: _isVerifyingCode ? null : _verifyCode,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primaryRed,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: _isVerifyingCode
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Text('Verify'),
-                  ),
-                ),
-              ],
-            ),
-          ],
-          
-          // Email verified indicator
-          if (_isEmailVerified) ...[
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.green.shade50,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.green.shade200),
-              ),
-              child: const Row(
-                children: [
-                  Icon(
-                    Icons.check_circle,
-                    color: Colors.green,
-                    size: 20,
-                  ),
-                  SizedBox(width: 12),
-                  Text(
-                    '✅ Email verified successfully',
-                    style: TextStyle(
-                      color: Colors.green,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-          
-          const SizedBox(height: 20),
-          
-          // Phone Number field (+63 prefix, 10 digits only, starts with 9)
-          CustomTextField(
-            controller: _phoneController,
-            label: 'Phone Number',
-            hint: '9123456789',
-            keyboardType: TextInputType.number,
-            prefixIcon: Icons.phone_outlined,
-            prefixText: '+63 ',
-            inputFormatters: [
-              FilteringTextInputFormatter.digitsOnly,
-              LengthLimitingTextInputFormatter(10),
-            ],
-            validator: (value) => InputValidator.validatePhilippinePhoneNumber(value),
-            autovalidateMode: AutovalidateMode.onUserInteraction,
           ),
           
           const SizedBox(height: 20),
@@ -1497,9 +980,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
           // Sign up button
           CustomButton(
             text: 'Create Account',
-            onPressed: (_isLoading || !_acceptedTerms || !_isEmailVerified) ? null : _signUp,
+            onPressed: (_isLoading || !_acceptedTerms) ? null : _signUp,
             isLoading: _isLoading,
-            backgroundColor: (_acceptedTerms && _isEmailVerified) ? AppColors.primaryRed : Colors.grey,
+            backgroundColor: _acceptedTerms ? AppColors.primaryRed : Colors.grey,
             textColor: Colors.white,
           ),
           
@@ -1517,30 +1000,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 Expanded(
                   child: Text(
                     'Please accept the Terms and Conditions to continue',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.orange.shade600,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
-          
-          // Email verification requirement message
-          if (!_isEmailVerified) ...[
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Icon(
-                  Icons.email_outlined,
-                  size: 16,
-                  color: Colors.orange.shade600,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Please verify your email address to continue',
                     style: TextStyle(
                       fontSize: 12,
                       color: Colors.orange.shade600,

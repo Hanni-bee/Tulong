@@ -43,26 +43,35 @@ class BluetoothService {
         _debugController.add('Connected to ${device.name}');
         _connectionController.add(true);
         
-        // Start listening for incoming messages
-        _connection!.input!.listen((Uint8List data) {
-          String chunk = utf8.decode(data);
-          _lineBuffer += chunk;
-          _debugController.add('Received chunk: ${chunk.length} chars, buffer: ${_lineBuffer.length} chars');
-          
-          // Process complete lines
-          while (_lineBuffer.contains('\n')) {
-            int newlineIndex = _lineBuffer.indexOf('\n');
-            String completeLine = _lineBuffer.substring(0, newlineIndex);
-            _lineBuffer = _lineBuffer.substring(newlineIndex + 1);
+        _connection!.input!.listen(
+          (Uint8List data) {
+            String chunk = utf8.decode(data);
+            _lineBuffer += chunk;
+            _debugController.add('Received chunk: ${chunk.length} chars, buffer: ${_lineBuffer.length} chars');
             
-            if (completeLine.isNotEmpty) {
-              _debugController.add('Received line: ${completeLine.length} chars');
-              _messageController.add('$completeLine\n');
+            // Process complete lines
+            while (_lineBuffer.contains('\n')) {
+              int newlineIndex = _lineBuffer.indexOf('\n');
+              String completeLine = _lineBuffer.substring(0, newlineIndex);
+              _lineBuffer = _lineBuffer.substring(newlineIndex + 1);
+              
+              if (completeLine.isNotEmpty) {
+                _debugController.add('Received line: ${completeLine.length} chars');
+                _messageController.add('$completeLine\n');
+              }
             }
-          }
-        }).onError((error) {
-          _debugController.add('Error reading data: $error');
-        });
+          },
+          onDone: () {
+            _debugController.add('Bluetooth connection lost (onDone)');
+            _connectionController.add(false);
+            _connection = null;
+          },
+          onError: (error) {
+            _debugController.add('Bluetooth error: $error');
+            _connectionController.add(false);
+            _connection = null;
+          },
+        );
         return true;
       } else {
         _debugController.add('Failed to connect to ${device.name}');

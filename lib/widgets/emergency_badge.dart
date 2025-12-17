@@ -167,3 +167,4 @@ class _EmergencyBadgeState extends State<EmergencyBadge>
   }
 }
 
+

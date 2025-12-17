@@ -10,7 +10,11 @@ import '../../constants/app_colors.dart';
 import '../../constants/unified_typography.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/firebase_service.dart';
+import '../../services/biometric_service.dart';
+import '../../services/sqlite_service.dart';
 import '../../constants/soft_ui_design.dart';
+import '../../utils/input_validator.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'sign_up_screen.dart';
 import '../enhanced_splash_screen.dart';
@@ -27,9 +31,9 @@ class ModernSignInScreen extends StatefulWidget {
 class _ModernSignInScreenState extends State<ModernSignInScreen>
     with TickerProviderStateMixin, WidgetsBindingObserver {
   final _formKey = GlobalKey<FormState>();
-  final _emailController = TextEditingController();
+  final _usernameController = TextEditingController(); // Replaced email with username
   final _passwordController = TextEditingController();
-  final _emailFocusNode = FocusNode();
+  final _usernameFocusNode = FocusNode(); // Replaced email with username
   final _passwordFocusNode = FocusNode();
 
   late AnimationController _fadeController;
@@ -49,8 +53,10 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
 
   bool _obscurePassword = true;
   bool _isLoading = false;
-  bool _isGoogleLoading = false;
   bool _isKeyboardVisible = false;
+  bool _isQuickSignInLoading = false;
+  String? _lastLoggedInUsername;
+  final BiometricService _biometricService = BiometricService();
 
   // Material 3 motion curves
   static const kEmphasized = Curves.easeInOutCubicEmphasized;
@@ -97,7 +103,7 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
       curve: const Interval(0.0, 0.85, curve: Curves.easeInOutCubic),
     ));
 
-    _emailFocusNode.addListener(_onFocusChange);
+    _usernameFocusNode.addListener(_onFocusChange); // Replaced email with username
     _passwordFocusNode.addListener(_onFocusChange);
 
     _shakeController = AnimationController(
@@ -105,6 +111,122 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
       duration: const Duration(milliseconds: 300),
     );
     _shakeAnim = CurvedAnimation(parent: _shakeController, curve: Curves.easeOutCubic);
+    
+    _loadLastLoggedInUser();
+  }
+
+  Future<void> _loadLastLoggedInUser() async {
+    try {
+      // First try SharedPreferences (for current session)
+      final prefs = await SharedPreferences.getInstance();
+      var username = prefs.getString('session_username') ?? prefs.getString('session_email');
+      
+      // If not in SharedPreferences (e.g., after sign out), get from SQLite
+      if (username == null || username.isEmpty) {
+        final sqliteService = SQLiteService();
+        final db = await sqliteService.database;
+        
+        // Get the most recently logged-in user (highest last_seen timestamp)
+        final result = await db.query(
+          'users',
+          columns: ['username', 'last_seen'],
+          where: 'last_seen IS NOT NULL',
+          orderBy: 'last_seen DESC',
+          limit: 1,
+        );
+        
+        if (result.isNotEmpty) {
+          username = result.first['username']?.toString();
+          print('✅ Found last logged-in user from SQLite: $username');
+        }
+      }
+      
+      if (username != null && username.isNotEmpty) {
+        setState(() {
+          _lastLoggedInUsername = username;
+        });
+        print('✅ Quick Sign-In available for: $username');
+      } else {
+        print('⚠️ No previous login found');
+      }
+    } catch (e) {
+      print('❌ Error loading last logged in user: $e');
+    }
+  }
+
+  Future<void> _quickSignInWithBiometric() async {
+    if (_lastLoggedInUsername == null || _lastLoggedInUsername!.isEmpty) {
+      _showErrorSnackbar('No previous login found. Please sign in manually.');
+      return;
+    }
+
+    setState(() {
+      _isQuickSignInLoading = true;
+    });
+
+    try {
+      // Check if device supports biometrics
+      final isSupported = await _biometricService.isDeviceSupported();
+      if (!isSupported) {
+        throw Exception('Device does not support biometric authentication');
+      }
+
+      final hasBiometrics = await _biometricService.hasEnrolledBiometrics();
+      if (!hasBiometrics) {
+        throw Exception('No fingerprint enrolled. Please set up fingerprint in device settings.');
+      }
+
+      // Authenticate with fingerprint (no questions, instant)
+      final didAuthenticate = await _biometricService.authenticate(
+        reason: 'Quick sign in',
+        useErrorDialogs: true,
+        stickyAuth: true,
+      );
+
+      if (didAuthenticate) {
+        // Get user from SQLite
+        final sqliteService = SQLiteService();
+        final user = await sqliteService.getUserByUsername(_lastLoggedInUsername!);
+        
+        if (user == null) {
+          throw Exception('User not found');
+        }
+
+        // Update last seen
+        await sqliteService.updateUser(user['id'], {
+          'last_seen': DateTime.now().millisecondsSinceEpoch,
+          'is_online': 1,
+        });
+
+        // Set authenticated state
+        final authProvider = Provider.of<AuthProvider>(context, listen: false);
+        await authProvider.setAuthenticated(
+          email: _lastLoggedInUsername!,
+          name: user['first_name'] != null 
+              ? '${user['first_name']} ${user['last_name']}' 
+              : _lastLoggedInUsername!,
+        );
+
+        // Small delay to ensure user model is loaded
+        await Future.delayed(const Duration(milliseconds: 300));
+
+        if (mounted) {
+          await _playRouteFadeAndNavigate('/');
+        }
+      } else {
+        throw Exception('Biometric authentication failed or was cancelled');
+      }
+    } catch (e) {
+      if (mounted) {
+        _showErrorSnackbar(e.toString().replaceFirst('Exception: ', ''));
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isQuickSignInLoading = false;
+        });
+      }
+    }
   }
 
   // Reliable keyboard detection
@@ -126,7 +248,7 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
   }
 
   void _onFocusChange() {
-    final hasFocus = _emailFocusNode.hasFocus || _passwordFocusNode.hasFocus;
+    final hasFocus = _usernameFocusNode.hasFocus || _passwordFocusNode.hasFocus; // Replaced email with username
     if (hasFocus) {
       if (!_keyboardAnimationController.isAnimating ||
           _keyboardAnimationController.value < 1.0) {
@@ -144,11 +266,11 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _emailController.dispose();
+    _usernameController.dispose(); // Replaced email with username
     _passwordController.dispose();
-    _emailFocusNode.removeListener(_onFocusChange);
+    _usernameFocusNode.removeListener(_onFocusChange); // Replaced email with username
     _passwordFocusNode.removeListener(_onFocusChange);
-    _emailFocusNode.dispose();
+    _usernameFocusNode.dispose(); // Replaced email with username
     _passwordFocusNode.dispose();
     _fadeController.dispose();
     _slideController.dispose();
@@ -169,54 +291,38 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
 
     try {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      final email = _emailController.text.trim();
+      final username = _usernameController.text.trim(); // Replaced email with username
       final password = _passwordController.text;
 
-      final requiresTwoFactor =
-          await authProvider.checkTwoFactorRequired(email);
+      // Offline-first login
+      final offlineSuccess =
+          await authProvider.loginOffline(username, password);
 
-      if (requiresTwoFactor) {
-        if (mounted) {
-          Navigator.of(context).pushNamed(
-            '/two-factor-verification',
-            arguments: {
-              'email': email,
-              'password': password,
-              'isRecovery': false,
-            },
-          );
-        }
+      if (offlineSuccess) {
+        // Small delay to ensure data is loaded before navigating
+        await Future.delayed(const Duration(milliseconds: 300));
+        _attemptFirebaseSync(username, password);
       } else {
-        // Offline-first login
-        final offlineSuccess =
-            await authProvider.loginOffline(email, password);
-
-        if (offlineSuccess) {
-          // Small delay to ensure data is loaded before navigating
-          await Future.delayed(const Duration(milliseconds: 300));
-          _attemptFirebaseSync(email, password);
-        } else {
-          try {
-            final firebaseUser = await FirebaseService()
-                .signInWithEmail(email: email, password: password);
-            if (firebaseUser?.user != null) {
-              await authProvider.setAuthenticated(
-                email: email,
-                name: email.split('@')[0],
-              );
-              // Small delay to ensure user model is loaded
-              await Future.delayed(const Duration(milliseconds: 300));
-            } else {
-              throw Exception('Invalid email or password');
-            }
-          } catch (_) {
-            throw Exception('Invalid email or password');
+        try {
+          final firebaseUser = await FirebaseService()
+              .signInWithUsername(username: username, password: password);
+          if (firebaseUser != null) {
+            await authProvider.setAuthenticated(
+              email: username, // Parameter name is 'email' for compatibility, but it's actually username
+              name: username,
+            );
+            // Small delay to ensure user model is loaded
+            await Future.delayed(const Duration(milliseconds: 300));
+          } else {
+            throw Exception('Invalid username or password');
           }
+        } catch (_) {
+          throw Exception('Invalid username or password');
         }
+      }
 
-        if (mounted) {
-          await _playRouteFadeAndNavigate('/');
-        }
+      if (mounted) {
+        await _playRouteFadeAndNavigate('/');
       }
     } catch (e) {
       _doShake();
@@ -231,26 +337,7 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
     _shakeController.forward(from: 0).whenComplete(() => _shakeController.value = 0);
   }
 
-  Future<void> _signInWithGoogle() async {
-    try {
-      final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      await authProvider.signInWithGoogle();
-      await Future.delayed(const Duration(milliseconds: 200));
-
-      if (!mounted) return;
-      final updated = Provider.of<AuthProvider>(context, listen: false);
-
-      if (updated.isAuthenticated && updated.currentUser != null) {
-        await _playRouteFadeAndNavigate('/');
-      } else {
-        _showErrorSnackbar('Google Sign-In was cancelled. Please try again.');
-      }
-    } catch (e) {
-      if (mounted) {
-        _showErrorSnackbar('Google Sign-In error: ${e.toString()}');
-      }
-    }
-  }
+  // Google SSO has been removed - all users use username/password authentication
 
   void _showErrorSnackbar(String message) {
     final keyboardInset = MediaQuery.of(context).viewInsets.bottom;
@@ -276,10 +363,8 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
             TextButton(
               onPressed: () {
                 ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                if (message.contains('email') || message.contains('password')) {
+                if (message.contains('username') || message.contains('password')) {
                   _signIn();
-                } else if (message.contains('Google')) {
-                  _signInWithGoogle();
                 }
               },
               child: const Text(
@@ -305,8 +390,11 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
     );
   }
 
-  Widget _buildGoogleSignInButton(double height) {
-    final textSize = (height * 0.4).clamp(14.0, 18.0); // Scale text with button height
+  // Google SSO button removed - all users use username/password authentication
+
+  Widget _buildQuickSignInButton(double height) {
+    final textSize = (height * 0.4).clamp(14.0, 18.0);
+    final isEnabled = _lastLoggedInUsername != null && _lastLoggedInUsername!.isNotEmpty;
     
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
@@ -314,91 +402,62 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: _isGoogleLoading ? null : _signInWithGoogle,
+          onTap: (_isQuickSignInLoading || !isEnabled) ? null : () {
+            HapticFeedback.mediumImpact();
+            _quickSignInWithBiometric();
+          },
           borderRadius: BorderRadius.circular(SoftUIDesign.buttonBorderRadius),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
             curve: Curves.easeOutCubic,
             height: height,
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: _isGoogleLoading
-                    ? [
-                        AppColors.white.withOpacity(0.7),
-                        AppColors.white.withOpacity(0.65),
-                      ]
-                    : [
-                        AppColors.white,
-                        AppColors.white.withOpacity(0.95),
-                      ],
-              ),
+              color: isEnabled ? AppColors.white : AppColors.lightGray.withOpacity(0.3),
               borderRadius: BorderRadius.circular(SoftUIDesign.buttonBorderRadius),
               border: Border.all(
-                color: _isGoogleLoading
-                    ? const Color(0xFFE0E3E7).withOpacity(0.5)
-                    : const Color(0xFFE0E3E7),
-                width: 1.5,
+                color: isEnabled 
+                    ? AppColors.primaryRed.withOpacity(0.3)
+                    : AppColors.mediumGray.withOpacity(0.2),
+                width: 2,
               ),
-              boxShadow: _isGoogleLoading
+              boxShadow: isEnabled
                   ? [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.04),
-                        blurRadius: 4,
-                        offset: const Offset(0, 2),
-                        spreadRadius: 0,
-                      ),
-                    ]
-                  : [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.08),
-                        blurRadius: 8,
+                        color: AppColors.primaryRed.withOpacity(0.1),
+                        blurRadius: 12,
                         offset: const Offset(0, 4),
                         spreadRadius: 0,
                       ),
-                      BoxShadow(
-                        color: Colors.white.withOpacity(0.5),
-                        blurRadius: 4,
-                        offset: const Offset(0, -2),
-                        spreadRadius: 0,
-                      ),
-                    ],
+                    ]
+                  : [],
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                if (_isGoogleLoading)
+                if (_isQuickSignInLoading)
                   const SizedBox(
                     width: 24,
                     height: 24,
                     child: CircularProgressIndicator(
                       strokeWidth: 2.5,
-                      valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF1F1F1F)),
+                      valueColor: AlwaysStoppedAnimation<Color>(AppColors.primaryRed),
                     ),
                   )
                 else
-                  Container(
-                    width: 20,
-                    height: 20,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(4),
-                      color: AppColors.white,
-                      border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
-                    ),
-                    child: SvgPicture.string(
-                      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>',
-                      width: 20,
-                      height: 20,
-                    ),
+                  Icon(
+                    Icons.fingerprint,
+                    color: isEnabled ? AppColors.primaryRed : AppColors.mediumGray,
+                    size: textSize * 1.2,
                   ),
                 const SizedBox(width: 12),
                 Text(
-                  _isGoogleLoading ? 'Signing in...' : 'Continue with Google',
-                  style: UnifiedTypography.buttonMedium.copyWith(
-                    color: const Color(0xFF1F1F1F), // Darker for better contrast (WCAG AA)
+                  _isQuickSignInLoading 
+                      ? 'Signing In...' 
+                      : (isEnabled ? 'Quick Sign-In' : 'Quick Sign-In (No account)'),
+                  style: UnifiedTypography.buttonLarge.copyWith(
+                    color: isEnabled ? AppColors.primaryRed : AppColors.mediumGray,
                     fontSize: textSize,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ],
@@ -704,28 +763,24 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
                                               ),
                                               SizedBox(height: spacing(16.0, 18.0, 20.0)),
 
-                                              // Email — Autofill + suggestions
+                                              // Username field (replaced email)
                                               _buildTextField(
-                                                controller: _emailController,
-                                                focusNode: _emailFocusNode,
-                                                label: 'Email Address',
-                                                hint: 'Enter your email',
-                                                icon: Icons.email_outlined,
-                                                keyboardType: TextInputType.emailAddress,
+                                                controller: _usernameController,
+                                                focusNode: _usernameFocusNode,
+                                                label: 'Username',
+                                                hint: 'Enter your username',
+                                                icon: Icons.person_outline,
+                                                keyboardType: TextInputType.text,
                                                 autofillHints: const [
                                                   AutofillHints.username,
-                                                  AutofillHints.email
                                                 ],
                                                 enableSuggestions: true,
                                                 autocorrect: false,
                                                 validator: (value) {
                                                   if (value == null || value.isEmpty) {
-                                                    return 'Please enter your email';
+                                                    return 'Please enter your username';
                                                   }
-                                                  if (!value.contains('@')) {
-                                                    return 'Please enter a valid email';
-                                                  }
-                                                  return null;
+                                                  return InputValidator.validateUsername(value);
                                                 },
                                               ),
                                               SizedBox(height: spacing(16.0, 18.0, 20.0)),
@@ -843,6 +898,11 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
                                               SizedBox(height: spacing(16.0, 18.0, 20.0)),
 
                                               _buildEmailSignInButton(controlHeight),
+
+                                              SizedBox(height: spacing(12.0, 14.0, 16.0)),
+
+                                              // Quick Sign-In with Fingerprint (always visible, disabled if no previous login)
+                                              _buildQuickSignInButton(controlHeight),
 
                                               SizedBox(height: spacing(12.0, 14.0, 16.0)),
 
@@ -977,42 +1037,6 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
                                               ),
 
                                               SizedBox(height: spacing(16.0, 18.0, 20.0)),
-
-                                              // Divider
-                                              SizedBox(height: spacing(20.0, 20.0, 24.0)),
-                                              Row(
-                                                children: [
-                                                  Expanded(
-                                                    child: Container(
-                                                      height: 1,
-                                                      color: AppColors.mediumGray.withOpacity(0.3),
-                                                    ),
-                                                  ),
-                                                  Padding(
-                                                    padding: const EdgeInsets.symmetric(
-                                                        horizontal: 16),
-                                                    child: Text(
-                                                      'OR',
-                                                      style: UnifiedTypography
-                                                          .labelMedium
-                                                          .copyWith(
-                                                        color: AppColors.mediumGray,
-                                                        fontWeight: FontWeight.w600,
-                                                        fontSize: 12,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                  Expanded(
-                                                    child: Container(
-                                                      height: 1,
-                                                      color: AppColors.mediumGray.withOpacity(0.3),
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                              SizedBox(height: spacing(20.0, 20.0, 24.0)),
-
-                                              _buildGoogleSignInButton(controlHeight),
                                             ],
                                           ),
                                         ),
@@ -1343,17 +1367,17 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
     );
   }
 
-  void _attemptFirebaseSync(String email, String password) async {
+  void _attemptFirebaseSync(String username, String password) async {
     try {
       final firebaseService = FirebaseService();
-      final userCredential =
-          await firebaseService.signInWithEmail(email: email, password: password);
+      final firebaseUser =
+          await firebaseService.signInWithUsername(username: username, password: password);
 
-      if (userCredential?.user != null) {
+      if (firebaseUser != null) {
         final authProvider = Provider.of<AuthProvider>(context, listen: false);
         await authProvider.setAuthenticated(
-            email: email, name: email.split('@')[0]);
-        await authProvider.markUserAsSynced(email);
+            email: username, name: username); // Parameter name is 'email' for compatibility, but it's actually username
+        await authProvider.markUserAsSynced(username);
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(

@@ -1,12 +1,11 @@
 class UserModel {
   final String id;
   final String name;
-  final String email;
+  final String username; // Replaced email with username
   final String? avatar;
   final bool isOnline;
   final String? lastSeen;
   final String status;
-  final String? phone;
   final String? location;
   // Address fields - using snake_case for consistency
   final String street;
@@ -14,9 +13,9 @@ class UserModel {
   final String barangay;
   final String city;
   final String province;
+  final String? phoneNumber;
   // Setup completion
   final bool addressSetupCompleted;
-  final bool isGoogleAuth;
   // Additional fields for consistency
   final String accountStatus;
   final int createdAt;
@@ -24,42 +23,42 @@ class UserModel {
   const UserModel({
     required this.id,
     required this.name,
-    required this.email,
+    required this.username, // Replaced email with username
     this.avatar,
     this.isOnline = false,
     this.lastSeen,
     this.status = 'Offline',
-    this.phone,
     this.location,
     this.street = '',
     this.region = '',
     this.barangay = '',
     this.city = '',
     this.province = '',
+    this.phoneNumber,
     this.addressSetupCompleted = false,
-    this.isGoogleAuth = false,
     this.accountStatus = 'active',
     this.createdAt = 0,
   });
 
   factory UserModel.fromMap(Map<String, dynamic> map) {
+    // Support both username and email (for migration)
+    final username = map['username'] ?? map['email'] ?? '';
     return UserModel(
       id: map['id'] ?? '',
       name: map['name'] ?? '',
-      email: map['email'] ?? '',
+      username: username,
       avatar: map['avatar'],
       isOnline: map['isOnline'] ?? false,
       lastSeen: map['lastSeen'],
       status: map['status'] ?? 'Offline',
-      phone: map['phone'],
       location: map['location'],
       street: map['street'] ?? '',
       region: map['region'] ?? '',
       barangay: map['barangay'] ?? '',
       city: map['city'] ?? '',
       province: map['province'] ?? '',
+      phoneNumber: map['phoneNumber'] ?? map['phone_number'] ?? map['phone'],
       addressSetupCompleted: map['addressSetupCompleted'] ?? false,
-      isGoogleAuth: map['isGoogleAuth'] ?? false,
       accountStatus: map['accountStatus'] ?? 'active',
       createdAt: map['createdAt'] ?? 0,
     );
@@ -69,20 +68,19 @@ class UserModel {
     return {
       'id': id,
       'name': name,
-      'email': email,
+      'username': username, // Replaced email with username
       'avatar': avatar,
       'isOnline': isOnline,
       'lastSeen': lastSeen,
       'status': status,
-      'phone': phone,
       'location': location,
       'street': street,
       'region': region,
       'barangay': barangay,
       'city': city,
       'province': province,
+      'phoneNumber': phoneNumber,
       'addressSetupCompleted': addressSetupCompleted,
-      'isGoogleAuth': isGoogleAuth,
       'accountStatus': accountStatus,
       'createdAt': createdAt,
     };
@@ -91,40 +89,38 @@ class UserModel {
   UserModel copyWith({
     String? id,
     String? name,
-    String? email,
+    String? username,
     String? avatar,
     bool? isOnline,
     String? lastSeen,
     String? status,
-    String? phone,
     String? location,
     String? street,
     String? region,
     String? barangay,
     String? city,
     String? province,
+    String? phoneNumber,
     bool? addressSetupCompleted,
-    bool? isGoogleAuth,
     String? accountStatus,
     int? createdAt,
   }) {
     return UserModel(
       id: id ?? this.id,
       name: name ?? this.name,
-      email: email ?? this.email,
+      username: username ?? this.username,
       avatar: avatar ?? this.avatar,
       isOnline: isOnline ?? this.isOnline,
       lastSeen: lastSeen ?? this.lastSeen,
       status: status ?? this.status,
-      phone: phone ?? this.phone,
       location: location ?? this.location,
       street: street ?? this.street,
       region: region ?? this.region,
       barangay: barangay ?? this.barangay,
       city: city ?? this.city,
       province: province ?? this.province,
+      phoneNumber: phoneNumber ?? this.phoneNumber,
       addressSetupCompleted: addressSetupCompleted ?? this.addressSetupCompleted,
-      isGoogleAuth: isGoogleAuth ?? this.isGoogleAuth,
       accountStatus: accountStatus ?? this.accountStatus,
       createdAt: createdAt ?? this.createdAt,
     );
@@ -141,6 +137,6 @@ class UserModel {
 
   @override
   String toString() {
-    return 'UserModel(id: $id, name: $name, email: $email, isOnline: $isOnline)';
+    return 'UserModel(id: $id, name: $name, username: $username, isOnline: $isOnline)';
   }
 }

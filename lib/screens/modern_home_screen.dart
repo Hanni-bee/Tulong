@@ -32,6 +32,7 @@ import '../widgets/animated_neumorphic_card.dart';
 import '../utils/icon_system.dart';
 import '../utils/enhanced_page_transitions.dart';
 import '../services/simple_bluetooth_service.dart';
+import 'package:flutter_bluetooth_serial_plus/flutter_bluetooth_serial_plus.dart';
 
 class ModernHomeScreen extends StatefulWidget {
   const ModernHomeScreen({super.key});
@@ -49,6 +50,9 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
   late Animation<double> _welcomeAnimation;
+  
+  late AnimationController _pulseController;
+  late Animation<double> _pulseAnimation;
   
   // Stagger animations for Quick Actions
   late StaggeredListAnimations _quickActionsStagger;
@@ -141,6 +145,19 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
       curve: Curves.elasticOut,
     ));
 
+    _pulseController = AnimationController(
+      duration: const Duration(seconds: 2),
+      vsync: this,
+    )..repeat(reverse: true);
+
+    _pulseAnimation = Tween<double>(
+      begin: 1.0,
+      end: 1.08,
+    ).animate(CurvedAnimation(
+      parent: _pulseController,
+      curve: Curves.easeInOut,
+    ));
+
     _fadeController.forward();
     _slideController.forward();
     
@@ -191,6 +208,7 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
     _slideController.dispose();
     _welcomeController.dispose();
     _emergencyHoldController.dispose();
+    _pulseController.dispose();
     _quickActionsStagger.dispose();
     super.dispose();
   }
@@ -429,6 +447,13 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
     );
   }
 
+  String _getGreeting() {
+    final hour = DateTime.now().hour;
+    if (hour < 12) return 'Good Morning';
+    if (hour < 17) return 'Good Afternoon';
+    return 'Good Evening';
+  }
+
   Widget _buildHeader() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -474,17 +499,52 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      AccessibleHeading(
-                        'T.U.L.O.N.G',
-                        level: HeadingLevel.h3,
-                        color: AppColors.primaryRed,
-                        backgroundColor: AppColors.white,
+                      Row(
+                        children: [
+                          AccessibleHeading(
+                            'T.U.L.O.N.G',
+                            level: HeadingLevel.h3,
+                            color: AppColors.primaryRed,
+                            backgroundColor: AppColors.white,
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: AppColors.success.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 6,
+                                  height: 6,
+                                  decoration: const BoxDecoration(
+                                    color: AppColors.success,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'CONNECTED',
+                                  style: TextStyle(
+                                    fontSize: 8,
+                                    fontWeight: FontWeight.w900,
+                                    color: AppColors.success,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'Emergency Communication',
+                        '${_getGreeting()}, Ready to Help',
                         style: AppTypography.bodyMedium.copyWith(
                           color: AppColors.mediumGray,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ],
@@ -523,35 +583,24 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
   Widget _buildQuickActions() {
     return PhoneResponsiveBuilder(
       builder: (context, screenSize) {
+        final cardRadius = PhoneResponsiveHelper.getPhoneBorderRadius(context).clamp(12, 20).toDouble();
+        final spacing = PhoneResponsiveHelper.getPhoneSpacing(context);
         return Container(
           padding: PhoneResponsiveHelper.getPhonePadding(context),
           decoration: BoxDecoration(
             color: AppColors.white,
-            borderRadius: BorderRadius.circular(PhoneResponsiveHelper.getPhoneBorderRadius(context)),
+            borderRadius: BorderRadius.circular(cardRadius),
             border: Border.all(
               color: AppColors.lightGray.withOpacity(0.2),
               width: 1.5,
             ),
             boxShadow: [
-              // Enhanced shadow with depth
+              // Solid soft-depth (no inner highlight/glow)
               BoxShadow(
                 color: Colors.black.withOpacity(0.08),
-                blurRadius: 20,
-                spreadRadius: 2,
+                blurRadius: 18,
+                spreadRadius: 0,
                 offset: const Offset(0, 8),
-              ),
-              // Subtle inner highlight
-              BoxShadow(
-                color: Colors.white.withOpacity(0.8),
-                blurRadius: 10,
-                offset: const Offset(-2, -2),
-              ),
-              // Colored glow from primary red
-              BoxShadow(
-                color: AppColors.primaryRed.withOpacity(0.05),
-                blurRadius: 15,
-                spreadRadius: 1,
-                offset: const Offset(0, 4),
               ),
             ],
           ),
@@ -562,26 +611,26 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                 children: [
                   Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
+                      horizontal: 14,
                       vertical: 8,
                     ),
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
+                        colors: [
+                          AppColors.primaryRed.withOpacity(0.12),
+                          AppColors.primaryRed.withOpacity(0.06),
+                        ],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
-                        colors: [
-                          AppColors.primaryRed.withOpacity(0.15),
-                          AppColors.primaryRed.withOpacity(0.08),
-                        ],
                       ),
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(20),
                       border: Border.all(
-                        color: AppColors.primaryRed.withOpacity(0.3),
-                        width: 1.5,
+                        color: AppColors.primaryRed.withOpacity(0.25),
+                        width: 1.2,
                       ),
                       boxShadow: [
                         BoxShadow(
-                      color: AppColors.primaryRed.withOpacity(0.1),
+                          color: AppColors.primaryRed.withOpacity(0.04),
                           blurRadius: 8,
                           offset: const Offset(0, 2),
                         ),
@@ -590,19 +639,27 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(
-                          Icons.flash_on_rounded,
-                          color: AppColors.primaryRed,
-                          size: 18,
+                        Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: AppColors.primaryRed.withOpacity(0.15),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.flash_on_rounded,
+                            color: AppColors.primaryRed,
+                            size: 14,
+                          ),
                         ),
-                        const SizedBox(width: 6),
+                        const SizedBox(width: 8),
                         Text(
-                      'Quick Actions',
-                      style: AppTypography.cardTitle.copyWith(
-                        color: AppColors.primaryRed,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 0.3,
-                      ),
+                          'Quick Actions',
+                          style: AppTypography.cardTitle.copyWith(
+                            color: AppColors.primaryRed,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 0.5,
+                            fontSize: 13,
+                          ),
                         ),
                       ],
                     ),
@@ -614,32 +671,37 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                       vertical: 6,
                     ),
                     decoration: BoxDecoration(
-                      color: AppColors.primaryRed.withOpacity(0.08),
-                      borderRadius: BorderRadius.circular(8),
+                      color: AppColors.ultraLightGray.withOpacity(0.8),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: AppColors.borderColor.withOpacity(0.5),
+                        width: 1,
+                      ),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(
                           Icons.touch_app_rounded,
-                          color: AppColors.primaryRed.withOpacity(0.8),
+                          color: AppColors.textSecondary.withOpacity(0.8),
                           size: 14,
                         ),
-                        const SizedBox(width: 4),
-                  Text(
-                    'Tap to use',
-                    style: AppTypography.captionText.copyWith(
-                            color: AppColors.primaryRed.withOpacity(0.8),
-                            fontWeight: FontWeight.w600,
+                        const SizedBox(width: 6),
+                        Text(
+                          'Tap to use',
+                          style: AppTypography.captionText.copyWith(
+                            color: AppColors.textSecondary.withOpacity(0.9),
+                            fontWeight: FontWeight.w700,
                             fontSize: 11,
+                            letterSpacing: 0.2,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
               ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
+              SizedBox(height: spacing),
               Builder(
                 builder: (context) {
                   final quickActions = _getQuickActions();
@@ -686,103 +748,97 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
   }) {
     return PhoneResponsiveBuilder(
       builder: (context, screenSize) {
-        return Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: () {
-              HapticFeedback.mediumImpact();
-              onPressed();
-            },
-            borderRadius: BorderRadius.circular(20),
-            child: Container(
-              width: 100,
-              height: 70,
-              decoration: BoxDecoration(
-                // Cleaner gradient background
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    backgroundColor,
-                    backgroundColor.withOpacity(0.9),
-                  ],
-                ),
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  // SoftUI shadow system
-                  ...SoftUIDesign.getSoftShadow(
-                    elevation: 4.0,
-                    shadowColor: backgroundColor.withOpacity(0.25),
-                  ),
-                  // Subtle color glow
-                  BoxShadow(
-                    color: backgroundColor.withOpacity(0.2),
-                    blurRadius: 12,
-                    offset: const Offset(0, 6),
-                    spreadRadius: 0,
-                  ),
-                ],
-                border: Border.all(
-                  color: Colors.white.withOpacity(0.2),
-                  width: 1,
-                ),
-              ),
-              child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-                mainAxisSize: MainAxisSize.min,
+        // Further increased height to ensure all text is visible and layout is spacious
+        final height = PhoneResponsiveHelper.getPhoneCardHeight(context).clamp(120, 140).toDouble();
+        final radius = SoftUIDesign.cardBorderRadius;
+        
+        return Container(
+          height: height,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(radius),
+            border: Border.all(
+              color: backgroundColor.withOpacity(0.12),
+              width: 1.5,
+            ),
+            boxShadow: SoftUIDesign.getCardShadow(elevation: 3),
+          ),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () {
+                HapticFeedback.mediumImpact();
+                onPressed();
+              },
+              borderRadius: BorderRadius.circular(radius),
+              child: Stack(
                 children: [
-                  // Icon directly on button - no container
-                  Icon(
-                    icon,
-                    color: Colors.white,
-                    size: 26,
+                  // Subtle colored accent in the corner
+                  SoftUIDesign.buildCornerAccentOverlay(
+                    accentColor: backgroundColor,
+                    alignment: Alignment.topRight,
+                    size: 60,
+                    opacity: 0.12,
                   ),
-                  const SizedBox(width: 8),
-                  // Title and subtitle in column
-                  Flexible(
+                  
+                  // Content
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        // Title
-                        Text(
-                          title,
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 13,
-                            letterSpacing: 0.3,
-                            shadows: [
-                              Shadow(
-                                color: Colors.black.withOpacity(0.3),
-                                offset: const Offset(0, 1),
-                                blurRadius: 2,
-                              ),
-                            ],
+                        Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                backgroundColor.withOpacity(0.15),
+                                backgroundColor.withOpacity(0.05),
+                              ],
+                            ),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: backgroundColor.withOpacity(0.2),
+                              width: 1,
+                            ),
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                          child: Icon(
+                            icon,
+                            color: backgroundColor,
+                            size: 24,
+                          ),
                         ),
-                        const SizedBox(height: 1),
-                        // Subtitle
+                        const SizedBox(height: 10),
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            title,
+                            style: AppTypography.cardTitle.copyWith(
+                              color: AppColors.textPrimary,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 15,
+                              letterSpacing: 0.5,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
                         Text(
                           subtitle,
-                          style: TextStyle(
-                            color: Colors.white.withOpacity(0.9),
-                            fontWeight: FontWeight.w600,
-                            fontSize: 10,
+                          style: AppTypography.captionText.copyWith(
+                            color: AppColors.textSecondary,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 11,
                             letterSpacing: 0.2,
-                            shadows: [
-                              Shadow(
-                                color: Colors.black.withOpacity(0.2),
-                                offset: const Offset(0, 1),
-                                blurRadius: 1,
-                              ),
-                            ],
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
                         ),
                       ],
                     ),
@@ -848,32 +904,44 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
     required Color color,
     required VoidCallback onTap,
   }) {
+    final bool isActive = label != 'Offline' && label != '0';
+    
     return GestureDetector(
       onTap: () {
         HapticFeedback.lightImpact();
         onTap();
       },
-      child: Container(
-        height: 110, // Increased height for better visibility
-        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: color.withOpacity(0.4),
-            width: 2,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: color.withOpacity(0.08),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
+      child: AnimatedBuilder(
+        animation: _pulseAnimation,
+        builder: (context, child) {
+          return Transform.scale(
+            scale: isActive ? _pulseAnimation.value : 1.0,
+            child: Container(
+              height: 110,
+              padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: color.withOpacity(isActive ? 0.5 : 0.3),
+                  width: isActive ? 2.5 : 1.5,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: color.withOpacity(isActive ? 0.15 : 0.05),
+                    blurRadius: isActive ? 15 : 8,
+                    offset: const Offset(0, 4),
+                    spreadRadius: isActive ? 1 : 0,
+                  ),
+                ],
+              ),
+              child: child,
             ),
-          ],
-        ),
+          );
+        },
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.center, // Center horizontally
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Stack(
               alignment: Alignment.center,
@@ -973,6 +1041,39 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
         child: Stack(
           alignment: Alignment.center,
           children: [
+            // Constant Radar Pulse Background
+            AnimatedBuilder(
+              animation: _pulseAnimation,
+              builder: (context, _) {
+                return Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Container(
+                      width: (btnSize + 40) * _pulseAnimation.value,
+                      height: (btnSize + 40) * _pulseAnimation.value,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: const Color(0xFFE53935).withOpacity(0.15 * (1.1 - (_pulseAnimation.value - 1.0) * 5)),
+                          width: 2,
+                        ),
+                      ),
+                    ),
+                    Container(
+                      width: (btnSize + 80) * (1.0 + (_pulseAnimation.value - 1.0) * 0.5),
+                      height: (btnSize + 80) * (1.0 + (_pulseAnimation.value - 1.0) * 0.5),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: const Color(0xFFE53935).withOpacity(0.08 * (1.1 - (_pulseAnimation.value - 1.0) * 5)),
+                          width: 1,
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
             // Outer glow ring (pulsing)
             AnimatedBuilder(
               animation: _welcomeAnimation,
@@ -2169,13 +2270,62 @@ class _DeviceSelectionDialog extends StatefulWidget {
 
 class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
   bool _showAllDevices = false;
+  bool _isBluetoothEnabled = true;
+  bool _isCheckingBluetooth = true;
   
   @override
   void initState() {
     super.initState();
+    _checkBluetoothState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<ChatProvider>().loadPairedDevices();
+      if (_isBluetoothEnabled) {
+        context.read<ChatProvider>().loadPairedDevices();
+      }
     });
+  }
+
+  Future<void> _checkBluetoothState() async {
+    try {
+      final isEnabled = await FlutterBluetoothSerial.instance.isOn;
+      if (mounted) {
+        setState(() {
+          _isBluetoothEnabled = isEnabled ?? false;
+          _isCheckingBluetooth = false;
+        });
+        // Reload devices if Bluetooth is enabled
+        if (_isBluetoothEnabled) {
+          context.read<ChatProvider>().loadPairedDevices();
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isBluetoothEnabled = false;
+          _isCheckingBluetooth = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _requestEnableBluetooth() async {
+    try {
+      // Request to enable Bluetooth
+      await FlutterBluetoothSerial.instance.requestEnable();
+      // Wait a bit then check again
+      await Future.delayed(const Duration(milliseconds: 500));
+      await _checkBluetoothState();
+    } catch (e) {
+      // User cancelled or error occurred
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Please enable Bluetooth in Settings'),
+            backgroundColor: AppColors.error,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -2204,17 +2354,22 @@ class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
             return Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Modern Header with Gradient
+                // Modern Header with Gradient - Changes color when Bluetooth is off
                 Container(
                   padding: const EdgeInsets.all(24),
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
-                      colors: [
-                        cyanBlue,
-                        cyanBlue.withOpacity(0.8),
-                      ],
+                      colors: _isBluetoothEnabled
+                          ? [
+                              cyanBlue,
+                              cyanBlue.withOpacity(0.8),
+                            ]
+                          : [
+                              Colors.orange,
+                              Colors.orange.withOpacity(0.8),
+                            ],
                     ),
                     borderRadius: const BorderRadius.only(
                       topLeft: Radius.circular(24),
@@ -2229,8 +2384,8 @@ class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
                           color: Colors.white.withOpacity(0.2),
                           borderRadius: BorderRadius.circular(12),
                         ),
-                        child: const Icon(
-                          Icons.bluetooth,
+                        child: Icon(
+                          _isBluetoothEnabled ? Icons.bluetooth : Icons.bluetooth_disabled,
                           color: Colors.white,
                           size: 28,
                         ),
@@ -2249,7 +2404,9 @@ class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              'Select an ESP32 device to connect',
+                              _isBluetoothEnabled
+                                  ? 'Select an ESP32 device to connect'
+                                  : 'Bluetooth is turned off',
                               style: AppTypography.bodySmall.copyWith(
                                 color: Colors.white.withOpacity(0.9),
                               ),
@@ -2265,115 +2422,146 @@ class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
                   ),
                 ),
                 
-                // Connection Status Card
+                // Connection Status Card - Shows Bluetooth off state
                 Padding(
                   padding: const EdgeInsets.all(20),
-                  child: Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: provider.isConnected 
-                          ? cyanBlue.withOpacity(0.1) 
-                          : Colors.grey.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: provider.isConnected 
-                            ? cyanBlue.withOpacity(0.3) 
-                            : Colors.grey.withOpacity(0.3),
-                        width: 1.5,
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(10),
+                  child: _isCheckingBluetooth
+                      ? Container(
+                          padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
-                            color: provider.isConnected 
-                                ? cyanBlue.withOpacity(0.2) 
-                                : Colors.grey.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(10),
+                            color: Colors.grey.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(16),
                           ),
-                          child: Icon(
-                            provider.isConnected ? Icons.bluetooth_connected : Icons.bluetooth_disabled,
-                            color: provider.isConnected ? cyanBlue : Colors.grey,
-                            size: 24,
+                          child: const Center(
+                            child: CircularProgressIndicator(),
                           ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                        )
+                      : Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: _isBluetoothEnabled
+                                ? (provider.isConnected 
+                                    ? cyanBlue.withOpacity(0.1) 
+                                    : Colors.grey.withOpacity(0.1))
+                                : Colors.orange.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: _isBluetoothEnabled
+                                  ? (provider.isConnected 
+                                      ? cyanBlue.withOpacity(0.3) 
+                                      : Colors.grey.withOpacity(0.3))
+                                  : Colors.orange.withOpacity(0.3),
+                              width: 1.5,
+                            ),
+                          ),
+                          child: Row(
                             children: [
-                              Text(
-                                provider.isConnected 
-                                    ? 'Connected' 
-                                    : 'Not Connected',
-                                style: AppTypography.bodyLarge.copyWith(
-                                  color: provider.isConnected ? cyanBlue : Colors.grey,
-                                  fontWeight: FontWeight.bold,
+                              Container(
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  color: _isBluetoothEnabled
+                                      ? (provider.isConnected 
+                                          ? cyanBlue.withOpacity(0.2) 
+                                          : Colors.grey.withOpacity(0.2))
+                                      : Colors.orange.withOpacity(0.2),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Icon(
+                                  _isBluetoothEnabled
+                                      ? (provider.isConnected 
+                                          ? Icons.bluetooth_connected 
+                                          : Icons.bluetooth_disabled)
+                                      : Icons.bluetooth_disabled,
+                                  color: _isBluetoothEnabled
+                                      ? (provider.isConnected ? cyanBlue : Colors.grey)
+                                      : Colors.orange,
+                                  size: 24,
                                 ),
                               ),
-                              const SizedBox(height: 4),
-                              Text(
-                                provider.isConnected 
-                                    ? 'Device: ${provider.selectedDevice?.name ?? "ESP32"}' 
-                                    : 'No device connected',
-                                style: AppTypography.bodySmall.copyWith(
-                                  color: AppColors.mediumGray,
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      _isBluetoothEnabled
+                                          ? (provider.isConnected 
+                                              ? 'Connected' 
+                                              : 'Not Connected')
+                                          : 'Bluetooth Off',
+                                      style: AppTypography.bodyLarge.copyWith(
+                                        color: _isBluetoothEnabled
+                                            ? (provider.isConnected ? cyanBlue : Colors.grey)
+                                            : Colors.orange,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      _isBluetoothEnabled
+                                          ? (provider.isConnected 
+                                              ? 'Device: ${provider.selectedDevice?.name ?? "ESP32"}' 
+                                              : 'No device connected')
+                                          : 'Please enable Bluetooth to connect',
+                                      style: AppTypography.bodySmall.copyWith(
+                                        color: AppColors.mediumGray,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ],
                           ),
                         ),
+                ),
+                
+                // Refresh button and title - Hidden when Bluetooth is off
+                if (_isBluetoothEnabled) ...[
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Paired Devices',
+                          style: AppTypography.bodyLarge.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.darkGray,
+                          ),
+                        ),
+                        ElevatedButton.icon(
+                          onPressed: provider.isConnecting ? null : () {
+                            provider.loadPairedDevices();
+                          },
+                          icon: provider.isConnecting 
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                  ),
+                                )
+                              : const Icon(Icons.refresh, size: 18),
+                          label: Text(provider.isConnecting ? 'Connecting...' : 'Refresh'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: cyanBlue,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        ),
                       ],
                     ),
                   ),
-                ),
+                  const SizedBox(height: 16),
+                ],
                 
-                // Refresh button and title
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Paired Devices',
-                        style: AppTypography.bodyLarge.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.darkGray,
-                        ),
-                      ),
-                      ElevatedButton.icon(
-                        onPressed: provider.isConnecting ? null : () {
-                          provider.loadPairedDevices();
-                        },
-                        icon: provider.isConnecting 
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                ),
-                              )
-                            : const Icon(Icons.refresh, size: 18),
-                        label: Text(provider.isConnecting ? 'Connecting...' : 'Refresh'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: cyanBlue,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                
-                // Device list
+                // Device list or Bluetooth off message
                 Expanded(
-                  child: provider.pairedDevices.isEmpty
+                  child: !_isBluetoothEnabled
                       ? Center(
                           child: SingleChildScrollView(
                             child: Padding(
@@ -2384,18 +2572,18 @@ class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
                                   Container(
                                     padding: const EdgeInsets.all(24),
                                     decoration: BoxDecoration(
-                                      color: Colors.grey.withOpacity(0.1),
+                                      color: Colors.orange.withOpacity(0.1),
                                       shape: BoxShape.circle,
                                     ),
                                     child: const Icon(
-                                      Icons.bluetooth_searching,
+                                      Icons.bluetooth_disabled,
                                       size: 64,
-                                      color: Colors.grey,
+                                      color: Colors.orange,
                                     ),
                                   ),
                                   const SizedBox(height: 24),
                                   Text(
-                                    'No paired devices found',
+                                    'Bluetooth is Turned Off',
                                     style: AppTypography.headlineSmall.copyWith(
                                       color: AppColors.darkGray,
                                       fontWeight: FontWeight.bold,
@@ -2403,17 +2591,72 @@ class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
                                   ),
                                   const SizedBox(height: 8),
                                   Text(
-                                    'Please pair with ESP32 device first',
+                                    'Please enable Bluetooth to connect to ESP32 devices',
                                     style: AppTypography.bodyMedium.copyWith(
                                       color: AppColors.mediumGray,
                                     ),
                                     textAlign: TextAlign.center,
+                                  ),
+                                  const SizedBox(height: 24),
+                                  ElevatedButton.icon(
+                                    onPressed: _requestEnableBluetooth,
+                                    icon: const Icon(Icons.bluetooth, size: 20),
+                                    label: const Text('Enable Bluetooth'),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.orange,
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                    ),
                                   ),
                                 ],
                               ),
                             ),
                           ),
                         )
+                      : provider.pairedDevices.isEmpty
+                          ? Center(
+                              child: SingleChildScrollView(
+                                child: Padding(
+                                  padding: const EdgeInsets.all(40),
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.all(24),
+                                        decoration: BoxDecoration(
+                                          color: Colors.grey.withOpacity(0.1),
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: const Icon(
+                                          Icons.bluetooth_searching,
+                                          size: 64,
+                                          color: Colors.grey,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 24),
+                                      Text(
+                                        'No paired devices found',
+                                        style: AppTypography.headlineSmall.copyWith(
+                                          color: AppColors.darkGray,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        'Please pair with ESP32 device first',
+                                        style: AppTypography.bodyMedium.copyWith(
+                                          color: AppColors.mediumGray,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            )
                       : Column(
                           children: [
                             Expanded(

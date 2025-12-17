@@ -218,7 +218,7 @@ class _EnhancedSplashScreenState extends State<EnhancedSplashScreen>
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     await Future.delayed(const Duration(milliseconds: 300));
 
-    if (authProvider.isAuthenticated && authProvider.userEmail != null) {
+    if (authProvider.isAuthenticated && authProvider.userUsername != null) {
       // Check if tutorial is required for this user
       final tutorialRequired = await authProvider.isTutorialRequired();
       

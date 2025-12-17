@@ -94,10 +94,21 @@ class CustomTextField extends StatelessWidget {
             borderSide: const BorderSide(color: AppColors.error, width: 2.0),
           ),
           filled: true,
-          fillColor: Colors.transparent,
+          fillColor: enabled ? Colors.transparent : AppColors.lightGray.withOpacity(0.1),
+          disabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(SoftUIDesign.inputBorderRadius),
+            borderSide: BorderSide(
+              color: AppColors.lightGray.withOpacity(0.3),
+              width: 1.0,
+            ),
+          ),
           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-          labelStyle: UnifiedTypography.formLabel,
-          hintStyle: UnifiedTypography.formHint,
+          labelStyle: UnifiedTypography.formLabel.copyWith(
+            color: enabled ? null : AppColors.textSecondary.withOpacity(0.6),
+          ),
+          hintStyle: UnifiedTypography.formHint.copyWith(
+            color: enabled ? null : AppColors.textSecondary.withOpacity(0.4),
+          ),
         ),
       ),
     );

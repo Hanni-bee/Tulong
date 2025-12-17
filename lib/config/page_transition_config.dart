@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 
 /// Global configuration for uniform page transitions
-/// Enhanced with scale + slide + fade for smoother, more polished transitions
+/// Optimized for performance: slide + fade only (no scale for better performance)
 class PageTransitionConfig {
-  /// Default transition duration for all pages (enhanced: 400ms)
-  static const Duration defaultDuration = Duration(milliseconds: 400);
+  /// Default transition duration for all pages (optimized: 300ms for snappier feel)
+  static const Duration defaultDuration = Duration(milliseconds: 300);
 
-  /// Exit transition duration (enhanced: 280ms)
-  static const Duration exitDuration = Duration(milliseconds: 280);
+  /// Exit transition duration (optimized: 250ms)
+  static const Duration exitDuration = Duration(milliseconds: 250);
 
   /// Default transition curve (enhanced: easeOutCubic for smoother motion)
   static const Curve defaultCurve = Curves.easeOutCubic;
@@ -54,89 +54,30 @@ class _SharedAxisTransition extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Enhanced entry animation: slide up + fade + scale (for incoming page)
-    final entrySlideAnimation = Tween<Offset>(
-      begin: const Offset(0.0, 0.06), // Slide up from 6% below
-      end: Offset.zero,
-    ).animate(
-      CurvedAnimation(
-        parent: animation,
-        curve: PageTransitionConfig.defaultCurve, // easeOutCubic
-      ),
-    );
-
-    final entryFadeAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(
-      CurvedAnimation(
-        parent: animation,
-        curve: PageTransitionConfig.defaultCurve, // easeOutCubic
-      ),
-    );
-
-    final entryScaleAnimation = Tween<double>(
-      begin: 0.96, // Start slightly scaled down
-      end: 1.0,
-    ).animate(
-      CurvedAnimation(
-        parent: animation,
-        curve: PageTransitionConfig.defaultCurve, // easeOutCubic
-      ),
-    );
-
-    // Enhanced exit animation: fade out + slide up + scale down (for outgoing page when going back)
-    final exitFadeAnimation = Tween<double>(
-      begin: 1.0,
-      end: 0.0,
-    ).animate(
-      CurvedAnimation(
-        parent: secondaryAnimation,
-        curve: PageTransitionConfig.exitCurve, // easeInCubic
-      ),
-    );
-
-    final exitSlideAnimation = Tween<Offset>(
-      begin: Offset.zero,
-      end: const Offset(0.0, -0.04), // Slide up on exit
-    ).animate(
-      CurvedAnimation(
-        parent: secondaryAnimation,
-        curve: PageTransitionConfig.exitCurve, // easeInCubic
-      ),
-    );
-
-    final exitScaleAnimation = Tween<double>(
-      begin: 1.0,
-      end: 0.96, // Slight scale down on exit
-    ).animate(
-      CurvedAnimation(
-        parent: secondaryAnimation,
-        curve: PageTransitionConfig.exitCurve, // easeInCubic
-      ),
-    );
-
-    // Combine entry animations for incoming page
+    // Performance optimization: Use only Slide + Fade (no Scale)
+    // Scale transitions are expensive as they trigger layout recalculations
+    // Slide and Fade are GPU-accelerated and much smoother
+    
+    // Entry transition: slide from right + fade in
+    // This is applied to the incoming page
     return SlideTransition(
-      position: entrySlideAnimation,
+      position: animation.drive(
+        Tween<Offset>(
+          begin: const Offset(0.3, 0.0), // Slide from right (30% of screen)
+          end: Offset.zero,
+        ).chain(CurveTween(curve: PageTransitionConfig.defaultCurve)),
+      ),
       child: FadeTransition(
-        opacity: entryFadeAnimation,
-        child: ScaleTransition(
-          scale: entryScaleAnimation,
-          // Apply exit animations only when going back (secondaryAnimation is active)
-          child: FadeTransition(
-            opacity: exitFadeAnimation,
-            child: SlideTransition(
-              position: exitSlideAnimation,
-              child: ScaleTransition(
-                scale: exitScaleAnimation,
-                child: child,
-              ),
-            ),
-          ),
+        opacity: animation.drive(
+          CurveTween(curve: PageTransitionConfig.defaultCurve),
         ),
+        child: RepaintBoundary(child: child),
       ),
     );
+    
+    // Note: Flutter automatically handles the exit transition via secondaryAnimation
+    // The outgoing page will use the same transition builder with secondaryAnimation
+    // We don't need to manually handle it here - Flutter's PageRoute handles stacking
   }
 }
 
@@ -147,8 +88,8 @@ extension UniformNavigationExtension on BuildContext {
     return Navigator.of(this).push<T>(
       PageRouteBuilder<T>(
         pageBuilder: (context, animation, secondaryAnimation) => page,
-        transitionDuration: PageTransitionConfig.defaultDuration, // 400ms
-        reverseTransitionDuration: PageTransitionConfig.exitDuration, // 280ms
+        transitionDuration: PageTransitionConfig.defaultDuration, // 300ms
+        reverseTransitionDuration: PageTransitionConfig.exitDuration, // 250ms
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           return _SharedAxisTransition(
             animation: animation,
@@ -165,8 +106,8 @@ extension UniformNavigationExtension on BuildContext {
     return Navigator.of(this).pushReplacement<T, TO>(
       PageRouteBuilder<T>(
         pageBuilder: (context, animation, secondaryAnimation) => page,
-        transitionDuration: PageTransitionConfig.defaultDuration, // 400ms
-        reverseTransitionDuration: PageTransitionConfig.exitDuration, // 280ms
+        transitionDuration: PageTransitionConfig.defaultDuration, // 300ms
+        reverseTransitionDuration: PageTransitionConfig.exitDuration, // 250ms
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           return _SharedAxisTransition(
             animation: animation,
@@ -183,8 +124,8 @@ extension UniformNavigationExtension on BuildContext {
     return Navigator.of(this).pushAndRemoveUntil<T>(
       PageRouteBuilder<T>(
         pageBuilder: (context, animation, secondaryAnimation) => page,
-        transitionDuration: PageTransitionConfig.defaultDuration, // 400ms
-        reverseTransitionDuration: PageTransitionConfig.exitDuration, // 280ms
+        transitionDuration: PageTransitionConfig.defaultDuration, // 300ms
+        reverseTransitionDuration: PageTransitionConfig.exitDuration, // 250ms
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           return _SharedAxisTransition(
             animation: animation,

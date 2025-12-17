@@ -25,18 +25,13 @@ class MainNavigation extends StatefulWidget {
 
 class _MainNavigationState extends State<MainNavigation> with TickerProviderStateMixin {
   int _currentIndex = 0;
-  int _previousIndex = 0;
   late AnimationController _animationController;
   late AnimationController _iconAnimationController;
   late Animation<double> _iconScaleAnimation;
-  late AnimationController _pageExitController;
   late AnimationController _pageEntranceController;
-  late Animation<double> _pageExitFade;
-  late Animation<Offset> _pageExitSlide;
-  late Animation<double> _pageExitScale;
   late Animation<double> _pageEntranceFade;
   late Animation<Offset> _pageEntranceSlide;
-  late Animation<double> _pageEntranceScale;
+  // Removed _pageEntranceScale - scale animations are expensive and cause lag
   
   // Floating bottom nav animation
   late AnimationController _floatingNavController;
@@ -99,39 +94,10 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
       duration: const Duration(milliseconds: 280),
       vsync: this,
     );
-    // Enhanced exit animation: fade out + slide + scale (smooth and polished)
-    _pageExitController = AnimationController(
-      duration: const Duration(milliseconds: 280),
-      vsync: this,
-    )..value = 0.0; // Start hidden
     
-    _pageExitFade = Tween<double>(
-      begin: 1.0,
-      end: 0.0,
-    ).animate(CurvedAnimation(
-      parent: _pageExitController,
-      curve: Curves.easeInCubic,
-    ));
-    
-    _pageExitSlide = Tween<Offset>(
-      begin: Offset.zero,
-      end: const Offset(0, -0.04), // Slide up on exit
-    ).animate(CurvedAnimation(
-      parent: _pageExitController,
-      curve: Curves.easeInCubic,
-    ));
-    
-    _pageExitScale = Tween<double>(
-      begin: 1.0,
-      end: 0.96, // Slight scale down on exit
-    ).animate(CurvedAnimation(
-      parent: _pageExitController,
-      curve: Curves.easeInCubic,
-    ));
-    
-    // Enhanced entrance animation: fade in + slide up + scale (smooth entrance)
+    // Optimized entrance animation: fade in + slide only (no scale for better performance)
     _pageEntranceController = AnimationController(
-      duration: const Duration(milliseconds: 400),
+      duration: const Duration(milliseconds: 300), // Reduced from 400ms for snappier feel
       vsync: this,
     )..value = 1.0; // Start visible
     
@@ -144,20 +110,15 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
     ));
     
     _pageEntranceSlide = Tween<Offset>(
-      begin: const Offset(0, 0.06), // Slide up from 6% below
+      begin: const Offset(0, 0.04), // Reduced slide distance (4% instead of 6%)
       end: Offset.zero,
     ).animate(CurvedAnimation(
       parent: _pageEntranceController,
       curve: Curves.easeOutCubic,
     ));
     
-    _pageEntranceScale = Tween<double>(
-      begin: 0.96, // Start slightly scaled down
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _pageEntranceController,
-      curve: Curves.easeOutCubic,
-    ));
+    // Removed scale animation - it's expensive and causes lag
+    // Scale transitions trigger layout recalculations which are costly
 
     // Smoother, subtle scale animation for icons
     _iconScaleAnimation = Tween<double>(
@@ -209,17 +170,21 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
 
     // Glow pulse animation (from prototype: pulsing glow behind active icon, opacity [0.5, 0.8, 0.5], infinite)
     _glowPulseController = AnimationController(
-      duration: PrototypeAnimations.pulseEffectDuration, // 2000ms
+      duration: const Duration(milliseconds: 650),
       vsync: this,
-    )..repeat(reverse: true);
+    );
 
-    _glowPulseAnimation = Tween<double>(
-      begin: 0.5,
-      end: 0.8,
-    ).animate(CurvedAnimation(
+    // Burst-only pulse (no continuous ticker) to reduce jank
+    _glowPulseAnimation = CurvedAnimation(
       parent: _glowPulseController,
-      curve: Curves.easeInOut,
-    ));
+      curve: Curves.easeOutCubic,
+    );
+
+    _glowPulseController.addStatusListener((status) {
+      if (status == AnimationStatus.completed) {
+        _glowPulseController.value = 0.0;
+      }
+    });
 
     // Floating bottom nav animation: slide up from bottom + fade in
     _floatingNavController = AnimationController(
@@ -274,7 +239,6 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
   void dispose() {
     _animationController.dispose();
     _iconAnimationController.dispose();
-    _pageExitController.dispose();
     _pageEntranceController.dispose();
     _floatingNavController.dispose();
     _glowPulseController.dispose();
@@ -317,35 +281,24 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
       if (_iconWobbleControllers.containsKey(index)) {
         _iconWobbleControllers[index]!.forward(from: 0);
       }
+
+      // Short glow burst (no continuous pulse)
+      _glowPulseController.forward(from: 0.0);
       
       // Start scale animation
       _iconAnimationController.forward();
-      
-      // Store previous index for exit animation
-      _previousIndex = _currentIndex;
-      
-      // Reset controllers for clean transition
-      _pageExitController.reset();
+
+      // Switch immediately but hidden, then animate entrance
       _pageEntranceController.reset();
-      
-      // Start exit animation first (fade out + slide up + scale)
-      _pageExitController.forward().then((_) {
-        // After exit completes, switch page and start entrance
-        setState(() {
-          _currentIndex = index;
-        });
-        
-        // Small delay for smoother transition (10ms)
-        Future.delayed(const Duration(milliseconds: 10), () {
-          // Start entrance animation (fade in + slide up + scale)
-          _pageEntranceController.forward().then((_) {
-            _iconAnimationController.reverse();
-            // Reset exit controller for next transition
-            _pageExitController.reset();
-            // Keep entrance visible for next transition
-            _pageEntranceController.value = 1.0;
-          });
-        });
+      setState(() {
+        _currentIndex = index;
+      });
+
+      _pageEntranceController.forward().then((_) {
+        _iconAnimationController.reverse();
+        if (mounted) {
+          _pageEntranceController.value = 1.0;
+        }
       });
     }
   }
@@ -357,69 +310,30 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
       backgroundColor: AppColors.neumorphicBase,
       body: ScrollConfiguration(
         behavior: const _NoScrollbarsBehavior(),
-        child: Stack(
-          children: [
-            // Exiting page (only visible during exit animation)
-            if (_pageExitController.value > 0.0)
-              AnimatedBuilder(
-                animation: Listenable.merge([
-                  _pageExitController,
-                  _pageExitFade,
-                  _pageExitSlide,
-                  _pageExitScale,
-                ]),
-                builder: (context, child) {
-                  return Positioned.fill(
-                    child: IgnorePointer(
-                      child: FadeTransition(
-                        opacity: _pageExitFade,
-                        child: SlideTransition(
-                          position: _pageExitSlide,
-                          child: ScaleTransition(
-                            scale: _pageExitScale,
-                            child: IndexedStack(
-                              index: _previousIndex,
-                              children: _screens,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
+        child: RepaintBoundary(
+          child: FadeTransition(
+            opacity: _pageEntranceFade,
+            child: SlideTransition(
+              position: _pageEntranceSlide,
+              child: IndexedStack(
+                index: _currentIndex,
+                children: List.generate(_screens.length, (i) {
+                  return TickerMode(
+                    enabled: i == _currentIndex,
+                    child: RepaintBoundary(child: _screens[i]),
                   );
-                },
+                }),
               ),
-            // Entering page (current page with entrance animation)
-            AnimatedBuilder(
-              animation: Listenable.merge([
-                _pageEntranceController,
-                _pageEntranceFade,
-                _pageEntranceSlide,
-                _pageEntranceScale,
-              ]),
-              builder: (context, child) {
-                return FadeTransition(
-                  opacity: _pageEntranceFade,
-                  child: SlideTransition(
-                    position: _pageEntranceSlide,
-                    child: ScaleTransition(
-                      scale: _pageEntranceScale,
-                      child: IndexedStack(
-                        index: _currentIndex,
-                        children: _screens,
-                      ),
-                    ),
-                  ),
-                );
-              },
             ),
-          ],
+          ),
         ),
       ),
       bottomNavigationBar: FadeTransition(
         opacity: _floatingNavFade,
         child: SlideTransition(
           position: _floatingNavSlide,
-          child: Container(
+          child: RepaintBoundary(
+            child: Container(
             margin: const EdgeInsets.all(16),
             padding: EdgeInsets.zero, // transparent feel, no extra padding
             decoration: BoxDecoration(
@@ -471,6 +385,7 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
                     child: AnimatedBuilder(
                       animation: _glowPulseController,
                       builder: (context, child) {
+                        final pulse = _glowPulseAnimation.value; // 0..1 burst
                         return Container(
                           margin: const EdgeInsets.symmetric(horizontal: 6),
                           decoration: BoxDecoration(
@@ -478,7 +393,9 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
                             borderRadius: BorderRadius.circular(20),
                             boxShadow: [
                               BoxShadow(
-                                color: _navigationItems[_currentIndex].color.withOpacity(0.15 * _glowPulseAnimation.value),
+                                color: _navigationItems[_currentIndex]
+                                    .color
+                                    .withOpacity(0.10 + 0.10 * pulse),
                                 blurRadius: 8,
                                 spreadRadius: 1,
                               ),
@@ -503,7 +420,8 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
         ),
       ),
     ),
-  ),
+            ),
+          ),
 );
   }
 
@@ -640,7 +558,7 @@ class _AnimatedNavItemState extends State<_AnimatedNavItem>
             final baseScale = widget.isSelected ? widget.iconScaleAnimation.value : 1.0;
             final wobbleScale = widget.iconWobbleScale?.value ?? 1.0;
             final wobbleRotate = widget.iconWobbleRotate?.value ?? 0.0;
-            final glowOpacity = widget.isSelected ? widget.glowPulse.value : 0.0;
+            final glowOpacity = widget.isSelected ? (0.6 + 0.4 * widget.glowPulse.value) : 0.0;
             final pressScale = _pressScale.value;
 
             return Transform.scale(

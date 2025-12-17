@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 /// Service for sending emails via EmailJS
+/// DEPRECATED: Email verification is no longer used. This service is kept for migration purposes only.
+@Deprecated('Email verification is no longer supported. Use biometric verification instead.')
 class EmailJSService {
   static const String _baseUrl = 'https://api.emailjs.com/api/v1.0/email/send';
   static const String _serviceId = 'service_5d15f9c';

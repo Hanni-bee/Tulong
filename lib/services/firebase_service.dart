@@ -42,8 +42,10 @@ class FirebaseService {
   // SQLite service for offline functionality
   final SQLiteService _sqliteService = SQLiteService();
   
-  // Google Sign-In - Android compatible implementation
+  // Google Sign-In - REMOVED (SSO no longer supported)
+  @Deprecated('SSO is no longer supported. Use username + password authentication.')
   Future<UserCredential?> signInWithGoogle() async {
+    throw Exception('Google Sign-In is no longer supported. Please use username + password authentication.');
     try {
       print('🔐 Starting Google Sign-In process...');
 
@@ -159,18 +161,18 @@ class FirebaseService {
       }
 
       // Save user to SQLite for offline access
-      await _saveUserToSQLite(
-        email: email,
-        firstName: displayName.split(' ')[0],
-        lastName: displayName.split(' ').length > 1 ? displayName.split(' ').sublist(1).join(' ') : '',
-        address: '',
-        region: '',
-        city: '',
-        barangay: '',
-        
-        hashedPassword: hashedTempPassword, // Store the hashed temp password
-        firebaseUid: user.uid,
-      );
+      // Note: This method is deprecated as we no longer use Google SSO
+      // await _saveUserToSQLite(
+      //   username: email, // Using email as username for legacy Google users
+      //   firstName: displayName.split(' ')[0],
+      //   lastName: displayName.split(' ').length > 1 ? displayName.split(' ').sublist(1).join(' ') : '',
+      //   address: '',
+      //   region: '',
+      //   city: '',
+      //   barangay: '',
+      //   hashedPassword: hashedTempPassword,
+      //   firebaseUid: user.uid,
+      // );
 
       // Check if this is a new Google user
       final prefs = await SharedPreferences.getInstance();
@@ -201,12 +203,11 @@ class FirebaseService {
   // Current user
   User? get currentUser => auth.currentUser;
 
-  // Helper method to save user to SQLite for offline access
+  // Helper method to save user to SQLite for offline access (username-based)
   Future<void> _saveUserToSQLite({
-    required String email,
+    required String username, // Replaced email with username
     required String firstName,
     required String lastName,
-    String? phone,
     required String address,
     required String region,
     String? province,
@@ -217,18 +218,18 @@ class FirebaseService {
   }) async {
     try {
       // Check if user already exists in SQLite
-      final existingUser = await _sqliteService.getUserByEmail(email);
+      final existingUser = await _sqliteService.getUserByUsername(username);
       
       if (existingUser != null) {
         // Update existing user
         await _sqliteService.updateUser(existingUser['id'], {
-          'firebase_uid': firebaseUid,
+          'firebase_uid': firebaseUid ?? username,
           'first_name': firstName,
           'last_name': lastName,
-          'phone': phone,
+          'username': username,
           'street': address, // SQLite uses 'street' column
           'region': region,
-          'province': province,
+          'province': province ?? '',
           'city': city,
           'barangay': barangay,
           'password': hashedPassword,
@@ -237,20 +238,19 @@ class FirebaseService {
           'last_seen': DateTime.now().millisecondsSinceEpoch,
           'is_synced': firebaseUid != null ? 1 : 0,
           'sync_timestamp': firebaseUid != null ? DateTime.now().millisecondsSinceEpoch : null,
-          'is_verified': 1, // Email verification completed
+          'is_verified': 1, // Biometric verification completed
         });
-        print('SQLite user updated: $email');
+        print('SQLite user updated: $username');
       } else {
         // Create new user
         await _sqliteService.insertUser({
-          'firebase_uid': firebaseUid,
-          'email': email,
+          'firebase_uid': firebaseUid ?? username,
+          'username': username,
           'first_name': firstName,
           'last_name': lastName,
-          'phone': phone,
           'street': address, // SQLite uses 'street' column
           'region': region,
-          'province': province,
+          'province': province ?? '',
           'city': city,
           'barangay': barangay,
           'password': hashedPassword,
@@ -260,11 +260,10 @@ class FirebaseService {
           'last_seen': DateTime.now().millisecondsSinceEpoch,
           'is_synced': firebaseUid != null ? 1 : 0,
           'sync_timestamp': firebaseUid != null ? DateTime.now().millisecondsSinceEpoch : null,
-          'is_google_auth': 0,
           'address_setup_completed': 0,
-          'is_verified': 1, // Email verification completed
+          'is_verified': 1, // Biometric verification completed
         });
-        print('SQLite user created: $email');
+        print('SQLite user created: $username');
       }
     } catch (e) {
       print('Error saving user to SQLite: $e');
@@ -444,18 +443,18 @@ class FirebaseService {
       });
 
       // Save to SQLite
-      await _saveUserToSQLite(
-        email: email,
-        firstName: displayName.split(' ')[0],
-        lastName: displayName.split(' ').length > 1 ? displayName.split(' ').sublist(1).join(' ') : '',
-        address: '',
-        region: '',
-        city: '',
-        barangay: '',
-        
-        hashedPassword: hashedPassword,
-        firebaseUid: user.uid,
-      );
+      // Note: This method is deprecated as we no longer use email authentication
+      // await _saveUserToSQLite(
+      //   username: email, // Using email as username for legacy users
+      //   firstName: displayName.split(' ')[0],
+      //   lastName: displayName.split(' ').length > 1 ? displayName.split(' ').sublist(1).join(' ') : '',
+      //   address: '',
+      //   region: '',
+      //   city: '',
+      //   barangay: '',
+      //   hashedPassword: hashedPassword,
+      //   firebaseUid: user.uid,
+      // );
 
       print('✅ Database entry created for existing user: $email');
       _addDebugLog('✅ Database entry created for existing user: $email');
@@ -483,7 +482,142 @@ class FirebaseService {
     }
   }
 
-  // Authentication methods
+  // Username-based authentication (offline-first, Firebase Realtime Database only)
+  // Note: This does NOT use Firebase Auth (which requires email)
+  // Uses Firebase Realtime Database for sync only
+  Future<bool> signUpWithUsername({
+    required String username,
+    required String password,
+    required String firstName,
+    required String lastName,
+    required String address,
+    required String region,
+    String? province,
+    required String city,
+    required String barangay,
+  }) async {
+    try {
+      // Validate username
+      final usernameError = InputValidator.validateUsername(username);
+      if (usernameError != null) {
+        throw Exception(usernameError);
+      }
+      
+      // Validate other inputs
+      final passwordError = InputValidator.validatePassword(password);
+      if (passwordError != null) {
+        throw Exception(passwordError);
+      }
+      
+      final firstNameError = InputValidator.validateName(firstName, 'First name');
+      if (firstNameError != null) {
+        throw Exception(firstNameError);
+      }
+      
+      final lastNameError = InputValidator.validateName(lastName, 'Last name');
+      if (lastNameError != null) {
+        throw Exception(lastNameError);
+      }
+      
+      final addressError = InputValidator.validateAddress(address);
+      if (addressError != null) {
+        throw Exception(addressError);
+      }
+      
+      final regionError = InputValidator.validateLocation(region, 'Region');
+      if (regionError != null) {
+        throw Exception(regionError);
+      }
+      
+      final cityError = InputValidator.validateLocation(city, 'City');
+      if (cityError != null) {
+        throw Exception(cityError);
+      }
+      
+      final barangayError = InputValidator.validateLocation(barangay, 'Barangay');
+      if (barangayError != null) {
+        throw Exception(barangayError);
+      }
+
+      // Sanitize inputs
+      final sanitizedFirstName = InputValidator.sanitizeText(firstName);
+      final sanitizedLastName = InputValidator.sanitizeText(lastName);
+      final sanitizedAddress = InputValidator.sanitizeText(address);
+      final sanitizedRegion = InputValidator.sanitizeText(region);
+      final sanitizedProvince = province != null ? InputValidator.sanitizeText(province) : '';
+      final sanitizedCity = InputValidator.sanitizeText(city);
+      final sanitizedBarangay = InputValidator.sanitizeText(barangay);
+
+      // Check if username already exists
+      final userSnapshot = await database.ref('users/$username').get();
+      if (userSnapshot.exists) {
+        throw Exception('Username already exists');
+      }
+
+      // Create user data in Firebase Realtime Database
+      final userData = {
+        'FirstName': sanitizedFirstName,
+        'LastName': sanitizedLastName,
+        'Username': username.trim(),
+        'Address': sanitizedAddress,
+        'Region': sanitizedRegion,
+        'Province': sanitizedProvince,
+        'City': sanitizedCity,
+        'Barangay': sanitizedBarangay,
+        'Password': _hashPassword(password),
+        'createdAt': ServerValue.timestamp,
+        'isOnline': false,
+        'lastSeen': ServerValue.timestamp,
+        'isVerified': true, // Biometric verification completed
+      };
+
+      // Save to Firebase Realtime Database
+      await database.ref('users/$username').set(userData);
+      
+      print('✅ User saved to Firebase Realtime Database: $username');
+      return true;
+    } catch (e) {
+      print('❌ Firebase signup failed: $e');
+      throw Exception('Sign up failed: ${e.toString()}');
+    }
+  }
+
+  // Sign in with username (Firebase Realtime Database only, not Firebase Auth)
+  Future<Map<String, dynamic>?> signInWithUsername({
+    required String username,
+    required String password,
+  }) async {
+    try {
+      // Get user from Firebase Realtime Database
+      final userSnapshot = await database.ref('users/$username').get();
+      
+      if (!userSnapshot.exists) {
+        return null; // User not found
+      }
+
+      final userData = Map<String, dynamic>.from(userSnapshot.value as Map);
+      
+      // Verify password
+      final hashedPassword = _hashPassword(password);
+      if (userData['Password'] != hashedPassword) {
+        return null; // Invalid password
+      }
+
+      // Update last seen
+      await database.ref('users/$username').update({
+        'isOnline': true,
+        'lastSeen': ServerValue.timestamp,
+      });
+
+      return userData;
+    } catch (e) {
+      print('❌ Firebase sign-in failed: $e');
+      return null;
+    }
+  }
+
+  // Legacy Firebase Auth methods - DEPRECATED
+  @Deprecated('Use signUpWithUsername instead')
   Future<UserCredential?> signUpWithEmail({
     required String email,
     required String password,
@@ -502,8 +636,10 @@ class FirebaseService {
       print('   Region value: "$region" (length: ${region.length})');
       print('   Region bytes: ${region.codeUnits}');
       
+      // Note: This method is deprecated - email authentication has been removed
+      // Using username validation instead (treating email as username for legacy compatibility)
       final validationErrors = InputValidator.validateUserInput(
-        email: email,
+        username: email, // Using email as username for legacy compatibility
         password: password,
         confirmPassword: password, // For signup, password serves as confirmation
         firstName: firstName,
@@ -616,20 +752,19 @@ class FirebaseService {
         }
 
         // Save user to SQLite for offline access
-        await _saveUserToSQLite(
-          email: email.trim(),
-          firstName: sanitizedFirstName,
-          lastName: sanitizedLastName,
-          phone: phone,
-          address: sanitizedAddress,
-          region: sanitizedRegion,
-          province: sanitizedProvince,
-          city: sanitizedCity,
-          barangay: sanitizedBarangay,
-          
-          hashedPassword: _hashPassword(password),
-          firebaseUid: userCredential.user!.uid,
-        );
+        // Note: This method is deprecated - email authentication has been removed
+        // await _saveUserToSQLite(
+        //   username: email.trim(), // Using email as username for legacy compatibility
+        //   firstName: sanitizedFirstName,
+        //   lastName: sanitizedLastName,
+        //   address: sanitizedAddress,
+        //   region: sanitizedRegion,
+        //   province: sanitizedProvince,
+        //   city: sanitizedCity,
+        //   barangay: sanitizedBarangay,
+        //   hashedPassword: _hashPassword(password),
+        //   firebaseUid: userCredential.user!.uid,
+        // );
 
         // Mark user as new for tutorial purposes
         final prefs = await SharedPreferences.getInstance();
@@ -646,6 +781,7 @@ class FirebaseService {
     }
   }
 
+  @Deprecated('Use signInWithUsername instead')
   Future<UserCredential?> signInWithEmail({
     required String email,
     required String password,
@@ -759,18 +895,18 @@ class FirebaseService {
       final updatedUserData = await database.ref('users/$uid').get();
       if (updatedUserData.exists) {
         final finalUserData = updatedUserData.value as Map;
-        await _saveUserToSQLite(
-          email: email.trim(),
-          firstName: finalUserData['FirstName'] ?? '',
-          lastName: finalUserData['LastName'] ?? '',
-          address: finalUserData['Address'] ?? '',
-          region: finalUserData['Region'] ?? '',
-          city: finalUserData['City'] ?? '',
-          barangay: finalUserData['Barangay'] ?? '',
-          
-          hashedPassword: newHashedPassword,
-          firebaseUid: uid,
-        );
+        // Note: This method is deprecated - email authentication has been removed
+        // await _saveUserToSQLite(
+        //   username: email.trim(), // Using email as username for legacy compatibility
+        //   firstName: finalUserData['FirstName'] ?? '',
+        //   lastName: finalUserData['LastName'] ?? '',
+        //   address: finalUserData['Address'] ?? '',
+        //   region: finalUserData['Region'] ?? '',
+        //   city: finalUserData['City'] ?? '',
+        //   barangay: finalUserData['Barangay'] ?? '',
+        //   hashedPassword: newHashedPassword,
+        //   firebaseUid: uid,
+        // );
       }
 
       // Step 9: Log analytics

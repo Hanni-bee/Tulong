@@ -28,19 +28,19 @@ class SoftUIDesign {
     final adjustedElevation = elevation.clamp(0.0, 8.0);
     
     return [
-      // Main shadow - soft and diffused
+      // Main shadow - slightly tighter and less blurry for better performance
       BoxShadow(
         color: color,
-        blurRadius: adjustedElevation * 6,
-        offset: Offset(0, adjustedElevation * 2),
+        blurRadius: adjustedElevation * 4, // Was * 6
+        offset: Offset(0, adjustedElevation * 1.5), // Was * 2
         spreadRadius: 0,
       ),
-      // Subtle highlight for soft UI effect
-      if (elevation > 0)
+      // Subtle highlight - only for higher elevations to save on rasterization
+      if (elevation >= 4.0)
         BoxShadow(
-          color: Colors.white.withOpacity(0.5),
-          blurRadius: adjustedElevation * 3,
-          offset: Offset(0, -(adjustedElevation * 1)),
+          color: Colors.white.withOpacity(0.4),
+          blurRadius: adjustedElevation * 2, // Was * 3
+          offset: Offset(0, -(adjustedElevation * 0.5)), // Was * 1
           spreadRadius: 0,
         ),
     ];

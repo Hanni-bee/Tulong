@@ -31,11 +31,12 @@ class OfflineAuthService {
     });
   }
 
-  // Offline sign up
+  // Offline sign up (deprecated - use biometric verification screen instead)
+  @Deprecated('Use biometric verification screen for registration')
   Future<Map<String, dynamic>> signUpOffline({
     required String firstName,
     required String lastName,
-    required String email,
+    required String username, // Replaced email with username
     required String address,
     required String region,
     required String city,
@@ -44,9 +45,9 @@ class OfflineAuthService {
   }) async {
     try {
       // Check if user already exists
-      final existingUser = await _sqliteService.getUserByEmail(email);
+      final existingUser = await _sqliteService.getUserByUsername(username);
       if (existingUser != null) {
-        throw Exception('User with this email already exists');
+        throw Exception('User with this username already exists');
       }
 
       // Hash password
@@ -56,8 +57,8 @@ class OfflineAuthService {
       final userData = {
         'first_name': firstName,
         'last_name': lastName,
-        'email': email,
-        'address': address,
+        'username': username, // Replaced email with username
+        'street': address,
         'region': region,
         'city': city,
         'barangay': barangay,
@@ -65,6 +66,7 @@ class OfflineAuthService {
         'is_online': 0,
         'created_at': DateTime.now().millisecondsSinceEpoch,
         'is_synced': 0,
+        'is_verified': 1, // Biometric verification completed
       };
 
       // Save to SQLite
@@ -100,12 +102,12 @@ class OfflineAuthService {
 
   // Offline sign in
   Future<Map<String, dynamic>> signInOffline({
-    required String email,
+    required String username, // Replaced email with username
     required String password,
   }) async {
     try {
       // Get user from SQLite
-      final user = await _sqliteService.getUserByEmail(email);
+      final user = await _sqliteService.getUserByUsername(username);
       if (user == null) {
         throw Exception('User not found');
       }
@@ -207,32 +209,34 @@ class OfflineAuthService {
   Future<void> _syncUserToFirebase(Map<String, dynamic> user) async {
     try {
       if (await _networkService.isOnline()) {
-        // Create Firebase user
-        final userCredential = await _firebaseService.auth.createUserWithEmailAndPassword(
-          email: user['email'],
-          password: 'temp_password', // You might want to handle this differently
-        );
-
-        if (userCredential.user != null) {
+        // Sync to Firebase using username as key
+        final username = user['username'] ?? user['email']; // Support migration
+        if (username != null) {
           // Update user data in Firebase
-          await _firebaseService.database.ref('users/${userCredential.user!.uid}').set({
+          await _firebaseService.database.ref('users/$username').set({
             'FirstName': user['first_name'],
             'LastName': user['last_name'],
-            'Email': user['email'],
-            'Address': user['address'],
+            'Username': username,
+            'Address': user['street'] ?? user['address'],
             'Region': user['region'],
+            'Province': user['province'] ?? '',
             'City': user['city'],
             'Barangay': user['barangay'],
             'Password': user['password'],
             'createdAt': user['created_at'],
             'isOnline': user['is_online'] == 1,
             'lastSeen': user['last_seen'],
+            'isVerified': user['is_verified'] == 1,
           });
 
           // Mark as synced in SQLite
-          await _sqliteService.markUserAsSynced(user['id'], userCredential.user!.uid);
+          await _sqliteService.updateUser(user['id'], {
+            'firebase_uid': username,
+            'is_synced': 1,
+            'sync_timestamp': DateTime.now().millisecondsSinceEpoch,
+          });
           
-          print('✅ User synced to Firebase: ${user['email']}');
+          print('✅ User synced to Firebase: $username');
         }
       }
     } catch (e) {
@@ -308,8 +312,12 @@ class OfflineAuthService {
   // Get current user ID
   int? get currentUserId => _currentUser?['id'];
 
-  // Get current user email
-  String? get currentUserEmail => _currentUser?['email'];
+  // Get current user username
+  String? get currentUserUsername => _currentUser?['username'];
+  
+  // Legacy method for migration
+  @Deprecated('Use currentUserUsername instead')
+  String? get currentUserEmail => _currentUser?['username'];
 
   // Get current user name
   String? get currentUserName => '${_currentUser?['first_name']} ${_currentUser?['last_name']}';

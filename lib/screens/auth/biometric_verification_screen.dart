@@ -1,0 +1,497 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:local_auth/local_auth.dart';
+import 'package:flutter_animate/flutter_animate.dart';
+import '../../constants/app_colors.dart';
+import '../../constants/unified_typography.dart';
+import '../../services/biometric_service.dart';
+import '../../services/sqlite_service.dart';
+import '../../services/firebase_service.dart';
+import 'package:provider/provider.dart';
+import '../../providers/auth_provider.dart';
+import 'dart:io';
+
+/// Biometric verification screen shown after registration form submission
+/// This screen verifies the user's identity using device biometrics
+/// After successful verification, user data is saved immediately
+class BiometricVerificationScreen extends StatefulWidget {
+  final Map<String, dynamic> registrationData;
+
+  const BiometricVerificationScreen({
+    super.key,
+    required this.registrationData,
+  });
+
+  @override
+  State<BiometricVerificationScreen> createState() => _BiometricVerificationScreenState();
+}
+
+class _BiometricVerificationScreenState extends State<BiometricVerificationScreen> {
+  final BiometricService _biometricService = BiometricService();
+  bool _isVerifying = false;
+  bool _isVerified = false;
+  bool _hasError = false;
+  String? _errorMessage;
+  bool _isDeviceSupported = false;
+  bool _hasEnrolledBiometrics = false;
+  List<BiometricType> _availableBiometrics = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _checkBiometricSupport();
+  }
+
+  Future<void> _checkBiometricSupport() async {
+    try {
+      final isSupported = await _biometricService.isDeviceSupported();
+      final hasEnrolled = await _biometricService.hasEnrolledBiometrics();
+      final available = await _biometricService.getAvailableBiometrics();
+
+      // Filter to only show fingerprint (remove face recognition)
+      final fingerprintOnly = available.where((type) => type == BiometricType.fingerprint).toList();
+
+      if (mounted) {
+        setState(() {
+          _isDeviceSupported = isSupported;
+          _hasEnrolledBiometrics = hasEnrolled;
+          _availableBiometrics = fingerprintOnly; // Only fingerprint
+        });
+      }
+    } catch (e) {
+      print('Error checking biometric support: $e');
+    }
+  }
+
+  Future<void> _authenticateWithBiometrics() async {
+    if (_isVerifying || _isVerified) return;
+
+    setState(() {
+      _isVerifying = true;
+      _hasError = false;
+      _errorMessage = null;
+    });
+
+    try {
+      // Check if device supports biometrics and has enrolled biometrics
+      if (!_isDeviceSupported || !_hasEnrolledBiometrics) {
+        throw Exception('Fingerprint is not set up. Please set up fingerprint in device settings.');
+      }
+
+      // Perform biometric authentication (fingerprint only)
+      // The OS will show fingerprint dialog if available
+      final success = await _biometricService.authenticate(
+        reason: 'Verify your identity using fingerprint',
+      );
+
+      if (success) {
+        // Authentication successful - save user data immediately
+        try {
+          await _saveUserData();
+          
+          if (mounted) {
+            setState(() {
+              _isVerified = true;
+              _isVerifying = false;
+            });
+            
+            // Show success message
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Verification Complete!'),
+                backgroundColor: AppColors.success,
+                duration: Duration(seconds: 2),
+              ),
+            );
+          }
+        } catch (saveError) {
+          // Error saving user data
+          print('❌ Error saving user data after biometric verification: $saveError');
+          if (mounted) {
+            setState(() {
+              _isVerifying = false;
+              _hasError = true;
+              _errorMessage = 'Verification succeeded but failed to save user data. Please try again.';
+            });
+          }
+        }
+      } else {
+        // Authentication failed or cancelled
+        if (mounted) {
+          setState(() {
+            _isVerifying = false;
+            _hasError = true;
+            _errorMessage = 'Fingerprint verification failed or was cancelled. Please try again.';
+          });
+        }
+      }
+    } catch (e) {
+      print('❌ Biometric authentication error: $e');
+      if (mounted) {
+        setState(() {
+          _isVerifying = false;
+          _hasError = true;
+          _errorMessage = e.toString().replaceFirst('Exception: ', '');
+        });
+      }
+    }
+  }
+
+  /// Save user data immediately after successful biometric verification
+  /// This happens automatically - no button press needed
+  Future<void> _saveUserData() async {
+    try {
+      final data = widget.registrationData;
+      final now = DateTime.now().millisecondsSinceEpoch;
+
+      // Validate required fields
+      if (data['firstName'] == null || data['firstName'].toString().isEmpty) {
+        throw Exception('First name is required');
+      }
+      if (data['lastName'] == null || data['lastName'].toString().isEmpty) {
+        throw Exception('Last name is required');
+      }
+      if (data['username'] == null || data['username'].toString().isEmpty) {
+        throw Exception('Username is required');
+      }
+      if (data['hashedPassword'] == null || data['hashedPassword'].toString().isEmpty) {
+        throw Exception('Password is required');
+      }
+
+      // Check if all required address fields are filled
+      final address = data['address']?.toString().trim() ?? '';
+      final region = data['region']?.toString().trim() ?? '';
+      final province = data['province']?.toString().trim() ?? '';
+      final city = data['city']?.toString().trim() ?? '';
+      final barangay = data['barangay']?.toString().trim() ?? '';
+      
+      // Address setup is complete if all required fields are filled
+      final isAddressComplete = address.isNotEmpty &&
+          region.isNotEmpty &&
+          province.isNotEmpty &&
+          city.isNotEmpty &&
+          barangay.isNotEmpty;
+
+      // Prepare user data for SQLite (primary, offline-first)
+      final userData = {
+        'first_name': data['firstName'].toString(),
+        'last_name': data['lastName'].toString(),
+        'username': data['username'].toString(),
+        'street': address,
+        'region': region,
+        'province': province,
+        'city': city,
+        'barangay': barangay,
+        'password': data['hashedPassword'].toString(),
+        'is_online': 0, // Will be updated when online
+        'account_status': 'active',
+        'created_at': now,
+        'last_seen': now,
+        'is_synced': 0, // Will sync to Firebase when online
+        'address_setup_completed': isAddressComplete ? 1 : 0, // Set to 1 if all address fields are filled
+        'is_verified': 1, // Biometric verification completed
+      };
+
+      print('💾 Saving user data to SQLite: ${userData['username']}');
+
+      // Save to SQLite first (primary database)
+      final sqliteService = SQLiteService();
+      final userId = await sqliteService.insertUser(userData);
+      print('✅ User saved to SQLite (ID: $userId)');
+
+      // Try to sync to Firebase if online (optional, deferred if offline)
+      try {
+        final firebaseService = FirebaseService();
+        final isOnline = await _checkConnectivity();
+        
+        if (isOnline) {
+          // Generate a unique ID for Firebase (use username as key for simplicity)
+          // In production, you might want to use Firebase Auth UID
+          final firebaseData = {
+            'FirstName': data['firstName'],
+            'LastName': data['lastName'],
+            'Username': data['username'],
+            'Address': address,
+            'Region': region,
+            'Province': province,
+            'City': city,
+            'Barangay': barangay,
+            'Password': data['hashedPassword'],
+            'isOnline': false,
+            'isVerified': true,
+            'addressSetupCompleted': isAddressComplete,
+            'createdAt': now,
+            'lastSeen': now,
+          };
+
+          // Save to Firebase Realtime Database
+          await firebaseService.database.ref('users/${data['username']}').set(firebaseData);
+          
+          // Update SQLite with Firebase UID
+          await sqliteService.updateUser(userId, {
+            'firebase_uid': data['username'],
+            'is_synced': 1,
+            'sync_timestamp': now,
+          });
+          
+          print('✅ User synced to Firebase');
+        } else {
+          print('📴 Offline mode - user saved locally, will sync when online');
+        }
+      } catch (firebaseError) {
+        print('⚠️ Firebase sync failed (non-critical): $firebaseError');
+        // Continue - user is saved in SQLite
+      }
+
+      // Set authenticated state
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      await authProvider.setAuthenticated(
+        email: data['username'], // Parameter name is 'email' for compatibility, but it's actually username
+        name: '${data['firstName']} ${data['lastName']}',
+      );
+
+      print('✅ User data saved and authenticated');
+    } catch (e) {
+      print('❌ Error saving user data: $e');
+      if (mounted) {
+        setState(() {
+          _hasError = true;
+          _errorMessage = 'Failed to save user data: ${e.toString()}';
+        });
+      }
+      rethrow;
+    }
+  }
+
+  Future<bool> _checkConnectivity() async {
+    try {
+      final result = await InternetAddress.lookup('example.com');
+      return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  void _proceedToTutorial() {
+    // Navigate to tutorial/onboarding screen
+    // This button is for navigation ONLY - data is already saved
+    Navigator.of(context).pushReplacementNamed('/');
+  }
+
+  // Removed _getBiometricTypeName - only fingerprint is used now
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.backgroundLight,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: _isVerified
+            ? null
+            : IconButton(
+                icon: const Icon(Icons.arrow_back, color: AppColors.primaryRed),
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+      ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const SizedBox(height: 40),
+
+              // Icon
+              Container(
+                width: 120,
+                height: 120,
+                decoration: BoxDecoration(
+                  color: _isVerified
+                      ? Colors.green.shade50
+                      : AppColors.primaryRed.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  _isVerified ? Icons.check_circle : Icons.fingerprint,
+                  size: 60,
+                  color: _isVerified ? Colors.green : AppColors.primaryRed,
+                ),
+              )
+                  .animate()
+                  .scale(duration: 600.ms, curve: Curves.elasticOut),
+
+              const SizedBox(height: 32),
+
+              // Title
+              Text(
+                _isVerified ? 'Verification Complete' : 'Verify Your Identity',
+                style: UnifiedTypography.displayMedium.copyWith(
+                  color: AppColors.primary,
+                  fontWeight: FontWeight.bold,
+                ),
+                textAlign: TextAlign.center,
+              )
+                  .animate()
+                  .fadeIn(duration: 400.ms, delay: 200.ms),
+
+              const SizedBox(height: 16),
+
+              // Description
+              Text(
+                _isVerified
+                    ? 'Your account has been created successfully. You can now proceed to the app.'
+                    : 'Use your device biometrics to verify that you are the user.',
+                style: UnifiedTypography.bodyLarge.copyWith(
+                  color: Colors.grey[700],
+                ),
+                textAlign: TextAlign.center,
+              )
+                  .animate()
+                  .fadeIn(duration: 400.ms, delay: 300.ms),
+
+              const SizedBox(height: 40),
+
+              // Biometric options (only show if not verified and device supports)
+              if (!_isVerified && _isDeviceSupported && _hasEnrolledBiometrics) ...[
+                // Show fingerprint button - OS will handle showing the right biometric dialog
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: _buildBiometricButton(BiometricType.fingerprint),
+                ),
+              ],
+
+              // Error message
+              if (_hasError && _errorMessage != null) ...[
+                const SizedBox(height: 24),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.red.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.red.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.error_outline, color: Colors.red.shade700),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          _errorMessage!,
+                          style: TextStyle(color: Colors.red.shade700),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+
+              // Device not supported message
+              if (!_isDeviceSupported) ...[
+                const SizedBox(height: 24),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.orange.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.warning_amber_rounded, color: Colors.orange.shade700),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'This device does not support biometric authentication.',
+                          style: TextStyle(color: Colors.orange.shade700),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+
+              // No biometrics enrolled message
+              if (_isDeviceSupported && !_hasEnrolledBiometrics) ...[
+                const SizedBox(height: 24),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.orange.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.warning_amber_rounded, color: Colors.orange.shade700),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'No fingerprint enrolled. Please set up fingerprint in device settings.',
+                          style: TextStyle(color: Colors.orange.shade700),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+
+              const SizedBox(height: 40),
+
+              // Proceed button (only shown after verification)
+              if (_isVerified) ...[
+                ElevatedButton(
+                  onPressed: _proceedToTutorial,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primaryRed,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Text(
+                    'Proceed',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                )
+                    .animate()
+                    .fadeIn(duration: 400.ms)
+                    .scale(duration: 400.ms),
+              ],
+
+              const SizedBox(height: 40),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBiometricButton(BiometricType type) {
+    // Only show fingerprint button
+    return ElevatedButton.icon(
+      onPressed: _isVerifying ? null : _authenticateWithBiometrics,
+      icon: _isVerifying
+          ? const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+              ),
+            )
+          : const Icon(Icons.fingerprint),
+      label: Text(_isVerifying ? 'Verifying...' : 'Use Fingerprint'),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: AppColors.primaryRed,
+        foregroundColor: Colors.white,
+        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+      ),
+    );
+  }
+}
+

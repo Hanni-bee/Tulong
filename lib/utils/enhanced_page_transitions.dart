@@ -12,23 +12,23 @@ class EnhancedPageTransitions {
   // TRANSITION DURATIONS
   // ============================================================================
 
-  /// Standard page transition duration (300ms)
-  static const Duration standardDuration = Duration(milliseconds: 300);
+  /// Standard page transition duration (250ms - snappier)
+  static const Duration standardDuration = Duration(milliseconds: 250);
 
-  /// Fast transition duration for quick actions (200ms)
-  static const Duration fastDuration = Duration(milliseconds: 200);
+  /// Fast transition duration for quick actions (180ms)
+  static const Duration fastDuration = Duration(milliseconds: 180);
 
-  /// Slow transition duration for important screens (400ms)
-  static const Duration slowDuration = Duration(milliseconds: 400);
+  /// Slow transition duration for important screens (350ms)
+  static const Duration slowDuration = Duration(milliseconds: 350);
 
-  /// Modal transition duration (350ms)
-  static const Duration modalDuration = Duration(milliseconds: 350);
+  /// Modal transition duration (300ms)
+  static const Duration modalDuration = Duration(milliseconds: 300);
 
-  /// Bottom sheet transition duration (300ms)
-  static const Duration bottomSheetDuration = Duration(milliseconds: 300);
+  /// Bottom sheet transition duration (250ms)
+  static const Duration bottomSheetDuration = Duration(milliseconds: 250);
 
-  /// Hero animation duration (500ms)
-  static const Duration heroDuration = Duration(milliseconds: 500);
+  /// Hero animation duration (400ms)
+  static const Duration heroDuration = Duration(milliseconds: 400);
 
   // ============================================================================
   // TRANSITION CURVES
@@ -430,76 +430,69 @@ class EnhancedPageTransitionsBuilder extends PageTransitionsBuilder {
   }
 
   Widget _buildStandardTransition(Animation<double> animation, Widget child) {
-    final slideTween = Tween<Offset>(
-      begin: const Offset(1.0, 0.0),
-      end: Offset.zero,
-    ).chain(CurveTween(curve: EnhancedPageTransitions.standardCurve));
-
-    final fadeTween = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).chain(CurveTween(curve: EnhancedPageTransitions.standardCurve));
-
     return SlideTransition(
-      position: animation.drive(slideTween),
+      position: animation.drive(
+        Tween<Offset>(
+          begin: const Offset(1.0, 0.0),
+          end: Offset.zero,
+        ).chain(CurveTween(curve: EnhancedPageTransitions.standardCurve)),
+      ),
       child: FadeTransition(
-        opacity: animation.drive(fadeTween),
-        child: child,
+        opacity: animation.drive(
+          CurveTween(curve: EnhancedPageTransitions.standardCurve),
+        ),
+        child: RepaintBoundary(child: child),
       ),
     );
   }
 
   Widget _buildFastTransition(Animation<double> animation, Widget child) {
-    final slideTween = Tween<Offset>(
-      begin: const Offset(1.0, 0.0),
-      end: Offset.zero,
-    ).chain(CurveTween(curve: EnhancedPageTransitions.fastCurve));
-
     return SlideTransition(
-      position: animation.drive(slideTween),
+      position: animation.drive(
+        Tween<Offset>(
+          begin: const Offset(1.0, 0.0),
+          end: Offset.zero,
+        ).chain(CurveTween(curve: EnhancedPageTransitions.fastCurve)),
+      ),
       child: FadeTransition(
-        opacity: animation,
-        child: child,
+        opacity: animation.drive(
+          CurveTween(curve: EnhancedPageTransitions.fastCurve),
+        ),
+        child: RepaintBoundary(child: child),
       ),
     );
   }
 
   Widget _buildModalTransition(Animation<double> animation, Widget child) {
-    final scaleTween = Tween<double>(
-      begin: 0.8,
-      end: 1.0,
-    ).chain(CurveTween(curve: EnhancedPageTransitions.modalCurve));
-
-    final fadeTween = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).chain(CurveTween(curve: EnhancedPageTransitions.modalCurve));
-
     return ScaleTransition(
-      scale: animation.drive(scaleTween),
+      scale: animation.drive(
+        Tween<double>(
+          begin: 0.8,
+          end: 1.0,
+        ).chain(CurveTween(curve: EnhancedPageTransitions.modalCurve)),
+      ),
       child: FadeTransition(
-        opacity: animation.drive(fadeTween),
-        child: child,
+        opacity: animation.drive(
+          CurveTween(curve: EnhancedPageTransitions.modalCurve),
+        ),
+        child: RepaintBoundary(child: child),
       ),
     );
   }
 
   Widget _buildBottomSheetTransition(Animation<double> animation, Widget child) {
-    final slideTween = Tween<Offset>(
-      begin: const Offset(0.0, 1.0),
-      end: Offset.zero,
-    ).chain(CurveTween(curve: EnhancedPageTransitions.bottomSheetCurve));
-
-    final fadeTween = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).chain(CurveTween(curve: EnhancedPageTransitions.bottomSheetCurve));
-
     return SlideTransition(
-      position: animation.drive(slideTween),
+      position: animation.drive(
+        Tween<Offset>(
+          begin: const Offset(0.0, 1.0),
+          end: Offset.zero,
+        ).chain(CurveTween(curve: EnhancedPageTransitions.bottomSheetCurve)),
+      ),
       child: FadeTransition(
-        opacity: animation.drive(fadeTween),
-        child: child,
+        opacity: animation.drive(
+          CurveTween(curve: EnhancedPageTransitions.bottomSheetCurve),
+        ),
+        child: RepaintBoundary(child: child),
       ),
     );
   }

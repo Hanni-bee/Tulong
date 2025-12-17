@@ -103,7 +103,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        authProvider.userEmail ?? 'user@example.com',
+                        authProvider.userUsername ?? 'username',
                         style: const TextStyle(
                           fontSize: 16,
                           color: AppColors.textSecondary,
@@ -144,11 +144,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             const SizedBox(height: 16),
             
-            ProfileInfoCard(
-              title: 'Phone Number',
-              value: '+01 23456789',
-              icon: Icons.phone,
-              onEdit: () => _editField(context, 'Phone Number', '+01 23456789'),
+            Consumer<AuthProvider>(
+              builder: (context, authProvider, child) {
+                return ProfileInfoCard(
+                  title: 'Username',
+                  value: authProvider.userUsername ?? 'username',
+                  icon: Icons.person,
+                  onEdit: null, // Username cannot be edited
+                );
+              },
             ),
             
             ProfileInfoCard(
@@ -156,13 +160,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
               value: '123 Main St, City, Region',
               icon: Icons.location_on,
               onEdit: () => _editField(context, 'Address', '123 Main St, City, Region'),
-            ),
-            
-            ProfileInfoCard(
-              title: 'Email',
-              value: 'user@example.com',
-              icon: Icons.email,
-              onEdit: () => _editField(context, 'Email', 'user@example.com'),
             ),
             
             const SizedBox(height: 24),

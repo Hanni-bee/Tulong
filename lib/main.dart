@@ -56,8 +56,8 @@ void main() async {
   // Initialize Philippine location service (loads once at startup)
   await PhilippineLocationService.instance.initialize();
 
-  // Clear image cache on startup
-  PerformanceOptimizer.clearImageCache();
+  // Clear image cache on startup - commented out to improve transition performance for cached images
+  // PerformanceOptimizer.clearImageCache();
   
   runApp(const TulongApp());
 }

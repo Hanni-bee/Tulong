@@ -17,6 +17,7 @@ import '../widgets/enhanced_empty_state.dart';
 import '../widgets/accessible_text.dart';
 import '../widgets/enhanced_message_status.dart';
 import '../widgets/enhanced_voice_message_view.dart';
+import 'package:flutter_bluetooth_serial_plus/flutter_bluetooth_serial_plus.dart';
 
 /// Local Chat Screen - Polished UI with Working Backend
 class LocalChatScreen extends StatefulWidget {
@@ -72,9 +73,9 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
         userName = authProvider.userName;
       }
       
-      // Final fallback to email prefix
+      // Final fallback to username
       if (userName == null || userName.isEmpty) {
-        userName = authProvider.userEmail?.split('@')[0] ?? 'Me';
+        userName = authProvider.userUsername ?? 'Me';
       }
       
       chatProvider.setCurrentUserName(userName);
@@ -221,30 +222,54 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
                   }
                   
                   // Show messages with refresh indicator overlay
+                  final pinnedEmergencies = provider.pinnedEmergencyMessages;
+                  final regularMessages = provider.messages.where((msg) => !msg.isPinned).toList();
+                  
                   return Stack(
                     children: [
                       ListView.builder(
                         controller: _scrollController,
                         padding: const EdgeInsets.all(16),
-                        itemCount: provider.messages.length + (provider.isTyping ? 1 : 0),
+                        itemCount: (pinnedEmergencies.isNotEmpty ? 1 : 0) + regularMessages.length + (provider.isTyping ? 1 : 0),
                         itemBuilder: (context, index) {
+                          // Show pinned emergencies section first
+                          if (index == 0 && pinnedEmergencies.isNotEmpty) {
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _buildPinnedEmergenciesSection(pinnedEmergencies, provider),
+                                const SizedBox(height: 16),
+                                const Divider(height: 1, thickness: 1),
+                                const SizedBox(height: 16),
+                              ],
+                            );
+                          }
+                          
+                          // Adjust index for pinned section (subtract 1 if pinned section exists)
+                          final adjustedIndex = pinnedEmergencies.isNotEmpty ? index - 1 : index;
+                          
                           // Show typing indicator at the end
-                          if (index == provider.messages.length && provider.isTyping) {
+                          if (adjustedIndex == regularMessages.length && provider.isTyping) {
                             return _buildTypingIndicator();
                           }
                           
-                          final message = provider.messages[index];
-                          // Auto-scroll to bottom when new messages arrive
-                          WidgetsBinding.instance.addPostFrameCallback((_) {
-                            if (_scrollController.hasClients && index == provider.messages.length - 1) {
-                              _scrollController.animateTo(
-                                _scrollController.position.maxScrollExtent,
-                                duration: const Duration(milliseconds: 300),
-                                curve: Curves.easeOut,
-                              );
-                            }
-                          });
-                          return _buildMessageBubble(message);
+                          // Show regular messages
+                          if (adjustedIndex < regularMessages.length) {
+                            final message = regularMessages[adjustedIndex];
+                            // Auto-scroll to bottom when new messages arrive
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              if (_scrollController.hasClients && adjustedIndex == regularMessages.length - 1) {
+                                _scrollController.animateTo(
+                                  _scrollController.position.maxScrollExtent,
+                                  duration: const Duration(milliseconds: 300),
+                                  curve: Curves.easeOut,
+                                );
+                              }
+                            });
+                            return _buildMessageBubble(message);
+                          }
+                          
+                          return const SizedBox.shrink();
                         },
                       ),
                       // Refresh indicator overlay (only show if refreshing, not when receiving real-time messages)
@@ -377,6 +402,275 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
         ),
       ),
     );
+  }
+
+  /// Build pinned emergencies section
+
+  /// Build pinned emergencies section at the top
+  Widget _buildPinnedEmergenciesSection(List<ChatMessage> pinnedEmergencies, ChatProvider provider) {
+    // Group by sender to handle multiple senders
+    final Map<String, List<ChatMessage>> emergenciesBySender = {};
+    for (final msg in pinnedEmergencies) {
+      final sender = msg.senderName ?? (msg.isMe ? 'You' : 'Unknown');
+      if (!emergenciesBySender.containsKey(sender)) {
+        emergenciesBySender[sender] = [];
+      }
+      emergenciesBySender[sender]!.add(msg);
+    }
+    
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      decoration: BoxDecoration(
+        color: AppColors.error.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: AppColors.error.withOpacity(0.3),
+          width: 2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.error.withOpacity(0.2),
+            blurRadius: 12,
+            spreadRadius: 2,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: AppColors.error.withOpacity(0.15),
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(16),
+                topRight: Radius.circular(16),
+              ),
+            ),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.push_pin,
+                  color: AppColors.error,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'PINNED EMERGENCIES',
+                  style: AppTypography.bodySmall.copyWith(
+                    color: AppColors.error,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.2,
+                    fontSize: 11,
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  '${pinnedEmergencies.length}',
+                  style: AppTypography.bodySmall.copyWith(
+                    color: AppColors.error,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          
+          // Emergency messages grouped by sender
+          ...emergenciesBySender.entries.map((entry) {
+            final sender = entry.key;
+            final emergencies = entry.value;
+            final latestEmergency = emergencies.first; // Already sorted newest first
+            
+            return Container(
+              margin: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: AppColors.error.withOpacity(0.2),
+                  width: 1.5,
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Sender info
+                  Row(
+                    children: [
+                      Container(
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          color: AppColors.error.withOpacity(0.2),
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: AppColors.error,
+                            width: 2,
+                          ),
+                        ),
+                        child: Center(
+                          child: Text(
+                            sender[0].toUpperCase(),
+                            style: AppTypography.bodyMedium.copyWith(
+                              color: AppColors.error,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              sender,
+                              style: AppTypography.bodyMedium.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.darkGray,
+                              ),
+                            ),
+                            Text(
+                              emergencies.length > 1 
+                                  ? '${emergencies.length} emergency alerts'
+                                  : '1 emergency alert',
+                              style: AppTypography.bodySmall.copyWith(
+                                color: AppColors.mediumGray,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close, size: 18),
+                        color: AppColors.mediumGray,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                        onPressed: () {
+                          // Unpin all emergencies from this sender
+                          for (final msg in emergencies) {
+                            if (msg.messageId != null) {
+                              provider.unpinEmergencyMessage(msg.messageId!);
+                            }
+                          }
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  
+                  // Latest emergency message preview
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.error.withOpacity(0.05),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.sos_rounded,
+                              color: AppColors.error,
+                              size: 16,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              'EMERGENCY ALERT',
+                              style: AppTypography.bodySmall.copyWith(
+                                color: AppColors.error,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 1.0,
+                                fontSize: 10,
+                              ),
+                            ),
+                            const Spacer(),
+                            Text(
+                              _formatTime(latestEmergency.timestamp),
+                              style: AppTypography.bodySmall.copyWith(
+                                color: AppColors.mediumGray,
+                                fontSize: 10,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          latestEmergency.text,
+                          style: AppTypography.bodyMedium.copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.darkGray,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                  
+                  // Show count if multiple emergencies from same sender
+                  if (emergencies.length > 1)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: TextButton.icon(
+                        onPressed: () {
+                          // Scroll to first emergency message in chat
+                          final firstEmergencyIndex = provider.messages.indexWhere(
+                            (msg) => msg.messageId == latestEmergency.messageId,
+                          );
+                          if (firstEmergencyIndex != -1 && _scrollController.hasClients) {
+                            _scrollController.animateTo(
+                              firstEmergencyIndex * 100.0, // Approximate height
+                              duration: const Duration(milliseconds: 500),
+                              curve: Curves.easeInOut,
+                            );
+                          }
+                        },
+                        icon: const Icon(Icons.arrow_downward, size: 16),
+                        label: Text(
+                          'View ${emergencies.length - 1} more',
+                          style: AppTypography.bodySmall.copyWith(
+                            color: AppColors.error,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            );
+          }).toList(),
+        ],
+      ),
+    );
+  }
+  
+  String _formatTime(DateTime timestamp) {
+    final now = DateTime.now();
+    final difference = now.difference(timestamp);
+    
+    if (difference.inDays > 0) {
+      return '${difference.inDays}d ago';
+    } else if (difference.inHours > 0) {
+      return '${difference.inHours}h ago';
+    } else if (difference.inMinutes > 0) {
+      return '${difference.inMinutes}m ago';
+    } else {
+      return 'now';
+    }
   }
 
   Widget _buildMessageBubble(ChatMessage message) {
@@ -873,6 +1167,8 @@ class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
   bool _showAllDevices = false;
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
+  bool _isBluetoothEnabled = true;
+  bool _isCheckingBluetooth = true;
   
   @override
   void initState() {
@@ -882,9 +1178,56 @@ class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
         _searchQuery = _searchController.text;
       });
     });
+    _checkBluetoothState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<ChatProvider>().loadPairedDevices();
+      if (_isBluetoothEnabled) {
+        context.read<ChatProvider>().loadPairedDevices();
+      }
     });
+  }
+
+  Future<void> _checkBluetoothState() async {
+    try {
+      final isEnabled = await FlutterBluetoothSerial.instance.isOn;
+      if (mounted) {
+        setState(() {
+          _isBluetoothEnabled = isEnabled ?? false;
+          _isCheckingBluetooth = false;
+        });
+        // Reload devices if Bluetooth is enabled
+        if (_isBluetoothEnabled) {
+          context.read<ChatProvider>().loadPairedDevices();
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isBluetoothEnabled = false;
+          _isCheckingBluetooth = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _requestEnableBluetooth() async {
+    try {
+      // Request to enable Bluetooth
+      await FlutterBluetoothSerial.instance.requestEnable();
+      // Wait a bit then check again
+      await Future.delayed(const Duration(milliseconds: 500));
+      await _checkBluetoothState();
+    } catch (e) {
+      // User cancelled or error occurred
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Please enable Bluetooth in Settings'),
+            backgroundColor: AppColors.error,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
   }
   
   @override
@@ -933,17 +1276,22 @@ class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
             return Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Modern Header with Gradient
+                // Modern Header with Gradient - Changes color when Bluetooth is off
                 Container(
                   padding: const EdgeInsets.all(24),
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
-                      colors: [
-                        cyanBlue,
-                        cyanBlue.withOpacity(0.8),
-                      ],
+                      colors: _isBluetoothEnabled
+                          ? [
+                              cyanBlue,
+                              cyanBlue.withOpacity(0.8),
+                            ]
+                          : [
+                              Colors.orange,
+                              Colors.orange.withOpacity(0.8),
+                            ],
                     ),
                     borderRadius: const BorderRadius.only(
                       topLeft: Radius.circular(24),
@@ -958,8 +1306,8 @@ class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
                           color: Colors.white.withOpacity(0.2),
                           borderRadius: BorderRadius.circular(12),
                         ),
-                        child: const Icon(
-                          Icons.bluetooth,
+                        child: Icon(
+                          _isBluetoothEnabled ? Icons.bluetooth : Icons.bluetooth_disabled,
                           color: Colors.white,
                           size: 28,
                         ),
@@ -978,7 +1326,9 @@ class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              'Select an ESP32 device to connect',
+                              _isBluetoothEnabled
+                                  ? 'Select an ESP32 device to connect'
+                                  : 'Bluetooth is turned off',
                               style: AppTypography.bodySmall.copyWith(
                                 color: Colors.white.withOpacity(0.9),
                               ),
@@ -994,80 +1344,111 @@ class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
                   ),
                 ),
                 
-                // Connection Status Card
+                // Connection Status Card - Shows Bluetooth off state
                 Padding(
                   padding: const EdgeInsets.all(20),
-                  child: Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: provider.isConnected 
-                          ? cyanBlue.withOpacity(0.1) 
-                          : Colors.grey.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: provider.isConnected 
-                            ? cyanBlue.withOpacity(0.3) 
-                            : Colors.grey.withOpacity(0.3),
-                        width: 1.5,
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(10),
+                  child: _isCheckingBluetooth
+                      ? Container(
+                          padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
-                            color: provider.isConnected 
-                                ? cyanBlue.withOpacity(0.2) 
-                                : Colors.grey.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(10),
+                            color: Colors.grey.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(16),
                           ),
-                          child: Icon(
-                            provider.isConnected ? Icons.bluetooth_connected : Icons.bluetooth_disabled,
-                            color: provider.isConnected ? cyanBlue : Colors.grey,
-                            size: 24,
+                          child: const Center(
+                            child: CircularProgressIndicator(),
                           ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                        )
+                      : Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: _isBluetoothEnabled
+                                ? (provider.isConnected 
+                                    ? cyanBlue.withOpacity(0.1) 
+                                    : Colors.grey.withOpacity(0.1))
+                                : Colors.orange.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: _isBluetoothEnabled
+                                  ? (provider.isConnected 
+                                      ? cyanBlue.withOpacity(0.3) 
+                                      : Colors.grey.withOpacity(0.3))
+                                  : Colors.orange.withOpacity(0.3),
+                              width: 1.5,
+                            ),
+                          ),
+                          child: Row(
                             children: [
-                              Text(
-                                provider.isConnected 
-                                    ? 'Connected' 
-                                    : (provider.selectedDevice != null
-                                        ? 'Disconnected'
-                                        : 'Not Connected'),
-                                style: AppTypography.bodyLarge.copyWith(
-                                  color: provider.isConnected 
-                                      ? cyanBlue 
-                                      : (provider.selectedDevice != null 
-                                          ? Colors.orange 
-                                          : Colors.grey),
-                                  fontWeight: FontWeight.bold,
+                              Container(
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  color: _isBluetoothEnabled
+                                      ? (provider.isConnected 
+                                          ? cyanBlue.withOpacity(0.2) 
+                                          : Colors.grey.withOpacity(0.2))
+                                      : Colors.orange.withOpacity(0.2),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Icon(
+                                  _isBluetoothEnabled
+                                      ? (provider.isConnected 
+                                          ? Icons.bluetooth_connected 
+                                          : Icons.bluetooth_disabled)
+                                      : Icons.bluetooth_disabled,
+                                  color: _isBluetoothEnabled
+                                      ? (provider.isConnected ? cyanBlue : Colors.grey)
+                                      : Colors.orange,
+                                  size: 24,
                                 ),
                               ),
-                              const SizedBox(height: 4),
-                              Text(
-                                provider.isConnected 
-                                    ? 'Device: ${provider.selectedDevice?.name ?? "ESP32"}' 
-                                    : (provider.selectedDevice != null
-                                        ? 'Disconnected from ${provider.selectedDevice?.name ?? "ESP32"}\nTap "Reconnect" to connect again'
-                                        : 'No device connected'),
-                                style: AppTypography.bodySmall.copyWith(
-                                  color: provider.isConnected 
-                                      ? AppColors.mediumGray 
-                                      : (provider.selectedDevice != null 
-                                          ? Colors.orange.shade700 
-                                          : AppColors.mediumGray),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      _isBluetoothEnabled
+                                          ? (provider.isConnected 
+                                              ? 'Connected' 
+                                              : (provider.selectedDevice != null
+                                                  ? 'Disconnected'
+                                                  : 'Not Connected'))
+                                          : 'Bluetooth Off',
+                                      style: AppTypography.bodyLarge.copyWith(
+                                        color: _isBluetoothEnabled
+                                            ? (provider.isConnected 
+                                                ? cyanBlue 
+                                                : (provider.selectedDevice != null 
+                                                    ? Colors.orange 
+                                                    : Colors.grey))
+                                            : Colors.orange,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      _isBluetoothEnabled
+                                          ? (provider.isConnected 
+                                              ? 'Device: ${provider.selectedDevice?.name ?? "ESP32"}' 
+                                              : (provider.selectedDevice != null
+                                                  ? 'Disconnected from ${provider.selectedDevice?.name ?? "ESP32"}\nTap "Reconnect" to connect again'
+                                                  : 'No device connected'))
+                                          : 'Please enable Bluetooth to connect',
+                                      style: AppTypography.bodySmall.copyWith(
+                                        color: _isBluetoothEnabled
+                                            ? (provider.isConnected 
+                                                ? AppColors.mediumGray 
+                                                : (provider.selectedDevice != null 
+                                                    ? Colors.orange.shade700 
+                                                    : AppColors.mediumGray))
+                                            : AppColors.mediumGray,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ],
                           ),
                         ),
-                      ],
-                    ),
-                  ),
                 ),
                 
                 // Refresh button and title
@@ -1150,13 +1531,68 @@ class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
                   ),
                 if (provider.pairedDevices.isNotEmpty) const SizedBox(height: 16),
                 
-                // Device list
+                // Device list or Bluetooth off message
                 Expanded(
-                  child: Builder(
-                    builder: (context) {
-                      final filteredDevices = _filterPairedDevices(provider.pairedDevices);
-                      
-                      if (filteredDevices.isEmpty && _searchQuery.isNotEmpty) {
+                  child: !_isBluetoothEnabled
+                      ? Center(
+                          child: SingleChildScrollView(
+                            child: Padding(
+                              padding: const EdgeInsets.all(40),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(24),
+                                    decoration: BoxDecoration(
+                                      color: Colors.orange.withOpacity(0.1),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(
+                                      Icons.bluetooth_disabled,
+                                      size: 64,
+                                      color: Colors.orange,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 24),
+                                  Text(
+                                    'Bluetooth is Turned Off',
+                                    style: AppTypography.headlineSmall.copyWith(
+                                      color: AppColors.darkGray,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'Please enable Bluetooth to connect to ESP32 devices',
+                                    style: AppTypography.bodyMedium.copyWith(
+                                      color: AppColors.mediumGray,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                  const SizedBox(height: 24),
+                                  ElevatedButton.icon(
+                                    onPressed: _requestEnableBluetooth,
+                                    icon: const Icon(Icons.bluetooth, size: 20),
+                                    label: const Text('Enable Bluetooth'),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.orange,
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        )
+                      : Builder(
+                          builder: (context) {
+                            final filteredDevices = _filterPairedDevices(provider.pairedDevices);
+                            
+                            if (filteredDevices.isEmpty && _searchQuery.isNotEmpty) {
                         return Center(
                           child: Padding(
                             padding: const EdgeInsets.all(40),

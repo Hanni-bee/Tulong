@@ -117,3 +117,4 @@ class CameraService {
   bool get isReady => _isInitialized && _controller != null && _controller!.value.isInitialized;
 }
 
+

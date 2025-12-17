@@ -113,17 +113,48 @@ class _EnhancedMessageStatusState extends State<EnhancedMessageStatus>
       case voice.MessageStatus.failed:
         return GestureDetector(
           onTap: widget.onRetry,
-          child: Tooltip(
-            message: 'Tap to retry',
-            child: Icon(
-              Icons.error_outline,
-              color: Colors.red[300],
-              size: widget.size,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.3), // Darker background for contrast
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: Colors.white.withOpacity(0.6),
+                width: 1.2,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.2),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.error_rounded,
+                  color: Colors.white,
+                  size: 13,
+                ),
+                const SizedBox(width: 5),
+                const Text(
+                  'NOT SENT',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0.8,
+                  ),
+                ),
+              ],
             ),
           ),
-        ).animate()
-          .shake(duration: 400.ms, hz: 4)
-          .fadeIn(duration: 200.ms);
+        ).animate(onPlay: (controller) => controller.repeat(reverse: true))
+          .shimmer(duration: 1200.ms, color: Colors.white.withOpacity(0.4))
+          .scale(duration: 800.ms, begin: const Offset(1, 1), end: const Offset(1.08, 1.08))
+          .shake(duration: 600.ms, hz: 4);
     }
   }
 }

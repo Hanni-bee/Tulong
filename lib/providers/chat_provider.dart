@@ -10,6 +10,7 @@ import '../services/voice_chat_extension.dart' as voice;
 import 'package:connectivity_plus/connectivity_plus.dart';
 import '../utils/enhanced_error_handler.dart';
 import '../services/notification_service.dart';
+import '../widgets/modern_toast.dart';
 
 class ChatProvider with ChangeNotifier {
   final BluetoothService _bluetoothService = BluetoothService();
@@ -35,10 +36,55 @@ class ChatProvider with ChangeNotifier {
   // Track if local chat screen is currently visible
   bool _isLocalChatScreenVisible = false;
   
+  // Auto-reconnect settings
+  bool _isAutoReconnectEnabled = true;
+  Timer? _reconnectTimer;
+  int _reconnectAttempts = 0;
+  static const int maxReconnectAttempts = 5;
+  
+  bool get isAutoReconnectEnabled => _isAutoReconnectEnabled;
   List<BluetoothDevice> get pairedDevices => _pairedDevices;
   BluetoothDevice? get selectedDevice => _selectedDevice;
   bool get isConnected => _isConnected;
   List<ChatMessage> get messages => _messages;
+  
+  /// Get pinned emergency messages (sorted by timestamp, newest first)
+  List<ChatMessage> get pinnedEmergencyMessages {
+    final pinned = _messages.where((msg) => msg.isPinned && msg.isEmergency).toList();
+    // Sort by timestamp (newest first)
+    pinned.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+    return pinned;
+  }
+  
+  /// Unpin an emergency message
+  void unpinEmergencyMessage(String messageId) {
+    final index = _messages.indexWhere((msg) => msg.messageId == messageId);
+    if (index != -1) {
+      _messages[index] = _messages[index].copyWith(isPinned: false);
+      notifyListeners();
+    }
+  }
+  
+  /// Auto-unpin emergency messages older than 1 hour
+  void _autoUnpinOldEmergencies() {
+    final now = DateTime.now();
+    bool updated = false;
+    
+    for (int i = 0; i < _messages.length; i++) {
+      final msg = _messages[i];
+      if (msg.isPinned && msg.isEmergency) {
+        final age = now.difference(msg.timestamp);
+        if (age.inHours >= 1) {
+          _messages[i] = msg.copyWith(isPinned: false);
+          updated = true;
+        }
+      }
+    }
+    
+    if (updated) {
+      notifyListeners();
+    }
+  }
   List<String> get debugLogs => _debugLogs;
   bool get isConnecting => _isConnecting;
   bool get isLoadingMessages => _isLoadingMessages;
@@ -95,6 +141,10 @@ class ChatProvider with ChangeNotifier {
 
   ChatProvider() {
     _init();
+    // Auto-unpin old emergencies every 5 minutes
+    Timer.periodic(const Duration(minutes: 5), (_) {
+      _autoUnpinOldEmergencies();
+    });
   }
 
   void _init() {
@@ -115,6 +165,17 @@ class ChatProvider with ChangeNotifier {
 
     _connectionSubscription = _bluetoothService.connectionStream.listen((connected) {
       _isConnected = connected;
+      
+      if (!connected && _selectedDevice != null && _isAutoReconnectEnabled) {
+        // Only auto-reconnect if we didn't explicitly disconnect
+        _startAutoReconnect();
+      } else if (connected) {
+        // Successfully connected, reset attempts and timer
+        _reconnectAttempts = 0;
+        _reconnectTimer?.cancel();
+        _reconnectTimer = null;
+      }
+      
       notifyListeners();
     });
 
@@ -333,6 +394,8 @@ class ChatProvider with ChangeNotifier {
   }
 
   Future<void> disconnect() async {
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
     await _bluetoothService.disconnect();
     // Keep _selectedDevice so we can show "Reconnect" option in the UI
     // Only clear it when connecting to a different device or explicitly clearing
@@ -341,6 +404,52 @@ class ChatProvider with ChangeNotifier {
     notifyListeners();
   }
   
+  /// Toggle auto-reconnect
+  void setAutoReconnectEnabled(bool enabled) {
+    _isAutoReconnectEnabled = enabled;
+    if (!enabled) {
+      _reconnectTimer?.cancel();
+      _reconnectTimer = null;
+    }
+    notifyListeners();
+  }
+
+  /// Start auto-reconnect sequence
+  void _startAutoReconnect() {
+    if (_reconnectTimer != null || _isConnecting) return;
+    
+    addStructuredDebug({
+      'source': 'BLUETOOTH',
+      'event': 'Auto-reconnect sequence started',
+      'metrics': {'device': _selectedDevice?.name}
+    });
+
+    _reconnectTimer = Timer.periodic(const Duration(seconds: 10), (timer) async {
+      if (_isConnected || !_isAutoReconnectEnabled || _reconnectAttempts >= maxReconnectAttempts) {
+        timer.cancel();
+        _reconnectTimer = null;
+        if (_reconnectAttempts >= maxReconnectAttempts) {
+          addStructuredDebug({
+            'source': 'BLUETOOTH',
+            'event': 'Auto-reconnect failed - max attempts reached',
+          });
+        }
+        return;
+      }
+      
+      _reconnectAttempts++;
+      addStructuredDebug({
+        'source': 'BLUETOOTH',
+        'event': 'Auto-reconnect attempt',
+        'metrics': {'attempt': _reconnectAttempts, 'device': _selectedDevice?.name}
+      });
+      
+      if (_selectedDevice != null) {
+        await connectToDevice(_selectedDevice!);
+      }
+    });
+  }
+
   /// Clear selected device (for when user explicitly wants to remove selection)
   void clearSelectedDevice() {
     _selectedDevice = null;
@@ -362,6 +471,21 @@ class ChatProvider with ChangeNotifier {
     _addMessage(message.text, true, message: message);
     
     try {
+      if (!_bluetoothService.isConnected) {
+        message.status = voice.MessageStatus.failed;
+        notifyListeners();
+        
+        if (context != null) {
+          ModernToastManager.show(
+            context,
+            message: '⚠️ ESP32 Not Connected. Please connect to a device via Home Screen to send messages.',
+            type: ToastType.warning,
+            duration: const Duration(seconds: 5),
+          );
+        }
+        return false;
+      }
+
       bool success = await _bluetoothService.sendMessage(text);
       
       if (success) {
@@ -369,16 +493,10 @@ class ChatProvider with ChangeNotifier {
       } else {
         message.status = voice.MessageStatus.failed;
         if (context != null) {
-          final error = AppError(
-            category: ErrorCategory.bluetooth,
-            severity: ErrorSeverity.medium,
-            userMessage: 'Failed to send message. Please try again.',
-            canRetry: true,
-          );
-          EnhancedErrorHandler.showError(
+          ModernToastManager.show(
             context,
-            error,
-            onRetry: () => sendMessage(text, context: context),
+            message: 'Message failed to send. Please try again.',
+            type: ToastType.error,
           );
         }
       }
@@ -390,14 +508,10 @@ class ChatProvider with ChangeNotifier {
       notifyListeners();
       
       if (context != null) {
-        final error = AppError.fromException(
-          e,
-          category: ErrorCategory.bluetooth,
-        );
-        EnhancedErrorHandler.showError(
+        ModernToastManager.show(
           context,
-          error,
-          onRetry: () => sendMessage(text, context: context),
+          message: 'Error: ${e.toString()}',
+          type: ToastType.error,
         );
       }
       return false;
@@ -730,6 +844,9 @@ class ChatProvider with ChangeNotifier {
       // For outgoing messages (isMe), always mark as read
       final shouldMarkAsRead = isMe || _isLocalChatScreenVisible;
       
+      // Generate unique message ID for emergency messages
+      final messageId = isEmergency ? '${DateTime.now().millisecondsSinceEpoch}_${senderName ?? 'unknown'}' : null;
+      
       message = ChatMessage(
         text: text,
         isMe: isMe,
@@ -739,6 +856,8 @@ class ChatProvider with ChangeNotifier {
         senderName: senderName,
         isRead: shouldMarkAsRead, // Mark as read if sent by user or if screen is visible
         isEmergency: isEmergency, // Set emergency flag
+        isPinned: isEmergency, // Auto-pin emergency messages
+        messageId: messageId, // Unique ID for unpinning
       );
     } else if (!isMe && senderName != null) {
       // Update sender name if provided, preserve isRead status
@@ -893,6 +1012,8 @@ class ChatMessage {
   final String? senderName; // Sender's name for received messages
   bool isRead; // Track if message has been read
   final bool isEmergency; // Flag to indicate emergency message from SOS ring
+  bool isPinned; // Flag to indicate pinned emergency message
+  final String? messageId; // Unique ID for message (for unpinning)
 
   ChatMessage({
     required this.text,
@@ -904,6 +1025,8 @@ class ChatMessage {
     this.senderName,
     this.isRead = false, // Default to unread for incoming messages
     this.isEmergency = false, // Default to false for normal messages
+    this.isPinned = false, // Default to false, emergency messages auto-pin
+    this.messageId,
   });
   
   ChatMessage copyWith({
@@ -916,6 +1039,8 @@ class ChatMessage {
     String? senderName,
     bool? isRead,
     bool? isEmergency,
+    bool? isPinned,
+    String? messageId,
   }) {
     return ChatMessage(
       text: text ?? this.text,
@@ -927,6 +1052,8 @@ class ChatMessage {
       senderName: senderName ?? this.senderName,
       isRead: isRead ?? this.isRead,
       isEmergency: isEmergency ?? this.isEmergency,
+      isPinned: isPinned ?? this.isPinned,
+      messageId: messageId ?? this.messageId,
     );
   }
 }

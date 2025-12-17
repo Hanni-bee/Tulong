@@ -26,7 +26,31 @@ class InputValidator {
     return null;
   }
 
-  // Email validation with comprehensive regex - EMOJIS ALLOWED
+  // Username validation: Minimum 6 characters, letters and numbers only, no special characters
+  static String? validateUsername(String? username) {
+    if (username == null || username.isEmpty) {
+      return 'Username is required';
+    }
+
+    if (username.length < 6) {
+      return 'Username must be at least 6 characters';
+    }
+
+    if (username.length > 30) {
+      return 'Username is too long (max 30 characters)';
+    }
+
+    // Only letters and numbers allowed
+    final usernameRegex = RegExp(r'^[a-zA-Z0-9]+$');
+    if (!usernameRegex.hasMatch(username)) {
+      return 'Username can only contain letters and numbers (no special characters)';
+    }
+
+    return null;
+  }
+
+  // Email validation - DEPRECATED (kept for migration compatibility)
+  @Deprecated('Use validateUsername instead')
   static String? validateEmail(String? email) {
     if (email == null || email.isEmpty) {
       return 'Email is required';
@@ -263,8 +287,34 @@ class InputValidator {
         .trim();
   }
 
-  // Validate and sanitize all user input data
+  // Validate and sanitize all user input data (username-based)
   static Map<String, String?> validateUserInput({
+    required String username, // Replaced email with username
+    required String password,
+    required String confirmPassword,
+    required String firstName,
+    required String lastName,
+    required String address,
+    required String region,
+    required String city,
+    required String barangay,
+  }) {
+    return {
+      'username': validateUsername(username), // Replaced email with username
+      'password': validatePassword(password),
+      'confirmPassword': validateConfirmPassword(password, confirmPassword),
+      'firstName': validateName(firstName, 'First name'),
+      'lastName': validateName(lastName, 'Last name'),
+      'address': validateAddress(address),
+      'region': validateLocation(region, 'Region'),
+      'city': validateLocation(city, 'City'),
+      'barangay': validateLocation(barangay, 'Barangay'),
+    };
+  }
+  
+  // Legacy method for migration
+  @Deprecated('Use validateUserInput with username instead')
+  static Map<String, String?> validateUserInputLegacy({
     required String email,
     required String password,
     required String confirmPassword,
