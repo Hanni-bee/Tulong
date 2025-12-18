@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:typed_data';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -218,6 +217,7 @@ class NotificationService {
     _onMessageController.add(message);
     
     // DO NOT show notification when app is in foreground
+    // Notifications will only show when app is in background
   }
   
   /// Set app lifecycle state
@@ -270,8 +270,8 @@ class NotificationService {
       colorized: true, // Enable colored notification background
       largeIcon: largeIcon != null 
           ? DrawableResourceAndroidBitmap(largeIcon)
-          : const DrawableResourceAndroidBitmap('@mipmap/launcher_icon'), // App logo as large icon
-      styleInformation: _getStyleInformation(style, body, imageUrl),
+          : const DrawableResourceAndroidBitmap('@mipmap/launcher_icon'), // App logo as large icon (always show logo)
+      styleInformation: _getStyleInformation(style, body, imageUrl, title),
       enableVibration: true,
       vibrationPattern: Int64List.fromList([0, 250, 250, 250]),
       playSound: true,
@@ -356,20 +356,25 @@ class NotificationService {
     }
   }
   
-  // Get style information for notification
+  // Get style information for notification (enhanced with dynamic content)
   StyleInformation? _getStyleInformation(
     NotificationStyle style,
     String body,
     String? imageUrl,
+    String? title,
   ) {
+    final appName = 'T.U.L.O.N.G';
+    final timestamp = DateTime.now();
+    final timeString = '${timestamp.hour.toString().padLeft(2, '0')}:${timestamp.minute.toString().padLeft(2, '0')}';
+    
     switch (style) {
       case NotificationStyle.bigPicture:
         if (imageUrl != null) {
           return BigPictureStyleInformation(
             FilePathAndroidBitmap(imageUrl),
-            largeIcon: const DrawableResourceAndroidBitmap('@mipmap/launcher_icon'), // App logo
-            contentTitle: body,
-            summaryText: body,
+            largeIcon: const DrawableResourceAndroidBitmap('@mipmap/launcher_icon'), // App logo always visible
+            contentTitle: title ?? body,
+            summaryText: '$appName • $timeString', // Dynamic: App name + timestamp
             htmlFormatContentTitle: true,
             htmlFormatSummaryText: true,
           );
@@ -378,25 +383,25 @@ class NotificationService {
       case NotificationStyle.bigText:
         return BigTextStyleInformation(
           body,
-          contentTitle: body,
-          summaryText: 'T.U.L.O.N.G', // App name
+          contentTitle: title ?? body,
+          summaryText: '$appName • $timeString', // Dynamic: App name + timestamp
           htmlFormatBigText: true,
           htmlFormatContentTitle: true,
         );
       case NotificationStyle.inbox:
         return InboxStyleInformation(
           [body],
-          contentTitle: body,
-          summaryText: 'T.U.L.O.N.G', // App name
+          contentTitle: title ?? body,
+          summaryText: '$appName • $timeString', // Dynamic: App name + timestamp
           htmlFormatLines: true,
           htmlFormatContentTitle: true,
         );
       case NotificationStyle.messaging:
-        // Use BigText style for messaging as fallback
+        // Use BigText style for messaging with dynamic content
         return BigTextStyleInformation(
           body,
-          contentTitle: body,
-          summaryText: 'T.U.L.O.N.G', // App name
+          contentTitle: title ?? body,
+          summaryText: '$appName • $timeString', // Dynamic: App name + timestamp
           htmlFormatBigText: true,
           htmlFormatContentTitle: true,
         );
@@ -634,11 +639,37 @@ class NotificationService {
   }
 }
 
-// Background message handler
+// Background message handler - shows notification when app is in background
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   debugPrint('📨 Handling background message: ${message.messageId}');
   
-  // You can perform background tasks here
-  // Note: This function must be a top-level function
+  // App is in background, show notification with logo and dynamic content
+  final notificationService = NotificationService();
+  
+  // Extract notification data
+  final title = message.notification?.title ?? 'T.U.L.O.N.G';
+  final body = message.notification?.body ?? '';
+  final imageUrl = message.notification?.android?.imageUrl ?? message.notification?.apple?.imageUrl;
+  final data = message.data;
+  
+  // Determine channel based on data type
+  String channelId = NotificationService.systemChannelId;
+  if (data['type'] == 'emergency') {
+    channelId = NotificationService.emergencyChannelId;
+  } else if (data['type'] == 'message') {
+    channelId = NotificationService.messageChannelId;
+  }
+  
+  // Show notification with app logo and dynamic styling
+  await notificationService.showCustomNotification(
+    id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+    title: title,
+    body: body,
+    channelId: channelId,
+    payload: message.data.toString(),
+    imageUrl: imageUrl,
+    largeIcon: '@mipmap/launcher_icon', // Always show app logo
+    style: imageUrl != null ? NotificationStyle.bigPicture : NotificationStyle.bigText,
+  );
 }

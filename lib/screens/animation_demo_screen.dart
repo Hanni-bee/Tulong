@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../constants/app_colors.dart';
 import '../widgets/animated_loader.dart';
-import '../widgets/micro_interactions.dart';
+import '../widgets/micro_interactions.dart' as micro;
 import '../widgets/parallax_scroll.dart';
-import '../widgets/interactive_elements.dart';
+import '../widgets/interactive_elements.dart' as interactive;
 import '../widgets/custom_transitions.dart' as custom_transitions;
 import '../constants/app_icons.dart' as app_icons;
 
@@ -79,26 +79,26 @@ class _AnimationDemoScreenState extends State<AnimationDemoScreen>
   Widget _buildHeader() {
     return Container(
       padding: const EdgeInsets.all(24),
-      child: const Column(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          AnimatedText(
+          interactive.AnimatedText(
             'Design & Animation Enhancements',
-            style: TextStyle(
+            style: const TextStyle(
               fontSize: 28,
               fontWeight: FontWeight.bold,
               color: AppColors.textPrimary,
             ),
-            type: AnimatedTextType.typewriter,
+            type: interactive.AnimatedTextType.typewriter,
           ),
-          SizedBox(height: 16),
-          AnimatedText(
+          const SizedBox(height: 16),
+          interactive.AnimatedText(
             'Experience the power of beautiful animations and micro-interactions',
-            style: TextStyle(
+            style: const TextStyle(
               fontSize: 16,
               color: AppColors.textSecondary,
             ),
-            type: AnimatedTextType.fade,
+            type: interactive.AnimatedTextType.fade,
           ),
         ],
       ),
@@ -235,7 +235,7 @@ class _AnimationDemoScreenState extends State<AnimationDemoScreen>
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              MicroInteractionButton(
+              micro.MicroInteractionButton(
                 onTap: () => HapticFeedback.lightImpact(),
                 child: Container(
                   padding: const EdgeInsets.all(16),
@@ -250,7 +250,7 @@ class _AnimationDemoScreenState extends State<AnimationDemoScreen>
                   ),
                 ),
               ),
-              BounceWidget(
+              micro.BounceWidget(
                 autoStart: true,
                 child: Container(
                   padding: const EdgeInsets.all(16),
@@ -265,7 +265,7 @@ class _AnimationDemoScreenState extends State<AnimationDemoScreen>
                   ),
                 ),
               ),
-              ShakeWidget(
+              micro.ShakeWidget(
                 child: GestureDetector(
                   onTap: () {
                   // Shake animation will be triggered by the widget itself
@@ -284,7 +284,7 @@ class _AnimationDemoScreenState extends State<AnimationDemoScreen>
                   ),
                 ),
               ),
-              GlowWidget(
+              micro.GlowWidget(
                 autoStart: true,
                 child: Container(
                   padding: const EdgeInsets.all(16),
@@ -333,7 +333,7 @@ class _AnimationDemoScreenState extends State<AnimationDemoScreen>
             ),
           ),
           const SizedBox(height: 16),
-          InteractiveCard(
+          interactive.InteractiveCard(
             onTap: () => HapticFeedback.mediumImpact(),
             backgroundColor: AppColors.primaryRed.withOpacity(0.1),
             child: const Column(
@@ -354,13 +354,13 @@ class _AnimationDemoScreenState extends State<AnimationDemoScreen>
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              InteractiveButton(
+              interactive.InteractiveButton(
                 text: 'Animated Button',
                 onPressed: () => HapticFeedback.lightImpact(),
                 backgroundColor: AppColors.primaryRed,
                 icon: Icons.play_arrow,
               ),
-              InteractiveSwitch(
+              interactive.InteractiveSwitch(
                 value: true,
                 onChanged: (value) => HapticFeedback.lightImpact(),
                 activeColor: AppColors.success,
@@ -548,7 +548,7 @@ class _AnimationDemoScreenState extends State<AnimationDemoScreen>
   }
 
   Widget _buildAnimationButton(String text, VoidCallback onTap, Color color) {
-    return InteractiveButton(
+    return interactive.InteractiveButton(
       text: text,
       onPressed: onTap,
       backgroundColor: color,
@@ -556,7 +556,7 @@ class _AnimationDemoScreenState extends State<AnimationDemoScreen>
   }
 
   Widget _buildTransitionButton(String text, custom_transitions.SlideDirection? direction) {
-    return InteractiveButton(
+    return interactive.InteractiveButton(
       text: text,
       onPressed: () {
         if (direction != null) {
@@ -612,7 +612,7 @@ class _AnimationDemoScreenState extends State<AnimationDemoScreen>
               ),
             ),
             const SizedBox(height: 24),
-            InteractiveButton(
+            interactive.InteractiveButton(
               text: 'Go Back',
               onPressed: () => Navigator.of(context).pop(),
               backgroundColor: AppColors.primaryRed,

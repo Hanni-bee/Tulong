@@ -141,7 +141,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     children: [
                       Text(
                         'You have $unreadCount unread notifications',
-                        style: const UnifiedTypography.titleLarge,
+                        style: UnifiedTypography.titleLarge,
                       ),
                       const SizedBox(height: 4),
                       Text(

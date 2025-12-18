@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
 import '../constants/app_typography.dart';
 import '../services/sqlite_service.dart';
-import '../services/unified_data_service.dart';
 import '../services/firebase_service.dart';
 
 /// Modal to display sender's basic information (Name, Contact Number, Address)

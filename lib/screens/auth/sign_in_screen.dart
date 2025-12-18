@@ -503,11 +503,11 @@ class _SignInScreenState extends State<SignInScreen> {
               ),
             ),
           ],
-          
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildSignUpLink() {
     return Row(

@@ -1069,7 +1069,7 @@ class EmergencyDetectionService {
         final bottomRight = image.getPixel(x + 1, y + 1);
         
         // Convert to grayscale
-        final getGray = (img.Pixel p) => (p.r + p.g + p.b) / 3;
+        double getGray(img.Pixel p) => (p.r + p.g + p.b) / 3;
         
         final gtl = getGray(topLeft);
         final gt = getGray(top);

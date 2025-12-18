@@ -7,20 +7,14 @@ import '../../constants/soft_ui_design.dart';
 import '../../widgets/custom_button.dart';
 import '../../widgets/custom_text_field.dart';
 import '../../widgets/password_strength_indicator.dart';
-import 'package:provider/provider.dart';
-import '../../providers/auth_provider.dart';
 // import removed
 import '../../widgets/terms_conditions_modal.dart';
 import '../../services/firebase_service.dart';
-import '../../services/sqlite_service.dart';
-import 'dart:io';
 import '../../services/location_service.dart';
 import '../../utils/input_validator.dart';
 import '../../utils/responsive_spacing.dart';
 import 'biometric_verification_screen.dart';
-import '../../services/firebase_service.dart';
 import '../../widgets/accessible_text.dart';
-import 'dart:math';
 
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({super.key});

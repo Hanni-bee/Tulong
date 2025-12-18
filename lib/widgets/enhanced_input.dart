@@ -56,8 +56,6 @@ class EnhancedInput extends StatefulWidget {
 class _EnhancedInputState extends State<EnhancedInput>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
-  late Animation<double> _focusAnimation;
-  late Animation<Color?> _borderAnimation;
   late FocusNode _focusNode;
   bool _isFocused = false;
 
@@ -71,22 +69,6 @@ class _EnhancedInputState extends State<EnhancedInput>
       duration: const Duration(milliseconds: 200),
       vsync: this,
     );
-
-    _focusAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _controller,
-      curve: Curves.easeInOut,
-    ));
-
-    _borderAnimation = ColorTween(
-      begin: AppColors.lightGray,
-      end: AppColors.primaryRed,
-    ).animate(CurvedAnimation(
-      parent: _controller,
-      curve: Curves.easeInOut,
-    ));
   }
 
   @override

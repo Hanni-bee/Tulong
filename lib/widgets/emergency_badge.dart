@@ -76,6 +76,9 @@ class _EmergencyBadgeState extends State<EmergencyBadge>
       case EmergencyType.general:
         baseColor = AppColors.mediumGray;
         break;
+      case EmergencyType.noEmergency:
+        baseColor = AppColors.online; // Green for no emergency
+        break;
     }
     
     // Adjust brightness based on severity
@@ -166,5 +169,6 @@ class _EmergencyBadgeState extends State<EmergencyBadge>
     return badge;
   }
 }
+
 
 

@@ -58,8 +58,8 @@ class MLModelService {
       _isLoaded = true;
       
       debugPrint('✅ ML Model loaded successfully: $modelPath');
-      debugPrint('   Input shape: ${inputShape}');
-      debugPrint('   Output shape: ${outputShape}');
+      debugPrint('   Input shape: $inputShape');
+      debugPrint('   Output shape: $outputShape');
       
       return true;
     } catch (e) {

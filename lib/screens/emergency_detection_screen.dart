@@ -440,7 +440,7 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            '${result.type.label.toUpperCase()}',
+                            result.type.label.toUpperCase(),
                             style: const TextStyle(
                               fontSize: 20,
                               fontWeight: FontWeight.bold,

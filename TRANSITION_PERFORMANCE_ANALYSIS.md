@@ -161,3 +161,4 @@ SlideTransition(
 The key was removing the expensive `ScaleTransition` and relying on GPU-accelerated `SlideTransition` and `FadeTransition` only.
 
 
+

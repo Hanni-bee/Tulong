@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
 import '../constants/app_colors.dart';
@@ -32,7 +31,6 @@ import '../widgets/animated_neumorphic_card.dart';
 import '../utils/icon_system.dart';
 import '../utils/enhanced_page_transitions.dart';
 import '../services/simple_bluetooth_service.dart';
-import 'package:flutter_bluetooth_serial_plus/flutter_bluetooth_serial_plus.dart';
 
 class ModernHomeScreen extends StatefulWidget {
   const ModernHomeScreen({super.key});
@@ -47,12 +45,11 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
   late AnimationController _slideController;
   late AnimationController _welcomeController;
   late AnimationController _emergencyHoldController;
+  late AnimationController _connectionPulseController;
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
   late Animation<double> _welcomeAnimation;
-  
-  late AnimationController _pulseController;
-  late Animation<double> _pulseAnimation;
+  late Animation<double> _connectionPulseAnimation;
   
   // Stagger animations for Quick Actions
   late StaggeredListAnimations _quickActionsStagger;
@@ -121,12 +118,25 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
         }
       });
     
+    _connectionPulseController = AnimationController(
+      duration: const Duration(milliseconds: 1500),
+      vsync: this,
+    )..repeat(reverse: true);
+    
     _fadeAnimation = Tween<double>(
       begin: 0.0,
       end: 1.0,
     ).animate(CurvedAnimation(
       parent: _fadeController,
       curve: Curves.easeOutCubic,
+    ));
+    
+    _connectionPulseAnimation = Tween<double>(
+      begin: 0.6,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _connectionPulseController,
+      curve: Curves.easeInOut,
     ));
 
     _slideAnimation = Tween<Offset>(
@@ -143,19 +153,6 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
     ).animate(CurvedAnimation(
       parent: _welcomeController,
       curve: Curves.elasticOut,
-    ));
-
-    _pulseController = AnimationController(
-      duration: const Duration(seconds: 2),
-      vsync: this,
-    )..repeat(reverse: true);
-
-    _pulseAnimation = Tween<double>(
-      begin: 1.0,
-      end: 1.08,
-    ).animate(CurvedAnimation(
-      parent: _pulseController,
-      curve: Curves.easeInOut,
     ));
 
     _fadeController.forward();
@@ -208,7 +205,7 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
     _slideController.dispose();
     _welcomeController.dispose();
     _emergencyHoldController.dispose();
-    _pulseController.dispose();
+    _connectionPulseController.dispose();
     _quickActionsStagger.dispose();
     super.dispose();
   }
@@ -447,135 +444,178 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
     );
   }
 
+  /// Get time-based greeting message
   String _getGreeting() {
     final hour = DateTime.now().hour;
-    if (hour < 12) return 'Good Morning';
-    if (hour < 17) return 'Good Afternoon';
-    return 'Good Evening';
+    if (hour < 12) {
+      return 'Good Morning, Ready to Help';
+    } else if (hour < 17) {
+      return 'Good Afternoon, Ready to Help';
+    } else {
+      return 'Good Evening, Ready to Help';
+    }
   }
 
   Widget _buildHeader() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Compact header card
-        Container(
-          margin: const EdgeInsets.symmetric(horizontal: 16),
-          decoration: SoftUIDesign.cardDecoration(
-            backgroundColor: AppColors.white,
-            borderRadius: SoftUIDesign.cardBorderRadius,
-            elevation: 3.0,
-            borderColor: AppColors.lightGray.withOpacity(0.3),
-            showBorder: true,
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                // App Logo - Compact size
-                Container(
-                  width: 60,
-                  height: 60,
-                  decoration: BoxDecoration(
-                    color: AppColors.primaryRed,
-                    borderRadius: BorderRadius.circular(SoftUIDesign.cardBorderRadius),
-                    boxShadow: SoftUIDesign.getButtonShadow(color: AppColors.primaryRed),
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
-                    child: Image.asset(
-                      'assets/images/app_logo (3).png',
+    return Consumer<ChatProvider>(
+      builder: (context, chatProvider, child) {
+        final isConnected = chatProvider.isConnected;
+        
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Compact header card
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16),
+              decoration: SoftUIDesign.cardDecoration(
+                backgroundColor: AppColors.white,
+                borderRadius: SoftUIDesign.cardBorderRadius,
+                elevation: 3.0,
+                borderColor: AppColors.lightGray.withOpacity(0.3),
+                showBorder: true,
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    // App Logo - Compact size
+                    Container(
                       width: 60,
                       height: 60,
-                      fit: BoxFit.contain,
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryRed,
+                        borderRadius: BorderRadius.circular(SoftUIDesign.cardBorderRadius),
+                        boxShadow: SoftUIDesign.getButtonShadow(color: AppColors.primaryRed),
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(16),
+                        child: Image.asset(
+                          'assets/images/app_logo (3).png',
+                          width: 60,
+                          height: 60,
+                          fit: BoxFit.contain,
+                        ),
+                      ),
                     ),
-                  ),
-                ),
-                
-                const SizedBox(width: 16),
-                
-                // App Info - Compact layout
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
+                    
+                    const SizedBox(width: 16),
+                    
+                    // App Info - Compact layout with dynamic status
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          AccessibleHeading(
-                            'T.U.L.O.N.G',
-                            level: HeadingLevel.h3,
-                            color: AppColors.primaryRed,
-                            backgroundColor: AppColors.white,
+                          // App Name with Connection Status Badge
+                          Row(
+                            children: [
+                              Expanded(
+                                child: AccessibleHeading(
+                                  'T.U.L.O.N.G',
+                                  level: HeadingLevel.h3,
+                                  color: AppColors.primaryRed,
+                                  backgroundColor: AppColors.white,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              // Dynamic Connection Status Badge with Pulse Animation
+                              AnimatedBuilder(
+                                animation: _connectionPulseAnimation,
+                                builder: (context, child) {
+                                  return AnimatedContainer(
+                                    duration: const Duration(milliseconds: 300),
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: isConnected ? AppColors.success : AppColors.error,
+                                      borderRadius: BorderRadius.circular(12),
+                                      boxShadow: isConnected ? [
+                                        BoxShadow(
+                                          color: AppColors.success.withOpacity(0.3 * _connectionPulseAnimation.value),
+                                          blurRadius: 6 * _connectionPulseAnimation.value,
+                                          spreadRadius: 1 * _connectionPulseAnimation.value,
+                                        ),
+                                      ] : [
+                                        BoxShadow(
+                                          color: AppColors.error.withOpacity(0.3),
+                                          blurRadius: 6,
+                                          spreadRadius: 1,
+                                        ),
+                                      ],
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        AnimatedContainer(
+                                          duration: const Duration(milliseconds: 300),
+                                          width: 6,
+                                          height: 6,
+                                          decoration: BoxDecoration(
+                                            color: Colors.white,
+                                            shape: BoxShape.circle,
+                                            boxShadow: isConnected ? [
+                                              BoxShadow(
+                                                color: Colors.white.withOpacity(0.8 * _connectionPulseAnimation.value),
+                                                blurRadius: 4 * _connectionPulseAnimation.value,
+                                                spreadRadius: 1 * _connectionPulseAnimation.value,
+                                              ),
+                                            ] : null,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          isConnected ? 'CONNECTED' : 'OFFLINE',
+                                          style: AppTypography.captionText.copyWith(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 10,
+                                            letterSpacing: 0.5,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              ),
+                            ],
                           ),
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: AppColors.success.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 6,
-                                  height: 6,
-                                  decoration: const BoxDecoration(
-                                    color: AppColors.success,
-                                    shape: BoxShape.circle,
-                                  ),
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  'CONNECTED',
-                                  style: TextStyle(
-                                    fontSize: 8,
-                                    fontWeight: FontWeight.w900,
-                                    color: AppColors.success,
-                                    letterSpacing: 0.5,
-                                  ),
-                                ),
-                              ],
+                          const SizedBox(height: 6),
+                          // Dynamic Greeting Message
+                          Text(
+                            _getGreeting(),
+                            style: AppTypography.bodyMedium.copyWith(
+                              color: AppColors.mediumGray,
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '${_getGreeting()}, Ready to Help',
-                        style: AppTypography.bodyMedium.copyWith(
-                          color: AppColors.mediumGray,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        // Gradient accent line matching Calls/Messages/Profile style
-        AnimatedContainer(
-          duration: const Duration(milliseconds: 420),
-          curve: Curves.easeInOutCubic,
-          height: 3,
-          margin: const EdgeInsets.symmetric(horizontal: 16),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(2),
-            gradient: LinearGradient(
-              begin: Alignment.centerLeft,
-              end: Alignment.centerRight,
-              colors: [
-                AppColors.primaryRed.withOpacity(0.0),
-                AppColors.primaryRed.withOpacity(0.85),
-                AppColors.primaryRed.withOpacity(0.0),
-              ],
-              stops: const [0.0, 0.5, 1.0],
+            const SizedBox(height: 12),
+            // Gradient accent line matching Calls/Messages/Profile style
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 420),
+              curve: Curves.easeInOutCubic,
+              height: 3,
+              margin: const EdgeInsets.symmetric(horizontal: 16),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(2),
+                gradient: LinearGradient(
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                  colors: [
+                    AppColors.primaryRed.withOpacity(0.0),
+                    AppColors.primaryRed.withOpacity(0.85),
+                    AppColors.primaryRed.withOpacity(0.0),
+                  ],
+                  stops: const [0.0, 0.5, 1.0],
+                ),
+              ),
             ),
-          ),
-        ),
-      ],
+          ],
+        );
+      },
     );
   }
 
@@ -583,24 +623,35 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
   Widget _buildQuickActions() {
     return PhoneResponsiveBuilder(
       builder: (context, screenSize) {
-        final cardRadius = PhoneResponsiveHelper.getPhoneBorderRadius(context).clamp(12, 20).toDouble();
-        final spacing = PhoneResponsiveHelper.getPhoneSpacing(context);
         return Container(
           padding: PhoneResponsiveHelper.getPhonePadding(context),
           decoration: BoxDecoration(
             color: AppColors.white,
-            borderRadius: BorderRadius.circular(cardRadius),
+            borderRadius: BorderRadius.circular(PhoneResponsiveHelper.getPhoneBorderRadius(context)),
             border: Border.all(
               color: AppColors.lightGray.withOpacity(0.2),
               width: 1.5,
             ),
             boxShadow: [
-              // Solid soft-depth (no inner highlight/glow)
+              // Enhanced shadow with depth
               BoxShadow(
                 color: Colors.black.withOpacity(0.08),
-                blurRadius: 18,
-                spreadRadius: 0,
+                blurRadius: 20,
+                spreadRadius: 2,
                 offset: const Offset(0, 8),
+              ),
+              // Subtle inner highlight
+              BoxShadow(
+                color: Colors.white.withOpacity(0.8),
+                blurRadius: 10,
+                offset: const Offset(-2, -2),
+              ),
+              // Colored glow from primary red
+              BoxShadow(
+                color: AppColors.primaryRed.withOpacity(0.05),
+                blurRadius: 15,
+                spreadRadius: 1,
+                offset: const Offset(0, 4),
               ),
             ],
           ),
@@ -611,26 +662,26 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                 children: [
                   Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
+                      horizontal: 12,
                       vertical: 8,
                     ),
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
-                        colors: [
-                          AppColors.primaryRed.withOpacity(0.12),
-                          AppColors.primaryRed.withOpacity(0.06),
-                        ],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
+                        colors: [
+                          AppColors.primaryRed.withOpacity(0.15),
+                          AppColors.primaryRed.withOpacity(0.08),
+                        ],
                       ),
-                      borderRadius: BorderRadius.circular(20),
+                      borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                        color: AppColors.primaryRed.withOpacity(0.25),
-                        width: 1.2,
+                        color: AppColors.primaryRed.withOpacity(0.3),
+                        width: 1.5,
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: AppColors.primaryRed.withOpacity(0.04),
+                      color: AppColors.primaryRed.withOpacity(0.1),
                           blurRadius: 8,
                           offset: const Offset(0, 2),
                         ),
@@ -639,27 +690,19 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Container(
-                          padding: const EdgeInsets.all(4),
-                          decoration: BoxDecoration(
-                            color: AppColors.primaryRed.withOpacity(0.15),
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            Icons.flash_on_rounded,
-                            color: AppColors.primaryRed,
-                            size: 14,
-                          ),
+                        Icon(
+                          Icons.flash_on_rounded,
+                          color: AppColors.primaryRed,
+                          size: 18,
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 6),
                         Text(
-                          'Quick Actions',
-                          style: AppTypography.cardTitle.copyWith(
-                            color: AppColors.primaryRed,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 0.5,
-                            fontSize: 13,
-                          ),
+                      'Quick Actions',
+                      style: AppTypography.cardTitle.copyWith(
+                        color: AppColors.primaryRed,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.3,
+                      ),
                         ),
                       ],
                     ),
@@ -671,40 +714,38 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                       vertical: 6,
                     ),
                     decoration: BoxDecoration(
-                      color: AppColors.ultraLightGray.withOpacity(0.8),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: AppColors.borderColor.withOpacity(0.5),
-                        width: 1,
-                      ),
+                      color: AppColors.primaryRed.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(8),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(
                           Icons.touch_app_rounded,
-                          color: AppColors.textSecondary.withOpacity(0.8),
+                          color: AppColors.primaryRed.withOpacity(0.8),
                           size: 14,
                         ),
-                        const SizedBox(width: 6),
-                        Text(
-                          'Tap to use',
-                          style: AppTypography.captionText.copyWith(
-                            color: AppColors.textSecondary.withOpacity(0.9),
-                            fontWeight: FontWeight.w700,
+                        const SizedBox(width: 4),
+                  Text(
+                    'Tap to use',
+                    style: AppTypography.captionText.copyWith(
+                            color: AppColors.primaryRed.withOpacity(0.8),
+                            fontWeight: FontWeight.w600,
                             fontSize: 11,
-                            letterSpacing: 0.2,
-                          ),
-                        ),
-                      ],
                     ),
                   ),
                 ],
               ),
-              SizedBox(height: spacing),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
               Builder(
                 builder: (context) {
                   final quickActions = _getQuickActions();
+                  // Responsive spacing between cards
+                  final cardSpacing = PhoneResponsiveHelper.getPhoneSpacing(context) * 0.5;
+                  
                   return Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: quickActions.asMap().entries.map((entry) {
@@ -713,8 +754,8 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                       return Expanded(
                         child: Padding(
                           padding: EdgeInsets.only(
-                            left: index == 0 ? 0 : 8,
-                            right: index == quickActions.length - 1 ? 0 : 8,
+                            left: index == 0 ? 0 : cardSpacing,
+                            right: index == quickActions.length - 1 ? 0 : cardSpacing,
                           ),
                           child: _quickActionsStagger.buildAnimatedItem(
                             index,
@@ -748,97 +789,167 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
   }) {
     return PhoneResponsiveBuilder(
       builder: (context, screenSize) {
-        // Further increased height to ensure all text is visible and layout is spacious
-        final height = PhoneResponsiveHelper.getPhoneCardHeight(context).clamp(120, 140).toDouble();
-        final radius = SoftUIDesign.cardBorderRadius;
+        // Responsive sizing based on screen size
+        final isSmall = PhoneResponsiveHelper.isSmallPhone(context);
+        final isMedium = PhoneResponsiveHelper.isMediumPhone(context);
+        final isLarge = PhoneResponsiveHelper.isLargePhone(context);
         
-        return Container(
-          height: height,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(radius),
-            border: Border.all(
-              color: backgroundColor.withOpacity(0.12),
-              width: 1.5,
-            ),
-            boxShadow: SoftUIDesign.getCardShadow(elevation: 3),
-          ),
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: () {
-                HapticFeedback.mediumImpact();
-                onPressed();
-              },
-              borderRadius: BorderRadius.circular(radius),
+        // Responsive card dimensions
+        final cardMinHeight = isSmall ? 100.0 : (isMedium ? 110.0 : (isLarge ? 120.0 : 130.0));
+        final cardMinWidth = isSmall ? 90.0 : (isMedium ? 100.0 : (isLarge ? 110.0 : 120.0));
+        
+        // Responsive icon size
+        final iconContainerSize = isSmall ? 44.0 : (isMedium ? 48.0 : (isLarge ? 52.0 : 56.0));
+        final iconSize = isSmall ? 26.0 : (isMedium ? 28.0 : (isLarge ? 30.0 : 32.0));
+        
+        // Responsive font sizes
+        final titleFontSize = PhoneResponsiveHelper.getPhoneFontSize(
+          context,
+          small: 13,
+          medium: 14,
+          large: 15,
+          extraLarge: 16,
+        );
+        final subtitleFontSize = PhoneResponsiveHelper.getPhoneFontSize(
+          context,
+          small: 10,
+          medium: 11,
+          large: 12,
+          extraLarge: 13,
+        );
+        
+        // Responsive padding
+        final verticalPadding = isSmall ? 10.0 : (isMedium ? 12.0 : (isLarge ? 14.0 : 16.0));
+        final horizontalPadding = isSmall ? 8.0 : (isMedium ? 10.0 : (isLarge ? 12.0 : 14.0));
+        
+        // Responsive spacing
+        final iconTextSpacing = isSmall ? 8.0 : (isMedium ? 10.0 : (isLarge ? 12.0 : 14.0));
+        final titleSubtitleSpacing = isSmall ? 2.0 : (isMedium ? 3.0 : (isLarge ? 4.0 : 5.0));
+        
+        // Responsive blob sizes
+        final blobSize1 = isSmall ? 60.0 : (isMedium ? 65.0 : (isLarge ? 70.0 : 75.0));
+        final blobSize2 = isSmall ? 45.0 : (isMedium ? 50.0 : (isLarge ? 55.0 : 60.0));
+        
+        return Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () {
+              HapticFeedback.mediumImpact();
+              onPressed();
+            },
+            borderRadius: BorderRadius.circular(PhoneResponsiveHelper.getPhoneBorderRadius(context)),
+            child: Container(
+              constraints: BoxConstraints(
+                minWidth: cardMinWidth,
+                minHeight: cardMinHeight,
+              ),
+              decoration: SoftUIDesign.cardDecoration(
+                backgroundColor: AppColors.white,
+                borderRadius: PhoneResponsiveHelper.getPhoneBorderRadius(context),
+                elevation: 3.0,
+                borderColor: AppColors.lightGray.withOpacity(0.25),
+                showBorder: true,
+              ),
               child: Stack(
                 children: [
-                  // Subtle colored accent in the corner
-                  SoftUIDesign.buildCornerAccentOverlay(
-                    accentColor: backgroundColor,
-                    alignment: Alignment.topRight,
-                    size: 60,
-                    opacity: 0.12,
+                  // Decorative colored blobs in background - responsive sizes
+                  Positioned.fill(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(PhoneResponsiveHelper.getPhoneBorderRadius(context)),
+                      child: Stack(
+                        children: [
+                          // Top-left blob - responsive size
+                          Positioned(
+                            top: -25,
+                            left: -25,
+                            child: Container(
+                              width: blobSize1,
+                              height: blobSize1,
+                              decoration: BoxDecoration(
+                                color: backgroundColor.withOpacity(0.12),
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          ),
+                          // Bottom-right blob - responsive size
+                          Positioned(
+                            bottom: -20,
+                            right: -20,
+                            child: Container(
+                              width: blobSize2,
+                              height: blobSize2,
+                              decoration: BoxDecoration(
+                                color: backgroundColor.withOpacity(0.08),
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                  
-                  // Content
+                  // Main content with responsive spacing
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
+                    padding: EdgeInsets.symmetric(
+                      vertical: verticalPadding,
+                      horizontal: horizontalPadding,
+                    ),
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
                       children: [
+                        // Icon container with responsive Soft UI styling
                         Container(
-                          width: 44,
-                          height: 44,
+                          width: iconContainerSize,
+                          height: iconContainerSize,
                           decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [
-                                backgroundColor.withOpacity(0.15),
-                                backgroundColor.withOpacity(0.05),
-                              ],
-                            ),
-                            borderRadius: BorderRadius.circular(14),
+                            color: backgroundColor.withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(PhoneResponsiveHelper.getPhoneBorderRadius(context) * 0.75),
                             border: Border.all(
                               color: backgroundColor.withOpacity(0.2),
-                              width: 1,
+                              width: isSmall ? 1.0 : 1.5,
+                            ),
+                            boxShadow: SoftUIDesign.getSoftShadow(
+                              elevation: 2.0,
+                              shadowColor: backgroundColor.withOpacity(0.15),
                             ),
                           ),
                           child: Icon(
                             icon,
                             color: backgroundColor,
-                            size: 24,
+                            size: iconSize,
                           ),
                         ),
-                        const SizedBox(height: 10),
-                        FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: Text(
-                            title,
-                            style: AppTypography.cardTitle.copyWith(
-                              color: AppColors.textPrimary,
-                              fontWeight: FontWeight.w900,
-                              fontSize: 15,
-                              letterSpacing: 0.5,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
+                        SizedBox(height: iconTextSpacing),
+                        // Title - responsive font size
                         Text(
-                          subtitle,
-                          style: AppTypography.captionText.copyWith(
-                            color: AppColors.textSecondary,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 11,
-                            letterSpacing: 0.2,
+                          title,
+                          style: AppTypography.titleMedium.copyWith(
+                            color: AppColors.darkGray,
+                            fontWeight: FontWeight.w800,
+                            fontSize: titleFontSize,
+                            letterSpacing: 0.3,
+                            height: 1.2,
                           ),
+                          textAlign: TextAlign.center,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
+                        ),
+                        SizedBox(height: titleSubtitleSpacing),
+                        // Subtitle - responsive font size
+                        Text(
+                          subtitle,
+                          style: AppTypography.bodySmall.copyWith(
+                            color: AppColors.mediumGray,
+                            fontWeight: FontWeight.w600,
+                            fontSize: subtitleFontSize,
+                            letterSpacing: 0.2,
+                            height: 1.2,
+                          ),
                           textAlign: TextAlign.center,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ],
                     ),
@@ -904,44 +1015,32 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
     required Color color,
     required VoidCallback onTap,
   }) {
-    final bool isActive = label != 'Offline' && label != '0';
-    
     return GestureDetector(
       onTap: () {
         HapticFeedback.lightImpact();
         onTap();
       },
-      child: AnimatedBuilder(
-        animation: _pulseAnimation,
-        builder: (context, child) {
-          return Transform.scale(
-            scale: isActive ? _pulseAnimation.value : 1.0,
-            child: Container(
-              height: 110,
-              padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(
-                  color: color.withOpacity(isActive ? 0.5 : 0.3),
-                  width: isActive ? 2.5 : 1.5,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: color.withOpacity(isActive ? 0.15 : 0.05),
-                    blurRadius: isActive ? 15 : 8,
-                    offset: const Offset(0, 4),
-                    spreadRadius: isActive ? 1 : 0,
-                  ),
-                ],
-              ),
-              child: child,
+      child: Container(
+        height: 110, // Increased height for better visibility
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: color.withOpacity(0.4),
+            width: 2,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: color.withOpacity(0.08),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
             ),
-          );
-        },
+          ],
+        ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center, // Center horizontally
           children: [
             Stack(
               alignment: Alignment.center,
@@ -1041,39 +1140,6 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
         child: Stack(
           alignment: Alignment.center,
           children: [
-            // Constant Radar Pulse Background
-            AnimatedBuilder(
-              animation: _pulseAnimation,
-              builder: (context, _) {
-                return Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    Container(
-                      width: (btnSize + 40) * _pulseAnimation.value,
-                      height: (btnSize + 40) * _pulseAnimation.value,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: const Color(0xFFE53935).withOpacity(0.15 * (1.1 - (_pulseAnimation.value - 1.0) * 5)),
-                          width: 2,
-                        ),
-                      ),
-                    ),
-                    Container(
-                      width: (btnSize + 80) * (1.0 + (_pulseAnimation.value - 1.0) * 0.5),
-                      height: (btnSize + 80) * (1.0 + (_pulseAnimation.value - 1.0) * 0.5),
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: const Color(0xFFE53935).withOpacity(0.08 * (1.1 - (_pulseAnimation.value - 1.0) * 5)),
-                          width: 1,
-                        ),
-                      ),
-                    ),
-                  ],
-                );
-              },
-            ),
             // Outer glow ring (pulsing)
             AnimatedBuilder(
               animation: _welcomeAnimation,
@@ -2270,62 +2336,13 @@ class _DeviceSelectionDialog extends StatefulWidget {
 
 class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
   bool _showAllDevices = false;
-  bool _isBluetoothEnabled = true;
-  bool _isCheckingBluetooth = true;
   
   @override
   void initState() {
     super.initState();
-    _checkBluetoothState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_isBluetoothEnabled) {
-        context.read<ChatProvider>().loadPairedDevices();
-      }
+      context.read<ChatProvider>().loadPairedDevices();
     });
-  }
-
-  Future<void> _checkBluetoothState() async {
-    try {
-      final isEnabled = await FlutterBluetoothSerial.instance.isOn;
-      if (mounted) {
-        setState(() {
-          _isBluetoothEnabled = isEnabled ?? false;
-          _isCheckingBluetooth = false;
-        });
-        // Reload devices if Bluetooth is enabled
-        if (_isBluetoothEnabled) {
-          context.read<ChatProvider>().loadPairedDevices();
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isBluetoothEnabled = false;
-          _isCheckingBluetooth = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _requestEnableBluetooth() async {
-    try {
-      // Request to enable Bluetooth
-      await FlutterBluetoothSerial.instance.requestEnable();
-      // Wait a bit then check again
-      await Future.delayed(const Duration(milliseconds: 500));
-      await _checkBluetoothState();
-    } catch (e) {
-      // User cancelled or error occurred
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Please enable Bluetooth in Settings'),
-            backgroundColor: AppColors.error,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
-    }
   }
 
   @override
@@ -2354,22 +2371,17 @@ class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
             return Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Modern Header with Gradient - Changes color when Bluetooth is off
+                // Modern Header with Gradient
                 Container(
                   padding: const EdgeInsets.all(24),
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
-                      colors: _isBluetoothEnabled
-                          ? [
-                              cyanBlue,
-                              cyanBlue.withOpacity(0.8),
-                            ]
-                          : [
-                              Colors.orange,
-                              Colors.orange.withOpacity(0.8),
-                            ],
+                      colors: [
+                        cyanBlue,
+                        cyanBlue.withOpacity(0.8),
+                      ],
                     ),
                     borderRadius: const BorderRadius.only(
                       topLeft: Radius.circular(24),
@@ -2384,8 +2396,8 @@ class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
                           color: Colors.white.withOpacity(0.2),
                           borderRadius: BorderRadius.circular(12),
                         ),
-                        child: Icon(
-                          _isBluetoothEnabled ? Icons.bluetooth : Icons.bluetooth_disabled,
+                        child: const Icon(
+                          Icons.bluetooth,
                           color: Colors.white,
                           size: 28,
                         ),
@@ -2404,9 +2416,7 @@ class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              _isBluetoothEnabled
-                                  ? 'Select an ESP32 device to connect'
-                                  : 'Bluetooth is turned off',
+                              'Select an ESP32 device to connect',
                               style: AppTypography.bodySmall.copyWith(
                                 color: Colors.white.withOpacity(0.9),
                               ),
@@ -2422,146 +2432,115 @@ class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
                   ),
                 ),
                 
-                // Connection Status Card - Shows Bluetooth off state
+                // Connection Status Card
                 Padding(
                   padding: const EdgeInsets.all(20),
-                  child: _isCheckingBluetooth
-                      ? Container(
-                          padding: const EdgeInsets.all(16),
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: provider.isConnected 
+                          ? cyanBlue.withOpacity(0.1) 
+                          : Colors.grey.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: provider.isConnected 
+                            ? cyanBlue.withOpacity(0.3) 
+                            : Colors.grey.withOpacity(0.3),
+                        width: 1.5,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(
-                            color: Colors.grey.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(16),
+                            color: provider.isConnected 
+                                ? cyanBlue.withOpacity(0.2) 
+                                : Colors.grey.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(10),
                           ),
-                          child: const Center(
-                            child: CircularProgressIndicator(),
+                          child: Icon(
+                            provider.isConnected ? Icons.bluetooth_connected : Icons.bluetooth_disabled,
+                            color: provider.isConnected ? cyanBlue : Colors.grey,
+                            size: 24,
                           ),
-                        )
-                      : Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: _isBluetoothEnabled
-                                ? (provider.isConnected 
-                                    ? cyanBlue.withOpacity(0.1) 
-                                    : Colors.grey.withOpacity(0.1))
-                                : Colors.orange.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(
-                              color: _isBluetoothEnabled
-                                  ? (provider.isConnected 
-                                      ? cyanBlue.withOpacity(0.3) 
-                                      : Colors.grey.withOpacity(0.3))
-                                  : Colors.orange.withOpacity(0.3),
-                              width: 1.5,
-                            ),
-                          ),
-                          child: Row(
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Container(
-                                padding: const EdgeInsets.all(10),
-                                decoration: BoxDecoration(
-                                  color: _isBluetoothEnabled
-                                      ? (provider.isConnected 
-                                          ? cyanBlue.withOpacity(0.2) 
-                                          : Colors.grey.withOpacity(0.2))
-                                      : Colors.orange.withOpacity(0.2),
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: Icon(
-                                  _isBluetoothEnabled
-                                      ? (provider.isConnected 
-                                          ? Icons.bluetooth_connected 
-                                          : Icons.bluetooth_disabled)
-                                      : Icons.bluetooth_disabled,
-                                  color: _isBluetoothEnabled
-                                      ? (provider.isConnected ? cyanBlue : Colors.grey)
-                                      : Colors.orange,
-                                  size: 24,
+                              Text(
+                                provider.isConnected 
+                                    ? 'Connected' 
+                                    : 'Not Connected',
+                                style: AppTypography.bodyLarge.copyWith(
+                                  color: provider.isConnected ? cyanBlue : Colors.grey,
+                                  fontWeight: FontWeight.bold,
                                 ),
                               ),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      _isBluetoothEnabled
-                                          ? (provider.isConnected 
-                                              ? 'Connected' 
-                                              : 'Not Connected')
-                                          : 'Bluetooth Off',
-                                      style: AppTypography.bodyLarge.copyWith(
-                                        color: _isBluetoothEnabled
-                                            ? (provider.isConnected ? cyanBlue : Colors.grey)
-                                            : Colors.orange,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      _isBluetoothEnabled
-                                          ? (provider.isConnected 
-                                              ? 'Device: ${provider.selectedDevice?.name ?? "ESP32"}' 
-                                              : 'No device connected')
-                                          : 'Please enable Bluetooth to connect',
-                                      style: AppTypography.bodySmall.copyWith(
-                                        color: AppColors.mediumGray,
-                                      ),
-                                    ),
-                                  ],
+                              const SizedBox(height: 4),
+                              Text(
+                                provider.isConnected 
+                                    ? 'Device: ${provider.selectedDevice?.name ?? "ESP32"}' 
+                                    : 'No device connected',
+                                style: AppTypography.bodySmall.copyWith(
+                                  color: AppColors.mediumGray,
                                 ),
                               ),
                             ],
                           ),
                         ),
-                ),
-                
-                // Refresh button and title - Hidden when Bluetooth is off
-                if (_isBluetoothEnabled) ...[
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          'Paired Devices',
-                          style: AppTypography.bodyLarge.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.darkGray,
-                          ),
-                        ),
-                        ElevatedButton.icon(
-                          onPressed: provider.isConnecting ? null : () {
-                            provider.loadPairedDevices();
-                          },
-                          icon: provider.isConnecting 
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                  ),
-                                )
-                              : const Icon(Icons.refresh, size: 18),
-                          label: Text(provider.isConnecting ? 'Connecting...' : 'Refresh'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: cyanBlue,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                        ),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 16),
-                ],
+                ),
                 
-                // Device list or Bluetooth off message
+                // Refresh button and title
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Paired Devices',
+                        style: AppTypography.bodyLarge.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.darkGray,
+                        ),
+                      ),
+                      ElevatedButton.icon(
+                        onPressed: provider.isConnecting ? null : () {
+                          provider.loadPairedDevices();
+                        },
+                        icon: provider.isConnecting 
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                ),
+                              )
+                            : const Icon(Icons.refresh, size: 18),
+                        label: Text(provider.isConnecting ? 'Connecting...' : 'Refresh'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: cyanBlue,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                
+                // Device list
                 Expanded(
-                  child: !_isBluetoothEnabled
+                  child: provider.pairedDevices.isEmpty
                       ? Center(
                           child: SingleChildScrollView(
                             child: Padding(
@@ -2572,18 +2551,18 @@ class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
                                   Container(
                                     padding: const EdgeInsets.all(24),
                                     decoration: BoxDecoration(
-                                      color: Colors.orange.withOpacity(0.1),
+                                      color: Colors.grey.withOpacity(0.1),
                                       shape: BoxShape.circle,
                                     ),
                                     child: const Icon(
-                                      Icons.bluetooth_disabled,
+                                      Icons.bluetooth_searching,
                                       size: 64,
-                                      color: Colors.orange,
+                                      color: Colors.grey,
                                     ),
                                   ),
                                   const SizedBox(height: 24),
                                   Text(
-                                    'Bluetooth is Turned Off',
+                                    'No paired devices found',
                                     style: AppTypography.headlineSmall.copyWith(
                                       color: AppColors.darkGray,
                                       fontWeight: FontWeight.bold,
@@ -2591,72 +2570,17 @@ class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
                                   ),
                                   const SizedBox(height: 8),
                                   Text(
-                                    'Please enable Bluetooth to connect to ESP32 devices',
+                                    'Please pair with ESP32 device first',
                                     style: AppTypography.bodyMedium.copyWith(
                                       color: AppColors.mediumGray,
                                     ),
                                     textAlign: TextAlign.center,
-                                  ),
-                                  const SizedBox(height: 24),
-                                  ElevatedButton.icon(
-                                    onPressed: _requestEnableBluetooth,
-                                    icon: const Icon(Icons.bluetooth, size: 20),
-                                    label: const Text('Enable Bluetooth'),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.orange,
-                                      foregroundColor: Colors.white,
-                                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                    ),
                                   ),
                                 ],
                               ),
                             ),
                           ),
                         )
-                      : provider.pairedDevices.isEmpty
-                          ? Center(
-                              child: SingleChildScrollView(
-                                child: Padding(
-                                  padding: const EdgeInsets.all(40),
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Container(
-                                        padding: const EdgeInsets.all(24),
-                                        decoration: BoxDecoration(
-                                          color: Colors.grey.withOpacity(0.1),
-                                          shape: BoxShape.circle,
-                                        ),
-                                        child: const Icon(
-                                          Icons.bluetooth_searching,
-                                          size: 64,
-                                          color: Colors.grey,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 24),
-                                      Text(
-                                        'No paired devices found',
-                                        style: AppTypography.headlineSmall.copyWith(
-                                          color: AppColors.darkGray,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 8),
-                                      Text(
-                                        'Please pair with ESP32 device first',
-                                        style: AppTypography.bodyMedium.copyWith(
-                                          color: AppColors.mediumGray,
-                                        ),
-                                        textAlign: TextAlign.center,
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            )
                       : Column(
                           children: [
                             Expanded(

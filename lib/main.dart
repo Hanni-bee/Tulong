@@ -24,7 +24,6 @@ import 'providers/chat_provider.dart';
 import 'providers/notification_provider.dart';
 import 'services/simple_bluetooth_service.dart';
 import 'services/hardware_service.dart';
-import 'utils/performance_optimizer.dart';
 import 'services/firebase_service.dart';
 import 'services/offline_auth_service.dart';
 import 'services/notification_service.dart';
@@ -88,6 +87,7 @@ class _TulongAppState extends State<TulongApp> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     // Update notification service with app state
+    // Only show notifications when app is in background (paused, inactive, or detached)
     final isInForeground = state == AppLifecycleState.resumed;
     NotificationService().setAppLifecycleState(isInForeground);
     debugPrint('📱 App lifecycle changed: $state (Foreground: $isInForeground)');

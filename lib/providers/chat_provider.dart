@@ -1,16 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_bluetooth_serial_plus/flutter_bluetooth_serial_plus.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../services/bluetooth_service.dart';
 import '../services/voice_chat_extension.dart' as voice;
-// import '../services/sqlite_service.dart'; // Reserved for future cached message loading
-import 'package:connectivity_plus/connectivity_plus.dart';
-import '../utils/enhanced_error_handler.dart';
 import '../services/notification_service.dart';
-import '../widgets/modern_toast.dart';
+import '../constants/app_colors.dart';
 
 class ChatProvider with ChangeNotifier {
   final BluetoothService _bluetoothService = BluetoothService();
@@ -23,89 +18,35 @@ class ChatProvider with ChangeNotifier {
   final List<String> _debugLogs = [];
   bool _isConnecting = false;
   
-  // Loading states
+  // New UI tracking states
   bool _isLoadingMessages = false;
   bool _isRefreshingMessages = false;
-  bool _hasCachedMessages = false;
-  final bool _isTyping = false;
+  bool _isLocalChatScreenVisible = false;
+  bool _isTyping = false;
   
   // Connected users on the channel (extracted from messages)
   final Set<String> _connectedUsers = {};
   String? _currentUserName;
-  
-  // Track if local chat screen is currently visible
-  bool _isLocalChatScreenVisible = false;
-  
-  // Auto-reconnect settings
-  bool _isAutoReconnectEnabled = true;
-  Timer? _reconnectTimer;
-  int _reconnectAttempts = 0;
-  static const int maxReconnectAttempts = 5;
-  
-  bool get isAutoReconnectEnabled => _isAutoReconnectEnabled;
+
   List<BluetoothDevice> get pairedDevices => _pairedDevices;
   BluetoothDevice? get selectedDevice => _selectedDevice;
   bool get isConnected => _isConnected;
   List<ChatMessage> get messages => _messages;
-  
-  /// Get pinned emergency messages (sorted by timestamp, newest first)
-  List<ChatMessage> get pinnedEmergencyMessages {
-    final pinned = _messages.where((msg) => msg.isPinned && msg.isEmergency).toList();
-    // Sort by timestamp (newest first)
-    pinned.sort((a, b) => b.timestamp.compareTo(a.timestamp));
-    return pinned;
-  }
-  
-  /// Unpin an emergency message
-  void unpinEmergencyMessage(String messageId) {
-    final index = _messages.indexWhere((msg) => msg.messageId == messageId);
-    if (index != -1) {
-      _messages[index] = _messages[index].copyWith(isPinned: false);
-      notifyListeners();
-    }
-  }
-  
-  /// Auto-unpin emergency messages older than 1 hour
-  void _autoUnpinOldEmergencies() {
-    final now = DateTime.now();
-    bool updated = false;
-    
-    for (int i = 0; i < _messages.length; i++) {
-      final msg = _messages[i];
-      if (msg.isPinned && msg.isEmergency) {
-        final age = now.difference(msg.timestamp);
-        if (age.inHours >= 1) {
-          _messages[i] = msg.copyWith(isPinned: false);
-          updated = true;
-        }
-      }
-    }
-    
-    if (updated) {
-      notifyListeners();
-    }
-  }
   List<String> get debugLogs => _debugLogs;
   bool get isConnecting => _isConnecting;
+  
+  // Getters for UI
   bool get isLoadingMessages => _isLoadingMessages;
   bool get isRefreshingMessages => _isRefreshingMessages;
-  bool get hasCachedMessages => _hasCachedMessages;
   bool get isTyping => _isTyping;
   String? get currentUserName => _currentUserName;
   
-  /// Get unread message count (messages not from current user that are unread)
-  int get unreadMessageCount {
-    return _messages.where((msg) => !msg.isMe && !msg.isRead).length;
-  }
+  int get unreadMessageCount => _messages.where((m) => !m.isMe && !m.isRead).length;
   
-  /// Set local chat screen visibility (called when screen is opened/closed)
-  void setLocalChatScreenVisible(bool isVisible) {
-    _isLocalChatScreenVisible = isVisible;
-    if (isVisible) {
-      // Mark all messages as read when screen becomes visible
-      markAllMessagesAsRead();
-    }
-  }
+  List<ChatMessage> get pinnedEmergencyMessages => 
+      _messages.where((m) => m.isPinned && m.isEmergency).toList();
+  
+  bool get hasCachedMessages => _messages.isNotEmpty;
   
   // Get connected users including current user
   List<String> get connectedUsers {
@@ -130,6 +71,67 @@ class ChatProvider with ChangeNotifier {
     return _currentUserName != null && user == _currentUserName;
   }
   
+  /// Set visibility of the local chat screen to handle read receipts
+  void setLocalChatScreenVisible(bool visible) {
+    _isLocalChatScreenVisible = visible;
+    if (visible) {
+      markAllMessagesAsRead();
+    }
+    notifyListeners();
+  }
+  
+  /// Mark all messages as read
+  void markAllMessagesAsRead() {
+    bool changed = false;
+    for (var message in _messages) {
+      if (!message.isMe && !message.isRead) {
+        message.isRead = true;
+        changed = true;
+      }
+    }
+    if (changed) {
+      notifyListeners();
+    }
+  }
+
+  /// Simulate loading messages (could be from SQLite in future)
+  Future<void> loadMessages() async {
+    if (_isLoadingMessages) return;
+    
+    _isLoadingMessages = true;
+    notifyListeners();
+    
+    // Simulate minor delay for loading
+    await Future.delayed(const Duration(milliseconds: 500));
+    
+    _isLoadingMessages = false;
+    notifyListeners();
+  }
+
+  /// Smart refresh for the chat screen
+  Future<void> smartRefresh() async {
+    if (_isRefreshingMessages) return;
+    
+    _isRefreshingMessages = true;
+    notifyListeners();
+    
+    // Check connection and refresh devices
+    await loadPairedDevices();
+    await Future.delayed(const Duration(seconds: 1));
+    
+    _isRefreshingMessages = false;
+    notifyListeners();
+  }
+  
+  /// Unpin an emergency message
+  void unpinEmergencyMessage(String messageId) {
+    final index = _messages.indexWhere((m) => m.messageId == messageId);
+    if (index != -1) {
+      _messages[index].isPinned = false;
+      notifyListeners();
+    }
+  }
+
   // Voice extension getters
   voice.VoiceChatExtension get voiceExtension => _voiceExtension;
   bool get isRecording => _voiceExtension.isRecording;
@@ -141,41 +143,15 @@ class ChatProvider with ChangeNotifier {
 
   ChatProvider() {
     _init();
-    // Auto-unpin old emergencies every 5 minutes
-    Timer.periodic(const Duration(minutes: 5), (_) {
-      _autoUnpinOldEmergencies();
-    });
   }
 
   void _init() {
     _messageSubscription = _bluetoothService.messageStream.listen((message) {
-      // Try to parse as JSON first (for SimpleBluetoothService messages)
-      try {
-        final jsonData = json.decode(message);
-        if (jsonData is Map<String, dynamic>) {
-          _processIncomingMapMessage(jsonData);
-          return;
-        }
-      } catch (e) {
-        // Not JSON, process as regular string message
-      }
-      // Process as regular string message
       _processIncomingMessage(message);
     });
 
     _connectionSubscription = _bluetoothService.connectionStream.listen((connected) {
       _isConnected = connected;
-      
-      if (!connected && _selectedDevice != null && _isAutoReconnectEnabled) {
-        // Only auto-reconnect if we didn't explicitly disconnect
-        _startAutoReconnect();
-      } else if (connected) {
-        // Successfully connected, reset attempts and timer
-        _reconnectAttempts = 0;
-        _reconnectTimer?.cancel();
-        _reconnectTimer = null;
-      }
-      
       notifyListeners();
     });
 
@@ -202,7 +178,7 @@ class ChatProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  Future<bool> connectToDevice(BluetoothDevice device, {BuildContext? context}) async {
+  Future<bool> connectToDevice(BluetoothDevice device) async {
     _isConnecting = true;
     notifyListeners();
     try {
@@ -212,34 +188,8 @@ class ChatProvider with ChangeNotifier {
         _isConnected = true;
         // Get current user name from database/storage
         await _updateCurrentUserNameFromDatabase();
-      } else if (context != null) {
-        // Show error if connection failed
-        final error = AppError(
-          category: ErrorCategory.bluetooth,
-          severity: ErrorSeverity.medium,
-          userMessage: 'Failed to connect to device. Please try again.',
-          canRetry: true,
-        );
-        EnhancedErrorHandler.showError(
-          context,
-          error,
-          onRetry: () => connectToDevice(device, context: context),
-        );
       }
       return success;
-    } catch (e) {
-      if (context != null) {
-        final error = AppError.fromException(
-          e,
-          category: ErrorCategory.bluetooth,
-        );
-        EnhancedErrorHandler.showError(
-          context,
-          error,
-          onRetry: () => connectToDevice(device, context: context),
-        );
-      }
-      return false;
     } finally {
       _isConnecting = false;
       notifyListeners();
@@ -249,7 +199,11 @@ class ChatProvider with ChangeNotifier {
   /// Update current user name from database/storage (signup information)
   Future<void> _updateCurrentUserNameFromDatabase() async {
     try {
-      // Try to get from SQLite database first (where signup info is stored)
+      // Get user email from AuthProvider if available
+      // Since we don't have direct access to AuthProvider here,
+      // we'll rely on setCurrentUserName() being called from UI
+      // But we can try to get from SQLite if we have the email
+      
       // For now, the UI will call setCurrentUserName() with the correct name
       // from the database, so this method is mainly for future use
     } catch (e) {
@@ -263,295 +217,40 @@ class ChatProvider with ChangeNotifier {
     _currentUserName = userName;
     notifyListeners();
   }
-  
-  /// Mark all messages as read (called when user views the chat screen)
-  void markAllMessagesAsRead() {
-    bool hasChanges = false;
-    for (int i = 0; i < _messages.length; i++) {
-      if (!_messages[i].isRead && !_messages[i].isMe) {
-        _messages[i] = _messages[i].copyWith(isRead: true);
-        hasChanges = true;
-      }
-    }
-    if (hasChanges) {
-      notifyListeners();
-    }
-  }
-  
-  /// Load messages with progressive loading (show cached first, then refresh)
-  Future<void> loadMessages({bool forceRefresh = false}) async {
-    // Check network state for smart loading
-    final connectivity = Connectivity();
-    final connectivityResults = await connectivity.checkConnectivity();
-    final isOnline = connectivityResults.any((result) => result != ConnectivityResult.none);
-    
-    // If not forcing refresh and we have cached messages, show them immediately
-    if (!forceRefresh && _messages.isNotEmpty) {
-      _hasCachedMessages = true;
-      notifyListeners();
-      // Refresh in background if online
-      if (isOnline) {
-        _refreshMessagesInBackground();
-      }
-      return;
-    }
-    
-    // Initial load - show cached messages first if available
-    if (!forceRefresh) {
-      await _loadCachedMessages();
-    }
-    
-    // Set loading state
-    if (forceRefresh) {
-      _isRefreshingMessages = true;
-    } else {
-      _isLoadingMessages = true;
-    }
-    notifyListeners();
-    
-    try {
-      // If online, try to fetch new messages
-      if (isOnline) {
-        await _fetchMessagesFromNetwork();
-      } else {
-        // Offline mode - only use cached messages
-        if (_messages.isEmpty) {
-          await _loadCachedMessages();
-        }
-      }
-    } catch (e) {
-      print('Error loading messages: $e');
-      // Fallback to cached messages on error
-      if (_messages.isEmpty) {
-        await _loadCachedMessages();
-      }
-    } finally {
-      _isLoadingMessages = false;
-      _isRefreshingMessages = false;
-      notifyListeners();
-    }
-  }
-  
-  /// Load cached messages from SQLite
-  Future<void> _loadCachedMessages() async {
-    try {
-      // Load messages from local database
-      // For now, we'll use the existing messages list
-      // In a full implementation, you'd load from SQLite here
-      // Example: final cached = await SQLiteService().getMessagesByChatId('local_chat');
-      _hasCachedMessages = _messages.isNotEmpty;
-      notifyListeners();
-    } catch (e) {
-      print('Error loading cached messages: $e');
-    }
-  }
-  
-  /// Fetch messages from network (Bluetooth/ESP32)
-  Future<void> _fetchMessagesFromNetwork() async {
-    // In a real implementation, this would fetch from network
-    // For now, messages come through the Bluetooth stream
-    // This method is a placeholder for future network sync
-    await Future.delayed(const Duration(milliseconds: 500));
-  }
-  
-  /// Refresh messages in background (progressive loading)
-  Future<void> _refreshMessagesInBackground() async {
-    try {
-      final connectivity = Connectivity();
-      final connectivityResults = await connectivity.checkConnectivity();
-      final isOnline = connectivityResults.any((result) => result != ConnectivityResult.none);
-      
-      if (isOnline) {
-        _isRefreshingMessages = true;
-        notifyListeners();
-        
-        await _fetchMessagesFromNetwork();
-        
-        _isRefreshingMessages = false;
-        notifyListeners();
-      }
-    } catch (e) {
-      print('Error refreshing messages: $e');
-      _isRefreshingMessages = false;
-      notifyListeners();
-    }
-  }
-  
-  /// Smart refresh - only refresh if online and not already refreshing
-  Future<void> smartRefresh() async {
-    if (_isRefreshingMessages) return;
-    
-    final connectivity = Connectivity();
-    final connectivityResults = await connectivity.checkConnectivity();
-    final isOnline = connectivityResults.any((result) => result != ConnectivityResult.none);
-    
-    if (isOnline) {
-      await loadMessages(forceRefresh: true);
-    } else {
-      // Offline - just reload cached messages
-      await _loadCachedMessages();
-    }
-  }
 
   Future<void> disconnect() async {
-    _reconnectTimer?.cancel();
-    _reconnectTimer = null;
     await _bluetoothService.disconnect();
-    // Keep _selectedDevice so we can show "Reconnect" option in the UI
-    // Only clear it when connecting to a different device or explicitly clearing
-    _isConnected = false;
-    _connectedUsers.clear(); // Clear connected users on disconnect
-    notifyListeners();
-  }
-  
-  /// Toggle auto-reconnect
-  void setAutoReconnectEnabled(bool enabled) {
-    _isAutoReconnectEnabled = enabled;
-    if (!enabled) {
-      _reconnectTimer?.cancel();
-      _reconnectTimer = null;
-    }
-    notifyListeners();
-  }
-
-  /// Start auto-reconnect sequence
-  void _startAutoReconnect() {
-    if (_reconnectTimer != null || _isConnecting) return;
-    
-    addStructuredDebug({
-      'source': 'BLUETOOTH',
-      'event': 'Auto-reconnect sequence started',
-      'metrics': {'device': _selectedDevice?.name}
-    });
-
-    _reconnectTimer = Timer.periodic(const Duration(seconds: 10), (timer) async {
-      if (_isConnected || !_isAutoReconnectEnabled || _reconnectAttempts >= maxReconnectAttempts) {
-        timer.cancel();
-        _reconnectTimer = null;
-        if (_reconnectAttempts >= maxReconnectAttempts) {
-          addStructuredDebug({
-            'source': 'BLUETOOTH',
-            'event': 'Auto-reconnect failed - max attempts reached',
-          });
-        }
-        return;
-      }
-      
-      _reconnectAttempts++;
-      addStructuredDebug({
-        'source': 'BLUETOOTH',
-        'event': 'Auto-reconnect attempt',
-        'metrics': {'attempt': _reconnectAttempts, 'device': _selectedDevice?.name}
-      });
-      
-      if (_selectedDevice != null) {
-        await connectToDevice(_selectedDevice!);
-      }
-    });
-  }
-
-  /// Clear selected device (for when user explicitly wants to remove selection)
-  void clearSelectedDevice() {
     _selectedDevice = null;
     _isConnected = false;
+    _connectedUsers.clear(); // Clear connected users on disconnect
+
     notifyListeners();
   }
 
-  Future<bool> sendMessage(String text, {BuildContext? context}) async {
+  Future<bool> sendMessage(String text) async {
     if (text.trim().isEmpty) return false;
 
     ChatMessage message = ChatMessage(
+      messageId: _generateId(),
       text: text.trim(),
       isMe: true,
       timestamp: DateTime.now(),
       status: voice.MessageStatus.sending,
       type: voice.MessageType.text,
+      isRead: true,
     );
 
     _addMessage(message.text, true, message: message);
+    bool success = await _bluetoothService.sendMessage(text);
     
-    try {
-      if (!_bluetoothService.isConnected) {
-        message.status = voice.MessageStatus.failed;
-        notifyListeners();
-        
-        if (context != null) {
-          ModernToastManager.show(
-            context,
-            message: '⚠️ ESP32 Not Connected. Please connect to a device via Home Screen to send messages.',
-            type: ToastType.warning,
-            duration: const Duration(seconds: 5),
-          );
-        }
-        return false;
-      }
-
-      bool success = await _bluetoothService.sendMessage(text);
-      
-      if (success) {
-        message.status = voice.MessageStatus.sent;
-      } else {
-        message.status = voice.MessageStatus.failed;
-        if (context != null) {
-          ModernToastManager.show(
-            context,
-            message: 'Message failed to send. Please try again.',
-            type: ToastType.error,
-          );
-        }
-      }
-      
-      notifyListeners();
-      return success;
-    } catch (e) {
+    if (success) {
+      message.status = voice.MessageStatus.sent;
+    } else {
       message.status = voice.MessageStatus.failed;
-      notifyListeners();
-      
-      if (context != null) {
-        ModernToastManager.show(
-          context,
-          message: 'Error: ${e.toString()}',
-          type: ToastType.error,
-        );
-      }
-      return false;
     }
-  }
-
-  /// Process incoming Map message (JSON format from ESP32)
-  void _processIncomingMapMessage(Map<String, dynamic> data) {
-    try {
-      final messageText = data['message'] ?? '';
-      final senderName = data['sender_name'] ?? 'Unknown';
-      final isEmergency = data['is_emergency'] == true || data['isEmergency'] == true;
-      
-      if (messageText.isEmpty) return;
-      
-      // Add connected user if sender name is available
-      if (senderName != 'Unknown') {
-        _addConnectedUser(senderName);
-      }
-      
-      // Add message with emergency flag
-      _addMessage(messageText, false, senderName: senderName, isEmergency: isEmergency);
-      
-      // Trigger haptic feedback and sound for emergency messages
-      if (isEmergency) {
-        HapticFeedback.heavyImpact();
-        // Emergency messages should be more noticeable
-        addStructuredDebug({
-          'source': 'EMERGENCY',
-          'event': 'Emergency message received',
-          'metrics': {'sender': senderName, 'message': messageText.substring(0, messageText.length > 50 ? 50 : messageText.length)}
-        });
-      }
-    } catch (e) {
-      addStructuredDebug({
-        'source': 'CHAT',
-        'event': 'Error processing map message',
-        'metrics': {'error': e.toString()}
-      });
-    }
+    
+    notifyListeners();
+    return success;
   }
 
   /// Process incoming message and handle voice messages
@@ -703,10 +402,8 @@ class ChatProvider with ChangeNotifier {
       duration: messageDuration,
     );
 
-    // For incoming voice messages (!isMe), mark as read only if chat screen is visible
-    final shouldMarkAsRead = isMe || _isLocalChatScreenVisible;
-    
     final chatMessage = ChatMessage(
+      messageId: _generateId(),
       text: '🎤 Voice message',
       isMe: isMe,
       timestamp: DateTime.now(),
@@ -714,7 +411,7 @@ class ChatProvider with ChangeNotifier {
       type: voice.MessageType.voice,
       voiceMessage: voiceMessage,
       senderName: senderName,
-      isRead: shouldMarkAsRead,
+      isRead: isMe || _isLocalChatScreenVisible,
     );
 
     _messages.add(chatMessage);
@@ -724,6 +421,34 @@ class ChatProvider with ChangeNotifier {
       'metrics': {'totalMessages': _messages.length, 'voiceSize': voiceMessage.formattedSize}
     });
     notifyListeners();
+    
+    // Show notification for incoming voice messages (when app is in background)
+    if (!isMe) {
+      _showVoiceMessageNotification(chatMessage, senderName);
+    }
+  }
+  
+  /// Show notification for incoming voice messages
+  Future<void> _showVoiceMessageNotification(ChatMessage message, String? senderName) async {
+    try {
+      final notificationService = NotificationService();
+      final sender = senderName ?? 'Unknown User';
+      final duration = message.voiceMessage?.formattedDuration ?? 'Voice message';
+      
+      await notificationService.showMessageNotification(
+        sender: sender,
+        message: '🎤 $duration',
+        payload: jsonEncode({
+          'type': 'voice_message',
+          'messageId': message.messageId,
+          'senderName': sender,
+          'timestamp': message.timestamp.toIso8601String(),
+        }),
+      );
+    } catch (e) {
+      // Silently fail - notifications are not critical
+      debugPrint('Failed to show voice message notification: $e');
+    }
   }
 
   /// Start recording voice message
@@ -786,12 +511,14 @@ class ChatProvider with ChangeNotifier {
 
     // Add to messages
     final chatMessage = ChatMessage(
+      messageId: _generateId(),
       text: '🎤 Voice message',
       isMe: true,
       timestamp: DateTime.now(),
       status: voice.MessageStatus.sending,
       type: voice.MessageType.voice,
       voiceMessage: voiceMessage,
+      isRead: true,
     );
 
     _messages.add(chatMessage);
@@ -838,110 +565,94 @@ class ChatProvider with ChangeNotifier {
     await _voiceExtension.stopPlayback();
   }
 
-  void _addMessage(String text, bool isMe, {String? senderName, ChatMessage? message, bool isEmergency = false}) {
+  void _addMessage(String text, bool isMe, {String? senderName, ChatMessage? message}) {
     if (message == null) {
-      // For incoming messages (!isMe), mark as read only if chat screen is visible
-      // For outgoing messages (isMe), always mark as read
-      final shouldMarkAsRead = isMe || _isLocalChatScreenVisible;
-      
-      // Generate unique message ID for emergency messages
-      final messageId = isEmergency ? '${DateTime.now().millisecondsSinceEpoch}_${senderName ?? 'unknown'}' : null;
-      
+      final isEmergency = text.toUpperCase().contains('EMERGENCY') || 
+                         text.toUpperCase().contains('HELP') ||
+                         text.toUpperCase().contains('SOS');
+                         
       message = ChatMessage(
+        messageId: _generateId(),
         text: text,
         isMe: isMe,
         timestamp: DateTime.now(),
         status: isMe ? voice.MessageStatus.sent : voice.MessageStatus.delivered,
         type: voice.MessageType.text,
         senderName: senderName,
-        isRead: shouldMarkAsRead, // Mark as read if sent by user or if screen is visible
-        isEmergency: isEmergency, // Set emergency flag
-        isPinned: isEmergency, // Auto-pin emergency messages
-        messageId: messageId, // Unique ID for unpinning
+        isRead: isMe || _isLocalChatScreenVisible,
+        isEmergency: isEmergency,
+        isPinned: isEmergency,
       );
     } else if (!isMe && senderName != null) {
-      // Update sender name if provided, preserve isRead status
-      message = message.copyWith(
+      // Update sender name if provided
+      message = ChatMessage(
+        messageId: message.messageId,
+        text: message.text,
+        isMe: message.isMe,
+        timestamp: message.timestamp,
+        status: message.status,
+        type: message.type,
+        voiceMessage: message.voiceMessage,
         senderName: senderName,
-        isRead: message.isRead || _isLocalChatScreenVisible, // Mark as read if screen is visible
-      );
-    } else if (!message.isMe) {
-      // For existing incoming messages, update isRead based on screen visibility
-      message = message.copyWith(
-        isRead: message.isRead || _isLocalChatScreenVisible,
+        isRead: message.isRead,
+        isEmergency: message.isEmergency,
+        isPinned: message.isPinned,
       );
     }
     
-    // Add message to list (real-time from ESP32)
     _messages.add(message);
-    
-    // Show notification for received messages (not from current user)
-    if (!isMe) {
-      _showMessageNotification(message, senderName);
-    }
-    
-    // Clear loading states when real-time messages arrive (indicates connection is working)
-    if (_isLoadingMessages && _messages.isNotEmpty) {
-      _isLoadingMessages = false;
-    }
-    
-    // Mark as having messages (for cached state)
-    _hasCachedMessages = true;
-    
     notifyListeners();
+    
+    // Show notification for incoming messages (when app is in background)
+    if (!isMe) {
+      _showMessageNotification(message);
+    }
   }
   
-  Future<void> _showMessageNotification(ChatMessage message, String? senderName) async {
+  /// Show notification for incoming messages
+  Future<void> _showMessageNotification(ChatMessage message) async {
     try {
-      // Check notification settings
-      final prefs = await SharedPreferences.getInstance();
-      final messageNotificationsEnabled = prefs.getBool('notification_messages') ?? true;
+      final notificationService = NotificationService();
       
-      if (!messageNotificationsEnabled) {
-        return;
-      }
+      // Determine sender name
+      final senderName = message.senderName ?? 'Unknown User';
       
-      // Get current user to avoid notifying for own messages
-      final currentUserEmail = prefs.getString('user_email') ?? '';
-      final currentUserName = prefs.getString('user_name') ?? '';
+      // Truncate message for notification (max 100 chars)
+      final messagePreview = message.text.length > 100 
+          ? '${message.text.substring(0, 100)}...' 
+          : message.text;
       
-      // Don't notify if sender is current user
-      if (senderName == currentUserName || senderName == currentUserEmail) {
-        return;
-      }
-      
-      // Show notification
-      final displayName = senderName ?? 'Unknown User';
-      final messageText = message.text;
-      
-      // Handle voice messages
-      if (message.type == voice.MessageType.voice && message.voiceMessage != null) {
-        await NotificationService().showMessageNotification(
-          sender: displayName,
-          message: 'Voice message',
+      // Show emergency notification with high priority
+      if (message.isEmergency) {
+        await notificationService.showEmergencyAlert(
+          title: '🚨 Emergency Alert from $senderName',
+          body: messagePreview,
           payload: jsonEncode({
-            'type': 'message',
-            'chatType': 'local',
-            'senderName': displayName,
-            'messageType': 'voice',
+            'type': 'emergency_message',
+            'messageId': message.messageId,
+            'senderName': senderName,
+            'message': message.text,
             'timestamp': message.timestamp.toIso8601String(),
           }),
+          color: AppColors.primaryRed,
         );
       } else {
-        await NotificationService().showMessageNotification(
-          sender: displayName,
-          message: messageText,
+        // Show regular message notification
+        await notificationService.showMessageNotification(
+          sender: senderName,
+          message: messagePreview,
           payload: jsonEncode({
-            'type': 'message',
-            'chatType': 'local',
-            'senderName': displayName,
-            'message': messageText,
+            'type': 'local_chat_message',
+            'messageId': message.messageId,
+            'senderName': senderName,
+            'message': message.text,
             'timestamp': message.timestamp.toIso8601String(),
           }),
         );
       }
     } catch (e) {
-      print('Error showing message notification: $e');
+      // Silently fail - notifications are not critical
+      debugPrint('Failed to show message notification: $e');
     }
   }
 
@@ -953,6 +664,11 @@ class ChatProvider with ChangeNotifier {
   void clearDebugLogs() {
     _debugLogs.clear();
     notifyListeners();
+  }
+
+  /// Generate a unique message ID
+  String _generateId() {
+    return '${DateTime.now().millisecondsSinceEpoch}_${(1000 + (9999 - 1000) * (DateTime.now().microsecond / 1000000)).round()}';
   }
 
   /// Add structured debug log with rich telemetry
@@ -1003,19 +719,20 @@ class ChatProvider with ChangeNotifier {
 }
 
 class ChatMessage {
+  final String messageId;
   final String text;
   final bool isMe;
   final DateTime timestamp;
   voice.MessageStatus status;
   final voice.MessageType type;
   final voice.VoiceMessage? voiceMessage;
-  final String? senderName; // Sender's name for received messages
-  bool isRead; // Track if message has been read
-  final bool isEmergency; // Flag to indicate emergency message from SOS ring
-  bool isPinned; // Flag to indicate pinned emergency message
-  final String? messageId; // Unique ID for message (for unpinning)
+  final String? senderName;
+  bool isRead;
+  final bool isEmergency;
+  bool isPinned;
 
   ChatMessage({
+    required this.messageId,
     required this.text,
     required this.isMe,
     required this.timestamp,
@@ -1023,39 +740,10 @@ class ChatMessage {
     this.type = voice.MessageType.text,
     this.voiceMessage,
     this.senderName,
-    this.isRead = false, // Default to unread for incoming messages
-    this.isEmergency = false, // Default to false for normal messages
-    this.isPinned = false, // Default to false, emergency messages auto-pin
-    this.messageId,
+    this.isRead = false,
+    this.isEmergency = false,
+    this.isPinned = false,
   });
-  
-  ChatMessage copyWith({
-    String? text,
-    bool? isMe,
-    DateTime? timestamp,
-    voice.MessageStatus? status,
-    voice.MessageType? type,
-    voice.VoiceMessage? voiceMessage,
-    String? senderName,
-    bool? isRead,
-    bool? isEmergency,
-    bool? isPinned,
-    String? messageId,
-  }) {
-    return ChatMessage(
-      text: text ?? this.text,
-      isMe: isMe ?? this.isMe,
-      timestamp: timestamp ?? this.timestamp,
-      status: status ?? this.status,
-      type: type ?? this.type,
-      voiceMessage: voiceMessage ?? this.voiceMessage,
-      senderName: senderName ?? this.senderName,
-      isRead: isRead ?? this.isRead,
-      isEmergency: isEmergency ?? this.isEmergency,
-      isPinned: isPinned ?? this.isPinned,
-      messageId: messageId ?? this.messageId,
-    );
-  }
 }
 
 // voice.MessageStatus is defined in voice_chat_extension.dart

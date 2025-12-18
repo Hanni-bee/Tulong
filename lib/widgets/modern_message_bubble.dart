@@ -1,12 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../constants/app_colors.dart';
-import 'emergency_badge.dart';
-import '../models/emergency_detection_result.dart';
-import '../models/emergency_type.dart';
-import '../utils/emergency_message_parser.dart';
-import '../services/voice_chat_extension.dart' as voice;
 
 class ModernMessageBubble extends StatefulWidget {
   final String text;
@@ -15,11 +9,8 @@ class ModernMessageBubble extends StatefulWidget {
   final bool isMe;
   final bool isEmergency;
   final bool isRead;
-  final voice.MessageStatus status; // Added message status
-  final Map<String, dynamic>? messageData; // Full message data for emergency parsing
   final VoidCallback? onLongPress;
   final VoidCallback? onTap;
-  final VoidCallback? onRetry; // Added retry callback
 
   const ModernMessageBubble({
     super.key,
@@ -29,11 +20,8 @@ class ModernMessageBubble extends StatefulWidget {
     required this.isMe,
     this.isEmergency = false,
     this.isRead = false,
-    this.status = voice.MessageStatus.sent, // Default to sent
-    this.messageData,
     this.onLongPress,
     this.onTap,
-    this.onRetry,
   });
 
   @override
@@ -169,12 +157,6 @@ class _ModernMessageBubbleState extends State<ModernMessageBubble>
                             const SizedBox(height: 4),
                           ],
                           
-                          // Emergency badge (if emergency message)
-                          if (widget.isEmergency) ...[
-                            _buildEmergencyBadge(),
-                            const SizedBox(height: 8),
-                          ],
-                          
                           // Message text
                           Text(
                             widget.text,
@@ -205,64 +187,7 @@ class _ModernMessageBubbleState extends State<ModernMessageBubble>
                               if (widget.isMe) ...[
                                 Row(
                                   children: [
-                                    if (widget.status == voice.MessageStatus.failed) ...[
-                                      GestureDetector(
-                                        onTap: () {
-                                          HapticFeedback.mediumImpact();
-                                          widget.onRetry?.call();
-                                        },
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                          decoration: BoxDecoration(
-                                            color: Colors.black.withOpacity(0.3),
-                                            borderRadius: BorderRadius.circular(10),
-                                            border: Border.all(
-                                              color: Colors.white.withOpacity(0.6),
-                                              width: 1.2,
-                                            ),
-                                            boxShadow: [
-                                              BoxShadow(
-                                                color: Colors.black.withOpacity(0.2),
-                                                blurRadius: 4,
-                                                offset: const Offset(0, 2),
-                                              ),
-                                            ],
-                                          ),
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              const Icon(
-                                                Icons.error_rounded,
-                                                size: 13,
-                                                color: Colors.white,
-                                              ),
-                                              const SizedBox(width: 5),
-                                              const Text(
-                                                'NOT SENT',
-                                                style: TextStyle(
-                                                  color: Colors.white,
-                                                  fontSize: 10,
-                                                  fontWeight: FontWeight.w900,
-                                                  letterSpacing: 0.8,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ).animate(onPlay: (controller) => controller.repeat(reverse: true))
-                                       .shimmer(duration: 1200.ms, color: Colors.white.withOpacity(0.4))
-                                       .scale(duration: 800.ms, begin: const Offset(1, 1), end: const Offset(1.08, 1.08))
-                                       .shake(duration: 600.ms, hz: 4),
-                                    ] else if (widget.status == voice.MessageStatus.sending) ...[
-                                      const SizedBox(
-                                        width: 12,
-                                        height: 12,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white70),
-                                        ),
-                                      ),
-                                    ] else if (widget.isRead) ...[
+                                    if (widget.isRead) ...[
                                       const Icon(
                                         Icons.done_all,
                                         size: 14,
@@ -340,53 +265,5 @@ class _ModernMessageBubbleState extends State<ModernMessageBubble>
     } else {
       return 'now';
     }
-  }
-
-  /// Build emergency badge widget
-  Widget _buildEmergencyBadge() {
-    EmergencyDetectionResult? emergencyResult;
-    
-    // Try to parse emergency detection from message data
-    if (widget.messageData != null) {
-      emergencyResult = EmergencyMessageParser.parseFromMessageData(widget.messageData!);
-    }
-    
-    // Fallback to parsing from text
-    if (emergencyResult == null) {
-      emergencyResult = EmergencyMessageParser.parseFromMessage(widget.text);
-    }
-    
-    if (emergencyResult != null) {
-      return EmergencyBadge(
-        result: emergencyResult,
-        showPulseAnimation: emergencyResult.severity == SeverityLevel.high ||
-            emergencyResult.severity == SeverityLevel.critical,
-      );
-    }
-    
-    // Fallback: simple emergency indicator
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: AppColors.error.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppColors.error, width: 1.5),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.warning, size: 16, color: AppColors.error),
-          const SizedBox(width: 4),
-          const Text(
-            'Emergency',
-            style: TextStyle(
-              color: AppColors.error,
-              fontSize: 12,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ],
-      ),
-    );
   }
 }

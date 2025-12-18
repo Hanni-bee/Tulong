@@ -34,7 +34,7 @@ class NotificationProvider extends ChangeNotifier {
   StreamSubscription<dynamic>? _globalChatSubscription;
   final Map<String, StreamSubscription<dynamic>> _privateChatSubscriptions = {};
   List<Map<String, dynamic>> _previousAlerts = [];
-  Set<String> _previousGlobalMessageIds = {};
+  final Set<String> _previousGlobalMessageIds = {};
   final Map<String, Set<String>> _previousPrivateMessageIds = {};
 
   // ============================================================================

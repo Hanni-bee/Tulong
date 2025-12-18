@@ -61,7 +61,7 @@ void main() {
         // Add some organized patterns (lines) to simulate normal structures
         for (int y = 0; y < 224; y += 20) {
           for (int x = 0; x < 224; x++) {
-            img.setPixel(testImage, x, y, img.ColorRgb8(100, 100, 100));
+            testImage.setPixelRgb(x, y, 100, 100, 100);
           }
         }
         
@@ -114,13 +114,13 @@ void main() {
         // Fill 30% with red (fire color)
         for (int y = 0; y < 100; y++) {
           for (int x = 0; x < 30; x++) {
-            img.setPixel(testImage, x, y, img.ColorRgb8(255, 50, 50));
+            testImage.setPixelRgb(x, y, 255, 50, 50);
           }
         }
         // Fill rest with gray
         for (int y = 0; y < 100; y++) {
           for (int x = 30; x < 100; x++) {
-            img.setPixel(testImage, x, y, img.ColorRgb8(128, 128, 128));
+            testImage.setPixelRgb(x, y, 128, 128, 128);
           }
         }
         
@@ -210,5 +210,6 @@ void main() {
     });
   });
 }
+
 
 

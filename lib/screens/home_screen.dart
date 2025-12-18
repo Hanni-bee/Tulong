@@ -76,7 +76,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       body: Container(
         decoration: const BoxDecoration(
-          gradient: AppColors.backgroundGradient,
+          color: AppColors.backgroundGradient,
         ),
         child: SafeArea(
           child: SingleChildScrollView(
@@ -96,7 +96,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           width: double.infinity,
                           padding: ResponsiveSpacing.getScreenPadding(context),
                           decoration: BoxDecoration(
-                            gradient: AppColors.primaryGradient,
+                            color: AppColors.primaryGradient,
                             borderRadius: BorderRadius.circular(20),
                             boxShadow: [
                               BoxShadow(

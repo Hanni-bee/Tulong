@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:tulong_app/constants/app_colors.dart';
 import 'package:tulong_app/constants/unified_typography.dart';
 import 'package:tulong_app/constants/soft_ui_design.dart';
@@ -80,7 +79,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
     // Load user model immediately when screen opens to ensure data is available
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      if (authProvider.userUsername != null) {
+      if (authProvider.userEmail != null) {
         // Always try to load user model, even if it exists (to refresh data)
         await authProvider.loadUserModel();
       }
@@ -110,20 +109,12 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
         child: Column(
           children: [
             // Top bar - part of Column layout, fixed at top
-            TopBarConfigs.profileTopBar(
-              onEdit: () => _editProfile(context),
-              onRefresh: _refreshProfile,
-            ),
+            TopBarConfigs.profileTopBar(),
             
             // Scrollable content - only this part scrolls
             Expanded(
-              child: RefreshIndicator(
-                color: AppColors.primaryRed,
-                onRefresh: _refreshProfile,
                 child: SingleChildScrollView(
-                  physics: const AlwaysScrollableScrollPhysics(
-                    parent: BouncingScrollPhysics(),
-                  ),
+                physics: const BouncingScrollPhysics(),
                   padding: const EdgeInsets.all(16),
                   child: FadeTransition(
                     opacity: _fadeAnimation,
@@ -132,8 +123,6 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                       child: Column(
                         children: [
                           _buildQuickStats(),
-                          const SizedBox(height: 12),
-                          _buildProfileCompletionCard(),
                           const SizedBox(height: 20),
                           _buildStatsSection(),
                           const SizedBox(height: 20),
@@ -143,7 +132,6 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                           const SizedBox(height: 20),
                           _buildActionButtons(),
                         ],
-                      ),
                     ),
                   ),
                 ),
@@ -160,10 +148,10 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
       return SkeletonProfileHeader();
     }
     
-    return Consumer2<AuthProvider, ChatProvider>(
-      builder: (context, auth, chat, child) {
+    return Consumer<AuthProvider>(
+      builder: (context, auth, child) {
         // Ensure user model is loaded
-        if (auth.userUsername != null && auth.currentUserModel == null) {
+        if (auth.userEmail != null && auth.currentUserModel == null) {
           // Load user model if not already loaded
           WidgetsBinding.instance.addPostFrameCallback((_) {
             auth.loadUserModel();
@@ -171,746 +159,208 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
         }
         
         final userName = auth.userName ?? 'User';
-        final username = auth.userUsername ?? 'username';
         final userModel = auth.currentUserModel;
-        final isConnected = chat.isConnected;
         
-        // Compose an address label from model fields (short for header display)
-        final location = _composeAddressShort(userModel);
-        final fullAddress = _composeFullAddress(userModel);
-        final avatar = (userModel?.avatar ?? '').trim();
-        final phoneNumber = userModel?.phoneNumber ?? '';
+        // Get phone from userModel or fallback
+        final phone = userModel?.phoneNumber ?? '';
         
          return Container(
           margin: const EdgeInsets.only(bottom: 16),
               decoration: BoxDecoration(
-            // Enhanced gradient background
+            // Subtle gradient background matching app's Soft UI aesthetic
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
                 AppColors.primaryRed,
-                AppColors.primaryRed.withOpacity(0.85),
-                AppColors.primaryDark,
+                AppColors.primaryRed.withOpacity(0.97),
+                AppColors.primaryRed.withOpacity(0.94),
+                AppColors.primaryDark.withOpacity(0.92),
               ],
-              stops: const [0.0, 0.5, 1.0],
+              stops: const [0.0, 0.4, 0.7, 1.0],
             ),
             borderRadius: BorderRadius.circular(SoftUIDesign.cardBorderRadius),
-            boxShadow: [
-              // Enhanced shadow for depth
-              BoxShadow(
-                color: AppColors.primaryRed.withOpacity(0.3),
-                blurRadius: 20,
-                offset: const Offset(0, 8),
-                spreadRadius: 2,
-              ),
-              ...SoftUIDesign.getCardShadow(elevation: 6.0),
-            ],
+            boxShadow: SoftUIDesign.getCardShadow(elevation: 4.0),
             border: Border.all(
               color: Colors.white.withOpacity(0.25),
               width: 1.5,
             ),
              ),
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final textScale = MediaQuery.textScalerOf(context).scale(1.0);
-              final isNarrow = constraints.maxWidth < 360;
-              final isA11yLargeText = textScale >= 1.2;
-              final isCompact = isNarrow || isA11yLargeText;
-
-              final double padding = isCompact ? 14 : 16;
-              final double avatarSize = isCompact ? 56 : 64;
-              final double avatarRadius = isCompact ? 14 : 16;
-              final double nameFontSize = isCompact ? 16 : 18;
-              final double initialsFontSize = isCompact ? 22 : 24;
-              final maxQuickActions = isCompact ? 3 : 4;
-
-              final quickActions = _buildHeaderQuickActions(
-                context,
-                isConnected: isConnected,
-                username: username,
-                phoneNumber: phoneNumber,
-                hasAddress: location.isNotEmpty,
-                fullAddress: fullAddress,
-              );
-
-              return ClipRRect(
-                borderRadius: BorderRadius.circular(SoftUIDesign.cardBorderRadius),
                 child: Stack(
                   children: [
-                    // Decorative overlays using SoftUI system
+              // Decorative circles - matching app's design system
                     ...SoftUIDesign.buildProfileHeaderOverlays(),
 
-                    // Subtle contrast scrim (solid, no blur) to keep text readable
+              // Subtle depth overlay - consistent with app's Soft UI
+              SoftUIDesign.buildDepthOverlay(
+                accentColor: AppColors.primaryRed,
+                elevation: 4.0,
+              ) ?? const SizedBox.shrink(),
+              
+              // Subtle diagonal overlay - matching home screen style
+              SoftUIDesign.buildDiagonalOverlay(
+                accentColor: AppColors.primaryRed,
+                intensity: 0.03,
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              
+              // Subtle radial gradient overlay (top-right) - very subtle
                     Positioned.fill(
-                      child: IgnorePointer(
-                        child: DecoratedBox(
+                child: Container(
                           decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
+                    borderRadius: BorderRadius.circular(SoftUIDesign.cardBorderRadius),
+                    gradient: RadialGradient(
+                      center: Alignment.topRight,
+                      radius: 1.3,
                               colors: [
-                                Colors.black.withOpacity(0.08),
-                                Colors.black.withOpacity(0.16),
+                        Colors.white.withOpacity(0.05),
+                        Colors.transparent,
                               ],
                             ),
                           ),
                         ),
                       ),
-                    ),
-
                     // Content
                     Padding(
-                      padding: EdgeInsets.all(padding),
+                padding: const EdgeInsets.all(20),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              _buildDynamicAvatar(
-                                userName: userName,
-                                avatar: avatar,
-                                size: avatarSize,
-                                radius: avatarRadius,
-                                initialsFontSize: initialsFontSize,
-                              ),
-                              const SizedBox(width: 14),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Tooltip(
-                                      message: userName, // Show full name on hover
-                                      child: Text(
-                                        userName,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: UnifiedTypography.titleLarge.copyWith(
-                                          fontSize: nameFontSize,
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.w800,
-                                          letterSpacing: -0.2,
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      _formatHandle(username),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: UnifiedTypography.bodySmall.copyWith(
-                                        color: Colors.white.withOpacity(0.9),
-                                        fontWeight: FontWeight.w600,
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                    if (phoneNumber.isNotEmpty) ...[
-                                      const SizedBox(height: 4),
-                                      Row(
-                                        children: [
-                                          Icon(Icons.phone_outlined, color: Colors.white.withOpacity(0.8), size: 12),
-                                          const SizedBox(width: 4),
-                                          Expanded(
-                                            child: Text(
-                                              phoneNumber,
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: UnifiedTypography.bodySmall.copyWith(
-                                                color: Colors.white.withOpacity(0.9),
-                                                fontWeight: FontWeight.w600,
-                                                fontSize: 11,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ] else ...[
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        'Phone not set',
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: UnifiedTypography.bodySmall.copyWith(
-                                          color: Colors.white.withOpacity(0.85),
-                                          fontWeight: FontWeight.w600,
-                                          fontSize: 11,
-                                        ),
-                                      ),
-                                    ],
-                                    if (location.isNotEmpty) ...[
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        location,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: UnifiedTypography.bodySmall.copyWith(
-                                          color: Colors.white.withOpacity(0.9),
-                                          fontWeight: FontWeight.w600,
-                                          fontSize: 11,
-                                        ),
-                                      ),
-                                    ] else ...[
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        'Address not set',
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: UnifiedTypography.bodySmall.copyWith(
-                                          color: Colors.white.withOpacity(0.85),
-                                          fontWeight: FontWeight.w600,
-                                          fontSize: 11,
-                                        ),
-                                      ),
-                                    ],
-                                    const SizedBox(height: 8),
-                                    _buildConnectionPill(isConnected: isConnected),
-                                  ],
-                                ),
-                              ),
-                              // Header quick edit (still useful; top bar also has edit)
-                              InkWell(
-                                onTap: () => _editProfile(context),
-                                borderRadius: BorderRadius.circular(14),
-                                child: Container(
-                                  width: 44,
-                                  height: 44,
+                        // Circular Avatar Container (no glow effect)
+                        Container(
+                          width: 72,
+                          height: 72,
                                   decoration: BoxDecoration(
-                                    color: Colors.white.withOpacity(0.18),
-                                    borderRadius: BorderRadius.circular(14),
+                            color: Colors.white.withOpacity(0.12),
+                            shape: BoxShape.circle,
                                     border: Border.all(
-                                      color: Colors.white.withOpacity(0.35),
-                                      width: 1.2,
-                                    ),
-                                  ),
-                                  child: const Icon(
-                                    Icons.edit_outlined,
-                                    color: Colors.white,
-                                    size: 20,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-
-                          const SizedBox(height: 12),
-                          Container(height: 1, color: Colors.white.withOpacity(0.22)),
-                          const SizedBox(height: 10),
-
-                          // Quick actions (wrap on small widths)
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: [
-                              ...quickActions.take(maxQuickActions),
-                            ],
-                          ),
-
-                          const SizedBox(height: 10),
-
-                          // Primary quick info actions (copy/open)
-                          _buildClickableContactInfo(
-                            context,
-                            icon: Icons.person_outline,
-                            text: username,
-                            onTap: () => _copyToClipboard(context, username, 'Username copied'),
-                            onLongPress: null,
-                          ),
-                          const SizedBox(height: 8),
-                          if (phoneNumber.isNotEmpty) ...[
-                            _buildClickableContactInfo(
-                              context,
-                              icon: Icons.phone_outlined,
-                              text: phoneNumber,
-                              onTap: () => _copyToClipboard(context, phoneNumber, 'Phone number copied'),
-                              onLongPress: null,
-                            ),
-                            const SizedBox(height: 8),
-                          ] else ...[
-                            _buildHeaderCallToAction(
-                              context,
-                              icon: Icons.phone_outlined,
-                              text: 'Add phone number',
-                              onTap: () => _editProfile(context),
-                            ),
-                            const SizedBox(height: 8),
-                          ],
-                          if (location.isNotEmpty)
-                            _buildClickableContactInfo(
-                              context,
-                              icon: IconSystem.location,
-                              text: location,
-                              onTap: () => _copyToClipboard(context, fullAddress, 'Address copied'),
-                              onLongPress: () => _openMaps(context, fullAddress),
-                            )
-                          else
-                            _buildHeaderCallToAction(
-                              context,
-                              icon: IconSystem.location,
-                              text: 'Add your address',
-                              onTap: () => _editProfile(context),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
-        );
-      },
-    );
-  }
-
-  List<Widget> _buildHeaderQuickActions(
-    BuildContext context, {
-    required bool isConnected,
-    required String username,
-    required String phoneNumber,
-    required bool hasAddress,
-    required String fullAddress,
-  }) {
-    final actions = <Widget>[];
-
-    actions.add(
-      _buildHeaderQuickAction(
-        icon: Icons.person_outline,
-        label: 'Copy username',
-        onTap: () => _copyToClipboard(context, username, 'Username copied'),
-      ),
-    );
-
-    if (phoneNumber.isNotEmpty) {
-      actions.add(
-        _buildHeaderQuickAction(
-          icon: Icons.phone_outlined,
-          label: 'Copy phone',
-          onTap: () => _copyToClipboard(context, phoneNumber, 'Phone number copied'),
-        ),
-      );
-    } else {
-      actions.add(
-        _buildHeaderQuickAction(
-          icon: Icons.phone_outlined,
-          label: 'Add phone',
-          onTap: () => _editProfile(context),
-        ),
-      );
-    }
-
-    if (hasAddress) {
-      actions.add(
-        _buildHeaderQuickAction(
-          icon: Icons.copy,
-          label: 'Copy address',
-          onTap: () => _copyToClipboard(context, fullAddress, 'Address copied'),
-        ),
-      );
-    } else {
-      actions.add(
-        _buildHeaderQuickAction(
-          icon: IconSystem.location,
-          label: 'Add address',
-          onTap: () => _editProfile(context),
-        ),
-      );
-    }
-
-    if (!isConnected) {
-      actions.add(
-        _buildHeaderQuickAction(
-          icon: Icons.bluetooth_searching,
-          label: 'Scan devices',
-          onTap: () => _openDeviceScanner(context),
-        ),
-      );
-    }
-
-    return actions;
-  }
-
-  void _openDeviceScanner(BuildContext context) {
-    try {
-      Navigator.of(context).pushNamed('/esp32-scanner');
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Could not open device scanner: $e'),
-          backgroundColor: AppColors.error,
-        ),
-      );
-    }
-  }
-
-  Widget _buildDynamicAvatar({
-    required String userName,
-    required String avatar,
-    required double size,
-    required double radius,
-    required double initialsFontSize,
-  }) {
-    final hasAvatar = avatar.isNotEmpty;
-
-    Widget content;
-    if (hasAvatar && avatar.startsWith('assets/')) {
-      content = Image.asset(
-        avatar,
-        width: size,
-        height: size,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => _buildAvatarInitials(userName, initialsFontSize),
-      );
-    } else if (hasAvatar && (avatar.startsWith('http://') || avatar.startsWith('https://'))) {
-      content = Image.network(
-        avatar,
-        width: size,
-        height: size,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => _buildAvatarInitials(userName, initialsFontSize),
-        loadingBuilder: (context, child, loadingProgress) {
-          if (loadingProgress == null) return child;
-          return Center(
-            child: SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(
-                strokeWidth: 2.2,
-                valueColor: AlwaysStoppedAnimation<Color>(AppColors.primaryRed),
-              ),
-            ),
-          );
-        },
-      );
-    } else {
-      content = _buildAvatarInitials(userName, initialsFontSize);
-    }
-
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(radius),
-        border: Border.all(
-          color: Colors.white.withOpacity(0.85),
-          width: 1.5,
+                              color: Colors.white.withOpacity(0.4),
+                              width: 2.0,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.18),
-            blurRadius: 14,
-            offset: const Offset(0, 6),
+                                color: Colors.black.withOpacity(0.15),
+                                blurRadius: 8,
+                                offset: const Offset(0, 3),
           ),
         ],
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(radius),
-        child: Center(child: content),
-      ),
-    );
-  }
-
-  Widget _buildAvatarInitials(String userName, double initialsFontSize) {
-    return Text(
+                          child: Center(
+                            child: AccessibleText(
       _getInitials(userName),
-      style: UnifiedTypography.displaySmall.copyWith(
-        fontSize: initialsFontSize,
+                              baseStyle: UnifiedTypography.displaySmall.copyWith(
+                                fontSize: 28,
         fontWeight: FontWeight.w900,
         letterSpacing: 1.2,
-        color: AppColors.primaryRed,
-      ),
-    );
-  }
-
-  Widget _buildHeaderQuickAction({
-    required IconData icon,
-    required String label,
-    required VoidCallback onTap,
-  }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: () {
-          HapticFeedback.lightImpact();
-          onTap();
-        },
-        borderRadius: BorderRadius.circular(999),
-        child: Container(
-          constraints: const BoxConstraints(minHeight: 38),
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-          decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.18),
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(
-              color: Colors.white.withOpacity(0.35),
-              width: 1.0,
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, color: Colors.white, size: 18),
-              const SizedBox(width: 8),
-              Text(
-                label,
-                style: UnifiedTypography.bodySmall.copyWith(
+                              ),
                   color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  String _formatHandle(String username) {
-    final u = username.trim();
-    if (u.isEmpty) return '@user';
-    return u.startsWith('@') ? u : '@$u';
-  }
-
-  Widget _buildConnectionPill({required bool isConnected}) {
-    final statusColor = isConnected ? AppColors.success : AppColors.warning;
-    final statusText = isConnected ? 'Connected' : 'Not connected';
-
-    return Semantics(
-      label: 'Connection status: $statusText',
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.18),
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(
-            color: Colors.white.withOpacity(0.35),
-            width: 1.0,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 10,
-              height: 10,
-              decoration: BoxDecoration(
-                color: statusColor,
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: statusColor.withOpacity(0.55),
-                    blurRadius: 8,
-                    spreadRadius: 1.5,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              statusText,
-              style: UnifiedTypography.bodySmall.copyWith(
-                color: Colors.white,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  String _composeAddressShort(UserModel? userModel) {
-    if (userModel == null) return '';
-    final parts = <String>[
-      userModel.street.trim(),
-      userModel.city.trim(),
-      userModel.province.trim(),
-    ].where((p) => p.isNotEmpty).toList();
-    return parts.join(', ');
-  }
-
-  String _composeFullAddress(UserModel? userModel) {
-    if (userModel == null) return '';
-    final parts = <String>[
-      userModel.street.trim(),
-      userModel.barangay.trim(),
-      userModel.city.trim(),
-      userModel.province.trim(),
-      userModel.region.trim(),
-    ].where((p) => p.isNotEmpty).toList();
-    return parts.join(', ');
-  }
-
-  Widget _buildProfileCompletionCard() {
-    if (_isLoadingProfile) {
-      return const SizedBox.shrink();
-    }
-
-    return Consumer<AuthProvider>(
-      builder: (context, auth, child) {
-        final userModel = auth.currentUserModel;
-        final name = (userModel?.name ?? auth.userName ?? '').trim();
-        final username = (userModel?.username ?? auth.userUsername ?? '').trim();
-
-        final fields = <String, bool>{
-          'Name': name.isNotEmpty,
-          'Username': username.isNotEmpty,
-          'Street': (userModel?.street ?? '').trim().isNotEmpty,
-          'Barangay': (userModel?.barangay ?? '').trim().isNotEmpty,
-          'City': (userModel?.city ?? '').trim().isNotEmpty,
-          'Province': (userModel?.province ?? '').trim().isNotEmpty,
-        };
-
-        final total = fields.length;
-        final completed = fields.values.where((v) => v).length;
-        final missing = fields.entries.where((e) => !e.value).map((e) => e.key).toList();
-
-        if (missing.isEmpty) {
-          return const SizedBox.shrink();
-        }
-
-        final progress = total == 0 ? 0.0 : (completed / total).clamp(0.0, 1.0);
-        final percent = (progress * 100).round();
-
-        return AnimatedNeumorphicCard(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: AppColors.primaryRed.withOpacity(0.08),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: AppColors.primaryRed.withOpacity(0.18),
-                          width: 1,
-                        ),
-                      ),
-                      child: const Icon(
-                        Icons.fact_check_outlined,
-                        color: AppColors.primaryRed,
-                        size: 20,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Complete your profile',
-                            style: UnifiedTypography.titleMedium.copyWith(
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.textPrimary,
+                              backgroundColor: AppColors.primaryRed,
+                              isHeading: true,
                             ),
                           ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'Improve emergency response accuracy by adding missing details.',
-                            style: UnifiedTypography.bodySmall.copyWith(
-                              color: AppColors.textSecondary,
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+                              // Full Name - Always visible, no truncation
+            Text(
+                                userName,
+                                style: UnifiedTypography.headlineMedium.copyWith(
+                color: Colors.white,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 20,
+                                  height: 1.3,
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.visible,
+                                softWrap: true,
+                              ),
+                              const SizedBox(height: 10),
+                              // Full Address Display - All fields visible, properly formatted
+                              if (userModel != null)
+                                Builder(
+                                  builder: (context) {
+                                    final addressParts = <String>[];
+                                    
+                                    // Add all address components in order
+                                    if (userModel.street.isNotEmpty) {
+                                      addressParts.add(userModel.street);
+                                    }
+                                    if (userModel.barangay.isNotEmpty) {
+                                      addressParts.add(userModel.barangay);
+                                    }
+                                    if (userModel.city.isNotEmpty) {
+                                      addressParts.add(userModel.city);
+                                    }
+                                    if (userModel.province.isNotEmpty) {
+                                      addressParts.add(userModel.province);
+                                    }
+                                    
+                                    final fullAddress = addressParts.join(', ');
+                                    
+                                    if (fullAddress.isNotEmpty) {
+                                      return Text(
+                                        fullAddress,
+                                        style: UnifiedTypography.bodyMedium.copyWith(
+                                          color: Colors.white.withOpacity(0.95),
+                                          fontSize: 13,
+                                          height: 1.5,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                        maxLines: 5,
+                                        overflow: TextOverflow.visible,
+                                        softWrap: true,
+                                      );
+                                    }
+                                    return const SizedBox.shrink();
+                                  },
+                                ),
+                            ],
+                          ),
+                        ),
+                        InkWell(
+                          onTap: () => _editProfile(context),
+                          borderRadius: BorderRadius.circular(14),
+                          child: Container(
+                            width: 36,
+                            height: 36,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.2),
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white.withOpacity(0.4)),
+                            ),
+                            child: const Icon(Icons.edit, color: Colors.white, size: 18),
                             ),
                           ),
                         ],
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      '$percent%',
-                      style: UnifiedTypography.titleMedium.copyWith(
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.textPrimary,
+                    const SizedBox(height: 16),
+                    Container(height: 1, color: Colors.white.withOpacity(0.25)),
+                const SizedBox(height: 12),
+                    // Phone number only (username removed from header)
+                    if (phone.isNotEmpty)
+                      _buildClickableContactInfo(
+                        context,
+                        icon: IconSystem.phone,
+                        text: phone,
+                        onTap: () => _copyToClipboard(context, phone, 'Phone number copied'),
+                        onLongPress: () => _makePhoneCall(context, phone),
                       ),
-                    ),
                   ],
-                ),
-                const SizedBox(height: 12),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: LinearProgressIndicator(
-                    value: progress,
-                    minHeight: 8,
-                    backgroundColor: AppColors.lightGray.withOpacity(0.35),
-                    valueColor: AlwaysStoppedAnimation<Color>(AppColors.primaryRed),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final label in missing.take(3)) _buildMissingFieldChip(label),
-                    if (missing.length > 3)
-                      _buildMissingFieldChip('+${missing.length - 3} more'),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton(
-                    onPressed: () => _editProfile(context),
-                    style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                      foregroundColor: AppColors.primaryRed,
-                      textStyle: UnifiedTypography.bodyMedium.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    child: const Text('Update now'),
                   ),
                 ),
               ],
-            ),
           ),
         );
       },
     );
-  }
-
-  Widget _buildMissingFieldChip(String label) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: AppColors.primaryRed.withOpacity(0.06),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color: AppColors.primaryRed.withOpacity(0.18),
-          width: 1,
-        ),
-      ),
-      child: Text(
-        label,
-        style: UnifiedTypography.bodySmall.copyWith(
-          color: AppColors.primaryRed,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-    );
-  }
-
-  Future<void> _refreshProfile() async {
-    HapticFeedback.lightImpact();
-
-    try {
-      final auth = context.read<AuthProvider>();
-      final chat = context.read<ChatProvider>();
-
-      await Future.wait([
-        auth.loadUserModel(),
-        chat.loadMessages(forceRefresh: true),
-      ]);
-    } catch (_) {
-      // Best-effort refresh; avoid surfacing errors for pull-to-refresh.
-    }
-
-    if (mounted) {
-      setState(() {});
-    }
   }
 
   Widget _buildStatsSection() {
@@ -979,90 +429,6 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
         final sentMessages = messages.where((m) => m.isMe).length;
         final receivedMessages = messages.where((m) => !m.isMe).length;
         final connectionsCount = chatProvider.connectedUsersCount;
-
-        // Empty state: no activity yet (avoid showing "all zeros" analytics)
-        if (!_isLoadingProfile && messages.isEmpty) {
-          return AnimatedNeumorphicCard(
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(
-                          color: AppColors.info.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: AppColors.info.withOpacity(0.22),
-                            width: 1,
-                          ),
-                        ),
-                        child: const Icon(
-                          Icons.insights_outlined,
-                          color: AppColors.info,
-                          size: 22,
-                        ),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'No activity yet',
-                              style: UnifiedTypography.titleLarge.copyWith(
-                                fontWeight: FontWeight.bold,
-                                color: AppColors.textPrimary,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              connectionsCount <= 1
-                                  ? 'Connect and send messages to start generating engagement insights.'
-                                  : 'Start messaging to generate engagement insights.',
-                              style: UnifiedTypography.bodySmall.copyWith(
-                                color: AppColors.textSecondary,
-                                height: 1.35,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton(
-                      onPressed: () {
-                        HapticFeedback.lightImpact();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Tip: Open the “Local Chat” tab to start messaging.'),
-                            behavior: SnackBarBehavior.floating,
-                            backgroundColor: AppColors.info,
-                          ),
-                        );
-                      },
-                      style: TextButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                        foregroundColor: AppColors.primaryRed,
-                        textStyle: UnifiedTypography.bodyMedium.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      child: const Text('How do I start?'),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        }
         
         // TODO: Get emergency alerts count from OfflineMessagingService or SQLite
         // For now using estimated values based on messages
@@ -1312,15 +678,12 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(12),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 56),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             child: Row(
               children: [
                 Container(
-                  width: 44,
-                  height: 44,
+                padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
                     color: AppColors.primaryRed.withOpacity(0.08),
                     borderRadius: BorderRadius.circular(SoftUIDesign.buttonBorderRadius),
@@ -1332,14 +695,13 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                   child: Icon(
                     icon,
                     color: AppColors.primaryRed,
-                    size: 22,
+                  size: 20,
                   ),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(
                         title,
@@ -1347,8 +709,6 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                           color: AppColors.textPrimary,
                           fontWeight: FontWeight.w600,
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 2),
                       Text(
@@ -1356,20 +716,16 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                         style: UnifiedTypography.bodySmall.copyWith(
                           color: AppColors.textSecondary,
                         ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(width: 8),
                 Icon(
                   Icons.arrow_forward_ios,
-                  color: AppColors.textSecondary.withOpacity(0.9),
+                color: AppColors.textSecondary,
                   size: 16,
                 ),
               ],
-            ),
           ),
         ),
       ),
@@ -1377,72 +733,47 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
   }
 
   Widget _buildActionButtons() {
-    return AnimatedNeumorphicCard(
-      padding: EdgeInsets.zero,
-      backgroundColor: AppColors.primaryRed,
+    return Row(
+      children: [
+        Expanded(
+          child: Container(
+            decoration: SoftUIDesign.buttonDecoration(
+              backgroundColor: AppColors.primaryRed,
+              borderRadius: SoftUIDesign.buttonBorderRadius,
+              shadowColor: AppColors.primaryRed,
+            ),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
       onTap: () => _signOut(context),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 64),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                borderRadius: BorderRadius.circular(12),
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 16, horizontal: 12),
           child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(SoftUIDesign.buttonBorderRadius),
-                  border: Border.all(
-                    color: Colors.white.withOpacity(0.3),
-                    width: 1.5,
-                  ),
-                ),
-                child: const Icon(
+                            Icon(
                   Icons.logout,
-                  color: Colors.white,
-                  size: 22,
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
+                        color: AppColors.white,
+                        size: 20,
+                            ),
+                            SizedBox(width: 8),
                     Text(
                       'Sign Out',
-                      style: UnifiedTypography.bodyLarge.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 0.5,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Return to the sign-in screen',
-                      style: UnifiedTypography.bodySmall.copyWith(
-                        color: Colors.white.withOpacity(0.85),
-                        fontWeight: FontWeight.w600,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                          color: AppColors.white,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                              ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(width: 8),
-              Icon(
-                Icons.arrow_forward_ios,
-                color: Colors.white.withOpacity(0.7),
-                size: 16,
               ),
-            ],
           ),
         ),
       ),
+      ],
     );
   }
 
@@ -1455,7 +786,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
     // Reload user model after returning from edit profile to show updated data
     if (mounted) {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      if (authProvider.userUsername != null) {
+      if (authProvider.userEmail != null) {
         await authProvider.loadUserModel();
         // Force UI rebuild
         setState(() {});
@@ -1467,7 +798,8 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
     HapticFeedback.lightImpact();
     final auth = context.read<AuthProvider>();
 
-    // Google SSO has been removed - all users use username/password authentication
+    // Check if user is using Gmail SSO
+    final bool isGmailSSO = auth.isGmailSSO;
 
     final TextEditingController currentCtrl = TextEditingController();
     final TextEditingController newCtrl = TextEditingController();
@@ -1496,8 +828,8 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                   children: [
                     Row(
                       children: [
-                        const Icon(
-                          Icons.security,
+                        Icon(
+                          isGmailSSO ? Icons.account_circle : Icons.security,
                           color: AppColors.primary,
                           size: 24,
                         ),
@@ -1511,10 +843,31 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                                 color: AppColors.textPrimary),
                           ),
                         ),
+                        if (isGmailSSO)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 6),
+                            decoration: SoftUIDesign.cardDecoration(
+                              backgroundColor: AppColors.white,
+                              borderRadius: SoftUIDesign.buttonBorderRadius,
+                              elevation: 2.0,
+                              borderColor: AppColors.info.withOpacity(0.3),
+                              showBorder: true,
+                            ),
+                            child: const Text(
+                              'Google Account',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: AppColors.info,
+                                fontWeight: FontWeight.w600,
+                              ),
+                          ),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 16),
-                    // Current Password
+                    if (!isGmailSSO) ...[
+                      // Current Password (only for sign-up accounts)
                     Container(
                         decoration: SoftUIDesign.cardDecoration(
                           backgroundColor: AppColors.white,
@@ -1549,6 +902,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                         ),
                       ),
                       const SizedBox(height: 12),
+                    ],
 
                     // New Password
                     Container(
@@ -1572,12 +926,12 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                       controller: newCtrl,
                       obscureText: obscureNew,
                       decoration: InputDecoration(
-                        labelText: 'New Password',
+                        labelText: isGmailSSO ? 'New or Create Password' : 'New Password',
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
                             borderSide: BorderSide.none,
                           ),
-                        hintText: 'Enter your new password',
+                        hintText: isGmailSSO ? 'Enter a password to enable email login' : 'Enter your new password',
                           filled: true,
                           fillColor: Colors.transparent,
                         suffixIcon: IconButton(
@@ -1638,6 +992,45 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                         ),
                       ),
                     ),
+                    if (isGmailSSO) ...[
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: AppColors.white,
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: [
+                            BoxShadow(
+                          color: AppColors.info.withOpacity(0.1),
+                              blurRadius: 4,
+                              offset: const Offset(2, 2),
+                            ),
+                            BoxShadow(
+                              color: AppColors.white.withOpacity(0.8),
+                              blurRadius: 4,
+                              offset: const Offset(-2, -2),
+                            ),
+                          ],
+                        ),
+                        child: const Row(
+                          children: [
+                            Icon(Icons.info_outline,
+                                color: AppColors.info, size: 20),
+                            SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'You can create a password to enable email/password login alongside your Google Sign-In.',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: AppColors.info,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
 
                     const SizedBox(height: 16),
                     Row(
@@ -1712,6 +1105,10 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                             
                             try {
                                bool success = false;
+                               if(isGmailSSO){
+                                  await auth.createPasswordForGoogleAccount(newCtrl.text);
+                                  success = true;
+                               } else {
                                if (currentCtrl.text.isEmpty) {
                                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter your current password.'), backgroundColor: AppColors.error));
                                   return;
@@ -1723,6 +1120,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                                  success = true;
                                } else {
                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Current password is incorrect.'), backgroundColor: AppColors.error));
+                                  }
                                }
 
                                if(!mounted) return;
@@ -2075,7 +1473,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
         (parts.length > 1 && parts[1].isNotEmpty ? parts[1][0] : '');
   }
 
-  // Clickable contact info widget with copy functionality
+  // Enhanced clickable contact info widget with copy functionality
   Widget _buildClickableContactInfo(
     BuildContext context, {
     required IconData icon,
@@ -2088,58 +1486,37 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
       child: InkWell(
         onTap: onTap,
         onLongPress: onLongPress,
-        borderRadius: BorderRadius.circular(8),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 38),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Row(
-              children: [
-                Icon(icon, color: Colors.white, size: 18),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: AccessibleBodyText(
-                    text,
-                    color: Colors.white,
-                    backgroundColor: AppColors.primaryRed,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Icon(
-                  Icons.copy,
-                  color: Colors.white.withOpacity(0.8),
-                  size: 16,
-                ),
-              ],
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: Colors.white.withOpacity(0.15),
+              width: 1,
             ),
           ),
-        ),
-      ),
-    );
-  }
-
-  // Header-only CTA styled like the clickable contact info rows
-  Widget _buildHeaderCallToAction(
-    BuildContext context, {
-    required IconData icon,
-    required String text,
-    required VoidCallback onTap,
-  }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 38),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
             child: Row(
               children: [
-                Icon(icon, color: Colors.white, size: 18),
-                const SizedBox(width: 10),
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: Colors.white.withOpacity(0.2),
+                    width: 1,
+                  ),
+                ),
+                child: Icon(
+                  icon,
+                  color: Colors.white,
+                  size: 18,
+                ),
+              ),
+              const SizedBox(width: 12),
                 Expanded(
                   child: AccessibleBodyText(
                     text,
@@ -2150,13 +1527,19 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                   ),
                 ),
                 const SizedBox(width: 8),
-                Icon(
-                  Icons.arrow_forward_ios,
-                  color: Colors.white.withOpacity(0.85),
-                  size: 14,
+              Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(6),
                 ),
-              ],
-            ),
+                child: Icon(
+                  Icons.copy_rounded,
+                  color: Colors.white.withOpacity(0.9),
+                  size: 16,
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -2189,8 +1572,8 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
   }
 
   // Open email app
-  // ignore: unused_element
   Future<void> _openEmailApp(BuildContext context, String email) async {
+    final uri = Uri.parse('mailto:$email');
     try {
       // In a real app, you might use url_launcher package
       // For now, just copy the email
@@ -2208,8 +1591,8 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
   }
 
   // Make phone call
-  // ignore: unused_element
   Future<void> _makePhoneCall(BuildContext context, String phone) async {
+    final uri = Uri.parse('tel:$phone');
     try {
       // In a real app, you might use url_launcher package
       // For now, just copy the phone number
@@ -2226,34 +1609,6 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
     }
   }
 
-  // Open maps
-  Future<void> _openMaps(BuildContext context, String location) async {
-    try {
-      final query = Uri.encodeComponent(location);
-      final uri = Uri.parse('https://www.google.com/maps/search/?api=1&query=$query');
-
-      final canLaunch = await canLaunchUrl(uri);
-      if (canLaunch) {
-        final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
-        if (launched) {
-          HapticFeedback.lightImpact();
-          return;
-        }
-      }
-
-      // Fallback: copy to clipboard (still useful offline or on restricted platforms)
-      await _copyToClipboard(context, location, 'Address copied');
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Could not open maps: $e'),
-            backgroundColor: AppColors.error,
-          ),
-        );
-      }
-    }
-  }
 
   // Dynamic stats calculation methods using real data
   String _getDaysActiveCount(UserModel? userModel) {

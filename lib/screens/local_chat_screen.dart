@@ -98,7 +98,6 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
       
       final success = await context.read<ChatProvider>().sendMessage(
         messageText,
-        context: context,
       );
       
       if (success && mounted) {
@@ -555,9 +554,7 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
                         onPressed: () {
                           // Unpin all emergencies from this sender
                           for (final msg in emergencies) {
-                            if (msg.messageId != null) {
-                              provider.unpinEmergencyMessage(msg.messageId!);
-                            }
+                            provider.unpinEmergencyMessage(msg.messageId);
                           }
                         },
                       ),
@@ -652,7 +649,7 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
                 ],
               ),
             );
-          }).toList(),
+          }),
         ],
       ),
     );
@@ -1765,7 +1762,7 @@ class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
                                             : ElevatedButton.icon(
                                                 onPressed: provider.isConnecting ? null : () async {
                                                   HapticFeedback.mediumImpact();
-                                                  bool success = await provider.connectToDevice(device, context: context);
+                                                  bool success = await provider.connectToDevice(device);
                                                   if (success && mounted) {
                                                     HapticFeedback.heavyImpact();
                                                     ScaffoldMessenger.of(context).showSnackBar(

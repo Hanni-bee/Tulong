@@ -559,43 +559,15 @@ class TopBarConfigs {
   }
 
   static Widget profileTopBar({
-    VoidCallback? onEdit,
-    VoidCallback? onRefresh,
     List<Widget>? additionalActions,
     bool compact = false,
     List<Widget>? badges,
   }) {
-    final actions = <Widget>[];
-
-    if (onRefresh != null) {
-      actions.add(
-        _buildActionButton(
-          icon: Icons.refresh,
-          onPressed: onRefresh,
-          color: AppColors.textSecondary,
-        ),
-      );
-    }
-
-    if (onEdit != null) {
-      actions.add(
-        _buildActionButton(
-          icon: Icons.edit_outlined,
-          onPressed: onEdit,
-          color: AppColors.textSecondary,
-        ),
-      );
-    }
-
-    if (additionalActions != null) {
-      actions.addAll(additionalActions);
-    }
-
     return UnifiedTopBar(
       title: 'Profile',
       icon: Icons.person,
       iconColor: AppColors.info,
-      actions: actions.isNotEmpty ? actions : null,
+      actions: additionalActions,
       compact: compact,
       statusBadges: badges,
     );
