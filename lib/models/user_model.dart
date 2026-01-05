@@ -14,6 +14,8 @@ class UserModel {
   final String city;
   final String province;
   final String? phoneNumber;
+  // Getter for phone (alias for phoneNumber for compatibility)
+  String? get phone => phoneNumber;
   // Setup completion
   final bool addressSetupCompleted;
   // Additional fields for consistency

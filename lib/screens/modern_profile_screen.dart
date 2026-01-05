@@ -104,7 +104,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       body: SafeArea(
         child: Column(
           children: [
@@ -179,9 +179,9 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                AppColors.primaryRed,
-                AppColors.primaryRed.withOpacity(0.85),
-                AppColors.primaryDark,
+                AppColors.primaryRed.withOpacity(0.9),
+                AppColors.primaryRed.withOpacity(0.75),
+                AppColors.primaryDark.withOpacity(0.9),
               ],
               stops: const [0.0, 0.5, 1.0],
             ),
@@ -485,8 +485,9 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
     return Container(
       constraints: const BoxConstraints(minHeight: 140),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Colors.white.withOpacity(0.8),
         borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withOpacity(0.4), width: 1.5),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.08),
@@ -640,6 +641,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
     required List<Widget> items,
   }) {
     return AnimatedNeumorphicCard(
+      isGlass: true,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1534,7 +1536,6 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
 
   // Open email app
   Future<void> _openEmailApp(BuildContext context, String email) async {
-    final uri = Uri.parse('mailto:$email');
     try {
       // In a real app, you might use url_launcher package
       // For now, just copy the email
@@ -1553,7 +1554,6 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
 
   // Make phone call
   Future<void> _makePhoneCall(BuildContext context, String phone) async {
-    final uri = Uri.parse('tel:$phone');
     try {
       // In a real app, you might use url_launcher package
       // For now, just copy the phone number

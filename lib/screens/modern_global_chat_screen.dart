@@ -23,7 +23,6 @@ class _ModernGlobalChatScreenState extends State<ModernGlobalChatScreen> {
   final ScrollController _scrollController = ScrollController();
   bool _isTyping = false;
   String _typingUser = '';
-  final bool _isConnected = true;
   
   // Sample global chat messages
   final List<Map<String, dynamic>> _messages = [
@@ -561,40 +560,6 @@ class _ModernGlobalChatScreenState extends State<ModernGlobalChatScreen> {
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildNeumorphicButton({
-    required IconData icon,
-    required VoidCallback onPressed,
-  }) {
-    return Container(
-      width: 48,
-      height: 48,
-      decoration: BoxDecoration(
-        color: AppColors.backgroundLight,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 8,
-            offset: const Offset(4, 4),
-          ),
-          BoxShadow(
-            color: Colors.white.withOpacity(0.8),
-            blurRadius: 8,
-            offset: const Offset(-4, -4),
-          ),
-        ],
-      ),
-      child: IconButton(
-        icon: Icon(
-          icon,
-          color: AppColors.primaryRed,
-          size: 20,
-        ),
-        onPressed: onPressed,
       ),
     );
   }

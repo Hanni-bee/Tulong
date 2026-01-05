@@ -3,6 +3,7 @@ import 'package:local_auth/local_auth.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/unified_typography.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/biometric_service.dart';
 import '../../services/sqlite_service.dart';
 import '../../services/firebase_service.dart';
@@ -157,6 +158,36 @@ class _BiometricVerificationScreenState extends State<BiometricVerificationScree
         throw Exception('Password is required');
       }
 
+      // Enforce 1:1 device-to-account relationship
+      // Check if an account already exists on this device
+      // First check SharedPreferences for quick check
+      final prefs = await SharedPreferences.getInstance();
+      final deviceAccountExists = prefs.getBool('device_account_exists') ?? false;
+      
+      if (deviceAccountExists) {
+        // Double-check with SQLite to ensure consistency
+        final sqliteService = SQLiteService();
+        final existingUsers = await sqliteService.getAllUsers();
+        
+        if (existingUsers.isNotEmpty) {
+          // Account already exists - prevent registration
+          throw Exception('An account already exists on this device. Only one account per device is allowed.');
+        } else {
+          // Flag was set but no users found - reset flag
+          await prefs.setBool('device_account_exists', false);
+        }
+      } else {
+        // Also check SQLite directly in case SharedPreferences was cleared
+        final sqliteService = SQLiteService();
+        final existingUsers = await sqliteService.getAllUsers();
+        
+        if (existingUsers.isNotEmpty) {
+          // Account exists but flag not set - update flag and prevent registration
+          await prefs.setBool('device_account_exists', true);
+          throw Exception('An account already exists on this device. Only one account per device is allowed.');
+        }
+      }
+
       // Check if all required address fields are filled
       final address = data['address']?.toString().trim() ?? '';
       final region = data['region']?.toString().trim() ?? '';
@@ -248,6 +279,10 @@ class _BiometricVerificationScreenState extends State<BiometricVerificationScree
         email: data['username'], // Parameter name is 'email' for compatibility, but it's actually username
         name: '${data['firstName']} ${data['lastName']}',
       );
+
+      // Mark that an account exists on this device (1:1 device-to-account relationship)
+      // Reuse prefs variable declared earlier in the function
+      await prefs.setBool('device_account_exists', true);
 
       print('✅ User data saved and authenticated');
     } catch (e) {

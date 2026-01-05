@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -95,10 +96,7 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
       final messageText = _messageController.text;
       _messageController.clear();
       
-      final success = await context.read<ChatProvider>().sendMessage(
-        messageText,
-        context: context,
-      );
+      final success = await context.read<ChatProvider>().sendMessage(messageText);
       
       if (success && mounted) {
         // Show subtle success feedback (not full screen animation for messages)
@@ -169,7 +167,7 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
+      backgroundColor: Colors.transparent,
       body: SafeArea(
         child: Column(
           children: [
@@ -181,14 +179,15 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
                     : 'Disconnected';
                 return TopBarConfigs.localChatTopBar(
                   status: statusText,
-                  onBluetoothTap: null, // Removed - now on home screen
-                  onConnectedTap: () {
+                  onBluetoothTap: () {
                     if (provider.isConnected) {
                       _showConnectedUsersModal();
                     }
                     // Removed radar modal - now on home screen
                   },
-                  onRefresh: () => provider.smartRefresh(),
+                  onConnectedTap: provider.isConnected ? () {
+                    _showConnectedUsersModal();
+                  } : null,
                 );
               },
             ),
@@ -453,100 +452,120 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
             constraints: BoxConstraints(
               maxWidth: MediaQuery.of(context).size.width * 0.7,
             ),
-            padding: EdgeInsets.symmetric(
-              horizontal: isEmergency ? 18 : 16,
-              vertical: isEmergency ? 14 : 12,
-            ),
-            decoration: BoxDecoration(
-              color: isEmergency
-                  ? (message.isMe ? AppColors.error : AppColors.error.withOpacity(0.1))
-                  : (message.isMe ? AppColors.primaryRed : Colors.white),
+            child: ClipRRect(
               borderRadius: BorderRadius.circular(20).copyWith(
                 bottomLeft: message.isMe ? const Radius.circular(20) : const Radius.circular(4),
                 bottomRight: message.isMe ? const Radius.circular(4) : const Radius.circular(20),
               ),
-              border: Border.all(
-                color: isEmergency
-                    ? AppColors.error.withOpacity(0.8)
-                    : (message.isMe 
-                        ? Colors.white.withOpacity(0.2)
-                        : AppColors.lightGray.withOpacity(0.5)),
-                width: isEmergency ? 2.5 : 1.5,
-              ),
-              boxShadow: isEmergency ? [
-                BoxShadow(
-                  color: AppColors.error.withOpacity(0.3),
-                  blurRadius: 12,
-                  spreadRadius: 2,
-                  offset: const Offset(0, 4),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(
+                  sigmaX: !message.isMe && !isEmergency ? 12 : 0, 
+                  sigmaY: !message.isMe && !isEmergency ? 12 : 0
                 ),
-              ] : null,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Emergency badge
-                if (isEmergency) ...[
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.sos_rounded,
-                        color: AppColors.error,
-                        size: 18,
+                child: Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: isEmergency ? 18 : 16,
+                    vertical: isEmergency ? 14 : 12,
+                  ),
+                  decoration: BoxDecoration(
+                    color: isEmergency
+                        ? (message.isMe ? AppColors.error : AppColors.error.withOpacity(0.1))
+                        : (message.isMe ? AppColors.primaryRed : Colors.white.withOpacity(0.82)),
+                    borderRadius: BorderRadius.circular(20).copyWith(
+                      bottomLeft: message.isMe ? const Radius.circular(20) : const Radius.circular(4),
+                      bottomRight: message.isMe ? const Radius.circular(4) : const Radius.circular(20),
+                    ),
+                    border: Border.all(
+                      color: isEmergency
+                          ? AppColors.error.withOpacity(0.8)
+                          : (message.isMe 
+                              ? Colors.white.withOpacity(0.2)
+                              : Colors.white.withOpacity(0.4)),
+                      width: isEmergency ? 2.5 : 1.5,
+                    ),
+                    boxShadow: isEmergency ? [
+                      BoxShadow(
+                        color: AppColors.error.withOpacity(0.3),
+                        blurRadius: 12,
+                        spreadRadius: 2,
+                        offset: const Offset(0, 4),
                       ),
-                      const SizedBox(width: 6),
-                      Text(
-                        'EMERGENCY ALERT',
-                        style: AppTypography.bodySmall.copyWith(
-                          color: AppColors.error,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 1.2,
-                          fontSize: 11,
-                        ),
+                    ] : [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.05),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 8),
-                ],
-                // Message content
-                if (message.type == voice.MessageType.voice && message.voiceMessage != null)
-                  _buildVoiceMessageContent(message.voiceMessage!, message.timestamp.millisecondsSinceEpoch.toString(), message.isMe)
-                else
-                  isEmergency
-                      ? Text(
-                          message.text,
-                          style: AppTypography.bodyLarge.copyWith(
-                            fontWeight: FontWeight.w700,
-                            color: message.isMe ? Colors.white : AppColors.error,
-                          ),
-                        )
-                      : AccessibleChatText(
-                          message.text,
-                          isMe: message.isMe,
-                          backgroundColor: message.isMe
-                              ? AppColors.primaryRed
-                              : AppColors.white,
-                          maxLines: null,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Emergency badge
+                      if (isEmergency) ...[
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.sos_rounded,
+                              color: AppColors.error,
+                              size: 18,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              'EMERGENCY ALERT',
+                              style: AppTypography.bodySmall.copyWith(
+                                color: AppColors.error,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 1.2,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
                         ),
-                const SizedBox(height: 4),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      _formatDateTime(message.timestamp),
-                      style: AppTypography.bodySmall.copyWith(
-                        color: isEmergency
-                            ? (message.isMe ? Colors.white70 : AppColors.error.withOpacity(0.8))
-                            : (message.isMe ? Colors.white70 : AppColors.lightGray),
+                        const SizedBox(height: 8),
+                      ],
+                      // Message content
+                      if (message.type == voice.MessageType.voice && message.voiceMessage != null)
+                        _buildVoiceMessageContent(message.voiceMessage!, message.timestamp.millisecondsSinceEpoch.toString(), message.isMe)
+                      else
+                        isEmergency
+                            ? Text(
+                                message.text,
+                                style: AppTypography.bodyLarge.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                  color: message.isMe ? Colors.white : AppColors.error,
+                                ),
+                              )
+                            : AccessibleChatText(
+                                message.text,
+                                isMe: message.isMe,
+                                backgroundColor: message.isMe
+                                    ? AppColors.primaryRed
+                                    : Colors.transparent, // Let bubble background show through
+                                maxLines: null,
+                              ),
+                      const SizedBox(height: 4),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            _formatDateTime(message.timestamp),
+                            style: AppTypography.bodySmall.copyWith(
+                              color: isEmergency
+                                  ? (message.isMe ? Colors.white70 : AppColors.error.withOpacity(0.8))
+                                  : (message.isMe ? Colors.white70 : AppColors.textSecondary.withOpacity(0.7)),
+                            ),
+                          ),
+                          if (message.isMe) ...[
+                            const SizedBox(width: 8),
+                            _buildMessageStatus(message.status, message.isRead),
+                          ],
+                        ],
                       ),
-                    ),
-                    if (message.isMe) ...[
-                      const SizedBox(width: 8),
-                      _buildMessageStatus(message.status, message.isRead),
                     ],
-                  ],
+                  ),
                 ),
-              ],
+              ),
             ),
           ),
           if (message.isMe) ...[
@@ -1329,7 +1348,7 @@ class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
                                             : ElevatedButton.icon(
                                                 onPressed: provider.isConnecting ? null : () async {
                                                   HapticFeedback.mediumImpact();
-                                                  bool success = await provider.connectToDevice(device, context: context);
+                                                  bool success = await provider.connectToDevice(device);
                                                   if (success && mounted) {
                                                     HapticFeedback.heavyImpact();
                                                     ScaffoldMessenger.of(context).showSnackBar(

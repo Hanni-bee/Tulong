@@ -28,8 +28,8 @@ class ModernFloatingLayout extends StatelessWidget {
     return Container(
       width: double.infinity,
       height: double.infinity,
-      decoration: const BoxDecoration(
-        color: AppColors.backgroundLight,
+      decoration: BoxDecoration(
+        color: backgroundColor ?? Colors.transparent,
       ),
       child: enableSafeArea
           ? SafeArea(

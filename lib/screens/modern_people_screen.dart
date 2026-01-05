@@ -9,6 +9,9 @@ import '../widgets/modern_responsive_layout.dart';
 import '../widgets/modern_floating_layout.dart';
 import '../widgets/enhanced_text_styles.dart';
 import '../widgets/enhanced_shadows.dart' as shadows;
+import '../widgets/smart_loader.dart';
+import '../widgets/contextual_empty_state.dart';
+import '../utils/haptic_helper.dart';
 import 'private_chat_screen.dart';
 import '../constants/unified_typography.dart';
 
@@ -103,6 +106,15 @@ class _ModernPeopleScreenState extends State<ModernPeopleScreen>
         });
       }
     }
+  }
+
+  Future<void> _refreshUsers() async {
+    HapticHelper.light();
+    setState(() {
+      _isLoading = true;
+    });
+    await _loadUsers();
+    HapticHelper.success();
   }
 
   String _formatLastSeen(dynamic lastSeen) {

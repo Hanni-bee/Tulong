@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'dart:ui' show ImageFilter;
+import 'package:flutter_animate/flutter_animate.dart';
 import '../constants/app_colors.dart';
+import '../constants/unified_typography.dart';
 import '../providers/auth_provider.dart';
-import '../utils/neumorphic_utils.dart';
 import '../utils/permission_helper.dart';
 import 'auth/modern_sign_in_screen.dart';
 import 'interactive_tutorial_screen.dart';
@@ -18,20 +20,16 @@ class EnhancedSplashScreen extends StatefulWidget {
 
 class _EnhancedSplashScreenState extends State<EnhancedSplashScreen>
     with TickerProviderStateMixin {
-  late AnimationController _mainController;
+  // Animation Controllers
   late AnimationController _logoController;
   late AnimationController _rippleController;
-  late AnimationController _particleController;
-  late AnimationController _textController;
   late AnimationController _breathingController;
   late AnimationController _glowController;
 
+  // Animations
   late Animation<double> _logoScale;
-  late Animation<double> _logoRotate;
   late Animation<double> _rippleScale;
   late Animation<double> _rippleOpacity;
-  late Animation<double> _textFade;
-  late Animation<Offset> _textSlide;
   late Animation<double> _breathingScale;
   late Animation<double> _glowPulse;
 
@@ -58,12 +56,6 @@ class _EnhancedSplashScreenState extends State<EnhancedSplashScreen>
   }
 
   void _initializeAnimations() {
-    // Main controller
-    _mainController = AnimationController(
-      duration: const Duration(milliseconds: 3000),
-      vsync: this,
-    );
-
     // Logo animations
     _logoController = AnimationController(
       duration: const Duration(milliseconds: 1500),
@@ -74,13 +66,6 @@ class _EnhancedSplashScreenState extends State<EnhancedSplashScreen>
       CurvedAnimation(
         parent: _logoController,
         curve: Curves.elasticOut,
-      ),
-    );
-
-    _logoRotate = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _logoController,
-        curve: Curves.easeInOut,
       ),
     );
 
@@ -101,35 +86,6 @@ class _EnhancedSplashScreenState extends State<EnhancedSplashScreen>
       CurvedAnimation(
         parent: _rippleController,
         curve: Curves.easeOut,
-      ),
-    );
-
-    // Particle animations
-    _particleController = AnimationController(
-      duration: const Duration(milliseconds: 3000),
-      vsync: this,
-    );
-
-    // Text animations
-    _textController = AnimationController(
-      duration: const Duration(milliseconds: 800),
-      vsync: this,
-    );
-
-    _textFade = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _textController,
-        curve: Curves.easeIn,
-      ),
-    );
-
-    _textSlide = Tween<Offset>(
-      begin: const Offset(0, 0.5),
-      end: Offset.zero,
-    ).animate(
-      CurvedAnimation(
-        parent: _textController,
-        curve: Curves.easeOutCubic,
       ),
     );
 
@@ -164,7 +120,6 @@ class _EnhancedSplashScreenState extends State<EnhancedSplashScreen>
     // Haptic feedback
     HapticFeedback.mediumImpact();
 
-    // Sequence: Logo -> Ripple -> Text
     await Future.delayed(const Duration(milliseconds: 300));
     _logoController.forward();
 
@@ -172,15 +127,7 @@ class _EnhancedSplashScreenState extends State<EnhancedSplashScreen>
     _rippleController.repeat();
 
     await Future.delayed(const Duration(milliseconds: 800));
-    _textController.forward();
-
-    await Future.delayed(const Duration(milliseconds: 1000));
-    _particleController.repeat();
-
-    // Start breathing and glow after logo appears
-    await Future.delayed(const Duration(milliseconds: 500));
-    _breathingController.repeat(reverse: true);
-    _glowController.repeat(reverse: true);
+    // Text animations are now handled by flutter_animate in build
 
     setState(() {
       _showProgress = true;
@@ -219,16 +166,13 @@ class _EnhancedSplashScreenState extends State<EnhancedSplashScreen>
     await Future.delayed(const Duration(milliseconds: 300));
 
     if (authProvider.isAuthenticated && authProvider.userUsername != null) {
-      // Check if tutorial is required for this user
       final tutorialRequired = await authProvider.isTutorialRequired();
       
       if (!tutorialRequired) {
-        // User has completed tutorial, go to main app
         Navigator.of(context).pushReplacement(
           _createSmoothTransition('/main'),
         );
       } else {
-        // User needs to complete tutorial
         Navigator.of(context).pushReplacement(
           _createSmoothTransition('/tutorial'),
         );
@@ -261,72 +205,43 @@ class _EnhancedSplashScreenState extends State<EnhancedSplashScreen>
       transitionDuration: const Duration(milliseconds: 900),
       reverseTransitionDuration: const Duration(milliseconds: 600),
       transitionsBuilder: (context, animation, secondaryAnimation, child) {
-        // Enhanced fade with staggered timing
         final fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
           CurvedAnimation(
             parent: animation,
-            curve: Interval(0.0, 0.75, curve: Curves.easeOut),
+            curve: const Interval(0.0, 0.75, curve: Curves.easeOut),
           ),
         );
 
-        // Smooth slide from bottom with easing
         final slideAnimation = Tween<Offset>(
           begin: const Offset(0, 0.12),
           end: Offset.zero,
         ).animate(
           CurvedAnimation(
             parent: animation,
-            curve: Interval(0.15, 1.0, curve: Curves.easeOutCubic),
+            curve: const Interval(0.15, 1.0, curve: Curves.easeOutCubic),
           ),
         );
 
-        // Subtle scale for depth effect
         final scaleAnimation = Tween<double>(begin: 0.98, end: 1.0).animate(
           CurvedAnimation(
             parent: animation,
-            curve: Interval(0.0, 0.85, curve: Curves.easeOut),
+            curve: const Interval(0.0, 0.85, curve: Curves.easeOut),
           ),
         );
 
-        // Exiting splash screen - smooth fade out
         final exitFade = Tween<double>(begin: 1.0, end: 0.0).animate(
           CurvedAnimation(
             parent: secondaryAnimation,
-            curve: Interval(0.0, 0.65, curve: Curves.easeIn),
-          ),
-        );
-
-        final exitSlide = Tween<Offset>(
-          begin: Offset.zero,
-          end: const Offset(0, -0.12),
-        ).animate(
-          CurvedAnimation(
-            parent: secondaryAnimation,
-            curve: Interval(0.0, 0.65, curve: Curves.easeIn),
-          ),
-        );
-
-        final exitScale = Tween<double>(begin: 1.0, end: 0.96).animate(
-          CurvedAnimation(
-            parent: secondaryAnimation,
-            curve: Interval(0.0, 0.65, curve: Curves.easeIn),
+            curve: const Interval(0.0, 0.65, curve: Curves.easeIn),
           ),
         );
 
         return Stack(
           children: [
-            // Exiting splash screen
             FadeTransition(
               opacity: exitFade,
-              child: SlideTransition(
-                position: exitSlide,
-                child: ScaleTransition(
-                  scale: exitScale,
-                  child: Container(color: AppColors.neumorphicBase),
-                ),
-              ),
+              child: Container(color: Colors.white),
             ),
-            // Entering new screen
             FadeTransition(
               opacity: fadeAnimation,
               child: SlideTransition(
@@ -345,11 +260,8 @@ class _EnhancedSplashScreenState extends State<EnhancedSplashScreen>
 
   @override
   void dispose() {
-    _mainController.dispose();
     _logoController.dispose();
     _rippleController.dispose();
-    _particleController.dispose();
-    _textController.dispose();
     _breathingController.dispose();
     _glowController.dispose();
     super.dispose();
@@ -357,46 +269,112 @@ class _EnhancedSplashScreenState extends State<EnhancedSplashScreen>
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
-
     return Scaffold(
-      backgroundColor: AppColors.neumorphicBase,
+      backgroundColor: Colors.white,
       body: Stack(
         children: [
-          // Animated background particles
-          ...List.generate(15, (index) => _buildParticle(index, size)),
+          // 1. Premium Liquid Background
+          const _SplashBackground(),
 
-          // Main content
+          // 2. Main content
           SafeArea(
             child: Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Spacer(),
+                  const Spacer(flex: 3),
 
-                  // Logo with ripple effect
+                  // Logo with enhanced pulsing aura
                   _buildAnimatedLogo(),
 
-                  const SizedBox(height: 40),
+                  const Spacer(flex: 1),
 
-                  // App name with animation
-                  _buildAppName(),
+                  // Branding section
+                  _buildBranding(),
 
-                  const SizedBox(height: 12),
+                  const Spacer(flex: 3),
 
-                  // Tagline
-                  _buildTagline(),
+                  // Progress section with Glassmorphism
+                  if (_showProgress) 
+                    _buildProgressSection()
+                      .animate()
+                      .fade(duration: 800.ms, curve: Curves.easeOut)
+                      .slideY(begin: 0.2, end: 0, duration: 800.ms, curve: Curves.easeOutCubic),
 
-                  const Spacer(),
-
-                  // Progress section
-                  if (_showProgress) _buildProgressSection(),
-
-                  const SizedBox(height: 60),
+                  const Spacer(flex: 1),
                 ],
               ),
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBranding() {
+    final letters = 'T.U.L.O.N.G.'.split('');
+    
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Column(
+        children: [
+          // App name with individual letter staggered animation
+          ShaderMask(
+            shaderCallback: (bounds) {
+              return LinearGradient(
+                colors: [
+                  AppColors.primaryRed,
+                  AppColors.primaryRedDark,
+                ],
+              ).createShader(bounds);
+            },
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: letters.asMap().entries.map((entry) {
+                return Text(
+                  entry.value,
+                  style: UnifiedTypography.displayLarge.copyWith(
+                    fontSize: 38,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: entry.key == letters.length - 1 ? 0 : 3.0,
+                    color: Colors.white,
+                  ),
+                ).animate()
+                 .fade(delay: (entry.key * 80).ms, duration: 600.ms)
+                 .slideY(begin: 0.3, end: 0, delay: (entry.key * 80).ms, curve: Curves.easeOutBack);
+              }).toList(),
+            ),
+          ).animate()
+           .shimmer(delay: 2.seconds, duration: 2.seconds, color: Colors.white.withOpacity(0.4)),
+
+          const SizedBox(height: 16),
+
+          // Tagline with dynamic letter spacing entrance
+          Text(
+            'Disaster-Ready Communication',
+            textAlign: TextAlign.center,
+            style: UnifiedTypography.bodyLarge.copyWith(
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary.withOpacity(0.6),
+              letterSpacing: 1.0,
+            ),
+          ).animate()
+           .fade(delay: 1.seconds, duration: 1.seconds)
+           .slideY(begin: 0.2, end: 0)
+           .custom(
+             begin: 0,
+             end: 1.0,
+             duration: 1500.ms,
+             builder: (context, value, child) => Text(
+               'Disaster-Ready Communication',
+               textAlign: TextAlign.center,
+               style: UnifiedTypography.bodyLarge.copyWith(
+                 fontWeight: FontWeight.w700,
+                 color: AppColors.textPrimary.withOpacity(0.6),
+                 letterSpacing: 1.0 + (1.0 * (1 - value)), // Spacing settles into place
+               ),
+             ),
+           ),
         ],
       ),
     );
@@ -417,94 +395,94 @@ class _EnhancedSplashScreenState extends State<EnhancedSplashScreen>
         return Stack(
           alignment: Alignment.center,
           children: [
-            // Ripple effect 1
-            Transform.scale(
-              scale: _rippleScale.value,
-              child: Container(
-                width: 120,
-                height: 120,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: AppColors.primaryRed
-                        .withOpacity(_rippleOpacity.value * 0.4),
-                    width: 2,
-                  ),
-                ),
-              ),
-            ),
-
-            // Ripple effect 2 (delayed)
-            Transform.scale(
-              scale: (_rippleScale.value - 0.5).clamp(0.0, 3.0),
-              child: Container(
-                width: 120,
-                height: 120,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: AppColors.primaryRed
-                        .withOpacity(_rippleOpacity.value * 0.3),
-                    width: 2,
-                  ),
-                ),
-              ),
-            ),
-
-            // Enhanced pulsing glow effect
+            // Outer Layered Pulsing Aura (Matching the image)
+            // Layer 1: Widest soft glow
             Container(
-              width: 160,
-              height: 160,
+              width: 240 * breathingScale,
+              height: 240 * breathingScale,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                    color: AppColors.primaryRed.withOpacity(glowOpacity),
-                    blurRadius: 40 * breathingScale,
-                    spreadRadius: 10 * breathingScale,
-                  ),
-                  BoxShadow(
-                    color: AppColors.primaryRed.withOpacity(glowOpacity * 0.5),
-                    blurRadius: 60 * breathingScale,
-                    spreadRadius: 5 * breathingScale,
+                    color: AppColors.primaryRed.withOpacity(glowOpacity * 0.2),
+                    blurRadius: 60,
+                    spreadRadius: 20,
                   ),
                 ],
               ),
             ),
 
-            // Main logo container with neumorphic effect and breathing
-            Transform.scale(
-              scale: breathingScale,
-              child: Transform.rotate(
-                angle: _logoRotate.value * 0.1,
+            // Layer 2: Medium concentrated glow
+            Container(
+              width: 180 * breathingScale,
+              height: 180 * breathingScale,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.primaryRed.withOpacity(glowOpacity * 0.4),
+                    blurRadius: 40,
+                    spreadRadius: 10,
+                  ),
+                ],
+              ),
+            ),
+
+            // Ripples
+            ...List.generate(2, (i) {
+              final rippleProgress = (_rippleScale.value - (i * 0.5)).clamp(0.0, 3.0);
+              return Transform.scale(
+                scale: rippleProgress,
                 child: Container(
                   width: 120,
                   height: 120,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: AppColors.primaryRed.withOpacity(_rippleOpacity.value * (0.4 - (i * 0.1))),
+                      width: 1.5,
+                    ),
+                  ),
+                ),
+              );
+            }),
+
+            // Main Logo with Neumorphic Shell
+            Transform.scale(
+              scale: breathingScale,
+              child: Container(
+                width: 130,
+                height: 130,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.12),
+                      blurRadius: 25,
+                      offset: const Offset(0, 12),
+                    ),
+                    BoxShadow(
+                      color: AppColors.primaryRed.withOpacity(0.4 + glowOpacity * 0.3),
+                      blurRadius: 20,
+                      spreadRadius: 2,
+                    ),
+                  ],
+                ),
+                padding: const EdgeInsets.all(10), // Slightly more padding
+                child: Container(
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     gradient: LinearGradient(
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                       colors: [
-                        Colors.white,
-                        AppColors.neumorphicBase,
+                        AppColors.primaryRed,
+                        AppColors.primaryRedDark,
                       ],
                     ),
-                    boxShadow: [
-                      ...NeumorphicUtils.getNeumorphicShadow(depth: 12),
-                      BoxShadow(
-                        color: AppColors.primaryRed.withOpacity(0.2 + glowOpacity * 0.2),
-                        blurRadius: 20 * breathingScale,
-                        spreadRadius: 5 * breathingScale,
-                      ),
-                    ],
                   ),
-                  padding: const EdgeInsets.all(20),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: NeumorphicUtils.getModernGradient(),
-                    ),
+                  child: Center(
                     child: Padding(
                       padding: const EdgeInsets.all(16),
                       child: Image.asset(
@@ -514,7 +492,8 @@ class _EnhancedSplashScreenState extends State<EnhancedSplashScreen>
                     ),
                   ),
                 ),
-              ),
+              ).animate(onPlay: (c) => c.repeat(reverse: true))
+               .shimmer(delay: 3.seconds, duration: 2.seconds, color: Colors.white.withOpacity(0.3)),
             ),
           ],
         );
@@ -522,178 +501,184 @@ class _EnhancedSplashScreenState extends State<EnhancedSplashScreen>
     );
   }
 
-  Widget _buildAppName() {
-    return SlideTransition(
-      position: _textSlide,
-      child: FadeTransition(
-        opacity: _textFade,
-        child: ShaderMask(
-          shaderCallback: (bounds) {
-            return LinearGradient(
-              colors: [
-                AppColors.primaryRed,
-                AppColors.primaryRedDark,
-              ],
-            ).createShader(bounds);
-          },
-          child: const Text(
-            'T.U.L.O.N.G',
-            style: TextStyle(
-              fontSize: 48,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 4.0,
-              color: Colors.white,
-              shadows: [
-                Shadow(
-                  color: Colors.black12,
-                  offset: Offset(0, 4),
-                  blurRadius: 8,
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTagline() {
-    return FadeTransition(
-      opacity: _textFade,
-      child: const Text(
-        'Disaster-Ready Communication',
-        style: TextStyle(
-          fontSize: 16,
-          fontWeight: FontWeight.w600,
-          color: AppColors.textSecondary,
-          letterSpacing: 1.2,
-        ),
-      ),
-    );
-  }
-
   Widget _buildProgressSection() {
-    return Column(
-      children: [
-        // Status text with typewriter effect
-        AnimatedSwitcher(
-          duration: const Duration(milliseconds: 300),
-          transitionBuilder: (child, animation) {
-            return FadeTransition(
-              opacity: animation,
-              child: SlideTransition(
-                position: Tween<Offset>(
-                  begin: const Offset(0, 0.5),
-                  end: Offset.zero,
-                ).animate(animation),
-                child: child,
-              ),
-            );
-          },
-          child: Text(
-            _statusText,
-            key: ValueKey(_currentStep),
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: AppColors.primaryRed,
-              letterSpacing: 0.5,
-            ),
+    return Container(
+      width: 280, // Slightly wider for better text fit
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.7),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white.withOpacity(0.4), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 20,
+            offset: const Offset(0, 5),
           ),
-        ),
-
-        const SizedBox(height: 20),
-
-        // Modern progress bar
-        Container(
-          width: 200,
-          height: 6,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(3),
-            boxShadow: NeumorphicUtils.getInnerShadow(depth: 2),
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(3),
-            child: Stack(
-              children: [
-                // Background
-                Container(
-                  color: AppColors.neumorphicBase,
-                ),
-                // Progress
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 600),
-                  curve: Curves.easeOutCubic,
-                  width: 200 * _progress,
-                  decoration: BoxDecoration(
-                    gradient: NeumorphicUtils.getModernGradient(),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.primaryRed.withOpacity(0.4),
-                        blurRadius: 8,
-                        spreadRadius: 1,
-                      ),
-                    ],
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Status text
+              SizedBox(
+                height: 20,
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 300),
+                  child: Text(
+                    _statusText,
+                    key: ValueKey(_currentStep),
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: UnifiedTypography.labelMedium.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.primaryRed,
+                      letterSpacing: 0.2,
+                      fontSize: 11,
+                    ),
                   ),
                 ),
-              ],
-            ),
-          ),
-        ),
-
-        const SizedBox(height: 16),
-
-        // Progress percentage
-        AnimatedBuilder(
-          animation: _mainController,
-          builder: (context, child) {
-            return Text(
-              '${(_progress * 100).toInt()}%',
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: AppColors.textSecondary,
-                letterSpacing: 0.5,
               ),
-            );
-          },
-        ),
-      ],
-    );
-  }
 
-  Widget _buildParticle(int index, Size size) {
-    final random = index * 37; // Pseudo-random
-    final left = (random % size.width.toInt()).toDouble();
+              const SizedBox(height: 12),
 
-    return AnimatedBuilder(
-      animation: _particleController,
-      builder: (context, child) {
-        final progress = (_particleController.value + (index / 15)) % 1.0;
-        final top = size.height * progress;
-        final opacity = (1.0 - progress) * 0.6;
-
-        return Positioned(
-          left: left,
-          top: top,
-          child: Container(
-            width: 3 + (index % 4),
-            height: 3 + (index % 4),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppColors.primaryRed.withOpacity(opacity),
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.primaryRed.withOpacity(opacity * 0.5),
-                  blurRadius: 4,
-                  spreadRadius: 1,
-                ),
-              ],
-            ),
+              // Progress bar
+              Stack(
+                children: [
+                  Container(
+                    height: 6,
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryRed.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                  ),
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      return AnimatedContainer(
+                        duration: const Duration(milliseconds: 600),
+                        curve: Curves.easeOutCubic,
+                        height: 6,
+                        width: constraints.maxWidth * _progress,
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [
+                              AppColors.primaryRed,
+                              AppColors.primaryRedDark,
+                            ],
+                          ),
+                          borderRadius: BorderRadius.circular(3),
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppColors.primaryRed.withOpacity(0.4),
+                              blurRadius: 6,
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+                  ),
+                ],
+              ),
+            ],
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 }
 
+class _SplashBackground extends StatelessWidget {
+  const _SplashBackground();
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        // Clean white base
+        Container(color: Colors.white),
+
+        // Extremely soft liquid orbs
+        Positioned(
+          top: -150,
+          right: -100,
+          child: _Orb(
+            color: AppColors.primaryRed.withOpacity(0.04), // Even softer
+            size: 500,
+          ),
+        ).animate(onPlay: (c) => c.repeat(reverse: true))
+         .moveY(begin: 0, end: 100, duration: 8.seconds, curve: Curves.easeInOut),
+
+        Positioned(
+          bottom: -100,
+          left: -150,
+          child: _Orb(
+            color: AppColors.primaryRed.withOpacity(0.03), // Even softer
+            size: 600,
+          ),
+        ).animate(onPlay: (c) => c.repeat(reverse: true))
+         .moveX(begin: 0, end: 150, duration: 10.seconds, curve: Curves.easeInOut),
+        
+        // Background particles - Network theme
+        ...List.generate(15, (index) {
+          final top = (index * 67) % 800;
+          final left = (index * 123) % 400;
+          return Positioned(
+            top: top.toDouble(),
+            left: left.toDouble(),
+            child: Container(
+              width: 3,
+              height: 3,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppColors.primaryRed.withOpacity(0.08),
+              ),
+            ).animate(onPlay: (c) => c.repeat(reverse: true))
+             .fade(begin: 0.1, end: 0.4, duration: 3.seconds)
+             .scale(begin: const Offset(0.5, 0.5), end: const Offset(1.2, 1.2)),
+          );
+        }),
+
+        // Soft global blur
+        Positioned.fill(
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
+            child: Container(color: Colors.transparent),
+          ),
+        ),
+
+        // Premium Grain Texture Overlay
+        Positioned.fill(
+          child: Opacity(
+            opacity: 0.02,
+            child: Image.network(
+              'https://www.transparenttextures.com/patterns/p6.png', // Fine grain texture
+              repeat: ImageRepeat.repeat,
+              errorBuilder: (context, error, stackTrace) => const SizedBox.shrink(),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _Orb extends StatelessWidget {
+  final Color color;
+  final double size;
+  const _Orb({required this.color, required this.size});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(shape: BoxShape.circle, color: color),
+    );
+  }
+}

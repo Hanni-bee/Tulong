@@ -85,9 +85,12 @@ class SoftUIDesign {
     double elevation = 4.0,
     Color? borderColor,
     bool showBorder = false,
+    bool isGlass = false,
   }) {
     return BoxDecoration(
-      color: backgroundColor ?? AppColors.white,
+      color: isGlass 
+          ? (backgroundColor ?? Colors.white).withOpacity(0.8) 
+          : (backgroundColor ?? AppColors.white),
       borderRadius: BorderRadius.circular(borderRadius ?? cardBorderRadius),
       border: showBorder ? getCardBorder(color: borderColor) : null,
       boxShadow: getCardShadow(elevation: elevation),
@@ -584,6 +587,7 @@ class SoftUIDesign {
     bool showDiagonalOverlay = false,
     bool showCornerAccent = false,
     Color? accentColor,
+    bool isGlass = false,
   }) {
     return Container(
       decoration: cardDecoration(
@@ -592,9 +596,13 @@ class SoftUIDesign {
         elevation: elevation,
         borderColor: borderColor,
         showBorder: showBorder,
+        isGlass: isGlass,
       ),
       child: Stack(
         children: [
+          // Content
+          child,
+          
           // Depth overlay
           if (showDepthOverlay && elevation >= 3.0)
             buildDepthOverlay(
@@ -616,9 +624,6 @@ class SoftUIDesign {
               alignment: Alignment.topRight,
               opacity: 0.08,
             ),
-          
-          // Content
-          child,
         ],
       ),
     );

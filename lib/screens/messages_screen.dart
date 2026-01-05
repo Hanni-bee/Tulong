@@ -3,8 +3,9 @@ import '../constants/app_colors.dart';
 import '../widgets/chat_card.dart';
 import '../widgets/enhanced_search_bar.dart';
 import '../widgets/unified_top_bar.dart';
-import '../widgets/enhanced_empty_state.dart';
+import '../widgets/contextual_empty_state.dart';
 import '../widgets/accessible_text.dart';
+import '../utils/haptic_helper.dart';
 import 'message_detail_screen.dart';
 import 'calls_screen.dart';
 
@@ -164,6 +165,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
           Expanded(
             child: RefreshIndicator(
               onRefresh: () async {
+                HapticHelper.light();
                 // Simulate refresh delay
                 await Future.delayed(const Duration(milliseconds: 800));
                 // In real app, reload conversations from database/API
@@ -172,6 +174,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
                     // Trigger rebuild to show updated data
                   });
                 }
+                HapticHelper.success();
               },
               color: AppColors.primaryRed,
               child: _filteredConversations.isEmpty
@@ -179,11 +182,21 @@ class _MessagesScreenState extends State<MessagesScreen> {
                       children: [
                         SizedBox(
                           height: MediaQuery.of(context).size.height * 0.5,
-                          child: EmptyStatePresets.noConversations(
-                            onStartNewChat: () {
-                              _showNewMessageDialog(context);
-                            },
-                          ),
+                          child: _searchQuery.isNotEmpty
+                              ? ContextualEmptyState.noSearchResults(
+                                  searchQuery: _searchQuery,
+                                  onClearSearch: () {
+                                    setState(() {
+                                      _searchQuery = '';
+                                      _searchController.clear();
+                                    });
+                                  },
+                                )
+                              : ContextualEmptyState.noConversations(
+                                  onFindUsers: () {
+                                    _showNewMessageDialog(context);
+                                  },
+                                ),
                         ),
                       ],
                     )
@@ -200,6 +213,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
                           isOnline: conversation['isOnline'],
                           isGroup: conversation['isGroup'] ?? false,
                           onTap: () {
+                            HapticHelper.light();
                             _openChat(context, conversation);
                           },
                         );
@@ -214,6 +228,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
         key: const ValueKey('messages_new_fab'),
         heroTag: 'messages_new_fab',
         onPressed: () {
+          HapticHelper.medium();
           _showNewMessageDialog(context);
         },
         backgroundColor: AppColors.primaryRed,

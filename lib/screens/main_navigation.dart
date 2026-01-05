@@ -1,3 +1,4 @@
+import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -9,10 +10,10 @@ import '../providers/chat_provider.dart';
 import '../utils/prototype_animations.dart';
 import '../widgets/solid_badge.dart';
 import '../utils/icon_system.dart';
+import '../widgets/elite_liquid_background.dart';
 import 'modern_home_screen.dart';
 import 'local_chat_screen.dart';
 import 'emergency_detection_screen.dart';
-// Hardware screen removed - using pure Bluetooth only
 import 'modern_profile_screen.dart';
 import '../models/notification_model.dart';
 
@@ -307,122 +308,123 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
   Widget build(BuildContext context) {
     return Scaffold(
       extendBody: true, // allow body to render under the floating nav pill
-      backgroundColor: AppColors.neumorphicBase,
-      body: ScrollConfiguration(
-        behavior: const _NoScrollbarsBehavior(),
-        child: RepaintBoundary(
-          child: FadeTransition(
-            opacity: _pageEntranceFade,
-            child: SlideTransition(
-              position: _pageEntranceSlide,
-              child: IndexedStack(
-                index: _currentIndex,
-                children: List.generate(_screens.length, (i) {
-                  return TickerMode(
-                    enabled: i == _currentIndex,
-                    child: RepaintBoundary(child: _screens[i]),
-                  );
-                }),
+      backgroundColor: Colors.white, // Base layer
+      body: Stack(
+        children: [
+          // 1. Global Liquid Background (Light theme for inner app)
+          const EliteLiquidBackground(isLight: true),
+
+          // 2. Content
+          ScrollConfiguration(
+            behavior: const _NoScrollbarsBehavior(),
+            child: RepaintBoundary(
+              child: FadeTransition(
+                opacity: _pageEntranceFade,
+                child: SlideTransition(
+                  position: _pageEntranceSlide,
+                  child: IndexedStack(
+                    index: _currentIndex,
+                    children: List.generate(_screens.length, (i) {
+                      return TickerMode(
+                        enabled: i == _currentIndex,
+                        child: RepaintBoundary(child: _screens[i]),
+                      );
+                    }),
+                  ),
+                ),
               ),
             ),
           ),
-        ),
+        ],
       ),
-      bottomNavigationBar: FadeTransition(
-        opacity: _floatingNavFade,
-        child: SlideTransition(
-          position: _floatingNavSlide,
-          child: RepaintBoundary(
-            child: Container(
-            margin: const EdgeInsets.all(16),
-            padding: EdgeInsets.zero, // transparent feel, no extra padding
-            decoration: BoxDecoration(
-              color: Colors.white, // solid pill
-              borderRadius: BorderRadius.circular(28),
-              border: Border.all(
-                color: AppColors.lightGray.withOpacity(0.25), // More subtle border
-                width: 1.0,
-              ),
-              boxShadow: [
-                // Enhanced shadow with multiple layers
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.08),
-                  blurRadius: 20,
-                  offset: const Offset(0, 8),
-                  spreadRadius: 0,
-                ),
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.04),
-                  blurRadius: 8,
-                  offset: const Offset(0, 4),
-                  spreadRadius: 0,
-                ),
-                BoxShadow(
-                  color: Colors.white.withOpacity(0.8),
-                  blurRadius: 10,
-                  offset: const Offset(0, -2),
-                  spreadRadius: 0,
-                ),
-              ],
-            ),
-        child: SafeArea(
-          top: false,
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final itemCount = _navigationItems.length;
-              final itemWidth = constraints.maxWidth / itemCount;
-              return Stack(
-                alignment: Alignment.centerLeft,
-                children: [
-                  // Enhanced sliding pill indicator with glow effect
-                  AnimatedPositioned(
-                    duration: PrototypeAnimations.navTransitionDuration, // 400ms
-                    curve: Curves.easeInOutCubic,
-                    left: itemWidth * _currentIndex,
-                    width: itemWidth,
-                    top: 6,
-                    bottom: 6,
-                    child: AnimatedBuilder(
-                      animation: _glowPulseController,
-                      builder: (context, child) {
-                        final pulse = _glowPulseAnimation.value; // 0..1 burst
-                        return Container(
-                          margin: const EdgeInsets.symmetric(horizontal: 6),
-                          decoration: BoxDecoration(
-                            color: _navigationItems[_currentIndex].color.withOpacity(0.08),
-                            borderRadius: BorderRadius.circular(20),
-                            boxShadow: [
-                              BoxShadow(
-                                color: _navigationItems[_currentIndex]
-                                    .color
-                                    .withOpacity(0.10 + 0.10 * pulse),
-                                blurRadius: 8,
-                                spreadRadius: 1,
+      bottomNavigationBar: _buildGlassBottomNav(),
+    );
+  }
+
+  Widget _buildGlassBottomNav() {
+    return FadeTransition(
+      opacity: _floatingNavFade,
+      child: SlideTransition(
+        position: _floatingNavSlide,
+        child: RepaintBoundary(
+          child: Container(
+            margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(32),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.8),
+                    borderRadius: BorderRadius.circular(32),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.4),
+                      width: 1.5,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.08),
+                        blurRadius: 30,
+                        offset: const Offset(0, 10),
+                      ),
+                    ],
+                  ),
+                  child: SafeArea(
+                    top: false,
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final itemCount = _navigationItems.length;
+                        final itemWidth = constraints.maxWidth / itemCount;
+                        return Stack(
+                          alignment: Alignment.centerLeft,
+                          children: [
+                            // Sliding pill indicator
+                            AnimatedPositioned(
+                              duration: PrototypeAnimations.navTransitionDuration,
+                              curve: Curves.easeInOutCubic,
+                              left: itemWidth * _currentIndex,
+                              width: itemWidth,
+                              top: 4,
+                              bottom: 4,
+                              child: AnimatedBuilder(
+                                animation: _glowPulseController,
+                                builder: (context, _) {
+                                  final pulse = _glowPulseAnimation.value;
+                                  return Container(
+                                    margin: const EdgeInsets.symmetric(horizontal: 8),
+                                    decoration: BoxDecoration(
+                                      color: _navigationItems[_currentIndex].color.withOpacity(0.12),
+                                      borderRadius: BorderRadius.circular(24),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: _navigationItems[_currentIndex].color.withOpacity(0.15 + 0.1 * pulse),
+                                          blurRadius: 12,
+                                          spreadRadius: 1,
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
                               ),
-                            ],
-                          ),
+                            ),
+                            Row(
+                              children: _navigationItems.asMap().entries.map((entry) {
+                                return _buildModernNavItem(entry.key, entry.value);
+                              }).toList(),
+                            ),
+                          ],
                         );
                       },
                     ),
                   ),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: _navigationItems.asMap().entries.map((entry) {
-                      final index = entry.key;
-                      final item = entry.value;
-                      return _buildModernNavItem(index, item);
-                    }).toList(),
-                  ),
-                ],
-              );
-            },
+                ),
+              ),
+            ),
           ),
         ),
       ),
-    ),
-            ),
-          ),
-);
+    );
   }
 
 

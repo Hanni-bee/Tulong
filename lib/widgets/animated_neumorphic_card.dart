@@ -19,6 +19,7 @@ class AnimatedNeumorphicCard extends StatefulWidget {
   final bool enablePulse;
   final bool enableFloating;
   final bool enableShimmer;
+  final bool isGlass;
 
   const AnimatedNeumorphicCard({
     super.key,
@@ -38,6 +39,7 @@ class AnimatedNeumorphicCard extends StatefulWidget {
     this.enablePulse = false,
     this.enableFloating = false,
     this.enableShimmer = false,
+    this.isGlass = false,
   });
 
   @override
@@ -174,13 +176,20 @@ class _AnimatedNeumorphicCardState extends State<AnimatedNeumorphicCard>
 
   @override
   Widget build(BuildContext context) {
+    final bgColor = widget.isGlass 
+        ? (widget.backgroundColor ?? Colors.white).withOpacity(0.8) 
+        : (widget.backgroundColor ?? AppColors.white);
+
     Widget cardContent = Container(
       width: widget.width,
       height: widget.height,
       margin: widget.margin,
       decoration: BoxDecoration(
-        color: widget.backgroundColor ?? AppColors.white,
+        color: bgColor,
         borderRadius: BorderRadius.circular(widget.borderRadius),
+        border: widget.isGlass 
+            ? Border.all(color: Colors.white.withOpacity(0.4), width: 1.5) 
+            : null,
         boxShadow: _isPressed || widget.isPressed
             ? [
                 // Pressed state - reduced shadow
@@ -198,7 +207,7 @@ class _AnimatedNeumorphicCardState extends State<AnimatedNeumorphicCard>
                   offset: Offset(0, _elevationAnimation.value / 2),
                 ),
                 BoxShadow(
-                  color: Colors.white.withOpacity(0.9),
+                  color: Colors.white.withOpacity(widget.isGlass ? 0.4 : 0.9),
                   blurRadius: _elevationAnimation.value,
                   offset: Offset(0, -_elevationAnimation.value / 2),
                 ),

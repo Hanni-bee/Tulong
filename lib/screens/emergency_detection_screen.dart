@@ -877,7 +877,7 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.backgroundLight,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         backgroundColor: AppColors.white,
         elevation: 0,

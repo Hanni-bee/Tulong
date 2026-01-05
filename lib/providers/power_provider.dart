@@ -67,7 +67,6 @@ class PowerProvider extends ChangeNotifier {
           'status': 'low',
           'timestamp': DateTime.now().toIso8601String(),
         }),
-        color: const Color(0xFFFF9800), // Orange for warning
       );
     } catch (e) {
       debugPrint('Error showing low battery notification: $e');
@@ -86,7 +85,6 @@ class PowerProvider extends ChangeNotifier {
           'status': 'critical',
           'timestamp': DateTime.now().toIso8601String(),
         }),
-        color: const Color(0xFFE53935), // Red for critical
       );
     } catch (e) {
       debugPrint('Error showing critical battery notification: $e');

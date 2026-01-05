@@ -43,6 +43,63 @@ class EnhancedSkeletonLoader extends StatelessWidget {
   }
 }
 
+/// Skeleton loader for chat card (Messages Screen)
+class SkeletonChatCard extends StatelessWidget {
+  const SkeletonChatCard({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          // Avatar skeleton
+          EnhancedSkeletonLoader(
+            width: 50,
+            height: 50,
+            borderRadius: BorderRadius.circular(25),
+          ),
+          const SizedBox(width: 16),
+          // Content skeleton
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    EnhancedSkeletonLoader(
+                      width: 100,
+                      height: 14,
+                      borderRadius: BorderRadius.circular(7),
+                    ),
+                    EnhancedSkeletonLoader(
+                      width: 40,
+                      height: 10,
+                      borderRadius: BorderRadius.circular(5),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                EnhancedSkeletonLoader(
+                  width: double.infinity,
+                  height: 12,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// Skeleton loader for user card (Walkie Talkie)
 class SkeletonUserCard extends StatelessWidget {
   const SkeletonUserCard({super.key});

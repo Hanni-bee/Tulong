@@ -30,6 +30,7 @@ class NotificationService {
 
   bool _isInitialized = false;
   String? _fcmToken;
+  bool _isInForeground = true;
 
   Future<void> initialize() async {
     if (_isInitialized) return;
@@ -435,6 +436,12 @@ class NotificationService {
   void dispose() {
     _onMessageController.close();
     _onNotificationTapController.close();
+  }
+  
+  /// Set app lifecycle state (foreground/background)
+  void setAppLifecycleState(bool isInForeground) {
+    _isInForeground = isInForeground;
+    debugPrint('📱 App lifecycle state updated: ${isInForeground ? "Foreground" : "Background"}');
   }
 }
 

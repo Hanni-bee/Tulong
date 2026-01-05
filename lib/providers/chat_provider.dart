@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bluetooth_serial_plus/flutter_bluetooth_serial_plus.dart';
 import '../services/bluetooth_service.dart';
 import '../services/voice_chat_extension.dart' as voice;
-import 'auth_provider.dart';
 import '../services/sqlite_service.dart';
 
 class ChatProvider with ChangeNotifier {
@@ -50,6 +49,14 @@ class ChatProvider with ChangeNotifier {
   // Check if a user is the current user
   bool isCurrentUser(String user) {
     return _currentUserName != null && user == _currentUserName;
+  }
+  
+  // Get current user name
+  String? get currentUserName => _currentUserName;
+  
+  // Get unread message count
+  int get unreadMessageCount {
+    return _messages.where((msg) => !msg.isMe && msg.status != voice.MessageStatus.received).length;
   }
   
   // Voice extension getters
@@ -119,9 +126,6 @@ class ChatProvider with ChangeNotifier {
   /// Update current user name from database/storage (signup information)
   Future<void> _updateCurrentUserNameFromDatabase() async {
     try {
-      // Try to get from SQLite database first (where signup info is stored)
-      final sqliteService = SQLiteService();
-      
       // Get user email from AuthProvider if available
       // Since we don't have direct access to AuthProvider here,
       // we'll rely on setCurrentUserName() being called from UI
@@ -138,6 +142,55 @@ class ChatProvider with ChangeNotifier {
   /// Set current user name (called from UI)
   void setCurrentUserName(String? userName) {
     _currentUserName = userName;
+    notifyListeners();
+  }
+  
+  // Chat screen visibility tracking
+  bool _isLocalChatScreenVisible = false;
+  bool get isLocalChatScreenVisible => _isLocalChatScreenVisible;
+  
+  void setLocalChatScreenVisible(bool visible) {
+    _isLocalChatScreenVisible = visible;
+    notifyListeners();
+  }
+  
+  // Message loading and refresh states
+  bool _isLoadingMessages = false;
+  bool _isRefreshingMessages = false;
+  bool _isTyping = false;
+  bool _hasCachedMessages = false;
+  
+  bool get isLoadingMessages => _isLoadingMessages;
+  bool get isRefreshingMessages => _isRefreshingMessages;
+  bool get isTyping => _isTyping;
+  bool get hasCachedMessages => _hasCachedMessages;
+  
+  // Load messages
+  Future<void> loadMessages() async {
+    _isLoadingMessages = true;
+    notifyListeners();
+    // Messages are already loaded via _messages list
+    _isLoadingMessages = false;
+    notifyListeners();
+  }
+  
+  // Mark all messages as read
+  void markAllMessagesAsRead() {
+    for (var message in _messages) {
+      if (!message.isMe && message.status != voice.MessageStatus.received) {
+        message.status = voice.MessageStatus.received;
+      }
+    }
+    notifyListeners();
+  }
+  
+  // Smart refresh
+  Future<void> smartRefresh() async {
+    _isRefreshingMessages = true;
+    notifyListeners();
+    // Refresh logic here
+    await Future.delayed(const Duration(milliseconds: 500));
+    _isRefreshingMessages = false;
     notifyListeners();
   }
 
@@ -546,6 +599,7 @@ class ChatMessage {
   final voice.MessageType type;
   final voice.VoiceMessage? voiceMessage;
   final String? senderName; // Sender's name for received messages
+  final bool isEmergency; // Emergency message flag
 
   ChatMessage({
     required this.text,
@@ -555,7 +609,11 @@ class ChatMessage {
     this.type = voice.MessageType.text,
     this.voiceMessage,
     this.senderName,
+    this.isEmergency = false,
   });
+  
+  // Check if message is read
+  bool get isRead => status == voice.MessageStatus.received;
 }
 
 // voice.MessageStatus is defined in voice_chat_extension.dart

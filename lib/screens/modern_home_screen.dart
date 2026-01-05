@@ -250,6 +250,7 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                             showDiagonalOverlay: true,
                             showCornerAccent: true,
                             accentColor: AppColors.primaryRed,
+                            isGlass: true,
                           ),
                         ),
                       ),
@@ -441,6 +442,7 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
             elevation: 3.0,
             borderColor: AppColors.lightGray.withOpacity(0.3),
             showBorder: true,
+            isGlass: true,
           ),
           child: Padding(
             padding: const EdgeInsets.all(16),
@@ -525,151 +527,133 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
         return Container(
           padding: PhoneResponsiveHelper.getPhonePadding(context),
           decoration: BoxDecoration(
-            color: AppColors.white,
-            borderRadius: BorderRadius.circular(PhoneResponsiveHelper.getPhoneBorderRadius(context)),
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(32), // More rounded like reference
             border: Border.all(
-              color: AppColors.lightGray.withOpacity(0.2),
-              width: 1.5,
+              color: const Color(0xFFF2F2F2), // Lighter, cleaner border
+              width: 1,
             ),
             boxShadow: [
-              // Enhanced shadow with depth
               BoxShadow(
-                color: Colors.black.withOpacity(0.08),
-                blurRadius: 20,
-                spreadRadius: 2,
-                offset: const Offset(0, 8),
-              ),
-              // Subtle inner highlight
-              BoxShadow(
-                color: Colors.white.withOpacity(0.8),
-                blurRadius: 10,
-                offset: const Offset(-2, -2),
-              ),
-              // Colored glow from primary red
-              BoxShadow(
-                color: AppColors.primaryRed.withOpacity(0.05),
-                blurRadius: 15,
-                spreadRadius: 1,
-                offset: const Offset(0, 4),
+                color: Colors.black.withOpacity(0.015), // Softer shadow
+                blurRadius: 25,
+                offset: const Offset(0, 12),
               ),
             ],
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          AppColors.primaryRed.withOpacity(0.15),
-                          AppColors.primaryRed.withOpacity(0.08),
-                        ],
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 24, 16, 24), // Optimized internal breathing room
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    // Red Quick Actions Pill
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 10,
                       ),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: AppColors.primaryRed.withOpacity(0.3),
-                        width: 1.5,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFEBEE), // Very light red
+                        borderRadius: BorderRadius.circular(20),
                       ),
-                      boxShadow: [
-                        BoxShadow(
-                      color: AppColors.primaryRed.withOpacity(0.1),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.flash_on_rounded,
-                          color: AppColors.primaryRed,
-                          size: 18,
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                      'Quick Actions',
-                      style: AppTypography.cardTitle.copyWith(
-                        color: AppColors.primaryRed,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 0.3,
-                      ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Spacer(),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppColors.primaryRed.withOpacity(0.08),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.touch_app_rounded,
-                          color: AppColors.primaryRed.withOpacity(0.8),
-                          size: 14,
-                        ),
-                        const SizedBox(width: 4),
-                  Text(
-                    'Tap to use',
-                    style: AppTypography.captionText.copyWith(
-                            color: AppColors.primaryRed.withOpacity(0.8),
-                            fontWeight: FontWeight.w600,
-                            fontSize: 11,
-                    ),
-                  ),
-                ],
-              ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Builder(
-                builder: (context) {
-                  final quickActions = _getQuickActions();
-                  return Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: quickActions.asMap().entries.map((entry) {
-                      final index = entry.key;
-                      final action = entry.value;
-                      return Expanded(
-                        child: Padding(
-                          padding: EdgeInsets.only(
-                            left: index == 0 ? 0 : 8,
-                            right: index == quickActions.length - 1 ? 0 : 8,
-                          ),
-                          child: _quickActionsStagger.buildAnimatedItem(
-                            index,
-                            _buildUniformActionButton(
-                              onPressed: action['onPressed'] as VoidCallback,
-                              backgroundColor: action['backgroundColor'] as Color,
-                              icon: action['icon'] as IconData,
-                              title: action['title'] as String,
-                              subtitle: action['subtitle'] as String,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: const BoxDecoration(
+                              color: AppColors.primaryRed,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.flash_on_rounded,
+                              color: Colors.white,
+                              size: 12,
                             ),
                           ),
-                        ),
-                      );
-                    }).toList(),
-                  );
-                },
-              ),
-            ],
+                          const SizedBox(width: 8),
+                          Text(
+                            'Quick Actions',
+                            style: AppTypography.cardTitle.copyWith(
+                              color: AppColors.primaryRed,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 0.2,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Spacer(),
+                    // Gray Tap to Use Pill
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF5F7FA),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFE0E4E8), width: 1),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.touch_app_rounded,
+                            color: AppColors.textSecondary.withOpacity(0.6),
+                            size: 14,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Tap to use',
+                            style: AppTypography.captionText.copyWith(
+                              color: AppColors.textSecondary.withOpacity(0.7),
+                              fontWeight: FontWeight.w700,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                Builder(
+                  builder: (context) {
+                    final quickActions = _getQuickActions();
+                    return Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: quickActions.asMap().entries.map((entry) {
+                        final index = entry.key;
+                        final action = entry.value;
+                        return Expanded(
+                          child: Padding(
+                            padding: EdgeInsets.only(
+                              left: index == 0 ? 0 : 4, // Tighter horizontal gaps
+                              right: index == quickActions.length - 1 ? 0 : 4,
+                            ),
+                            child: _quickActionsStagger.buildAnimatedItem(
+                              index,
+                              _buildUniformActionButton(
+                                onPressed: action['onPressed'] as VoidCallback,
+                                backgroundColor: action['backgroundColor'] as Color,
+                                icon: action['icon'] as IconData,
+                                title: action['title'] as String,
+                                subtitle: action['subtitle'] as String,
+                              ),
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    );
+                  },
+                ),
+                const SizedBox(height: 4),
+              ],
+            ),
           ),
         );
       },
@@ -685,108 +669,111 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
   }) {
     return PhoneResponsiveBuilder(
       builder: (context, screenSize) {
-        return Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: () {
-              HapticFeedback.mediumImpact();
-              onPressed();
-            },
-            borderRadius: BorderRadius.circular(20),
-            child: Container(
-              width: 100,
-              height: 70,
-              decoration: BoxDecoration(
-                // Cleaner gradient background
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    backgroundColor,
-                    backgroundColor.withOpacity(0.9),
+        return Container(
+          height: 120, // Increased height to ensure everything fits comfortably
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: backgroundColor.withOpacity(0.12),
+              width: 1.2,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.02),
+                blurRadius: 15,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () {
+                HapticFeedback.mediumImpact();
+                onPressed();
+              },
+              borderRadius: BorderRadius.circular(24),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(24),
+                child: Stack(
+                  children: [
+                    // Elite style Blob
+                    Positioned(
+                      top: -25,
+                      right: -15,
+                      child: Container(
+                        width: 75,
+                        height: 75,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: RadialGradient(
+                            colors: [
+                              backgroundColor.withOpacity(0.12),
+                              backgroundColor.withOpacity(0.0),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center, // Vertically center content
+                        crossAxisAlignment: CrossAxisAlignment.center, // Horizontally center content
+                        children: [
+                          // Icon Shell
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: backgroundColor.withOpacity(0.08),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Icon(
+                              icon,
+                              color: backgroundColor,
+                              size: 24, // Slightly larger icon
+                            ),
+                          ),
+                          
+                          const SizedBox(height: 10),
+                          
+                          // Title
+                          Text(
+                            title,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: const Color(0xFF1A1A1A),
+                              fontWeight: FontWeight.w900,
+                              fontSize: 14,
+                              letterSpacing: -0.3,
+                              height: 1.1,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.visible,
+                          ),
+                          
+                          const SizedBox(height: 4),
+                          
+                          // Subtitle
+                          Text(
+                            subtitle,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: AppColors.textSecondary.withOpacity(0.5),
+                              fontWeight: FontWeight.w700,
+                              fontSize: 9,
+                              height: 1.1,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  // SoftUI shadow system
-                  ...SoftUIDesign.getSoftShadow(
-                    elevation: 4.0,
-                    shadowColor: backgroundColor.withOpacity(0.25),
-                  ),
-                  // Subtle color glow
-                  BoxShadow(
-                    color: backgroundColor.withOpacity(0.2),
-                    blurRadius: 12,
-                    offset: const Offset(0, 6),
-                    spreadRadius: 0,
-                  ),
-                ],
-                border: Border.all(
-                  color: Colors.white.withOpacity(0.2),
-                  width: 1,
-                ),
-              ),
-              child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Icon directly on button - no container
-                  Icon(
-                    icon,
-                    color: Colors.white,
-                    size: 26,
-                  ),
-                  const SizedBox(width: 8),
-                  // Title and subtitle in column
-                  Flexible(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // Title
-                        Text(
-                          title,
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 13,
-                            letterSpacing: 0.3,
-                            shadows: [
-                              Shadow(
-                                color: Colors.black.withOpacity(0.3),
-                                offset: const Offset(0, 1),
-                                blurRadius: 2,
-                              ),
-                            ],
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 1),
-                        // Subtitle
-                        Text(
-                          subtitle,
-                          style: TextStyle(
-                            color: Colors.white.withOpacity(0.9),
-                            fontWeight: FontWeight.w600,
-                            fontSize: 10,
-                            letterSpacing: 0.2,
-                            shadows: [
-                              Shadow(
-                                color: Colors.black.withOpacity(0.2),
-                                offset: const Offset(0, 1),
-                                blurRadius: 1,
-                              ),
-                            ],
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
               ),
             ),
           ),

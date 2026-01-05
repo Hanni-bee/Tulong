@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../constants/app_colors.dart';
 import '../constants/soft_ui_design.dart';
+import '../utils/haptic_helper.dart';
 
 class EnhancedCard extends StatefulWidget {
   final Widget child;
@@ -74,7 +75,7 @@ class _EnhancedCardState extends State<EnhancedCard>
 
   void _onTapDown(TapDownDetails details) {
     if (widget.interactive || widget.onTap != null) {
-      HapticFeedback.lightImpact();
+      HapticHelper.light();
       _controller.forward();
     }
   }

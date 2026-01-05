@@ -1,20 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'dart:ui' show ImageFilter;
 import '../../constants/app_colors.dart';
 import '../../constants/unified_typography.dart';
-import '../../constants/soft_ui_design.dart';
-import '../../widgets/custom_button.dart';
-import '../../widgets/custom_text_field.dart';
+import '../../widgets/enhanced_text_field.dart';
 import '../../widgets/password_strength_indicator.dart';
-// import removed
 import '../../widgets/terms_conditions_modal.dart';
+import '../../widgets/elite_liquid_background.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/firebase_service.dart';
 import '../../services/location_service.dart';
+import '../../services/sqlite_service.dart';
 import '../../utils/input_validator.dart';
 import '../../utils/responsive_spacing.dart';
+import '../../utils/haptic_helper.dart';
 import 'biometric_verification_screen.dart';
-import '../../widgets/accessible_text.dart';
 
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({super.key});
@@ -32,14 +33,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
   
-  bool _obscurePassword = true;
-  bool _obscureConfirmPassword = true;
   bool _isLoading = false;
   bool _acceptedTerms = false;
   
-  // Real-time validation states
-  bool _nameHasNumbers = false;
-
   // Location data
   String? _selectedRegion;
   String? _selectedProvince;
@@ -70,12 +66,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
     super.dispose();
   }
 
-
-  void _checkNameValidation(String name) {
-    setState(() {
-      _nameHasNumbers = name.contains(RegExp(r'[0-9]'));
-    });
-  }
 
   Future<void> _loadRegions() async {
     setState(() {
@@ -170,6 +160,53 @@ class _SignUpScreenState extends State<SignUpScreen> {
     });
 
     try {
+      // Check if an account already exists on this device (1:1 device-to-account relationship)
+      // First check SharedPreferences for quick check
+      final prefs = await SharedPreferences.getInstance();
+      final deviceAccountExists = prefs.getBool('device_account_exists') ?? false;
+      
+      if (deviceAccountExists) {
+        // Double-check with SQLite to ensure consistency
+        final sqliteService = SQLiteService();
+        final existingUsers = await sqliteService.getAllUsers();
+        
+        if (existingUsers.isNotEmpty) {
+          // Account already exists - prevent registration
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('An account already exists on this device. Only one account per device is allowed.'),
+                backgroundColor: AppColors.primary,
+                duration: Duration(seconds: 4),
+              ),
+            );
+          }
+          return;
+        } else {
+          // Flag was set but no users found - reset flag
+          await prefs.setBool('device_account_exists', false);
+        }
+      } else {
+        // Also check SQLite directly in case SharedPreferences was cleared
+        final sqliteService = SQLiteService();
+        final existingUsers = await sqliteService.getAllUsers();
+        
+        if (existingUsers.isNotEmpty) {
+          // Account exists but flag not set - update flag and prevent registration
+          await prefs.setBool('device_account_exists', true);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('An account already exists on this device. Only one account per device is allowed.'),
+                backgroundColor: AppColors.primary,
+                duration: Duration(seconds: 4),
+              ),
+            );
+          }
+          return;
+        }
+      }
+
       final first = _firstNameController.text.trim();
       final last = _lastNameController.text.trim();
       final username = _usernameController.text.trim();
@@ -249,48 +286,52 @@ class _SignUpScreenState extends State<SignUpScreen> {
       backgroundColor: Colors.white,
       body: Stack(
         children: [
-          // Removed background overlay to avoid hazy/blurred appearance on sign-up
+          // 1. Liquid Background
+          const EliteLiquidBackground(isLight: true),
           
           Column(
             children: [
               AppBar(
-                backgroundColor: Colors.white,
+                backgroundColor: Colors.transparent,
                 elevation: 0,
                 leading: IconButton(
-                  icon: const Icon(Icons.arrow_back, color: AppColors.primaryRed),
+                  icon: const Icon(Icons.arrow_back_ios_new_rounded, color: AppColors.primaryRed),
                   onPressed: () {
-                    HapticFeedback.selectionClick();
+                    HapticHelper.medium();
                     Navigator.of(context).pop();
                   },
                 ),
-                title: AccessibleHeading(
+                title: Text(
                   'Create Account',
-                  level: HeadingLevel.h2,
-                  color: AppColors.primary,
-                  backgroundColor: AppColors.backgroundLight,
+                  style: UnifiedTypography.headlineSmall.copyWith(
+                    color: AppColors.textPrimary,
+                    fontWeight: FontWeight.w900,
+                  ),
                 ),
+                centerTitle: true,
               ),
               Expanded(
                 child: SingleChildScrollView(
-                  padding: ResponsiveSpacing.getResponsivePadding(context, horizontal: 16, vertical: 0),
+                  physics: const BouncingScrollPhysics(),
+                  padding: ResponsiveSpacing.getResponsivePadding(context, horizontal: 20, vertical: 0),
                   child: Column(
                     children: [
-                      SizedBox(height: ResponsiveSpacing.getResponsiveSpacing(context, xs: 16, sm: 18, md: 20)),
+                      const SizedBox(height: 20),
                       
                       // Disaster-focused header
                       _buildDisasterHeader(),
                       
-                      SizedBox(height: ResponsiveSpacing.getResponsiveSpacing(context, xs: 30, sm: 35, md: 40)),
+                      const SizedBox(height: 32),
                       
                       // Sign up form
                       _buildSignUpForm(),
                       
-                      SizedBox(height: ResponsiveSpacing.getResponsiveSpacing(context, xs: 20, sm: 25, md: 30)),
+                      const SizedBox(height: 32),
                       
                       // Sign in link
                       _buildSignInLink(),
                       
-                      SizedBox(height: ResponsiveSpacing.getResponsiveSpacing(context, xs: 16, sm: 18, md: 20)),
+                      const SizedBox(height: 40),
                     ],
                   ),
                 ),
@@ -305,76 +346,58 @@ class _SignUpScreenState extends State<SignUpScreen> {
   Widget _buildDisasterHeader() {
     return Column(
       children: [
-        // T.U.L.O.N.G logo with red accent
+        // T.U.L.O.N.G logo with layered glow
         Container(
-          width: 80,
-          height: 80,
-          decoration: SoftUIDesign.cardDecoration(
-            backgroundColor: AppColors.white,
-            borderRadius: 20,
-            elevation: 6.0,
-            borderColor: AppColors.primaryRed.withOpacity(0.2),
-            showBorder: true,
+          width: 90,
+          height: 90,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.primaryRed.withOpacity(0.15),
+                blurRadius: 30,
+                offset: const Offset(0, 10),
+              ),
+              BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(20),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
             child: Image.asset(
               'assets/images/app_logo (3).png',
-              width: 80,
-              height: 80,
               fit: BoxFit.contain,
             ),
           ),
-        )
-            .animate()
-            .scale(
-              duration: 800.ms,
-              curve: Curves.elasticOut,
-            ),
+        ).animate()
+         .scale(duration: 800.ms, curve: Curves.elasticOut)
+         .shimmer(delay: 2.seconds, duration: 1.5.seconds),
         
-        const SizedBox(height: 20),
+        const SizedBox(height: 24),
         
         Text(
           'T.U.L.O.N.G',
-          style: UnifiedTypography.displayLarge.copyWith(
-            color: AppColors.primary,
-            letterSpacing: 2.0,
+          style: UnifiedTypography.displaySmall.copyWith(
+            color: AppColors.primaryRed,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 4.0,
           ),
-        )
-            .animate()
-            .fadeIn(
-              duration: 1000.ms,
-              delay: 300.ms,
-            )
-            .slideY(
-              begin: 0.3,
-              end: 0,
-              duration: 1000.ms,
-              delay: 300.ms,
-              curve: Curves.easeOutCubic,
-            ),
+        ).animate().fadeIn(duration: 800.ms).slideY(begin: 0.2, end: 0),
         
         const SizedBox(height: 8),
         
         Text(
           'Join the Disaster-Ready Community',
-          style: UnifiedTypography.bodyLarge.copyWith(
-            color: Colors.grey,
+          style: UnifiedTypography.bodyMedium.copyWith(
+            color: AppColors.textSecondary.withOpacity(0.6),
+            fontWeight: FontWeight.w600,
             letterSpacing: 0.5,
           ),
-        )
-            .animate()
-            .fadeIn(
-              duration: 1000.ms,
-              delay: 500.ms,
-            )
-            .slideY(
-              begin: 0.3,
-              end: 0,
-              duration: 1000.ms,
-              delay: 500.ms,
-              curve: Curves.easeOutCubic,
-            ),
+        ).animate().fadeIn(duration: 800.ms, delay: 200.ms).slideY(begin: 0.2, end: 0),
       ],
     );
   }
@@ -382,673 +405,383 @@ class _SignUpScreenState extends State<SignUpScreen> {
   Widget _buildSignUpForm() {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: SoftUIDesign.cardDecoration(
-        backgroundColor: Colors.white,
-        borderRadius: SoftUIDesign.cardBorderRadius,
-        elevation: 4.0,
-        borderColor: AppColors.lightGray.withOpacity(0.3),
-        showBorder: true,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.9),
+        borderRadius: BorderRadius.circular(32),
+        border: Border.all(color: Colors.white.withOpacity(0.2), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 40,
+            offset: const Offset(0, 20),
+          ),
+        ],
       ),
-      child: Form(
-        key: _formKey,
-        child: Column(
-          children: [
-          // First Name field
-          CustomTextField(
-            controller: _firstNameController,
-            label: 'First Name',
-            hint: 'Enter your first name',
-            prefixIcon: Icons.person_outline,
-            onChanged: (value) {
-              _checkNameValidation(value);
-            },
-            validator: (value) {
-              return InputValidator.validateName(value, 'First Name');
-            },
-          ),
-          
-          // Real-time name validation indicator
-          if (_firstNameController.text.isNotEmpty && _nameHasNumbers) ...[
-            const SizedBox(height: 8),
-            _buildNameValidationError('First name cannot contain numbers'),
-          ],
-          
-          SizedBox(height: ResponsiveSpacing.getResponsiveSpacing(context, xs: 16, sm: 18, md: 20)),
-          
-          // Last Name field
-          CustomTextField(
-            controller: _lastNameController,
-            label: 'Last Name',
-            hint: 'Enter your last name',
-            prefixIcon: Icons.badge_outlined,
-            onChanged: (value) {
-              _checkNameValidation(value);
-            },
-            validator: (value) {
-              return InputValidator.validateName(value, 'Last Name');
-            },
-          ),
-          
-          // Real-time name validation indicator
-          if (_lastNameController.text.isNotEmpty && _nameHasNumbers) ...[
-            const SizedBox(height: 8),
-            _buildNameValidationError('Last name cannot contain numbers'),
-          ],
-          
-          const SizedBox(height: 20),
-          
-          // Username field (replaced email)
-          CustomTextField(
-            controller: _usernameController,
-            label: 'Username',
-            hint: 'Enter your username (min 6 characters, letters and numbers only)',
-            keyboardType: TextInputType.text,
-            prefixIcon: Icons.person_outline,
-            validator: (value) {
-              return InputValidator.validateUsername(value);
-            },
-          ),
-          
-          const SizedBox(height: 20),
-          
-          // Address field
-          CustomTextField(
-            controller: _addressController,
-            label: 'Address',
-            hint: 'Enter your complete address',
-            prefixIcon: Icons.home_outlined,
-            validator: (value) {
-              return InputValidator.validateAddress(value);
-            },
-          ),
-          
-          const SizedBox(height: 20),
-          
-          // Region dropdown
-          Container(
-            decoration: SoftUIDesign.cardDecoration(
-              backgroundColor: Colors.white,
-              borderRadius: SoftUIDesign.cardBorderRadius,
-              elevation: 2.0,
-              borderColor: AppColors.lightGray.withOpacity(0.3),
-              showBorder: true,
-            ),
-            child: DropdownButtonFormField<String>(
-              initialValue: _selectedRegion,
-              decoration: const InputDecoration(
-                labelText: 'Region',
-                prefixIcon: Icon(Icons.location_on_outlined, color: AppColors.primaryRed),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.all(Radius.circular(12)),
-                  borderSide: BorderSide.none,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(32),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _buildSectionHeader('Personal Information'),
+                const SizedBox(height: 20),
+                
+                // First Name field
+                EnhancedTextField(
+                  controller: _firstNameController,
+                  label: 'First Name',
+                  hint: 'Enter your first name',
+                  prefixIcon: Icons.person_outline_rounded,
+                  validator: (value) => InputValidator.validateName(value, 'First Name'),
                 ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.all(Radius.circular(12)),
-                  borderSide: BorderSide.none,
+                
+                const SizedBox(height: 20),
+                
+                // Last Name field
+                EnhancedTextField(
+                  controller: _lastNameController,
+                  label: 'Last Name',
+                  hint: 'Enter your last name',
+                  prefixIcon: Icons.badge_outlined,
+                  validator: (value) => InputValidator.validateName(value, 'Last Name'),
                 ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.all(Radius.circular(12)),
-                  borderSide: BorderSide(color: AppColors.primaryRed, width: 2),
+                
+                const SizedBox(height: 20),
+                
+                // Username field
+                EnhancedTextField(
+                  controller: _usernameController,
+                  label: 'Username',
+                  hint: 'Min 6 characters, letters/numbers',
+                  prefixIcon: Icons.alternate_email_rounded,
+                  validator: InputValidator.validateUsername,
                 ),
-                contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                labelStyle: TextStyle(
-                  color: AppColors.primary,
-                  fontSize: 17,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.3,
-                ),
-                hintStyle: TextStyle(
-                  color: AppColors.mediumGray,
-                  fontSize: 17,
-                  fontWeight: FontWeight.w500,
-                  letterSpacing: 0.2,
-                ),
-              ),
-              items: _regions.isEmpty 
-                ? [DropdownMenuItem<String>(
-                    value: null,
-                    child: _isLoadingLocations 
-                      ? const Row(
-                          children: [
-                            SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            ),
-                            SizedBox(width: 8),
-                            Text('Loading regions...'),
-                          ],
-                        )
-                      : const Text('No regions available'),
-                  )]
-                : _regions.map((Map<String, dynamic> region) {
-                    return DropdownMenuItem<String>(
-                      value: region['code'],
-                      child: Text(region['name']),
-                    );
-                  }).toList(),
-              onChanged: (String? newValue) {
-                setState(() {
-                  _selectedRegion = newValue;
-                  _selectedProvince = null;
-                  _selectedCity = null;
-                  _selectedBarangay = null;
-                  _provinces.clear();
-                  _cities.clear();
-                  _barangays.clear();
-                });
-                if (newValue != null) {
-                  _loadProvinces(newValue);
-                }
-              },
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'Please select your region';
-                }
-                return null;
-              },
-            ),
-          ),
-          
-          const SizedBox(height: 20),
-          
-          // Province or City (for NCR) dropdown
-          Container(
-            decoration: SoftUIDesign.cardDecoration(
-              backgroundColor: Colors.white,
-              borderRadius: SoftUIDesign.cardBorderRadius,
-              elevation: 2.0,
-              borderColor: AppColors.lightGray.withOpacity(0.3),
-              showBorder: true,
-            ),
-            child: DropdownButtonFormField<String>(
-              initialValue: _selectedProvince,
-              decoration: const InputDecoration(
-                labelText: 'Province (or City for NCR)',
-                prefixIcon: Icon(Icons.location_city_outlined, color: AppColors.primaryRed),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.all(Radius.circular(12)),
-                  borderSide: BorderSide.none,
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.all(Radius.circular(12)),
-                  borderSide: BorderSide.none,
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.all(Radius.circular(12)),
-                  borderSide: BorderSide(color: AppColors.primaryRed, width: 2),
-                ),
-                contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                labelStyle: TextStyle(
-                  color: AppColors.primary,
-                  fontSize: 17,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.3,
-                ),
-                hintStyle: TextStyle(
-                  color: AppColors.mediumGray,
-                  fontSize: 17,
-                  fontWeight: FontWeight.w500,
-                  letterSpacing: 0.2,
-                ),
-              ),
-              items: _provinces.isEmpty 
-                ? [DropdownMenuItem<String>(
-                    value: null,
-                    child: _isLoadingLocations 
-                      ? const Row(
-                          children: [
-                            SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            ),
-                            SizedBox(width: 8),
-                            Text('Loading provinces...'),
-                          ],
-                        )
-                      : _selectedRegion == null 
-                        ? const Text('Select a region first')
-                        : const Text('Select a province first'),
-                  )]
-                : _provinces.map((Map<String, dynamic> province) {
-                    return DropdownMenuItem<String>(
-                      value: province['code'],
-                      child: Text(province['name']),
-                    );
-                  }).toList(),
-              onChanged: (String? newValue) {
-                setState(() {
-                  _selectedProvince = newValue;
-                  _selectedCity = null;
-                  _selectedBarangay = null;
-                  _cities.clear();
-                  _barangays.clear();
-                });
-                if (newValue != null) {
-                  final isNCR = (_selectedRegion ?? '').toUpperCase().contains('NCR') || (_selectedRegion ?? '').toUpperCase().contains('NATIONAL CAPITAL REGION');
-                  if (isNCR) {
-                    // For NCR, the "province" dropdown contains districts (like "NATIONAL CAPITAL REGION - FIRST DISTRICT")
-                    // We need to load cities for that district so the City/Municipality dropdown can show the cities
-                    _selectedProvince = newValue; // Keep track of the selected district
-                    _loadCities(newValue); // Load cities for the selected district
-                    // Don't set _selectedCity here - let the user select from City/Municipality dropdown
-                    // Don't load barangays yet - wait for city selection
-                  } else {
-                    // For non-NCR regions, load cities normally
-                    _loadCities(newValue);
-                  }
-                }
-              },
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'Please select your province';
-                }
-                return null;
-              },
-            ),
-          ),
-          
-          // City/Municipality dropdown (always visible)
-          const SizedBox(height: 20),
-          Container(
-            decoration: SoftUIDesign.cardDecoration(
-              backgroundColor: AppColors.white,
-              borderRadius: SoftUIDesign.cardBorderRadius,
-              elevation: 2.0,
-              borderColor: AppColors.lightGray.withOpacity(0.3),
-              showBorder: true,
-            ),
-            child: DropdownButtonFormField<String>(
-              initialValue: _selectedCity,
-              decoration: const InputDecoration(
-                labelText: 'City/Municipality',
-                prefixIcon: Icon(Icons.location_city, color: AppColors.primaryRed),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.all(Radius.circular(12)),
-                  borderSide: BorderSide.none,
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.all(Radius.circular(12)),
-                  borderSide: BorderSide.none,
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.all(Radius.circular(12)),
-                  borderSide: BorderSide(color: AppColors.primaryRed, width: 2),
-                ),
-                contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                labelStyle: TextStyle(
-                  color: AppColors.primary,
-                  fontSize: 17,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.3,
-                ),
-                hintStyle: TextStyle(
-                  color: AppColors.mediumGray,
-                  fontSize: 17,
-                  fontWeight: FontWeight.w500,
-                  letterSpacing: 0.2,
-                ),
-              ),
-              items: _cities.isEmpty 
-                ? [DropdownMenuItem<String>(
-                    value: null,
-                    child: _isLoadingLocations 
-                      ? const Row(
-                          children: [
-                            SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            ),
-                            SizedBox(width: 8),
-                            Text('Loading cities...'),
-                          ],
-                        )
-                      : _selectedRegion == null
-                        ? const Text('Select a region first')
-                        : const Text('Select a province first'),
-                  )]
-                : _cities.map((Map<String, dynamic> city) {
-                    return DropdownMenuItem<String>(
-                      // Use city NAME as the value so barangay lookup can work by name
-                      value: city['name'],
-                      child: Text(city['name']),
-                    );
-                  }).toList(),
-              onChanged: (String? newValue) {
-                setState(() {
-                  _selectedCity = newValue;
-                  _selectedBarangay = null;
-                  _barangays.clear();
-                });
-                if (newValue != null) {
-                  _loadBarangays(newValue);
-                }
-              },
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'Please select your city/municipality';
-                }
-                return null;
-              },
-            ),
-          ),
-
-          const SizedBox(height: 20),
-          
-          // Barangay dropdown (full width)
-          Container(
-            decoration: SoftUIDesign.cardDecoration(
-              backgroundColor: Colors.white,
-              borderRadius: SoftUIDesign.cardBorderRadius,
-              elevation: 2.0,
-              borderColor: AppColors.lightGray.withOpacity(0.3),
-              showBorder: true,
-            ),
-            child: DropdownButtonFormField<String>(
-              initialValue: _selectedBarangay,
-              decoration: const InputDecoration(
-                labelText: 'Barangay',
-                prefixIcon: Icon(Icons.location_on_outlined, color: AppColors.primaryRed),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.all(Radius.circular(12)),
-                  borderSide: BorderSide.none,
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.all(Radius.circular(12)),
-                  borderSide: BorderSide.none,
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.all(Radius.circular(12)),
-                  borderSide: BorderSide(color: AppColors.primaryRed, width: 2),
-                ),
-                contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                labelStyle: TextStyle(
-                  color: AppColors.primary,
-                  fontSize: 17,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.3,
-                ),
-                hintStyle: TextStyle(
-                  color: AppColors.mediumGray,
-                  fontSize: 17,
-                  fontWeight: FontWeight.w500,
-                  letterSpacing: 0.2,
-                ),
-              ),
-              items: _barangays.isEmpty 
-                ? [DropdownMenuItem<String>(
-                    value: null,
-                    child: _isLoadingLocations 
-                      ? const Row(
-                          children: [
-                            SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            ),
-                            SizedBox(width: 8),
-                            Text('Loading barangays...'),
-                          ],
-                        )
-                      : _selectedCity == null 
-                        ? const Text('Select a city first')
-                        : const Text('No barangays found'),
-                  )]
-                : _barangays.map((Map<String, dynamic> barangay) {
-                    return DropdownMenuItem<String>(
-                      value: barangay['code'],
-                      child: Text(barangay['name']),
-                    );
-                  }).toList(),
-              onChanged: (String? newValue) {
-                setState(() {
-                  _selectedBarangay = newValue;
-                });
-              },
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'Please select your barangay';
-                }
-                return null;
-              },
-            ),
-          ),
-          
-          const SizedBox(height: 20),
-          
-          // Zip code removed
-          
-          const SizedBox(height: 30),
-          
-          // Security Section
-          _buildSectionHeader('Security'),
-          
-          const SizedBox(height: 20),
-          
-          // Password field
-          CustomTextField(
-            controller: _passwordController,
-            label: 'Password',
-            hint: 'Enter your password',
-            obscureText: _obscurePassword,
-            prefixIcon: Icons.lock_outline,
-            onChanged: (value) {
-              // Password validation handled by form validator
-            },
-            suffixIcon: IconButton(
-              icon: Icon(
-                _obscurePassword ? Icons.visibility_off : Icons.visibility,
-                color: Colors.grey,
-              ),
-              onPressed: () {
-                setState(() {
-                  _obscurePassword = !_obscurePassword;
-                });
-              },
-            ),
-            validator: PasswordValidator.validate,
-          ),
-          
-          // Real-time password validation indicators
-          if (_passwordController.text.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            PasswordStrengthIndicator(
-              password: _passwordController.text,
-              showIndicator: true,
-            ),
-          ],
-          
-          const SizedBox(height: 20),
-          
-          // Confirm Password field
-          CustomTextField(
-            controller: _confirmPasswordController,
-            label: 'Confirm Password',
-            hint: 'Confirm your password',
-            obscureText: _obscureConfirmPassword,
-            prefixIcon: Icons.lock_outline,
-            suffixIcon: IconButton(
-              icon: Icon(
-                _obscureConfirmPassword ? Icons.visibility_off : Icons.visibility,
-                color: Colors.grey,
-              ),
-              onPressed: () {
-                setState(() {
-                  _obscureConfirmPassword = !_obscureConfirmPassword;
-                });
-              },
-            ),
-            validator: (value) {
-              if (value == null || value.isEmpty) {
-                return 'Please confirm your password';
-              }
-              if (value != _passwordController.text) {
-                return 'Passwords do not match';
-              }
-              return null;
-            },
-          ),
-          
-          const SizedBox(height: 30),
-          
-          // Terms and Conditions
-          Row(
-            children: [
-              GestureDetector(
-                onTap: () async {
-                  if (_acceptedTerms) {
-                    // If already checked, uncheck it directly
+                
+                const SizedBox(height: 32),
+                _buildSectionHeader('Location'),
+                const SizedBox(height: 20),
+                
+                // Region dropdown
+                _buildModernDropdown(
+                  label: 'Region',
+                  value: _selectedRegion,
+                  hint: 'Select Region',
+                  icon: Icons.map_outlined,
+                  items: _regions.map((r) => DropdownMenuItem(
+                    value: r['code'] as String,
+                    child: Text(r['name'] as String),
+                  )).toList(),
+                  onChanged: (val) {
                     setState(() {
-                      _acceptedTerms = false;
+                      _selectedRegion = val;
+                      _selectedProvince = null;
+                      _selectedCity = null;
+                      _selectedBarangay = null;
                     });
-                  } else {
-                    // If not checked, show modal
-                    final result = await showDialog<bool>(
-                      context: context,
-                      builder: (context) => const TermsConditionsModal(),
-                    );
-                    
-                    // Only check if user accepted the terms
-                    if (result == true) {
-                      setState(() {
-                        _acceptedTerms = true;
-                      });
-                    }
-                  }
-                },
-                child: Container(
-                  width: 24,
-                  height: 24,
-                  decoration: BoxDecoration(
-                    border: Border.all(
-                      color: _acceptedTerms ? AppColors.primaryRed : Colors.grey,
-                      width: 2,
-                    ),
-                    borderRadius: BorderRadius.circular(4),
-                    color: _acceptedTerms ? AppColors.primaryRed : Colors.transparent,
-                  ),
-                  child: _acceptedTerms
-                    ? const Icon(
-                        Icons.check,
-                        color: Colors.white,
-                        size: 16,
-                      )
-                    : null,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: GestureDetector(
-                  onTap: () async {
-                    // Also show modal when text is clicked
-                    final result = await showDialog<bool>(
-                      context: context,
-                      builder: (context) => const TermsConditionsModal(),
-                    );
-                    
-                    // Only check if user accepted the terms
-                    if (result == true) {
-                      setState(() {
-                        _acceptedTerms = true;
-                      });
-                    }
+                    if (val != null) _loadProvinces(val);
                   },
-                  child: Text(
-                    'I agree to the Terms and Conditions',
-                    style: TextStyle(
-                      color: _acceptedTerms ? AppColors.primaryRed : Colors.grey,
-                      fontSize: 14,
-                      fontWeight: _acceptedTerms ? FontWeight.w500 : FontWeight.normal,
-                    ),
-                  ),
+                  validator: (v) => v == null ? 'Region is required' : null,
                 ),
+                
+                const SizedBox(height: 20),
+                
+                // Province dropdown
+                _buildModernDropdown(
+                  label: 'Province',
+                  value: _selectedProvince,
+                  hint: 'Select Province',
+                  icon: Icons.location_city_outlined,
+                  items: _provinces.map((p) => DropdownMenuItem(
+                    value: p['code'] as String,
+                    child: Text(p['name'] as String),
+                  )).toList(),
+                  onChanged: (val) {
+                    setState(() {
+                      _selectedProvince = val;
+                      _selectedCity = null;
+                      _selectedBarangay = null;
+                    });
+                    if (val != null) _loadCities(val);
+                  },
+                  validator: (v) => v == null ? 'Province is required' : null,
+                ),
+                
+                const SizedBox(height: 20),
+                
+                // City dropdown
+                _buildModernDropdown(
+                  label: 'City/Municipality',
+                  value: _selectedCity,
+                  hint: 'Select City',
+                  icon: Icons.apartment_rounded,
+                  items: _cities.map((c) => DropdownMenuItem(
+                    value: c['name'] as String,
+                    child: Text(c['name'] as String),
+                  )).toList(),
+                  onChanged: (val) {
+                    setState(() {
+                      _selectedCity = val;
+                      _selectedBarangay = null;
+                    });
+                    if (val != null) _loadBarangays(val);
+                  },
+                  validator: (v) => v == null ? 'City is required' : null,
+                ),
+                
+                const SizedBox(height: 20),
+                
+                // Barangay dropdown
+                _buildModernDropdown(
+                  label: 'Barangay',
+                  value: _selectedBarangay,
+                  hint: 'Select Barangay',
+                  icon: Icons.home_work_outlined,
+                  items: _barangays.map((b) => DropdownMenuItem(
+                    value: b['code'] as String,
+                    child: Text(b['name'] as String),
+                  )).toList(),
+                  onChanged: (val) => setState(() => _selectedBarangay = val),
+                  validator: (v) => v == null ? 'Barangay is required' : null,
+                ),
+                
+                const SizedBox(height: 20),
+
+                EnhancedTextField(
+                  controller: _addressController,
+                  label: 'House No. / Street',
+                  hint: 'Enter your specific address',
+                  prefixIcon: Icons.home_outlined,
+                  validator: InputValidator.validateAddress,
+                ),
+                
+                const SizedBox(height: 32),
+                _buildSectionHeader('Security'),
+                const SizedBox(height: 20),
+                
+                // Password
+                EnhancedTextField(
+                  controller: _passwordController,
+                  label: 'Password',
+                  hint: 'Create a strong password',
+                  prefixIcon: Icons.lock_open_rounded,
+                  isPassword: true,
+                  validator: PasswordValidator.validate,
+                ),
+                
+                if (_passwordController.text.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  PasswordStrengthIndicator(
+                    password: _passwordController.text,
+                    showIndicator: true,
+                  ),
+                ],
+                
+                const SizedBox(height: 20),
+                
+                // Confirm Password
+                EnhancedTextField(
+                  controller: _confirmPasswordController,
+                  label: 'Confirm Password',
+                  hint: 'Re-enter your password',
+                  prefixIcon: Icons.lock_outline_rounded,
+                  isPassword: true,
+                  validator: (val) {
+                    if (val == null || val.isEmpty) return 'Confirm your password';
+                    if (val != _passwordController.text) return 'Passwords do not match';
+                    return null;
+                  },
+                ),
+                
+                const SizedBox(height: 32),
+                
+                // Terms and Conditions
+                _buildModernTerms(),
+                
+                const SizedBox(height: 32),
+                
+                // Sign up button
+                _buildModernSignUpButton(),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildModernDropdown({
+    required String label,
+    required String? value,
+    required String hint,
+    required IconData icon,
+    required List<DropdownMenuItem<String>> items,
+    required ValueChanged<String?> onChanged,
+    String? Function(String?)? validator,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 8),
+          child: Text(
+            label.toUpperCase(),
+            style: UnifiedTypography.labelMedium.copyWith(
+              color: AppColors.textSecondary.withOpacity(0.7),
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.2,
+              fontSize: 11,
+            ),
+          ),
+        ),
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: AppColors.textSecondary.withOpacity(0.1)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.01),
+                blurRadius: 4,
+                offset: const Offset(0, 2),
               ),
             ],
           ),
-          
-          const SizedBox(height: 30),
-          
-          // Sign up button
-          CustomButton(
-            text: 'Create Account',
-            onPressed: (_isLoading || !_acceptedTerms) ? null : _signUp,
-            isLoading: _isLoading,
-            backgroundColor: _acceptedTerms ? AppColors.primaryRed : Colors.grey,
-            textColor: Colors.white,
+          child: DropdownButtonFormField<String>(
+            value: value,
+            decoration: InputDecoration(
+              hintText: hint,
+              hintStyle: UnifiedTypography.bodyMedium.copyWith(color: AppColors.textSecondary.withOpacity(0.3)),
+              prefixIcon: Icon(icon, color: AppColors.textSecondary.withOpacity(0.4), size: 22),
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            ),
+            icon: const Icon(Icons.keyboard_arrow_down_rounded, color: AppColors.textSecondary),
+            items: items.isEmpty 
+              ? [DropdownMenuItem(value: null, child: Text(_isLoadingLocations ? 'Loading...' : 'None'))] 
+              : items,
+            onChanged: (val) {
+              HapticHelper.light();
+              onChanged(val);
+            },
+            validator: validator,
+            style: UnifiedTypography.bodyLarge.copyWith(color: AppColors.textPrimary, fontWeight: FontWeight.w600),
+            dropdownColor: Colors.white,
+            borderRadius: BorderRadius.circular(20),
           ),
-          
-          // Terms acceptance message
-          if (!_acceptedTerms) ...[
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Icon(
-                  Icons.info_outline,
-                  size: 16,
-                  color: Colors.orange.shade600,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildModernTerms() {
+    return GestureDetector(
+      onTap: () async {
+        HapticHelper.light();
+        final result = await showDialog<bool>(
+          context: context,
+          builder: (context) => const TermsConditionsModal(),
+        );
+        if (result == true) setState(() => _acceptedTerms = true);
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: _acceptedTerms ? AppColors.primaryRed.withOpacity(0.05) : AppColors.lightGray.withOpacity(0.3),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: _acceptedTerms ? AppColors.primaryRed.withOpacity(0.2) : Colors.transparent,
+          ),
+        ),
+        child: Row(
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              width: 24,
+              height: 24,
+              decoration: BoxDecoration(
+                color: _acceptedTerms ? AppColors.primaryRed : Colors.white,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: _acceptedTerms ? AppColors.primaryRed : AppColors.textSecondary.withOpacity(0.2),
+                  width: 2,
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Please accept the Terms and Conditions to continue',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.orange.shade600,
-                    ),
-                  ),
+              ),
+              child: _acceptedTerms 
+                ? const Icon(Icons.check_rounded, color: Colors.white, size: 16) 
+                : null,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'I agree to the Terms and Conditions',
+                style: UnifiedTypography.bodyMedium.copyWith(
+                  color: _acceptedTerms ? AppColors.primaryRed : AppColors.textSecondary,
+                  fontWeight: _acceptedTerms ? FontWeight.w700 : FontWeight.w500,
                 ),
-              ],
+              ),
             ),
           ],
-          
-        ],
         ),
       ),
-    );
+    ).animate(target: _acceptedTerms ? 1 : 0).shimmer(color: Colors.white.withOpacity(0.2));
+  }
+
+  Widget _buildModernSignUpButton() {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      height: 60,
+      child: ElevatedButton(
+        onPressed: (_isLoading || !_acceptedTerms) ? null : _signUp,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppColors.primaryRed,
+          foregroundColor: Colors.white,
+          disabledBackgroundColor: AppColors.lightGray,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          elevation: _acceptedTerms ? 8 : 0,
+          shadowColor: AppColors.primaryRed.withOpacity(0.5),
+        ),
+        child: _isLoading 
+          ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+          : Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Text(
+                  'Create Account',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, letterSpacing: 0.5),
+                ),
+                const SizedBox(width: 12),
+                const Icon(Icons.arrow_forward_rounded),
+              ],
+            ),
+      ),
+    ).animate(target: _acceptedTerms ? 1 : 0).scale(begin: const Offset(0.95, 0.95), end: const Offset(1, 1));
   }
 
   Widget _buildSectionHeader(String title) {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Text(
-        title,
-        style: UnifiedTypography.headlineSmall.copyWith(
-          color: AppColors.primaryRed,
+    return Row(
+      children: [
+        Container(
+          width: 4,
+          height: 18,
+          decoration: BoxDecoration(
+            color: AppColors.primaryRed,
+            borderRadius: BorderRadius.circular(2),
+          ),
         ),
-      ),
-    );
-  }
-
-
-  Widget _buildNameValidationError(String message) {
-    return Container(
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: Colors.red.shade50,
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: Colors.red.shade200),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            Icons.error_outline,
-            size: 16,
-            color: Colors.red.shade600,
+        const SizedBox(width: 10),
+        Text(
+          title,
+          style: UnifiedTypography.titleMedium.copyWith(
+            color: AppColors.textPrimary,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 0.5,
           ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              message,
-              style: UnifiedTypography.errorText.copyWith(
-                color: Colors.red.shade600,
-              ),
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -1057,25 +790,23 @@ class _SignUpScreenState extends State<SignUpScreen> {
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Text(
-          'Already have an account? ',
-          style: UnifiedTypography.bodyLarge.copyWith(
-            color: Colors.grey,
-          ),
+          "Already have an account? ",
+          style: UnifiedTypography.bodyMedium.copyWith(color: AppColors.textSecondary),
         ),
         GestureDetector(
           onTap: () {
-            HapticFeedback.selectionClick();
-            Navigator.of(context).pop();
+            HapticHelper.medium();
+            Navigator.pop(context);
           },
           child: Text(
             'Sign In',
-            style: UnifiedTypography.bodyLarge.copyWith(
-              color: AppColors.primary,
-              fontWeight: FontWeight.bold,
+            style: UnifiedTypography.bodyMedium.copyWith(
+              color: AppColors.primaryRed,
+              fontWeight: FontWeight.w900,
             ),
           ),
         ),
       ],
-    );
+    ).animate().fade(delay: 500.ms);
   }
 }

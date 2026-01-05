@@ -38,6 +38,20 @@ class AuthProvider extends ChangeNotifier {
   // Legacy getter for migration
   @Deprecated('Use userUsername instead')
   String? get userEmail => _userUsername;
+  
+  // Check if user signed in with Google SSO
+  bool get isGmailSSO {
+    // Check if user signed in via Google Sign-In
+    // This is a placeholder - implement based on your auth flow
+    return false; // TODO: Implement actual Google SSO check
+  }
+  
+  // Create password for Google account
+  Future<void> createPasswordForGoogleAccount(String password) async {
+    // TODO: Implement password creation for Google accounts
+    // This would typically update the user's password in Firebase/SQLite
+    throw UnimplementedError('createPasswordForGoogleAccount not yet implemented');
+  }
 
   // Method to update current user model
   void updateUser(UserModel user) {
