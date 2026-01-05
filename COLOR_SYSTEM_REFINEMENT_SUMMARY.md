@@ -231,3 +231,4 @@ All color combinations are tested for WCAG AA compliance:
 
 
 
+
