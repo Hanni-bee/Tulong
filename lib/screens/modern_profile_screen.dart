@@ -109,29 +109,29 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
         child: Column(
           children: [
             // Top bar - part of Column layout, fixed at top
-            TopBarConfigs.profileTopBar(),
+            TopBarConfigs.profileTopBar(onEdit: () => _editProfile(context)),
             
             // Scrollable content - only this part scrolls
             Expanded(
-                child: SingleChildScrollView(
+              child: SingleChildScrollView(
                 physics: const BouncingScrollPhysics(),
-                  padding: const EdgeInsets.all(16),
-                  child: FadeTransition(
-                    opacity: _fadeAnimation,
-                    child: SlideTransition(
-                      position: _slideAnimation,
-                      child: Column(
-                        children: [
-                          _buildQuickStats(),
-                          const SizedBox(height: 20),
-                          _buildStatsSection(),
-                          const SizedBox(height: 20),
-                          _buildUserEngagementDashboard(),
-                          const SizedBox(height: 20),
-                          _buildSettingsSections(),
-                          const SizedBox(height: 20),
-                          _buildActionButtons(),
-                        ],
+                padding: const EdgeInsets.all(16),
+                child: FadeTransition(
+                  opacity: _fadeAnimation,
+                  child: SlideTransition(
+                    position: _slideAnimation,
+                    child: Column(
+                      children: [
+                        _buildQuickStats(),
+                        const SizedBox(height: 20),
+                        _buildStatsSection(),
+                        const SizedBox(height: 20),
+                        _buildUserEngagementDashboard(),
+                        const SizedBox(height: 20),
+                        _buildSettingsSections(),
+                        const SizedBox(height: 20),
+                        _buildActionButtons(),
+                      ],
                     ),
                   ),
                 ),
@@ -159,204 +159,196 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
         }
         
         final userName = auth.userName ?? 'User';
+        final userEmail = auth.userEmail ?? 'user@example.com';
         final userModel = auth.currentUserModel;
         
+        // Compose location string from model fields
+        final location = [
+          if ((userModel?.city ?? '').isNotEmpty) userModel!.city,
+          if ((userModel?.province ?? '').isNotEmpty) userModel!.province,
+        ].join(', ');
+        
         // Get phone from userModel or fallback
-        final phone = userModel?.phoneNumber ?? '';
+        final phone = userModel?.phone ?? '';
         
          return Container(
           margin: const EdgeInsets.only(bottom: 16),
               decoration: BoxDecoration(
-            // Subtle gradient background matching app's Soft UI aesthetic
+            // Enhanced gradient background
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
                 AppColors.primaryRed,
-                AppColors.primaryRed.withOpacity(0.97),
-                AppColors.primaryRed.withOpacity(0.94),
-                AppColors.primaryDark.withOpacity(0.92),
+                AppColors.primaryRed.withOpacity(0.85),
+                AppColors.primaryDark,
               ],
-              stops: const [0.0, 0.4, 0.7, 1.0],
+              stops: const [0.0, 0.5, 1.0],
             ),
             borderRadius: BorderRadius.circular(SoftUIDesign.cardBorderRadius),
-            boxShadow: SoftUIDesign.getCardShadow(elevation: 4.0),
+            boxShadow: [
+              // Enhanced shadow for depth
+              BoxShadow(
+                color: AppColors.primaryRed.withOpacity(0.3),
+                blurRadius: 20,
+                offset: const Offset(0, 8),
+                spreadRadius: 2,
+              ),
+              ...SoftUIDesign.getCardShadow(elevation: 6.0),
+            ],
             border: Border.all(
               color: Colors.white.withOpacity(0.25),
               width: 1.5,
             ),
              ),
-                child: Stack(
-                  children: [
-              // Decorative circles - matching app's design system
-                    ...SoftUIDesign.buildProfileHeaderOverlays(),
+          child: Stack(
+               children: [
+              // Decorative overlays using SoftUI system
+              ...SoftUIDesign.buildProfileHeaderOverlays(),
 
-              // Subtle depth overlay - consistent with app's Soft UI
-              SoftUIDesign.buildDepthOverlay(
-                accentColor: AppColors.primaryRed,
-                elevation: 4.0,
-              ) ?? const SizedBox.shrink(),
-              
-              // Subtle diagonal overlay - matching home screen style
-              SoftUIDesign.buildDiagonalOverlay(
-                accentColor: AppColors.primaryRed,
-                intensity: 0.03,
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              
-              // Subtle radial gradient overlay (top-right) - very subtle
-                    Positioned.fill(
-                child: Container(
-                          decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(SoftUIDesign.cardBorderRadius),
-                    gradient: RadialGradient(
-                      center: Alignment.topRight,
-                      radius: 1.3,
-                              colors: [
-                        Colors.white.withOpacity(0.05),
-                        Colors.transparent,
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    // Content
-                    Padding(
+              // Content
+              Padding(
                 padding: const EdgeInsets.all(20),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                        // Circular Avatar Container (no glow effect)
-                        Container(
-                          width: 72,
-                          height: 72,
-                                  decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.12),
-                            shape: BoxShape.circle,
-                                    border: Border.all(
-                              color: Colors.white.withOpacity(0.4),
-                              width: 2.0,
-        ),
-        boxShadow: [
-          BoxShadow(
-                                color: Colors.black.withOpacity(0.15),
-                                blurRadius: 8,
-                                offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-                          child: Center(
-                            child: AccessibleText(
-      _getInitials(userName),
-                              baseStyle: UnifiedTypography.displaySmall.copyWith(
-                                fontSize: 28,
-        fontWeight: FontWeight.w900,
-        letterSpacing: 1.2,
-                              ),
-                  color: Colors.white,
-                              backgroundColor: AppColors.primaryRed,
-                              isHeading: true,
-                            ),
-                          ),
+                child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 72,
+                      height: 72,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: Colors.white.withOpacity(0.4),
+                          width: 2.0,
                         ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-                              // Full Name - Always visible, no truncation
-            Text(
-                                userName,
-                                style: UnifiedTypography.headlineMedium.copyWith(
-                color: Colors.white,
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 20,
-                                  height: 1.3,
-                                ),
-                                maxLines: 2,
-                                overflow: TextOverflow.visible,
-                                softWrap: true,
-                              ),
-                              const SizedBox(height: 10),
-                              // Full Address Display - All fields visible, properly formatted
-                              if (userModel != null)
-                                Builder(
-                                  builder: (context) {
-                                    final addressParts = <String>[];
-                                    
-                                    // Add all address components in order
-                                    if (userModel.street.isNotEmpty) {
-                                      addressParts.add(userModel.street);
-                                    }
-                                    if (userModel.barangay.isNotEmpty) {
-                                      addressParts.add(userModel.barangay);
-                                    }
-                                    if (userModel.city.isNotEmpty) {
-                                      addressParts.add(userModel.city);
-                                    }
-                                    if (userModel.province.isNotEmpty) {
-                                      addressParts.add(userModel.province);
-                                    }
-                                    
-                                    final fullAddress = addressParts.join(', ');
-                                    
-                                    if (fullAddress.isNotEmpty) {
-                                      return Text(
-                                        fullAddress,
-                                        style: UnifiedTypography.bodyMedium.copyWith(
-                                          color: Colors.white.withOpacity(0.95),
-                                          fontSize: 13,
-                                          height: 1.5,
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                        maxLines: 5,
-                                        overflow: TextOverflow.visible,
-                                        softWrap: true,
-                                      );
-                                    }
-                                    return const SizedBox.shrink();
-                                  },
-                                ),
-                            ],
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.2),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
                           ),
-                        ),
-                        InkWell(
-                          onTap: () => _editProfile(context),
-                          borderRadius: BorderRadius.circular(14),
-                          child: Container(
-                            width: 36,
-                            height: 36,
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.2),
-                              shape: BoxShape.circle,
-                              border: Border.all(color: Colors.white.withOpacity(0.4)),
-                            ),
-                            child: const Icon(Icons.edit, color: Colors.white, size: 18),
-                            ),
+                          BoxShadow(
+                            color: Colors.white.withOpacity(0.1),
+                            blurRadius: 8,
+                            offset: const Offset(0, -2),
                           ),
                         ],
                       ),
-                    const SizedBox(height: 16),
-                    Container(height: 1, color: Colors.white.withOpacity(0.25)),
-                const SizedBox(height: 12),
-                    // Phone number only (username removed from header)
-                    if (phone.isNotEmpty)
-                      _buildClickableContactInfo(
-                        context,
-                        icon: IconSystem.phone,
-                        text: phone,
-                        onTap: () => _copyToClipboard(context, phone, 'Phone number copied'),
-                        onLongPress: () => _makePhoneCall(context, phone),
+                      child: Center(
+                        child: AccessibleText(
+                          _getInitials(userName),
+                          baseStyle: UnifiedTypography.displaySmall.copyWith(
+                            fontSize: 28,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 1.2,
+                          ),
+                          color: Colors.white,
+                          backgroundColor: AppColors.primaryRed,
+                          isHeading: true,
+                        ),
                       ),
+                    ),
+                 const SizedBox(width: 14),
+                 Expanded(
+              child: Column(
+                     crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                       Tooltip(
+                         message: userName, // Show full name on hover
+                        child: AccessibleHeading(
+                          userName,
+                          level: HeadingLevel.h2,
+                          color: Colors.white,
+                          backgroundColor: AppColors.primaryRed,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                       ),
+                          const SizedBox(height: 6),
+                          Row(
+                            children: [
+                              Container(
+                                width: 10,
+                                height: 10,
+                                decoration: BoxDecoration(
+                                  color: Colors.greenAccent,
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.greenAccent.withOpacity(0.6),
+                                      blurRadius: 8,
+                                      spreadRadius: 2,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              const AccessibleBodyText(
+                                'Connected',
+                                size: BodySize.small,
+                                color: Colors.white,
+                                backgroundColor: AppColors.primaryRed,
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    InkWell(
+                      onTap: () => _editProfile(context),
+                      borderRadius: BorderRadius.circular(14),
+                      child: Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white.withOpacity(0.4)),
+                        ),
+                        child: const Icon(Icons.edit, color: Colors.white, size: 18),
+                      ),
+                    ),
                   ],
-                  ),
                 ),
-              ],
+
+                const SizedBox(height: 16),
+                Container(height: 1, color: Colors.white.withOpacity(0.25)),
+                const SizedBox(height: 12),
+
+                         _buildClickableContactInfo(
+                           context,
+                           icon: Icons.mail_outline,
+                           text: userEmail,
+                           onTap: () => _copyToClipboard(context, userEmail, 'Email copied'),
+                           onLongPress: () => _openEmailApp(context, userEmail),
+                         ),
+                const SizedBox(height: 8),
+                if (phone.isNotEmpty)
+                  _buildClickableContactInfo(
+                    context,
+                    icon: IconSystem.phone,
+                    text: phone,
+                    onTap: () => _copyToClipboard(context, phone, 'Phone number copied'),
+                    onLongPress: () => _makePhoneCall(context, phone),
+                  ),
+                if (phone.isNotEmpty) const SizedBox(height: 8),
+                if (location.isNotEmpty)
+                  _buildClickableContactInfo(
+                    context,
+                    icon: IconSystem.location,
+                    text: location,
+                    onTap: () => _copyToClipboard(context, location, 'Address copied'),
+                    onLongPress: () => _openMaps(context, location),
+                  ),
+                      ],
+                    ),
+                  ),
+          // end of Padding
+                ],
           ),
         );
       },
@@ -678,54 +670,54 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(12),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Row(
-              children: [
-                Container(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            children: [
+              Container(
                 padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: AppColors.primaryRed.withOpacity(0.08),
-                    borderRadius: BorderRadius.circular(SoftUIDesign.buttonBorderRadius),
-                    border: Border.all(
-                      color: AppColors.primaryRed.withOpacity(0.2),
-                      width: 1.0,
-                    ),
+                decoration: BoxDecoration(
+                  color: AppColors.primaryRed.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(SoftUIDesign.buttonBorderRadius),
+                  border: Border.all(
+                    color: AppColors.primaryRed.withOpacity(0.2),
+                    width: 1.0,
                   ),
-                  child: Icon(
-                    icon,
-                    color: AppColors.primaryRed,
+                ),
+                child: Icon(
+                  icon,
+                  color: AppColors.primaryRed,
                   size: 20,
-                  ),
                 ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: UnifiedTypography.bodyLarge.copyWith(
-                          color: AppColors.textPrimary,
-                          fontWeight: FontWeight.w600,
-                        ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: UnifiedTypography.bodyLarge.copyWith(
+                        color: AppColors.textPrimary,
+                        fontWeight: FontWeight.w600,
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        subtitle,
-                        style: UnifiedTypography.bodySmall.copyWith(
-                          color: AppColors.textSecondary,
-                        ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: UnifiedTypography.bodySmall.copyWith(
+                        color: AppColors.textSecondary,
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-                Icon(
-                  Icons.arrow_forward_ios,
+              ),
+              Icon(
+                Icons.arrow_forward_ios,
                 color: AppColors.textSecondary,
-                  size: 16,
-                ),
-              ],
+                size: 16,
+              ),
+            ],
           ),
         ),
       ),
@@ -745,34 +737,34 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
             child: Material(
               color: Colors.transparent,
               child: InkWell(
-      onTap: () => _signOut(context),
+                onTap: () => _signOut(context),
                 borderRadius: BorderRadius.circular(12),
                 child: const Padding(
                   padding: EdgeInsets.symmetric(vertical: 16, horizontal: 12),
-          child: Row(
+                  child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
-            children: [
+                          children: [
                             Icon(
-                  Icons.logout,
+                        Icons.logout,
                         color: AppColors.white,
                         size: 20,
                             ),
                             SizedBox(width: 8),
-                    Text(
-                      'Sign Out',
+                      Text(
+                        'Sign Out',
                                 style: TextStyle(
                           color: AppColors.white,
                           fontWeight: FontWeight.w600,
                           fontSize: 14,
                               ),
-                    ),
-                  ],
+                            ),
+                          ],
+                        ),
                 ),
               ),
-              ),
+            ),
           ),
         ),
-      ),
       ],
     );
   }
@@ -861,14 +853,14 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                                 color: AppColors.info,
                                 fontWeight: FontWeight.w600,
                               ),
+                            ),
                           ),
-                        ),
                       ],
                     ),
                     const SizedBox(height: 16),
                     if (!isGmailSSO) ...[
                       // Current Password (only for sign-up accounts)
-                    Container(
+                      Container(
                         decoration: SoftUIDesign.cardDecoration(
                           backgroundColor: AppColors.white,
                           borderRadius: SoftUIDesign.inputBorderRadius,
@@ -1109,17 +1101,17 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                                   await auth.createPasswordForGoogleAccount(newCtrl.text);
                                   success = true;
                                } else {
-                               if (currentCtrl.text.isEmpty) {
-                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter your current password.'), backgroundColor: AppColors.error));
-                                  return;
-                               }
-                               final isValid = await auth.verifyCurrentPassword(currentCtrl.text);
-                               if(!mounted) return;
-                               if(isValid){
-                                 await auth.updatePassword(newCtrl.text);
-                                 success = true;
-                               } else {
-                                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Current password is incorrect.'), backgroundColor: AppColors.error));
+                                  if (currentCtrl.text.isEmpty) {
+                                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter your current password.'), backgroundColor: AppColors.error));
+                                      return;
+                                  }
+                                  final isValid = await auth.verifyCurrentPassword(currentCtrl.text);
+                                  if(!mounted) return;
+                                  if(isValid){
+                                    await auth.updatePassword(newCtrl.text);
+                                    success = true;
+                                  } else {
+                                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Current password is incorrect.'), backgroundColor: AppColors.error));
                                   }
                                }
 
@@ -1473,7 +1465,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
         (parts.length > 1 && parts[1].isNotEmpty ? parts[1][0] : '');
   }
 
-  // Enhanced clickable contact info widget with copy functionality
+  // Clickable contact info widget with copy functionality
   Widget _buildClickableContactInfo(
     BuildContext context, {
     required IconData icon,
@@ -1486,58 +1478,27 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
       child: InkWell(
         onTap: onTap,
         onLongPress: onLongPress,
-        borderRadius: BorderRadius.circular(10),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-          decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.08),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(
-              color: Colors.white.withOpacity(0.15),
-              width: 1,
-            ),
-          ),
-            child: Row(
-              children: [
-              Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: Colors.white.withOpacity(0.2),
-                    width: 1,
-                  ),
-                ),
-                child: Icon(
-                  icon,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Row(
+            children: [
+              Icon(icon, color: Colors.white, size: 18),
+              const SizedBox(width: 10),
+              Expanded(
+                child: AccessibleBodyText(
+                  text,
                   color: Colors.white,
-                  size: 18,
+                  backgroundColor: AppColors.primaryRed,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
-              const SizedBox(width: 12),
-                Expanded(
-                  child: AccessibleBodyText(
-                    text,
-                    color: Colors.white,
-                    backgroundColor: AppColors.primaryRed,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Icon(
-                  Icons.copy_rounded,
-                  color: Colors.white.withOpacity(0.9),
-                  size: 16,
-                ),
+              const SizedBox(width: 8),
+              Icon(
+                Icons.copy,
+                color: Colors.white.withOpacity(0.7),
+                size: 16,
               ),
             ],
           ),
@@ -1609,6 +1570,23 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
     }
   }
 
+  // Open maps
+  Future<void> _openMaps(BuildContext context, String location) async {
+    try {
+      // In a real app, you might use url_launcher package with maps URL
+      // For now, just copy the location
+      await _copyToClipboard(context, location, 'Address copied');
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not open maps: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
+  }
 
   // Dynamic stats calculation methods using real data
   String _getDaysActiveCount(UserModel? userModel) {

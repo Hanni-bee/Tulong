@@ -87,7 +87,6 @@ class _TulongAppState extends State<TulongApp> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     // Update notification service with app state
-    // Only show notifications when app is in background (paused, inactive, or detached)
     final isInForeground = state == AppLifecycleState.resumed;
     NotificationService().setAppLifecycleState(isInForeground);
     debugPrint('📱 App lifecycle changed: $state (Foreground: $isInForeground)');

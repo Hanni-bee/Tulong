@@ -45,11 +45,9 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
   late AnimationController _slideController;
   late AnimationController _welcomeController;
   late AnimationController _emergencyHoldController;
-  late AnimationController _connectionPulseController;
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
   late Animation<double> _welcomeAnimation;
-  late Animation<double> _connectionPulseAnimation;
   
   // Stagger animations for Quick Actions
   late StaggeredListAnimations _quickActionsStagger;
@@ -118,25 +116,12 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
         }
       });
     
-    _connectionPulseController = AnimationController(
-      duration: const Duration(milliseconds: 1500),
-      vsync: this,
-    )..repeat(reverse: true);
-    
     _fadeAnimation = Tween<double>(
       begin: 0.0,
       end: 1.0,
     ).animate(CurvedAnimation(
       parent: _fadeController,
       curve: Curves.easeOutCubic,
-    ));
-    
-    _connectionPulseAnimation = Tween<double>(
-      begin: 0.6,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _connectionPulseController,
-      curve: Curves.easeInOut,
     ));
 
     _slideAnimation = Tween<Offset>(
@@ -205,7 +190,6 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
     _slideController.dispose();
     _welcomeController.dispose();
     _emergencyHoldController.dispose();
-    _connectionPulseController.dispose();
     _quickActionsStagger.dispose();
     super.dispose();
   }
@@ -444,178 +428,93 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
     );
   }
 
-  /// Get time-based greeting message
-  String _getGreeting() {
-    final hour = DateTime.now().hour;
-    if (hour < 12) {
-      return 'Good Morning, Ready to Help';
-    } else if (hour < 17) {
-      return 'Good Afternoon, Ready to Help';
-    } else {
-      return 'Good Evening, Ready to Help';
-    }
-  }
-
   Widget _buildHeader() {
-    return Consumer<ChatProvider>(
-      builder: (context, chatProvider, child) {
-        final isConnected = chatProvider.isConnected;
-        
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Compact header card
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 16),
-              decoration: SoftUIDesign.cardDecoration(
-                backgroundColor: AppColors.white,
-                borderRadius: SoftUIDesign.cardBorderRadius,
-                elevation: 3.0,
-                borderColor: AppColors.lightGray.withOpacity(0.3),
-                showBorder: true,
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  children: [
-                    // App Logo - Compact size
-                    Container(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Compact header card
+        Container(
+          margin: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: SoftUIDesign.cardDecoration(
+            backgroundColor: AppColors.white,
+            borderRadius: SoftUIDesign.cardBorderRadius,
+            elevation: 3.0,
+            borderColor: AppColors.lightGray.withOpacity(0.3),
+            showBorder: true,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                // App Logo - Compact size
+                Container(
+                  width: 60,
+                  height: 60,
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryRed,
+                    borderRadius: BorderRadius.circular(SoftUIDesign.cardBorderRadius),
+                    boxShadow: SoftUIDesign.getButtonShadow(color: AppColors.primaryRed),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: Image.asset(
+                      'assets/images/app_logo (3).png',
                       width: 60,
                       height: 60,
-                      decoration: BoxDecoration(
+                      fit: BoxFit.contain,
+                    ),
+                  ),
+                ),
+                
+                const SizedBox(width: 16),
+                
+                // App Info - Compact layout
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      AccessibleHeading(
+                        'T.U.L.O.N.G',
+                        level: HeadingLevel.h3,
                         color: AppColors.primaryRed,
-                        borderRadius: BorderRadius.circular(SoftUIDesign.cardBorderRadius),
-                        boxShadow: SoftUIDesign.getButtonShadow(color: AppColors.primaryRed),
+                        backgroundColor: AppColors.white,
                       ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(16),
-                        child: Image.asset(
-                          'assets/images/app_logo (3).png',
-                          width: 60,
-                          height: 60,
-                          fit: BoxFit.contain,
+                      const SizedBox(height: 4),
+                      Text(
+                        'Emergency Communication',
+                        style: AppTypography.bodyMedium.copyWith(
+                          color: AppColors.mediumGray,
                         ),
                       ),
-                    ),
-                    
-                    const SizedBox(width: 16),
-                    
-                    // App Info - Compact layout with dynamic status
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // App Name with Connection Status Badge
-                          Row(
-                            children: [
-                              Expanded(
-                                child: AccessibleHeading(
-                                  'T.U.L.O.N.G',
-                                  level: HeadingLevel.h3,
-                                  color: AppColors.primaryRed,
-                                  backgroundColor: AppColors.white,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              // Dynamic Connection Status Badge with Pulse Animation
-                              AnimatedBuilder(
-                                animation: _connectionPulseAnimation,
-                                builder: (context, child) {
-                                  return AnimatedContainer(
-                                    duration: const Duration(milliseconds: 300),
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                    decoration: BoxDecoration(
-                                      color: isConnected ? AppColors.success : AppColors.error,
-                                      borderRadius: BorderRadius.circular(12),
-                                      boxShadow: isConnected ? [
-                                        BoxShadow(
-                                          color: AppColors.success.withOpacity(0.3 * _connectionPulseAnimation.value),
-                                          blurRadius: 6 * _connectionPulseAnimation.value,
-                                          spreadRadius: 1 * _connectionPulseAnimation.value,
-                                        ),
-                                      ] : [
-                                        BoxShadow(
-                                          color: AppColors.error.withOpacity(0.3),
-                                          blurRadius: 6,
-                                          spreadRadius: 1,
-                                        ),
-                                      ],
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        AnimatedContainer(
-                                          duration: const Duration(milliseconds: 300),
-                                          width: 6,
-                                          height: 6,
-                                          decoration: BoxDecoration(
-                                            color: Colors.white,
-                                            shape: BoxShape.circle,
-                                            boxShadow: isConnected ? [
-                                              BoxShadow(
-                                                color: Colors.white.withOpacity(0.8 * _connectionPulseAnimation.value),
-                                                blurRadius: 4 * _connectionPulseAnimation.value,
-                                                spreadRadius: 1 * _connectionPulseAnimation.value,
-                                              ),
-                                            ] : null,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 4),
-                                        Text(
-                                          isConnected ? 'CONNECTED' : 'OFFLINE',
-                                          style: AppTypography.captionText.copyWith(
-                                            color: Colors.white,
-                                            fontWeight: FontWeight.w700,
-                                            fontSize: 10,
-                                            letterSpacing: 0.5,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                },
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 6),
-                          // Dynamic Greeting Message
-                          Text(
-                            _getGreeting(),
-                            style: AppTypography.bodyMedium.copyWith(
-                              color: AppColors.mediumGray,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
+              ],
             ),
-            const SizedBox(height: 12),
-            // Gradient accent line matching Calls/Messages/Profile style
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 420),
-              curve: Curves.easeInOutCubic,
-              height: 3,
-              margin: const EdgeInsets.symmetric(horizontal: 16),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(2),
-                gradient: LinearGradient(
-                  begin: Alignment.centerLeft,
-                  end: Alignment.centerRight,
-                  colors: [
-                    AppColors.primaryRed.withOpacity(0.0),
-                    AppColors.primaryRed.withOpacity(0.85),
-                    AppColors.primaryRed.withOpacity(0.0),
-                  ],
-                  stops: const [0.0, 0.5, 1.0],
-                ),
-              ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        // Gradient accent line matching Calls/Messages/Profile style
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 420),
+          curve: Curves.easeInOutCubic,
+          height: 3,
+          margin: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(2),
+            gradient: LinearGradient(
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+              colors: [
+                AppColors.primaryRed.withOpacity(0.0),
+                AppColors.primaryRed.withOpacity(0.85),
+                AppColors.primaryRed.withOpacity(0.0),
+              ],
+              stops: const [0.0, 0.5, 1.0],
             ),
-          ],
-        );
-      },
+          ),
+        ),
+      ],
     );
   }
 
@@ -743,9 +642,6 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
               Builder(
                 builder: (context) {
                   final quickActions = _getQuickActions();
-                  // Responsive spacing between cards
-                  final cardSpacing = PhoneResponsiveHelper.getPhoneSpacing(context) * 0.5;
-                  
                   return Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: quickActions.asMap().entries.map((entry) {
@@ -754,8 +650,8 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                       return Expanded(
                         child: Padding(
                           padding: EdgeInsets.only(
-                            left: index == 0 ? 0 : cardSpacing,
-                            right: index == quickActions.length - 1 ? 0 : cardSpacing,
+                            left: index == 0 ? 0 : 8,
+                            right: index == quickActions.length - 1 ? 0 : 8,
                           ),
                           child: _quickActionsStagger.buildAnimatedItem(
                             index,
@@ -789,47 +685,6 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
   }) {
     return PhoneResponsiveBuilder(
       builder: (context, screenSize) {
-        // Responsive sizing based on screen size
-        final isSmall = PhoneResponsiveHelper.isSmallPhone(context);
-        final isMedium = PhoneResponsiveHelper.isMediumPhone(context);
-        final isLarge = PhoneResponsiveHelper.isLargePhone(context);
-        
-        // Responsive card dimensions
-        final cardMinHeight = isSmall ? 100.0 : (isMedium ? 110.0 : (isLarge ? 120.0 : 130.0));
-        final cardMinWidth = isSmall ? 90.0 : (isMedium ? 100.0 : (isLarge ? 110.0 : 120.0));
-        
-        // Responsive icon size
-        final iconContainerSize = isSmall ? 44.0 : (isMedium ? 48.0 : (isLarge ? 52.0 : 56.0));
-        final iconSize = isSmall ? 26.0 : (isMedium ? 28.0 : (isLarge ? 30.0 : 32.0));
-        
-        // Responsive font sizes
-        final titleFontSize = PhoneResponsiveHelper.getPhoneFontSize(
-          context,
-          small: 13,
-          medium: 14,
-          large: 15,
-          extraLarge: 16,
-        );
-        final subtitleFontSize = PhoneResponsiveHelper.getPhoneFontSize(
-          context,
-          small: 10,
-          medium: 11,
-          large: 12,
-          extraLarge: 13,
-        );
-        
-        // Responsive padding
-        final verticalPadding = isSmall ? 10.0 : (isMedium ? 12.0 : (isLarge ? 14.0 : 16.0));
-        final horizontalPadding = isSmall ? 8.0 : (isMedium ? 10.0 : (isLarge ? 12.0 : 14.0));
-        
-        // Responsive spacing
-        final iconTextSpacing = isSmall ? 8.0 : (isMedium ? 10.0 : (isLarge ? 12.0 : 14.0));
-        final titleSubtitleSpacing = isSmall ? 2.0 : (isMedium ? 3.0 : (isLarge ? 4.0 : 5.0));
-        
-        // Responsive blob sizes
-        final blobSize1 = isSmall ? 60.0 : (isMedium ? 65.0 : (isLarge ? 70.0 : 75.0));
-        final blobSize2 = isSmall ? 45.0 : (isMedium ? 50.0 : (isLarge ? 55.0 : 60.0));
-        
         return Material(
           color: Colors.transparent,
           child: InkWell(
@@ -837,117 +692,94 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
               HapticFeedback.mediumImpact();
               onPressed();
             },
-            borderRadius: BorderRadius.circular(PhoneResponsiveHelper.getPhoneBorderRadius(context)),
+            borderRadius: BorderRadius.circular(20),
             child: Container(
-              constraints: BoxConstraints(
-                minWidth: cardMinWidth,
-                minHeight: cardMinHeight,
-              ),
-              decoration: SoftUIDesign.cardDecoration(
-                backgroundColor: AppColors.white,
-                borderRadius: PhoneResponsiveHelper.getPhoneBorderRadius(context),
-                elevation: 3.0,
-                borderColor: AppColors.lightGray.withOpacity(0.25),
-                showBorder: true,
-              ),
-              child: Stack(
-                children: [
-                  // Decorative colored blobs in background - responsive sizes
-                  Positioned.fill(
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(PhoneResponsiveHelper.getPhoneBorderRadius(context)),
-                      child: Stack(
-                        children: [
-                          // Top-left blob - responsive size
-                          Positioned(
-                            top: -25,
-                            left: -25,
-                            child: Container(
-                              width: blobSize1,
-                              height: blobSize1,
-                              decoration: BoxDecoration(
-                                color: backgroundColor.withOpacity(0.12),
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                          ),
-                          // Bottom-right blob - responsive size
-                          Positioned(
-                            bottom: -20,
-                            right: -20,
-                            child: Container(
-                              width: blobSize2,
-                              height: blobSize2,
-                              decoration: BoxDecoration(
-                                color: backgroundColor.withOpacity(0.08),
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+              width: 100,
+              height: 70,
+              decoration: BoxDecoration(
+                // Cleaner gradient background
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    backgroundColor,
+                    backgroundColor.withOpacity(0.9),
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  // SoftUI shadow system
+                  ...SoftUIDesign.getSoftShadow(
+                    elevation: 4.0,
+                    shadowColor: backgroundColor.withOpacity(0.25),
                   ),
-                  // Main content with responsive spacing
-                  Padding(
-                    padding: EdgeInsets.symmetric(
-                      vertical: verticalPadding,
-                      horizontal: horizontalPadding,
-                    ),
+                  // Subtle color glow
+                  BoxShadow(
+                    color: backgroundColor.withOpacity(0.2),
+                    blurRadius: 12,
+                    offset: const Offset(0, 6),
+                    spreadRadius: 0,
+                  ),
+                ],
+                border: Border.all(
+                  color: Colors.white.withOpacity(0.2),
+                  width: 1,
+                ),
+              ),
+              child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Icon directly on button - no container
+                  Icon(
+                    icon,
+                    color: Colors.white,
+                    size: 26,
+                  ),
+                  const SizedBox(width: 8),
+                  // Title and subtitle in column
+                  Flexible(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        // Icon container with responsive Soft UI styling
-                        Container(
-                          width: iconContainerSize,
-                          height: iconContainerSize,
-                          decoration: BoxDecoration(
-                            color: backgroundColor.withOpacity(0.12),
-                            borderRadius: BorderRadius.circular(PhoneResponsiveHelper.getPhoneBorderRadius(context) * 0.75),
-                            border: Border.all(
-                              color: backgroundColor.withOpacity(0.2),
-                              width: isSmall ? 1.0 : 1.5,
-                            ),
-                            boxShadow: SoftUIDesign.getSoftShadow(
-                              elevation: 2.0,
-                              shadowColor: backgroundColor.withOpacity(0.15),
-                            ),
-                          ),
-                          child: Icon(
-                            icon,
-                            color: backgroundColor,
-                            size: iconSize,
-                          ),
-                        ),
-                        SizedBox(height: iconTextSpacing),
-                        // Title - responsive font size
+                        // Title
                         Text(
                           title,
-                          style: AppTypography.titleMedium.copyWith(
-                            color: AppColors.darkGray,
+                          style: TextStyle(
+                            color: Colors.white,
                             fontWeight: FontWeight.w800,
-                            fontSize: titleFontSize,
+                            fontSize: 13,
                             letterSpacing: 0.3,
-                            height: 1.2,
+                            shadows: [
+                              Shadow(
+                                color: Colors.black.withOpacity(0.3),
+                                offset: const Offset(0, 1),
+                                blurRadius: 2,
+                              ),
+                            ],
                           ),
-                          textAlign: TextAlign.center,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
-                        SizedBox(height: titleSubtitleSpacing),
-                        // Subtitle - responsive font size
+                        const SizedBox(height: 1),
+                        // Subtitle
                         Text(
                           subtitle,
-                          style: AppTypography.bodySmall.copyWith(
-                            color: AppColors.mediumGray,
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.9),
                             fontWeight: FontWeight.w600,
-                            fontSize: subtitleFontSize,
+                            fontSize: 10,
                             letterSpacing: 0.2,
-                            height: 1.2,
+                            shadows: [
+                              Shadow(
+                                color: Colors.black.withOpacity(0.2),
+                                offset: const Offset(0, 1),
+                                blurRadius: 1,
+                              ),
+                            ],
                           ),
-                          textAlign: TextAlign.center,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),

@@ -473,13 +473,6 @@ class AuthProvider extends ChangeNotifier {
     throw Exception('Google Sign-In is no longer supported. Please use username + password authentication.');
   }
 
-  // Support for legacy UI references in ModernProfileScreen
-  bool get isGmailSSO => false;
-  
-  Future<void> createPasswordForGoogleAccount(String password) async {
-    throw Exception('Google Account migration is no longer supported.');
-  }
-
   @Deprecated('Two-factor authentication is no longer supported')
   Future<void> signInWithTwoFactor(String email, String password, String verificationCode) async {
     throw Exception('Two-factor authentication is no longer supported.');

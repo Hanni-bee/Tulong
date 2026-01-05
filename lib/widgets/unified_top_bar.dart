@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../constants/app_colors.dart';
 import '../constants/unified_typography.dart';
 import '../utils/prototype_animations.dart';
@@ -52,14 +51,8 @@ class UnifiedTopBar extends StatefulWidget {
 class _UnifiedTopBarState extends State<UnifiedTopBar>
     with TickerProviderStateMixin {
   late AnimationController _floatingBarController;
-  late AnimationController _iconPulseController;
-  late AnimationController _subtitleController;
   late Animation<Offset> _floatingBarSlide;
   late Animation<double> _floatingBarFade;
-  late Animation<double> _iconScale;
-  late Animation<double> _iconGlow;
-  late Animation<double> _subtitleFade;
-  bool _isIconPressed = false;
 
   @override
   void initState() {
@@ -67,18 +60,6 @@ class _UnifiedTopBarState extends State<UnifiedTopBar>
     // Floating bar animation: slide down from top + fade in
     _floatingBarController = AnimationController(
       duration: PrototypeAnimations.floatingBarDuration, // 400ms
-      vsync: this,
-    );
-
-    // Icon pulse animation
-    _iconPulseController = AnimationController(
-      duration: const Duration(milliseconds: 2000),
-      vsync: this,
-    )..repeat(reverse: true);
-
-    // Subtitle transition animation
-    _subtitleController = AnimationController(
-      duration: const Duration(milliseconds: 300),
       vsync: this,
     );
 
@@ -98,55 +79,15 @@ class _UnifiedTopBarState extends State<UnifiedTopBar>
       curve: PrototypeAnimations.pageEntryCurve,
     ));
 
-    // Icon scale animation (subtle pulse)
-    _iconScale = Tween<double>(
-      begin: 1.0,
-      end: 1.05,
-    ).animate(CurvedAnimation(
-      parent: _iconPulseController,
-      curve: Curves.easeInOut,
-    ));
-
-    // Icon glow animation
-    _iconGlow = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _iconPulseController,
-      curve: Curves.easeInOut,
-    ));
-
-    // Subtitle fade animation
-    _subtitleFade = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _subtitleController,
-      curve: Curves.easeOut,
-    ));
-
-    // Start animations
+    // Start animation with delay 0ms (from prototype)
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _floatingBarController.forward();
-      _subtitleController.forward();
     });
-  }
-
-  @override
-  void didUpdateWidget(UnifiedTopBar oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    // Animate subtitle changes
-    if (oldWidget.subtitle != widget.subtitle) {
-      _subtitleController.reset();
-      _subtitleController.forward();
-    }
   }
 
   @override
   void dispose() {
     _floatingBarController.dispose();
-    _iconPulseController.dispose();
-    _subtitleController.dispose();
     super.dispose();
   }
 
@@ -227,99 +168,66 @@ class _UnifiedTopBarState extends State<UnifiedTopBar>
                       const SizedBox(width: 14),
                     ],
 
-                // Main icon with optional presence dot and animations
+                // Main icon with optional presence dot
                 Material(
                   color: Colors.transparent,
-                  child: GestureDetector(
-                    onTapDown: (_) {
-                      setState(() => _isIconPressed = true);
-                      HapticFeedback.lightImpact();
-                    },
-                    onTapUp: (_) {
-                      setState(() => _isIconPressed = false);
-                      widget.onIconTap?.call();
-                    },
-                    onTapCancel: () {
-                      setState(() => _isIconPressed = false);
-                    },
-                    child: AnimatedBuilder(
-                      animation: _iconPulseController,
-                      builder: (context, child) {
-                        return Transform.scale(
-                          scale: _isIconPressed ? 0.95 : _iconScale.value,
-                          child: Stack(
-                            clipBehavior: Clip.none,
-                            children: [
-                              // Glow effect
-                              Container(
-                                width: iconBoxSize,
-                                height: iconBoxSize,
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(14),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: widget.iconColor.withOpacity(0.15 * _iconGlow.value),
-                                      blurRadius: 12 * _iconGlow.value,
-                                      spreadRadius: 2 * _iconGlow.value,
-                                    ),
-                                  ],
-                                ),
+                  child: InkWell(
+                    onTap: widget.onIconTap,
+                    borderRadius: BorderRadius.circular(14),
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        Container(
+                          width: iconBoxSize,
+                          height: iconBoxSize,
+                          decoration: BoxDecoration(
+                            color: widget.iconColor.withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: widget.iconColor.withOpacity(0.2),
+                              width: 1.5,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: widget.iconColor.withOpacity(0.08),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                                spreadRadius: 0,
                               ),
-                              // Main icon container
-                              Container(
-                                width: iconBoxSize,
-                                height: iconBoxSize,
-                                decoration: BoxDecoration(
-                                  color: widget.iconColor.withOpacity(0.12),
-                                  borderRadius: BorderRadius.circular(14),
-                                  border: Border.all(
-                                    color: widget.iconColor.withOpacity(0.2),
-                                    width: 1.5,
-                                  ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: widget.iconColor.withOpacity(0.08),
-                                      blurRadius: 8,
-                                      offset: const Offset(0, 2),
-                                      spreadRadius: 0,
-                                    ),
-                                  ],
-                                ),
-                                child: Icon(
-                                  widget.icon,
-                                  color: widget.iconColor,
-                                  size: iconSize,
-                                ),
-                              ),
-                              // Presence dot (top right)
-                              if (widget.showPresenceDot)
-                                Positioned(
-                                  top: -3,
-                                  right: -3,
-                                  child: Container(
-                                    width: 14,
-                                    height: 14,
-                                    decoration: BoxDecoration(
-                                      color: (widget.presenceColor ?? widget.iconColor),
-                                      shape: BoxShape.circle,
-                                      border: Border.all(
-                                        color: widget.backgroundColor,
-                                        width: 2.5,
-                                      ),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: (widget.presenceColor ?? widget.iconColor).withOpacity(0.3),
-                                          blurRadius: 4,
-                                          offset: const Offset(0, 1),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
                             ],
                           ),
-                        );
-                      },
+                          child: Icon(
+                            widget.icon,
+                            color: widget.iconColor,
+                            size: iconSize,
+                          ),
+                        ),
+                        // Presence dot (top right)
+                        if (widget.showPresenceDot)
+                          Positioned(
+                            top: -3,
+                            right: -3,
+                            child: Container(
+                              width: 14,
+                              height: 14,
+                              decoration: BoxDecoration(
+                                color: (widget.presenceColor ?? widget.iconColor),
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: widget.backgroundColor,
+                                  width: 2.5,
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: (widget.presenceColor ?? widget.iconColor).withOpacity(0.3),
+                                    blurRadius: 4,
+                                    offset: const Offset(0, 1),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                   ),
                 ),
@@ -347,45 +255,34 @@ class _UnifiedTopBarState extends State<UnifiedTopBar>
                       if ((widget.subtitle != null && widget.subtitle!.isNotEmpty) || (widget.statusBadges != null && widget.statusBadges!.isNotEmpty)) ...[
                         const SizedBox(height: 3),
                         Row(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
                             if (widget.subtitle != null && widget.subtitle!.isNotEmpty)
-                              Flexible(
-                                child: FadeTransition(
-                                  opacity: _subtitleFade,
-                                  child: GestureDetector(
-                                    onTap: widget.onSubtitleTap,
-                                    child: AnimatedContainer(
-                                      duration: const Duration(milliseconds: 200),
-                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-                                      constraints: const BoxConstraints(maxHeight: 24),
-                                      decoration: BoxDecoration(
-                                        color: widget.subtitle!.toLowerCase().contains('connected')
-                                            ? AppColors.success.withOpacity(0.12)
-                                            : AppColors.warning.withOpacity(0.12),
-                                        borderRadius: BorderRadius.circular(10),
-                                        border: Border.all(
-                                          color: widget.subtitle!.toLowerCase().contains('connected')
-                                              ? AppColors.success.withOpacity(0.25)
-                                              : AppColors.warning.withOpacity(0.25),
-                                          width: 1.5,
-                                        ),
-                                      ),
-                                      child: Text(
-                                        widget.subtitle!,
-                                        style: UnifiedTypography.appBarSubtitle.copyWith(
-                                          color: widget.subtitle!.toLowerCase().contains('connected')
-                                              ? AppColors.success
-                                              : AppColors.warning,
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w700,
-                                          height: 1.0,
-                                          letterSpacing: 0.2,
-                                        ),
-                                        overflow: TextOverflow.ellipsis,
-                                        maxLines: 1,
-                                      ),
+                              GestureDetector(
+                                onTap: widget.onSubtitleTap,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: widget.subtitle!.toLowerCase().contains('connected')
+                                        ? AppColors.success.withOpacity(0.12)
+                                        : AppColors.warning.withOpacity(0.12),
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
+                                      color: widget.subtitle!.toLowerCase().contains('connected')
+                                          ? AppColors.success.withOpacity(0.25)
+                                          : AppColors.warning.withOpacity(0.25),
+                                      width: 1.5,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    widget.subtitle!,
+                                    style: UnifiedTypography.appBarSubtitle.copyWith(
+                                      color: widget.subtitle!.toLowerCase().contains('connected')
+                                          ? AppColors.success
+                                          : AppColors.warning,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                      height: 1.1,
+                                      letterSpacing: 0.2,
                                     ),
                                   ),
                                 ),
@@ -394,11 +291,13 @@ class _UnifiedTopBarState extends State<UnifiedTopBar>
                               const SizedBox(width: 6),
                             if (widget.statusBadges != null && widget.statusBadges!.isNotEmpty)
                               Flexible(
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    ...widget.statusBadges!.expand((w) => [w, const SizedBox(width: 6)]).toList()..removeLast(),
-                                  ],
+                                child: SingleChildScrollView(
+                                  scrollDirection: Axis.horizontal,
+                                  child: Row(
+                                    children: [
+                                      ...widget.statusBadges!.expand((w) => [w, const SizedBox(width: 6)]).toList()..removeLast(),
+                                    ],
+                                  ),
                                 ),
                               ),
                           ],
@@ -416,41 +315,36 @@ class _UnifiedTopBarState extends State<UnifiedTopBar>
             ),
           ),
           if (widget.showUnderline)
-            AnimatedBuilder(
-              animation: _floatingBarController,
-              builder: (context, child) {
-                return Container(
-                  margin: const EdgeInsets.only(top: 6),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 420),
-                    curve: Curves.easeInOutCubic,
-                    height: 3.5,
-                    margin: const EdgeInsets.symmetric(horizontal: 16),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(2),
-                      gradient: LinearGradient(
-                        begin: Alignment.centerLeft,
-                        end: Alignment.centerRight,
-                        colors: [
-                          (widget.underlineColor ?? widget.iconColor).withOpacity(0.0),
-                          (widget.underlineColor ?? widget.iconColor).withOpacity(0.85 * _floatingBarFade.value),
-                          (widget.underlineColor ?? widget.iconColor).withOpacity(0.0),
-                        ],
-                        stops: const [0.0, 0.5, 1.0],
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: (widget.underlineColor ?? widget.iconColor).withOpacity(0.2 * _floatingBarFade.value),
-                          blurRadius: 4,
-                          offset: const Offset(0, 1),
-                        ),
-                      ],
-                    ),
+            Container(
+              margin: const EdgeInsets.only(top: 6),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 420),
+                curve: Curves.easeInOutCubic,
+                height: 3.5,
+                margin: const EdgeInsets.symmetric(horizontal: 16),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(2),
+                  gradient: LinearGradient(
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                    colors: [
+                      (widget.underlineColor ?? widget.iconColor).withOpacity(0.0),
+                      (widget.underlineColor ?? widget.iconColor).withOpacity(0.85),
+                      (widget.underlineColor ?? widget.iconColor).withOpacity(0.0),
+                    ],
+                    stops: const [0.0, 0.5, 1.0],
                   ),
-                );
-              },
+                  boxShadow: [
+                    BoxShadow(
+                      color: (widget.underlineColor ?? widget.iconColor).withOpacity(0.2),
+                      blurRadius: 4,
+                      offset: const Offset(0, 1),
+                    ),
+                  ],
+                ),
+              ),
             ),
-          ],
+        ],
         ),
       ),
     );
@@ -462,31 +356,12 @@ class _UnifiedTopBarState extends State<UnifiedTopBar>
 class TopBarConfigs {
   static Widget localChatTopBar({
     required String status,
-    VoidCallback? onBluetoothTap, // Made optional - removed from chat screen
+    required VoidCallback onBluetoothTap,
     VoidCallback? onConnectedTap,
-    VoidCallback? onRefresh,
     List<Widget>? additionalActions,
     bool compact = false,
     List<Widget>? badges,
   }) {
-    final actions = <Widget>[];
-    
-    // Add refresh button if provided
-    if (onRefresh != null) {
-      actions.add(
-        _buildActionButton(
-          icon: Icons.refresh,
-          onPressed: onRefresh,
-          color: AppColors.textSecondary,
-        ),
-      );
-    }
-    
-    // Add additional actions
-    if (additionalActions != null) {
-      actions.addAll(additionalActions);
-    }
-    
     return UnifiedTopBar(
       title: 'Local Chat',
       subtitle: status,
@@ -494,9 +369,9 @@ class TopBarConfigs {
       iconColor: status.toLowerCase().contains('connected')
           ? AppColors.success
           : AppColors.warning,
-      onIconTap: onBluetoothTap, // Can be null now
+      onIconTap: onBluetoothTap,
       onSubtitleTap: status.toLowerCase().contains('connected') ? onConnectedTap : null,
-      actions: actions.isNotEmpty ? actions : null,
+      actions: additionalActions,
       compact: compact,
       statusBadges: badges,
     );
@@ -505,6 +380,7 @@ class TopBarConfigs {
   static Widget callsTopBar({
     String? status,
     required VoidCallback onRefresh,
+    required VoidCallback onSettings,
     List<Widget>? additionalActions,
     bool compact = false,
     List<Widget>? badges,
@@ -518,7 +394,13 @@ class TopBarConfigs {
         _buildActionButton(
           icon: Icons.refresh,
           onPressed: onRefresh,
-          color: AppColors.textSecondary,
+          color: AppColors.primary,
+        ),
+        const SizedBox(width: 12),
+        _buildActionButton(
+          icon: Icons.settings,
+          onPressed: onSettings,
+          color: AppColors.primary,
         ),
         if (additionalActions != null) ...additionalActions,
       ],
@@ -559,6 +441,7 @@ class TopBarConfigs {
   }
 
   static Widget profileTopBar({
+    VoidCallback? onEdit,
     List<Widget>? additionalActions,
     bool compact = false,
     List<Widget>? badges,
@@ -573,109 +456,42 @@ class TopBarConfigs {
     );
   }
 
-  /// Material UI action button helper with enhanced animations
+  /// Material UI action button helper
   static Widget _buildActionButton({
     required IconData icon,
     required VoidCallback onPressed,
     required Color color,
   }) {
-    return _AnimatedActionButton(
-      icon: icon,
-      onPressed: onPressed,
-      color: color,
-    );
-  }
-}
-
-/// Animated action button with press feedback
-class _AnimatedActionButton extends StatefulWidget {
-  final IconData icon;
-  final VoidCallback onPressed;
-  final Color color;
-
-  const _AnimatedActionButton({
-    required this.icon,
-    required this.onPressed,
-    required this.color,
-  });
-
-  @override
-  State<_AnimatedActionButton> createState() => _AnimatedActionButtonState();
-}
-
-class _AnimatedActionButtonState extends State<_AnimatedActionButton>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _pressController;
-  late Animation<double> _scaleAnimation;
-  bool _isPressed = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _pressController = AnimationController(
-      duration: const Duration(milliseconds: 150),
-      vsync: this,
-    );
-    _scaleAnimation = Tween<double>(begin: 1.0, end: 0.92).animate(
-      CurvedAnimation(parent: _pressController, curve: Curves.easeInOut),
-    );
-  }
-
-  @override
-  void dispose() {
-    _pressController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTapDown: (_) {
-        setState(() => _isPressed = true);
-        _pressController.forward();
-        HapticFeedback.selectionClick();
-      },
-      onTapUp: (_) {
-        setState(() => _isPressed = false);
-        _pressController.reverse();
-        widget.onPressed();
-      },
-      onTapCancel: () {
-        setState(() => _isPressed = false);
-        _pressController.reverse();
-      },
-      child: AnimatedBuilder(
-        animation: _scaleAnimation,
-        builder: (context, child) {
-          return Transform.scale(
-            scale: _scaleAnimation.value,
-            child: Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: widget.color.withOpacity(_isPressed ? 0.18 : 0.12),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: widget.color.withOpacity(_isPressed ? 0.3 : 0.2),
-                  width: 1.5,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: widget.color.withOpacity(_isPressed ? 0.1 : 0.06),
-                    blurRadius: _isPressed ? 8 : 6,
-                    offset: const Offset(0, 2),
-                    spreadRadius: 0,
-                  ),
-                ],
-              ),
-              child: Icon(
-                widget.icon,
-                color: widget.color,
-                size: 22,
-              ),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.12),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: color.withOpacity(0.2),
+              width: 1.5,
             ),
-          );
-        },
+            boxShadow: [
+              BoxShadow(
+                color: color.withOpacity(0.06),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
+                spreadRadius: 0,
+              ),
+            ],
+          ),
+          child: Icon(
+            icon,
+            color: color,
+            size: 22,
+          ),
+        ),
       ),
     );
   }

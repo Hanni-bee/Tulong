@@ -617,7 +617,6 @@ class VoiceChatExtension {
         if (_currentPlayingPath != null) {
           File(_currentPlayingPath!).delete().catchError((e) {
             _debugController.add('Error deleting temp file: $e');
-            return File(_currentPlayingPath!);
           });
           _currentPlayingPath = null;
         }
@@ -645,7 +644,6 @@ class VoiceChatExtension {
         if (_currentPlayingPath != null) {
           File(_currentPlayingPath!).delete().catchError((e) {
             _debugController.add('Error deleting temp file: $e');
-            return File(_currentPlayingPath!);
           });
           _currentPlayingPath = null;
         }

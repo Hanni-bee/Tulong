@@ -8,12 +8,7 @@ import '../../widgets/modern_responsive_layout.dart';
 import 'sign_up_screen.dart';
 import '../../services/firebase_service.dart';
 import '../../services/offline_auth_service.dart';
-import '../../services/biometric_service.dart';
-import '../../services/sqlite_service.dart';
-import '../../utils/input_validator.dart';
-import '../../constants/unified_typography.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:async';
+import '../constants/unified_typography.dart';
 
 class SignInScreen extends StatefulWidget {
   const SignInScreen({super.key});
@@ -24,126 +19,17 @@ class SignInScreen extends StatefulWidget {
 
 class _SignInScreenState extends State<SignInScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _usernameController = TextEditingController(); // Replaced email with username
+  final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   
   bool _obscurePassword = true;
   bool _isLoading = false;
-  bool _isQuickSignInLoading = false;
-  String? _lastLoggedInUsername;
-  final BiometricService _biometricService = BiometricService();
-
-  @override
-  void initState() {
-    super.initState();
-    _loadLastLoggedInUser();
-  }
 
   @override
   void dispose() {
-    _usernameController.dispose(); // Replaced email with username
+    _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
-  }
-
-  Future<void> _loadLastLoggedInUser() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final username = prefs.getString('session_username') ?? prefs.getString('session_email');
-      if (username != null && username.isNotEmpty) {
-        setState(() {
-          _lastLoggedInUsername = username;
-        });
-      }
-    } catch (e) {
-      print('Error loading last logged in user: $e');
-    }
-  }
-
-  Future<void> _quickSignInWithBiometric() async {
-    if (_lastLoggedInUsername == null || _lastLoggedInUsername!.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No previous login found. Please sign in manually.'),
-          backgroundColor: AppColors.error,
-        ),
-      );
-      return;
-    }
-
-    setState(() {
-      _isQuickSignInLoading = true;
-    });
-
-    try {
-      // Check if device supports biometrics
-      final isSupported = await _biometricService.isDeviceSupported();
-      if (!isSupported) {
-        throw Exception('Device does not support biometric authentication');
-      }
-
-      final hasBiometrics = await _biometricService.hasEnrolledBiometrics();
-      if (!hasBiometrics) {
-        throw Exception('No fingerprint enrolled. Please set up fingerprint in device settings.');
-      }
-
-      // Authenticate with fingerprint (no questions, instant)
-      final didAuthenticate = await _biometricService.authenticate(
-        reason: 'Quick sign in',
-        useErrorDialogs: true,
-        stickyAuth: true,
-      );
-
-      if (didAuthenticate) {
-        // Get user from SQLite
-        final sqliteService = SQLiteService();
-        final user = await sqliteService.getUserByUsername(_lastLoggedInUsername!);
-        
-        if (user == null) {
-          throw Exception('User not found');
-        }
-
-        // Update last seen
-        await sqliteService.updateUser(user['id'], {
-          'last_seen': DateTime.now().millisecondsSinceEpoch,
-          'is_online': 1,
-        });
-
-        // Set authenticated state
-        final authProvider = Provider.of<AuthProvider>(context, listen: false);
-        await authProvider.setAuthenticated(
-          email: _lastLoggedInUsername!,
-          name: user['first_name'] != null 
-              ? '${user['first_name']} ${user['last_name']}' 
-              : _lastLoggedInUsername!,
-        );
-
-        // Small delay to ensure user model is loaded
-        await Future.delayed(const Duration(milliseconds: 300));
-
-        if (mounted) {
-          // Navigate to main screen
-          Navigator.of(context).pushReplacementNamed('/');
-        }
-      } else {
-        throw Exception('Biometric authentication failed or was cancelled');
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(e.toString().replaceFirst('Exception: ', '')),
-            backgroundColor: AppColors.error,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isQuickSignInLoading = false;
-        });
-      }
-    }
   }
 
   Future<void> _signIn() async {
@@ -155,31 +41,20 @@ class _SignInScreenState extends State<SignInScreen> {
 
     try {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      final username = _usernameController.text.trim();
+      final email = _emailController.text.trim();
       final password = _passwordController.text;
-      
-      // Try offline SQLite first (offline-first approach)
       try {
-        final user = await OfflineAuthService().signInOffline(username: username, password: password);
-        await authProvider.setAuthenticated(
-          email: username, // Using username as identifier
-          name: user['first_name'] != null ? '${user['first_name']} ${user['last_name']}' : username,
-        );
-        // Small delay to ensure user model is loaded
-        await Future.delayed(const Duration(milliseconds: 300));
-      } catch (_) {
-        // If SQLite fails, try Firebase if online (optional sync)
-        try {
-          final firebaseUser = await FirebaseService().signInWithUsername(username: username, password: password);
-          if (firebaseUser != null) {
-            await authProvider.setAuthenticated(email: username, name: username);
-            await Future.delayed(const Duration(milliseconds: 300));
-          } else {
-            throw Exception('Invalid username or password');
-          }
-        } catch (e) {
-          throw Exception('Invalid username or password');
+        // Try Firebase first (online)
+        final firebaseUser = await FirebaseService().signInWithEmail(email: email, password: password);
+        if (firebaseUser?.user != null) {
+          await authProvider.setAuthenticated(email: email, name: email.split('@')[0]);
+        } else {
+          throw Exception('Firebase sign-in returned no user');
         }
+      } catch (_) {
+        // Fallback to offline SQLite
+        final user = await OfflineAuthService().signInOffline(email: email, password: password);
+        await authProvider.setAuthenticated(email: email, name: user['first_name'] != null ? '${user['first_name']} ${user['last_name']}' : email.split('@')[0]);
       }
 
       if (mounted) {
@@ -191,6 +66,37 @@ class _SignInScreenState extends State<SignInScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(e.toString()),
+            backgroundColor: AppColors.error,
+          ),
+  );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _signInWithGoogle() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      await authProvider.signInWithGoogle();
+
+      if (mounted) {
+        // Go to tutorial first; tutorial flow will route to fill form
+        Navigator.of(context).pushReplacementNamed('/');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Google Sign In failed: ${e.toString()}'),
             backgroundColor: AppColors.error,
           ),
   );
@@ -273,7 +179,7 @@ class _SignInScreenState extends State<SignInScreen> {
         
         const SizedBox(height: 20),
         
-        Text(
+        const Text(
           'T.U.L.O.N.G',
           style: UnifiedTypography.displayLarge,
         )
@@ -292,7 +198,7 @@ class _SignInScreenState extends State<SignInScreen> {
         
         const SizedBox(height: 8),
         
-        Text(
+        const Text(
           'Disaster-Ready Communication',
           style: UnifiedTypography.buttonLarge,
         )
@@ -319,18 +225,21 @@ class _SignInScreenState extends State<SignInScreen> {
         key: _formKey,
         child: Column(
           children: [
-            // Username field (replaced email)
+            // Email field
             _buildModernTextField(
-              controller: _usernameController,
-              label: 'Username',
-              hint: 'Enter your username',
-              keyboardType: TextInputType.text,
-              prefixIcon: Icons.person_outline,
+              controller: _emailController,
+              label: 'Email',
+              hint: 'Enter your email',
+              keyboardType: TextInputType.emailAddress,
+              prefixIcon: Icons.email_outlined,
               validator: (value) {
                 if (value == null || value.isEmpty) {
-                  return 'Please enter your username';
+                  return 'Please enter your email';
                 }
-                return InputValidator.validateUsername(value);
+                if (!value.contains('@')) {
+                  return 'Please enter a valid email';
+                }
+                return null;
               },
             ),
           
@@ -382,132 +291,49 @@ class _SignInScreenState extends State<SignInScreen> {
                   BoxShadow(color: Color(0x66FFFFFF), blurRadius: 8, offset: Offset(0, -2)),
                 ],
               ),
-              child: _isLoading
-                  ? const Center(
-                      child: SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(AppColors.white),
-                        ),
-                      ),
-                    )
-                  : const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.login, color: AppColors.white),
-                        SizedBox(width: 10),
-                        Text(
-                          'Sign In',
-                          style: TextStyle(
-                            color: AppColors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.3,
-                          ),
-                        ),
-                      ],
-                    ),
-            ),
-          ),
-
-          // Quick Sign-In with Fingerprint (only show if there's a last logged in user)
-          if (_lastLoggedInUsername != null && _lastLoggedInUsername!.isNotEmpty) ...[
-            const SizedBox(height: 20),
-            
-            // Divider with "OR"
-            Row(
-              children: [
-                Expanded(
-                  child: Container(
-                    height: 1,
-                    color: AppColors.lightGray.withOpacity(0.3),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Text(
-                    'OR',
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.login, color: AppColors.white),
+                  SizedBox(width: 10),
+                  Text(
+                    'Sign In',
                     style: TextStyle(
-                      color: AppColors.textSecondary.withOpacity(0.6),
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
+                      color: AppColors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.3,
                     ),
                   ),
-                ),
-                Expanded(
-                  child: Container(
-                    height: 1,
-                    color: AppColors.lightGray.withOpacity(0.3),
-                  ),
-                ),
-              ],
-            ),
-            
-            const SizedBox(height: 20),
-            
-            // Quick Sign-In button with fingerprint icon
-            GestureDetector(
-              onTap: _isQuickSignInLoading ? null : _quickSignInWithBiometric,
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 150),
-                height: 56,
-                width: double.infinity,
-                decoration: BoxDecoration(
-                  color: AppColors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: AppColors.primaryRed.withOpacity(0.3),
-                    width: 2,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.primaryRed.withOpacity(0.1),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: _isQuickSignInLoading
-                    ? const Center(
-                        child: SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(AppColors.primaryRed),
-                          ),
-                        ),
-                      )
-                    : Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.fingerprint,
-                            color: AppColors.primaryRed,
-                            size: 24,
-                          ),
-                          const SizedBox(width: 10),
-                          Text(
-                            'Quick Sign-In',
-                            style: TextStyle(
-                              color: AppColors.primaryRed,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 0.3,
-                            ),
-                          ),
-                        ],
-                      ),
+                ],
               ),
             ),
-          ],
+          ),
+          
+          const SizedBox(height: 20),
+          
+          // Google sign in button (simplified)
+          SizedBox(
+            width: double.infinity,
+            height: 56,
+            child: OutlinedButton.icon(
+              onPressed: _isLoading ? null : _signInWithGoogle,
+              icon: const Icon(Icons.g_mobiledata, size: 24, color: AppColors.textPrimary),
+              label: const Text(
+                'Continue with Google',
+                style: UnifiedTypography.titleLarge,
+              ),
+              style: OutlinedButton.styleFrom(
+                side: BorderSide(color: AppColors.borderColor, width: 1.5),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                backgroundColor: Colors.white,
+              ),
+            ),
+          ),
         ],
       ),
-    ),
-  );
-}
+    );
+  }
 
   Widget _buildSignUpLink() {
     return Row(
@@ -556,7 +382,7 @@ class _SignInScreenState extends State<SignInScreen> {
       children: [
         Text(
           label,
-          style: UnifiedTypography.titleLarge,
+          style: const UnifiedTypography.titleLarge,
         ),
         const SizedBox(height: 8),
         Container(

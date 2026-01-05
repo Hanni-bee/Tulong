@@ -3,14 +3,13 @@ import 'package:provider/provider.dart';
 import '../constants/app_colors.dart';
 import '../constants/app_strings.dart';
 import '../providers/network_provider.dart';
-import '../widgets/enhanced_card_system.dart';
+import '../widgets/user_card.dart';
 import '../utils/responsive_helper.dart';
 import '../utils/responsive_spacing.dart';
 import 'modern_personal_chat_screen.dart';
 import '../widgets/modern_empty_state.dart';
 import '../widgets/polished_shimmer.dart';
 import '../widgets/polished_animations.dart';
-import '../widgets/enhanced_search_bar.dart';
 import '../constants/app_typography.dart';
 import 'package:flutter/services.dart';
 
@@ -153,7 +152,7 @@ class _PeopleScreenState extends State<PeopleScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Search bar
-              EnhancedSearchBar(
+              CustomSearchBar(
                 controller: _searchController,
                 hintText: 'Search people...',
                 onChanged: (value) {
@@ -242,12 +241,16 @@ class _PeopleScreenState extends State<PeopleScreen> {
                         padding: const EdgeInsets.only(bottom: 12),
                         child: UserCard(
                           name: user['name'],
-                          subtitle: user['status'],
-                          statusIcon: user['isOnline'] ? Icons.circle : Icons.circle_outlined,
-                          statusColor: user['isOnline'] ? AppColors.success : AppColors.mediumGray,
+                          status: user['status'],
+                          isOnline: user['isOnline'],
+                          lastSeen: user['lastSeen'],
                           onTap: () {
                             HapticFeedback.lightImpact();
                             _showUserProfile(context, user);
+                          },
+                          onMessage: () {
+                            HapticFeedback.mediumImpact();
+                            _openPersonalMessage(context, user);
                           },
                         ),
                       );

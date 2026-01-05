@@ -3,9 +3,9 @@ import 'package:flutter/material.dart';
 /// Modern page transition animations
 class ModernPageTransitions {
   /// Slide transition from right
-  static Route<T> slideFromRight<T>(Widget page) {
-    return PageRouteBuilder<T>(
-      pageBuilder: (context, animation, secondaryAnimation) => page as dynamic,
+  static Route slideFromRight(Widget page) {
+    return PageRouteBuilder(
+      pageBuilder: (context, animation, secondaryAnimation) => page,
       transitionsBuilder: (context, animation, secondaryAnimation, child) {
         const begin = Offset(1.0, 0.0);
         const end = Offset.zero;
@@ -25,9 +25,9 @@ class ModernPageTransitions {
   }
 
   /// Slide transition from bottom
-  static Route<T> slideFromBottom<T>(Widget page) {
-    return PageRouteBuilder<T>(
-      pageBuilder: (context, animation, secondaryAnimation) => page as dynamic,
+  static Route slideFromBottom(Widget page) {
+    return PageRouteBuilder(
+      pageBuilder: (context, animation, secondaryAnimation) => page,
       transitionsBuilder: (context, animation, secondaryAnimation, child) {
         const begin = Offset(0.0, 1.0);
         const end = Offset.zero;
@@ -47,9 +47,9 @@ class ModernPageTransitions {
   }
 
   /// Fade transition
-  static Route<T> fade<T>(Widget page) {
-    return PageRouteBuilder<T>(
-      pageBuilder: (context, animation, secondaryAnimation) => page as dynamic,
+  static Route fade(Widget page) {
+    return PageRouteBuilder(
+      pageBuilder: (context, animation, secondaryAnimation) => page,
       transitionsBuilder: (context, animation, secondaryAnimation, child) {
         return FadeTransition(
           opacity: animation,
@@ -61,9 +61,9 @@ class ModernPageTransitions {
   }
 
   /// Scale transition
-  static Route<T> scale<T>(Widget page) {
-    return PageRouteBuilder<T>(
-      pageBuilder: (context, animation, secondaryAnimation) => page as dynamic,
+  static Route scale(Widget page) {
+    return PageRouteBuilder(
+      pageBuilder: (context, animation, secondaryAnimation) => page,
       transitionsBuilder: (context, animation, secondaryAnimation, child) {
         const curve = Curves.easeInOutCubic;
 
@@ -88,9 +88,9 @@ class ModernPageTransitions {
   }
 
   /// Rotation and fade transition
-  static Route<T> rotation<T>(Widget page) {
-    return PageRouteBuilder<T>(
-      pageBuilder: (context, animation, secondaryAnimation) => page as dynamic,
+  static Route rotation(Widget page) {
+    return PageRouteBuilder(
+      pageBuilder: (context, animation, secondaryAnimation) => page,
       transitionsBuilder: (context, animation, secondaryAnimation, child) {
         const curve = Curves.easeInOutCubic;
 
@@ -115,9 +115,9 @@ class ModernPageTransitions {
   }
 
   /// Shared axis transition
-  static Route<T> sharedAxis<T>(Widget page) {
-    return PageRouteBuilder<T>(
-      pageBuilder: (context, animation, secondaryAnimation) => page as dynamic,
+  static Route sharedAxis(Widget page) {
+    return PageRouteBuilder(
+      pageBuilder: (context, animation, secondaryAnimation) => page,
       transitionsBuilder: (context, animation, secondaryAnimation, child) {
         const curve = Curves.easeInOutCubic;
 
@@ -160,9 +160,9 @@ class ModernPageTransitions {
   }
 
   /// Custom neumorphic transition (scale + fade)
-  static Route<T> neumorphic<T>(Widget page) {
-    return PageRouteBuilder<T>(
-      pageBuilder: (context, animation, secondaryAnimation) => page as dynamic,
+  static Route neumorphic(Widget page) {
+    return PageRouteBuilder(
+      pageBuilder: (context, animation, secondaryAnimation) => page,
       transitionsBuilder: (context, animation, secondaryAnimation, child) {
         const curve = Curves.easeInOutCubic;
 
@@ -187,7 +187,7 @@ class ModernPageTransitions {
   }
 
   /// Slide and fade (combined)
-  static Route<T> slideFade<T>(Widget page, {AxisDirection direction = AxisDirection.right}) {
+  static Route slideFade(Widget page, {AxisDirection direction = AxisDirection.right}) {
     Offset begin;
     switch (direction) {
       case AxisDirection.up:
@@ -204,8 +204,8 @@ class ModernPageTransitions {
         break;
     }
 
-    return PageRouteBuilder<T>(
-      pageBuilder: (context, animation, secondaryAnimation) => page as dynamic,
+    return PageRouteBuilder(
+      pageBuilder: (context, animation, secondaryAnimation) => page,
       transitionsBuilder: (context, animation, secondaryAnimation, child) {
         const curve = Curves.easeInOutCubic;
 
@@ -235,42 +235,42 @@ extension ModernNavigationExtension on BuildContext {
   /// Navigate with slide from right transition
   Future<T?> pushWithSlide<T>(Widget page) {
     return Navigator.of(this).push<T>(
-      ModernPageTransitions.slideFromRight<T>(page),
+      ModernPageTransitions.slideFromRight(page),
     );
   }
 
   /// Navigate with fade transition
   Future<T?> pushWithFade<T>(Widget page) {
     return Navigator.of(this).push<T>(
-      ModernPageTransitions.fade<T>(page),
+      ModernPageTransitions.fade(page),
     );
   }
 
   /// Navigate with scale transition
   Future<T?> pushWithScale<T>(Widget page) {
     return Navigator.of(this).push<T>(
-      ModernPageTransitions.scale<T>(page),
+      ModernPageTransitions.scale(page),
     );
   }
 
   /// Navigate with neumorphic transition
   Future<T?> pushWithNeumorphic<T>(Widget page) {
     return Navigator.of(this).push<T>(
-      ModernPageTransitions.neumorphic<T>(page),
+      ModernPageTransitions.neumorphic(page),
     );
   }
 
   /// Replace with slide transition
   Future<T?> replaceWithSlide<T, TO>(Widget page) {
     return Navigator.of(this).pushReplacement<T, TO>(
-      ModernPageTransitions.slideFromRight<T>(page),
+      ModernPageTransitions.slideFromRight(page),
     );
   }
 
   /// Replace with fade transition
   Future<T?> replaceWithFade<T, TO>(Widget page) {
     return Navigator.of(this).pushReplacement<T, TO>(
-      ModernPageTransitions.fade<T>(page),
+      ModernPageTransitions.fade(page),
     );
   }
 }
@@ -344,5 +344,8 @@ class CustomPageRoute<T> extends PageRoute<T> {
 
   @override
   bool get maintainState => true;
+
+  @override
+  Duration get transitionDuration => this.transitionDuration;
 }
 

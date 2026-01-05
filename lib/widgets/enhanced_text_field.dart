@@ -352,14 +352,14 @@ class _EnhancedTextFieldState extends State<EnhancedTextField> with TickerProvid
           border: null,
           boxShadow: [
             BoxShadow(
-              color: AppColors.neumorphicDark.withOpacity(0.4),
+              color: AppColors.neumorphicShadow,
               blurRadius: 15,
-              offset: const Offset(5, 5),
+              offset: const Offset(0, 8),
             ),
             BoxShadow(
-              color: AppColors.neumorphicLight,
+              color: AppColors.neumorphicHighlight,
               blurRadius: 15,
-              offset: const Offset(-5, -5),
+              offset: const Offset(0, -8),
             ),
           ],
         );

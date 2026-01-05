@@ -4,8 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bluetooth_serial_plus/flutter_bluetooth_serial_plus.dart';
 import '../services/bluetooth_service.dart';
 import '../services/voice_chat_extension.dart' as voice;
-import '../services/notification_service.dart';
-import '../constants/app_colors.dart';
+import 'auth_provider.dart';
+import '../services/sqlite_service.dart';
 
 class ChatProvider with ChangeNotifier {
   final BluetoothService _bluetoothService = BluetoothService();
@@ -18,12 +18,6 @@ class ChatProvider with ChangeNotifier {
   final List<String> _debugLogs = [];
   bool _isConnecting = false;
   
-  // New UI tracking states
-  bool _isLoadingMessages = false;
-  bool _isRefreshingMessages = false;
-  bool _isLocalChatScreenVisible = false;
-  bool _isTyping = false;
-  
   // Connected users on the channel (extracted from messages)
   final Set<String> _connectedUsers = {};
   String? _currentUserName;
@@ -34,19 +28,6 @@ class ChatProvider with ChangeNotifier {
   List<ChatMessage> get messages => _messages;
   List<String> get debugLogs => _debugLogs;
   bool get isConnecting => _isConnecting;
-  
-  // Getters for UI
-  bool get isLoadingMessages => _isLoadingMessages;
-  bool get isRefreshingMessages => _isRefreshingMessages;
-  bool get isTyping => _isTyping;
-  String? get currentUserName => _currentUserName;
-  
-  int get unreadMessageCount => _messages.where((m) => !m.isMe && !m.isRead).length;
-  
-  List<ChatMessage> get pinnedEmergencyMessages => 
-      _messages.where((m) => m.isPinned && m.isEmergency).toList();
-  
-  bool get hasCachedMessages => _messages.isNotEmpty;
   
   // Get connected users including current user
   List<String> get connectedUsers {
@@ -71,67 +52,6 @@ class ChatProvider with ChangeNotifier {
     return _currentUserName != null && user == _currentUserName;
   }
   
-  /// Set visibility of the local chat screen to handle read receipts
-  void setLocalChatScreenVisible(bool visible) {
-    _isLocalChatScreenVisible = visible;
-    if (visible) {
-      markAllMessagesAsRead();
-    }
-    notifyListeners();
-  }
-  
-  /// Mark all messages as read
-  void markAllMessagesAsRead() {
-    bool changed = false;
-    for (var message in _messages) {
-      if (!message.isMe && !message.isRead) {
-        message.isRead = true;
-        changed = true;
-      }
-    }
-    if (changed) {
-      notifyListeners();
-    }
-  }
-
-  /// Simulate loading messages (could be from SQLite in future)
-  Future<void> loadMessages() async {
-    if (_isLoadingMessages) return;
-    
-    _isLoadingMessages = true;
-    notifyListeners();
-    
-    // Simulate minor delay for loading
-    await Future.delayed(const Duration(milliseconds: 500));
-    
-    _isLoadingMessages = false;
-    notifyListeners();
-  }
-
-  /// Smart refresh for the chat screen
-  Future<void> smartRefresh() async {
-    if (_isRefreshingMessages) return;
-    
-    _isRefreshingMessages = true;
-    notifyListeners();
-    
-    // Check connection and refresh devices
-    await loadPairedDevices();
-    await Future.delayed(const Duration(seconds: 1));
-    
-    _isRefreshingMessages = false;
-    notifyListeners();
-  }
-  
-  /// Unpin an emergency message
-  void unpinEmergencyMessage(String messageId) {
-    final index = _messages.indexWhere((m) => m.messageId == messageId);
-    if (index != -1) {
-      _messages[index].isPinned = false;
-      notifyListeners();
-    }
-  }
-
   // Voice extension getters
   voice.VoiceChatExtension get voiceExtension => _voiceExtension;
   bool get isRecording => _voiceExtension.isRecording;
@@ -199,6 +119,9 @@ class ChatProvider with ChangeNotifier {
   /// Update current user name from database/storage (signup information)
   Future<void> _updateCurrentUserNameFromDatabase() async {
     try {
+      // Try to get from SQLite database first (where signup info is stored)
+      final sqliteService = SQLiteService();
+      
       // Get user email from AuthProvider if available
       // Since we don't have direct access to AuthProvider here,
       // we'll rely on setCurrentUserName() being called from UI
@@ -231,13 +154,11 @@ class ChatProvider with ChangeNotifier {
     if (text.trim().isEmpty) return false;
 
     ChatMessage message = ChatMessage(
-      messageId: _generateId(),
       text: text.trim(),
       isMe: true,
       timestamp: DateTime.now(),
       status: voice.MessageStatus.sending,
       type: voice.MessageType.text,
-      isRead: true,
     );
 
     _addMessage(message.text, true, message: message);
@@ -403,7 +324,6 @@ class ChatProvider with ChangeNotifier {
     );
 
     final chatMessage = ChatMessage(
-      messageId: _generateId(),
       text: '🎤 Voice message',
       isMe: isMe,
       timestamp: DateTime.now(),
@@ -411,7 +331,6 @@ class ChatProvider with ChangeNotifier {
       type: voice.MessageType.voice,
       voiceMessage: voiceMessage,
       senderName: senderName,
-      isRead: isMe || _isLocalChatScreenVisible,
     );
 
     _messages.add(chatMessage);
@@ -421,34 +340,6 @@ class ChatProvider with ChangeNotifier {
       'metrics': {'totalMessages': _messages.length, 'voiceSize': voiceMessage.formattedSize}
     });
     notifyListeners();
-    
-    // Show notification for incoming voice messages (when app is in background)
-    if (!isMe) {
-      _showVoiceMessageNotification(chatMessage, senderName);
-    }
-  }
-  
-  /// Show notification for incoming voice messages
-  Future<void> _showVoiceMessageNotification(ChatMessage message, String? senderName) async {
-    try {
-      final notificationService = NotificationService();
-      final sender = senderName ?? 'Unknown User';
-      final duration = message.voiceMessage?.formattedDuration ?? 'Voice message';
-      
-      await notificationService.showMessageNotification(
-        sender: sender,
-        message: '🎤 $duration',
-        payload: jsonEncode({
-          'type': 'voice_message',
-          'messageId': message.messageId,
-          'senderName': sender,
-          'timestamp': message.timestamp.toIso8601String(),
-        }),
-      );
-    } catch (e) {
-      // Silently fail - notifications are not critical
-      debugPrint('Failed to show voice message notification: $e');
-    }
   }
 
   /// Start recording voice message
@@ -511,14 +402,12 @@ class ChatProvider with ChangeNotifier {
 
     // Add to messages
     final chatMessage = ChatMessage(
-      messageId: _generateId(),
       text: '🎤 Voice message',
       isMe: true,
       timestamp: DateTime.now(),
       status: voice.MessageStatus.sending,
       type: voice.MessageType.voice,
       voiceMessage: voiceMessage,
-      isRead: true,
     );
 
     _messages.add(chatMessage);
@@ -567,26 +456,17 @@ class ChatProvider with ChangeNotifier {
 
   void _addMessage(String text, bool isMe, {String? senderName, ChatMessage? message}) {
     if (message == null) {
-      final isEmergency = text.toUpperCase().contains('EMERGENCY') || 
-                         text.toUpperCase().contains('HELP') ||
-                         text.toUpperCase().contains('SOS');
-                         
       message = ChatMessage(
-        messageId: _generateId(),
         text: text,
         isMe: isMe,
         timestamp: DateTime.now(),
         status: isMe ? voice.MessageStatus.sent : voice.MessageStatus.delivered,
         type: voice.MessageType.text,
         senderName: senderName,
-        isRead: isMe || _isLocalChatScreenVisible,
-        isEmergency: isEmergency,
-        isPinned: isEmergency,
       );
     } else if (!isMe && senderName != null) {
       // Update sender name if provided
       message = ChatMessage(
-        messageId: message.messageId,
         text: message.text,
         isMe: message.isMe,
         timestamp: message.timestamp,
@@ -594,66 +474,11 @@ class ChatProvider with ChangeNotifier {
         type: message.type,
         voiceMessage: message.voiceMessage,
         senderName: senderName,
-        isRead: message.isRead,
-        isEmergency: message.isEmergency,
-        isPinned: message.isPinned,
       );
     }
     
     _messages.add(message);
     notifyListeners();
-    
-    // Show notification for incoming messages (when app is in background)
-    if (!isMe) {
-      _showMessageNotification(message);
-    }
-  }
-  
-  /// Show notification for incoming messages
-  Future<void> _showMessageNotification(ChatMessage message) async {
-    try {
-      final notificationService = NotificationService();
-      
-      // Determine sender name
-      final senderName = message.senderName ?? 'Unknown User';
-      
-      // Truncate message for notification (max 100 chars)
-      final messagePreview = message.text.length > 100 
-          ? '${message.text.substring(0, 100)}...' 
-          : message.text;
-      
-      // Show emergency notification with high priority
-      if (message.isEmergency) {
-        await notificationService.showEmergencyAlert(
-          title: '🚨 Emergency Alert from $senderName',
-          body: messagePreview,
-          payload: jsonEncode({
-            'type': 'emergency_message',
-            'messageId': message.messageId,
-            'senderName': senderName,
-            'message': message.text,
-            'timestamp': message.timestamp.toIso8601String(),
-          }),
-          color: AppColors.primaryRed,
-        );
-      } else {
-        // Show regular message notification
-        await notificationService.showMessageNotification(
-          sender: senderName,
-          message: messagePreview,
-          payload: jsonEncode({
-            'type': 'local_chat_message',
-            'messageId': message.messageId,
-            'senderName': senderName,
-            'message': message.text,
-            'timestamp': message.timestamp.toIso8601String(),
-          }),
-        );
-      }
-    } catch (e) {
-      // Silently fail - notifications are not critical
-      debugPrint('Failed to show message notification: $e');
-    }
   }
 
   void clearMessages() {
@@ -664,11 +489,6 @@ class ChatProvider with ChangeNotifier {
   void clearDebugLogs() {
     _debugLogs.clear();
     notifyListeners();
-  }
-
-  /// Generate a unique message ID
-  String _generateId() {
-    return '${DateTime.now().millisecondsSinceEpoch}_${(1000 + (9999 - 1000) * (DateTime.now().microsecond / 1000000)).round()}';
   }
 
   /// Add structured debug log with rich telemetry
@@ -719,20 +539,15 @@ class ChatProvider with ChangeNotifier {
 }
 
 class ChatMessage {
-  final String messageId;
   final String text;
   final bool isMe;
   final DateTime timestamp;
   voice.MessageStatus status;
   final voice.MessageType type;
   final voice.VoiceMessage? voiceMessage;
-  final String? senderName;
-  bool isRead;
-  final bool isEmergency;
-  bool isPinned;
+  final String? senderName; // Sender's name for received messages
 
   ChatMessage({
-    required this.messageId,
     required this.text,
     required this.isMe,
     required this.timestamp,
@@ -740,9 +555,6 @@ class ChatMessage {
     this.type = voice.MessageType.text,
     this.voiceMessage,
     this.senderName,
-    this.isRead = false,
-    this.isEmergency = false,
-    this.isPinned = false,
   });
 }
 

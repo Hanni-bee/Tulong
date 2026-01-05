@@ -57,6 +57,7 @@ class _InteractiveButtonState extends State<InteractiveButton>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _scaleAnimation;
+  late Animation<double> _elevationAnimation;
 
   @override
   void initState() {
@@ -69,6 +70,14 @@ class _InteractiveButtonState extends State<InteractiveButton>
     _scaleAnimation = Tween<double>(
       begin: 1.0,
       end: 0.95,
+    ).animate(CurvedAnimation(
+      parent: _controller,
+      curve: widget.animationCurve,
+    ));
+
+    _elevationAnimation = Tween<double>(
+      begin: widget.elevation ?? 0,
+      end: (widget.elevation ?? 0) - 2,
     ).animate(CurvedAnimation(
       parent: _controller,
       curve: widget.animationCurve,
@@ -162,6 +171,7 @@ class _InteractiveCardState extends State<InteractiveCard>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _scaleAnimation;
+  late Animation<double> _elevationAnimation;
 
   @override
   void initState() {
@@ -174,6 +184,14 @@ class _InteractiveCardState extends State<InteractiveCard>
     _scaleAnimation = Tween<double>(
       begin: 1.0,
       end: 0.98,
+    ).animate(CurvedAnimation(
+      parent: _controller,
+      curve: MicroInteractions.easeOut,
+    ));
+
+    _elevationAnimation = Tween<double>(
+      begin: 1.0,
+      end: 0.5,
     ).animate(CurvedAnimation(
       parent: _controller,
       curve: MicroInteractions.easeOut,
@@ -365,181 +383,6 @@ class SmoothTransition extends StatelessWidget {
         );
       },
       child: child,
-    );
-  }
-}
-
-// Missing widgets for AnimationDemoScreen
-class MicroInteractionButton extends StatefulWidget {
-  final Widget child;
-  final VoidCallback onTap;
-  const MicroInteractionButton({super.key, required this.child, required this.onTap});
-
-  @override
-  State<MicroInteractionButton> createState() => _MicroInteractionButtonState();
-}
-
-class _MicroInteractionButtonState extends State<MicroInteractionButton> with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _scaleAnimation;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(duration: const Duration(milliseconds: 100), vsync: this);
-    _scaleAnimation = Tween<double>(begin: 1.0, end: 0.9).animate(_controller);
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTapDown: (_) => _controller.forward(),
-      onTapUp: (_) {
-        _controller.reverse();
-        widget.onTap();
-      },
-      onTapCancel: () => _controller.reverse(),
-      child: ScaleTransition(scale: _scaleAnimation, child: widget.child),
-    );
-  }
-}
-
-class BounceWidget extends StatefulWidget {
-  final Widget child;
-  final bool autoStart;
-  const BounceWidget({super.key, required this.child, this.autoStart = false});
-
-  @override
-  State<BounceWidget> createState() => _BounceWidgetState();
-}
-
-class _BounceWidgetState extends State<BounceWidget> with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _animation;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(duration: const Duration(milliseconds: 1000), vsync: this);
-    _animation = TweenSequence<double>([
-      TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.2).chain(CurveTween(curve: Curves.easeOut)), weight: 30),
-      TweenSequenceItem(tween: Tween(begin: 1.2, end: 1.0).chain(CurveTween(curve: Curves.bounceOut)), weight: 70),
-    ]).animate(_controller);
-    if (widget.autoStart) _controller.repeat();
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return ScaleTransition(scale: _animation, child: widget.child);
-  }
-}
-
-class ShakeWidget extends StatefulWidget {
-  final Widget child;
-  const ShakeWidget({super.key, required this.child});
-
-  @override
-  State<ShakeWidget> createState() => _ShakeWidgetState();
-}
-
-class _ShakeWidgetState extends State<ShakeWidget> with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(duration: const Duration(milliseconds: 500), vsync: this);
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  void shake() => _controller.forward(from: 0.0);
-
-  @override
-  Widget build(BuildContext context) {
-    final Animation<double> offsetAnimation = TweenSequence<double>([
-      TweenSequenceItem(tween: Tween(begin: 0.0, end: 10.0), weight: 1),
-      TweenSequenceItem(tween: Tween(begin: 10.0, end: -10.0), weight: 1),
-      TweenSequenceItem(tween: Tween(begin: -10.0, end: 10.0), weight: 1),
-      TweenSequenceItem(tween: Tween(begin: 10.0, end: 0.0), weight: 1),
-    ]).animate(_controller);
-
-    return AnimatedBuilder(
-      animation: offsetAnimation,
-      builder: (context, child) {
-        return Transform.translate(
-          offset: Offset(offsetAnimation.value, 0),
-          child: child,
-        );
-      },
-      child: GestureDetector(onTap: shake, child: widget.child),
-    );
-  }
-}
-
-class GlowWidget extends StatefulWidget {
-  final Widget child;
-  final bool autoStart;
-  const GlowWidget({super.key, required this.child, this.autoStart = false});
-
-  @override
-  State<GlowWidget> createState() => _GlowWidgetState();
-}
-
-class _GlowWidgetState extends State<GlowWidget> with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _animation;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(duration: const Duration(milliseconds: 1500), vsync: this);
-    _animation = Tween<double>(begin: 0.0, end: 1.0).animate(_controller);
-    if (widget.autoStart) _controller.repeat(reverse: true);
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _animation,
-      builder: (context, child) {
-        return Container(
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.primaryRed.withOpacity(_animation.value * 0.5),
-                blurRadius: 20 * _animation.value,
-                spreadRadius: 5 * _animation.value,
-              ),
-            ],
-          ),
-          child: child,
-        );
-      },
-      child: widget.child,
     );
   }
 }
