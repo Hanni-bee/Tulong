@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/timezone.dart' as tz;
@@ -29,6 +30,24 @@ class NotificationService {
   
   Stream<RemoteMessage> get onMessage => _onMessageController.stream;
   Stream<NotificationResponse> get onNotificationTap => _onNotificationTapController.stream;
+  
+  bool get isInForeground => _isInForeground;
+
+  Future<void> showLocalNotification({
+    required int id,
+    required String title,
+    required String body,
+    String? payload,
+    String channelId = messageChannelId,
+  }) async {
+    await _showLocalNotification(
+      id: id,
+      title: title,
+      body: body,
+      payload: payload,
+      channelId: channelId,
+    );
+  }
 
   bool _isInitialized = false;
   String? _fcmToken;
@@ -322,7 +341,56 @@ class NotificationService {
     String? payload,
     required String channelId,
   }) async {
-    // Use the correct channelId passed in (so messages go to the right channel).
+    // Determine style based on channel and payload
+    StyleInformation? styleInformation;
+    Color? color;
+    
+    // Check for voice message or emergency features
+    bool isVoice = false;
+    if (payload != null) {
+      try {
+        final data = jsonDecode(payload);
+        isVoice = data['is_voice'] == true || data['type'] == 'voice';
+      } catch (_) {}
+    }
+
+    if (channelId == emergencyChannelId) {
+      // Emergency Style - Professional Red #D32F2F
+      color = const Color(0xFFD32F2F);
+      styleInformation = BigTextStyleInformation(
+        body,
+        htmlFormatBigText: true,
+        contentTitle: '<b>$title</b>',
+        htmlFormatContentTitle: true,
+        summaryText: '🚨 <b>CRITICAL ALERT</b>',
+        htmlFormatSummaryText: true,
+      );
+    } else if (channelId == messageChannelId) {
+      if (isVoice) {
+        // Voice Message Style - Teal #009688 for communication
+        color = const Color(0xFF009688);
+        styleInformation = BigTextStyleInformation(
+          body,
+          htmlFormatBigText: true,
+          contentTitle: '<b>$title</b>',
+          htmlFormatContentTitle: true,
+          summaryText: '🎤 Voice Message',
+          htmlFormatSummaryText: true,
+        );
+      } else {
+        // Standard Text Message Style - Info Blue #3498DB
+        color = const Color(0xFF3498DB);
+        styleInformation = BigTextStyleInformation(
+          body,
+          htmlFormatBigText: true,
+          contentTitle: '<b>$title</b>',
+          htmlFormatContentTitle: true,
+          summaryText: '💬 New Message',
+          htmlFormatSummaryText: true,
+        );
+      }
+    }
+
     final androidDetails = AndroidNotificationDetails(
       channelId,
       _getChannelName(channelId),
@@ -330,10 +398,11 @@ class NotificationService {
       importance: channelId == emergencyChannelId ? Importance.max : Importance.high,
       priority: channelId == emergencyChannelId ? Priority.high : Priority.defaultPriority,
       icon: '@mipmap/ic_launcher',
+      color: color,
+      styleInformation: styleInformation,
     );
 
     const iosDetails = DarwinNotificationDetails(
-      // Foreground banners are already disabled globally; keep this for background/local cases.
       presentAlert: true,
       presentBadge: true,
       presentSound: true,

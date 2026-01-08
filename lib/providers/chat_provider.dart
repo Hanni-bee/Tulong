@@ -465,6 +465,22 @@ class ChatProvider with ChangeNotifier {
       'metrics': {'totalMessages': _messages.length, 'voiceSize': voiceMessage.formattedSize}
     });
     notifyListeners();
+
+    // Trigger local notification if not me and in background
+    if (!isMe && !NotificationService().isInForeground) {
+      NotificationService().showLocalNotification(
+        id: DateTime.now().millisecondsSinceEpoch,
+        title: senderName ?? 'New Voice Message',
+        body: '🎤 Voice message received',
+        channelId: NotificationService.messageChannelId,
+        payload: jsonEncode({
+          'type': 'message',
+          'sender_name': senderName,
+          'message': 'Voice Message',
+          'is_voice': true
+        }),
+      );
+    }
   }
 
   /// Start recording voice message
@@ -613,6 +629,22 @@ class ChatProvider with ChangeNotifier {
     
     _messages.add(message);
     notifyListeners();
+
+    // Trigger local notification if message received in background
+    if (!isMe && !NotificationService().isInForeground) {
+      NotificationService().showLocalNotification(
+        id: DateTime.now().millisecondsSinceEpoch,
+        title: message.senderName ?? 'New Message',
+        body: message.isEmergency ? '🚨 ${message.text}' : message.text,
+        channelId: message.isEmergency ? NotificationService.emergencyChannelId : NotificationService.messageChannelId,
+        payload: jsonEncode(message.rawData ?? {
+          'message': message.text, 
+          'sender_name': message.senderName,
+          'type': 'message',
+          'is_emergency': message.isEmergency
+        }),
+      );
+    }
   }
 
   void clearMessages() {
