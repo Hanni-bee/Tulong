@@ -11,6 +11,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/input_validator.dart';
+import '../utils/app_time_format.dart';
 import '../models/user_model.dart';
 import 'sqlite_service.dart';
 
@@ -25,7 +26,7 @@ class FirebaseService {
   
   // Add debug log method
   void _addDebugLog(String message) {
-    debugLogs.add('${DateTime.now().toString().substring(11, 19)}: $message');
+    debugLogs.add('${AppTimeFormat.timeWithSeconds(DateTime.now())}: $message');
     // Keep only last 100 logs
     if (debugLogs.length > 100) {
       debugLogs.removeAt(0);

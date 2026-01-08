@@ -1601,21 +1601,6 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
     return meshReady || localChatReady;
   }
 
-  ({String message, Map<String, dynamic> meta}) _buildSosPayload(
-    AuthProvider authProvider,
-    String baseMessage,
-  ) {
-    final addr = AddressEncoder.fromUser(authProvider.currentUserModel);
-    final msg = addr.fullAddress.isNotEmpty ? '$baseMessage\n📍 ${addr.fullAddress}' : baseMessage;
-    final meta = <String, dynamic>{
-      'source': 'sos',
-      if (addr.fullAddress.isNotEmpty) 'location_full': addr.fullAddress,
-      if (addr.encodedAddress.isNotEmpty) 'location_code': addr.encodedAddress,
-      if (addr.regionKey.isNotEmpty) 'region_key': addr.regionKey,
-    };
-    return (message: msg, meta: meta);
-  }
-
   /// Show confirmation modal for emergency message
   /// Offline-first: Only works with ESP32 connection
   Future<bool> _showEmergencyConfirmationModal(BuildContext context) async {
@@ -1823,8 +1808,11 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
       if (emergencyMessage.trim().isEmpty) {
         emergencyMessage = '🚨 EMERGENCY: I need immediate assistance!';
       }
-
-      final sos = _buildSosPayload(authProvider, emergencyMessage);
+      final addr = AddressEncoder.fromUser(authProvider.currentUserModel);
+      final sosMeta = <String, dynamic>{
+        'source': 'sos',
+        if (addr.fullAddress.isNotEmpty) 'sender_address': addr.fullAddress,
+      };
       
       final meshReady = bluetoothService.isConnected && bluetoothService.isAuthenticated;
       final localChatReady = chatProvider.isConnected;
@@ -1833,23 +1821,23 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
         // Send via platform-channel mesh service
         try {
           await bluetoothService.sendGroupMessage(
-            sos.message,
+            emergencyMessage,
             isEmergency: true,
-            additionalData: sos.meta,
+            additionalData: sosMeta,
           );
       
       if (context.mounted) {
         // Mirror into Local Chat UI so it always shows (and pins) even though the send is handled by SimpleBluetoothService
         chatProvider.addMirroredMessage(
-          text: sos.message,
+          text: emergencyMessage,
           isEmergency: true,
           rawData: {
             'type': 'group',
-            'message': sos.message,
+            'message': emergencyMessage,
             'is_emergency': true,
             'sender_name': chatProvider.currentUserName ?? authProvider.userName ?? 'Me',
             'timestamp': DateTime.now().toIso8601String(),
-            ...sos.meta,
+            ...sosMeta,
           },
         );
 
@@ -1873,9 +1861,9 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
       } else if (localChatReady) {
         // Send via existing Local Chat Bluetooth link (flutter_bluetooth_serial_plus stack)
         final success = await chatProvider.sendMessage(
-          sos.message,
+          emergencyMessage,
           isEmergency: true,
-          additionalData: sos.meta,
+          additionalData: sosMeta,
         );
         if (success && context.mounted) {
           ModernToastManager.showSuccess(
@@ -2293,8 +2281,11 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                       // Check ESP32 connection first (offline-first approach)
                       final chatProvider = context.read<ChatProvider>();
                       final bluetoothService = context.read<SimpleBluetoothService>();
-                      final authProvider = context.read<AuthProvider>();
-                      final sos = _buildSosPayload(authProvider, emergencyMessage);
+                      final addr = AddressEncoder.fromUser(authProvider.currentUserModel);
+      final sosMeta = <String, dynamic>{
+        'source': 'sos',
+        if (addr.fullAddress.isNotEmpty) 'sender_address': addr.fullAddress,
+      };
                       final meshReady = bluetoothService.isConnected && bluetoothService.isAuthenticated;
                       final localChatReady = chatProvider.isConnected;
                       
@@ -2302,9 +2293,9 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                         // Send via ESP32 mesh service
                         try {
                           await bluetoothService.sendGroupMessage(
-                            sos.message,
+                            emergencyMessage,
                             isEmergency: true,
-                            additionalData: sos.meta,
+                            additionalData: sosMeta,
                           );
                       
                       if (dialogContext.mounted) {
@@ -2326,9 +2317,9 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                         // Send via Local Chat connection
                         try {
                           final success = await chatProvider.sendMessage(
-                            sos.message,
+                            emergencyMessage,
                             isEmergency: true,
-                            additionalData: sos.meta,
+                            additionalData: sosMeta,
                           );
                           if (success && dialogContext.mounted) {
                             Navigator.of(dialogContext).pop();

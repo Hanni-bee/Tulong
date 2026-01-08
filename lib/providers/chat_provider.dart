@@ -5,6 +5,7 @@ import 'package:flutter_bluetooth_serial_plus/flutter_bluetooth_serial_plus.dart
 import '../services/bluetooth_service.dart';
 import '../services/voice_chat_extension.dart' as voice;
 import '../services/notification_service.dart';
+import '../utils/app_time_format.dart';
 
 class ChatProvider with ChangeNotifier {
   final BluetoothService _bluetoothService = BluetoothService();
@@ -83,7 +84,7 @@ class ChatProvider with ChangeNotifier {
     });
 
     _debugSubscription = _bluetoothService.debugStream.listen((log) {
-      _debugLogs.add('${DateTime.now().toString().substring(11, 19)}: $log');
+      _debugLogs.add('${AppTimeFormat.timeWithSeconds(DateTime.now())}: $log');
       if (_debugLogs.length > 100) {
         _debugLogs.removeAt(0);
       }
@@ -92,7 +93,7 @@ class ChatProvider with ChangeNotifier {
 
     // Listen to voice extension debug stream
     _voiceExtension.debugStream.listen((log) {
-      _debugLogs.add('${DateTime.now().toString().substring(11, 19)}: [VOICE] $log');
+      _debugLogs.add('${AppTimeFormat.timeWithSeconds(DateTime.now())}: [VOICE] $log');
       if (_debugLogs.length > 100) {
         _debugLogs.removeAt(0);
       }

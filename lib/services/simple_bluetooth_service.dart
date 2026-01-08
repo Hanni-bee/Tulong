@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/auth_provider.dart';
 import '../utils/emergency_message_parser.dart';
+import '../utils/app_time_format.dart';
 
 /// Simple Bluetooth Service for ESP32 Communication
 /// Uses platform channels to communicate with Android Bluetooth
@@ -621,14 +622,14 @@ class SimpleBluetoothService extends ChangeNotifier {
   // ============================================================================
   
   void _addStatusLog(String message) {
-    String timestamp = DateTime.now().toString().substring(11, 19);
+    String timestamp = AppTimeFormat.timeWithSeconds(DateTime.now());
     String logMessage = '[$timestamp] $message';
     _statusController.add(logMessage);
     print('ESP32_BT: $logMessage');
   }
 
   void _addErrorLog(String message) {
-    String timestamp = DateTime.now().toString().substring(11, 19);
+    String timestamp = AppTimeFormat.timeWithSeconds(DateTime.now());
     String logMessage = '[$timestamp] ERROR: $message';
     _statusController.add(logMessage);
     print('ESP32_BT_ERROR: $logMessage');

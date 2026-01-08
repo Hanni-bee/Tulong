@@ -7,10 +7,12 @@ import '../services/firebase_service.dart';
 /// Modal to display sender's basic information (Name, Contact Number, Address)
 class SenderInfoModal extends StatefulWidget {
   final String senderName;
+  final String? senderAddress;
 
   const SenderInfoModal({
     super.key,
     required this.senderName,
+    this.senderAddress,
   });
 
   @override
@@ -69,7 +71,7 @@ class _SenderInfoModalState extends State<SenderInfoModal> {
           _userInfo = {
             'name': '${user['first_name'] ?? ''} ${user['last_name'] ?? ''}'.trim(),
             'phone': user['phone']?.toString() ?? 'Not provided',
-            'address': _formatAddress(user),
+            'address': widget.senderAddress ?? _formatAddress(user),
           };
           _isLoading = false;
         });
@@ -111,6 +113,9 @@ class _SenderInfoModalState extends State<SenderInfoModal> {
           });
 
           if (foundUser != null) {
+            if (widget.senderAddress != null) {
+              foundUser!['address'] = widget.senderAddress;
+            }
             setState(() {
               _userInfo = foundUser;
               _isLoading = false;
@@ -127,7 +132,7 @@ class _SenderInfoModalState extends State<SenderInfoModal> {
         _userInfo = {
           'name': widget.senderName,
           'phone': 'Not available',
-          'address': 'Not available',
+          'address': widget.senderAddress ?? 'Not available',
         };
         _isLoading = false;
       });

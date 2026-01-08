@@ -4,13 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:provider/provider.dart';
-import 'package:intl/intl.dart';
 import '../constants/app_colors.dart';
 import '../constants/app_typography.dart';
 import '../constants/soft_ui_design.dart';
 import '../providers/chat_provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/voice_chat_extension.dart' as voice;
+import '../utils/app_time_format.dart';
+import '../utils/address_encoder.dart';
 import '../widgets/unified_top_bar.dart';
 import '../widgets/connected_users_list_modal.dart';
 import '../widgets/sender_info_modal.dart';
@@ -38,7 +39,9 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
   bool _isRecording = false;
   bool _isMicPressed = false;
   bool _markReadScheduled = false;
-  final Set<String> _dismissedPinnedEmergencyIds = <String>{};
+
+  static const Duration _pinnedRetention = Duration(days: 1);
+  Timer? _pinnedRefreshTimer;
 
   bool _isSosEmergencyMessage(ChatMessage message) {
     if (!message.isEmergency) return false;
@@ -49,7 +52,10 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
   }
 
   List<ChatMessage> _getSosEmergencyHistory(List<ChatMessage> messages) {
-    final list = messages.where(_isSosEmergencyMessage).toList();
+    final now = DateTime.now();
+    final list = messages
+        .where((m) => _isSosEmergencyMessage(m) && now.difference(m.timestamp) < _pinnedRetention)
+        .toList();
     list.sort((a, b) => b.timestamp.compareTo(a.timestamp));
     return list;
   }
@@ -101,6 +107,11 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
+    // Keep pinned banner/history time-window accurate while the screen stays open.
+    _pinnedRefreshTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (!mounted) return;
+      setState(() {});
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final chatProvider = context.read<ChatProvider>();
       
@@ -158,7 +169,18 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
       final messageText = _messageController.text;
       _messageController.clear();
       
-      final success = await context.read<ChatProvider>().sendMessage(messageText);
+      final authProvider = context.read<AuthProvider>();
+      final addr = AddressEncoder.fromUser(authProvider.currentUserModel);
+      final addressToSend = addr.fullAddress.isNotEmpty ? addr.fullAddress : null;
+      
+      final Map<String, dynamic>? additionalData = addressToSend != null 
+          ? {'sender_address': addressToSend} 
+          : null;
+
+      final success = await context.read<ChatProvider>().sendMessage(
+        messageText,
+        additionalData: additionalData,
+      );
       
       if (success && mounted) {
         // Show subtle success feedback (not full screen animation for messages)
@@ -245,18 +267,6 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
         );
       }
     });
-  }
-
-  String _messageStableId(ChatMessage message) {
-    // ChatMessage currently has no dedicated id; timestamp is stable enough for UI-only pin state.
-    return message.timestamp.millisecondsSinceEpoch.toString();
-  }
-
-  void _unpinEmergencyMessage(ChatMessage message) {
-    setState(() {
-      _dismissedPinnedEmergencyIds.add(_messageStableId(message));
-    });
-    HapticFeedback.selectionClick();
   }
 
   void _showPinnedEmergencyDetails(ChatMessage message) {
@@ -384,33 +394,7 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
                           label: const Text('Copy'),
                         ),
                       ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: () {
-                            _unpinEmergencyMessage(message);
-                            Navigator.of(ctx).pop();
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.error,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                            elevation: 0,
-                          ),
-                          icon: const Icon(Icons.push_pin_rounded, size: 18),
-                          label: const Text('Unpin'),
-                        ),
-                      ),
                     ],
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Tip: double-tap the pinned banner to unpin quickly.',
-                    style: AppTypography.bodySmall.copyWith(
-                      color: AppColors.textSecondary.withOpacity(0.85),
-                      fontWeight: FontWeight.w600,
-                    ),
                   ),
                 ],
               ),
@@ -527,7 +511,6 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
                       ),
                       itemBuilder: (ctx2, i) {
                         final m = items[i];
-                        final isDismissed = _dismissedPinnedEmergencyIds.contains(_messageStableId(m));
                         return InkWell(
                           onTap: () {
                             Navigator.of(ctx).pop();
@@ -568,22 +551,6 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
                                               ),
                                             ),
                                           ),
-                                          if (isDismissed)
-                                            Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                              decoration: BoxDecoration(
-                                                color: AppColors.lightGray.withOpacity(0.25),
-                                                borderRadius: BorderRadius.circular(999),
-                                              ),
-                                              child: Text(
-                                                'unpinned',
-                                                style: AppTypography.bodySmall.copyWith(
-                                                  color: AppColors.textSecondary,
-                                                  fontWeight: FontWeight.w800,
-                                                  fontSize: 11,
-                                                ),
-                                              ),
-                                            ),
                                         ],
                                       ),
                                       const SizedBox(height: 6),
@@ -742,8 +709,7 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
                   ChatMessage? latestEmergency;
                   for (final m in provider.messages.reversed) {
                     if (!_isSosEmergencyMessage(m)) continue;
-                    if (now.difference(m.timestamp).inHours >= 1) continue;
-                    if (_dismissedPinnedEmergencyIds.contains(_messageStableId(m))) continue;
+                    if (now.difference(m.timestamp) >= _pinnedRetention) continue;
                     latestEmergency = m;
                     break;
                   }
@@ -1382,18 +1348,17 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
     final messageDate = DateTime(dateTime.year, dateTime.month, dateTime.day);
     
     if (messageDate == today) {
-      return DateFormat('HH:mm').format(dateTime);
+      return AppTimeFormat.time(dateTime);
     } else if (messageDate == today.subtract(const Duration(days: 1))) {
-      return 'Yesterday ${DateFormat('HH:mm').format(dateTime)}';
+      return 'Yesterday ${AppTimeFormat.time(dateTime)}';
     } else {
-      return DateFormat('MMM dd, HH:mm').format(dateTime);
+      return AppTimeFormat.monthDayTime(dateTime);
     }
   }
 
   Widget _buildPinnedEmergencyAlert(ChatMessage message) {
     return GestureDetector(
       onTap: () => _showPinnedEmergencyDetails(message),
-      onDoubleTap: () => _unpinEmergencyMessage(message),
       child: Container(
       width: double.infinity,
       margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
@@ -1865,6 +1830,7 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
   @override
   void dispose() {
     _scrollController.removeListener(_onScroll);
+    _pinnedRefreshTimer?.cancel();
     _messageController.dispose();
     _scrollController.dispose();
     _debugScrollController.dispose();

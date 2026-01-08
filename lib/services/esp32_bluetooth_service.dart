@@ -1,12 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_bluetooth_serial/flutter_bluetooth_serial.dart';
-import 'package:intl/intl.dart';
+import 'package:flutter_bluetooth_serial_plus/flutter_bluetooth_serial_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
+import '../utils/app_time_format.dart';
 
 /// ESP32 Bluetooth Chat Service
 /// Handles communication with ESP32 via Bluetooth Classic
@@ -136,7 +136,7 @@ class ESP32BluetoothService extends ChangeNotifier {
       
       // Look for ESP32 in bonded devices
       for (BluetoothDevice device in bondedDevices) {
-        if (device.name == ESP32_DEVICE_NAME) {
+        if (device.name?.trim() == ESP32_DEVICE_NAME) {
           esp32Device = device;
           _addStatusLog('Found ESP32 in bonded devices: ${device.address}');
           break;
@@ -151,7 +151,7 @@ class ESP32BluetoothService extends ChangeNotifier {
         _addStatusLog('ESP32 not found in bonded devices, starting discovery...');
         
         FlutterBluetoothSerial.instance.startDiscovery().listen((event) {
-          if (event.device.name == ESP32_DEVICE_NAME) {
+          if (event.device.name?.trim() == ESP32_DEVICE_NAME) {
             esp32Device = event.device;
             _addStatusLog('Found ESP32 during discovery: ${event.device.address}');
           }
@@ -316,7 +316,7 @@ class ESP32BluetoothService extends ChangeNotifier {
         'sender_id': _esp32NodeId,
         'receiver_id': receiverId,
         'message': message,
-        'timestamp': DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now()),
+        'timestamp': DateTime.now().toIso8601String(),
       };
       
       _sendMessage(messageData);
@@ -496,7 +496,7 @@ class ESP32BluetoothService extends ChangeNotifier {
   
   /// Add status log
   void _addStatusLog(String message) {
-    String timestamp = DateFormat('HH:mm:ss').format(DateTime.now());
+    String timestamp = AppTimeFormat.timeWithSeconds(DateTime.now());
     String logMessage = '[$timestamp] $message';
     _statusController.add(logMessage);
     print('ESP32_BT: $logMessage');
@@ -504,7 +504,7 @@ class ESP32BluetoothService extends ChangeNotifier {
   
   /// Add error log
   void _addErrorLog(String message) {
-    String timestamp = DateFormat('HH:mm:ss').format(DateTime.now());
+    String timestamp = AppTimeFormat.timeWithSeconds(DateTime.now());
     String logMessage = '[$timestamp] ERROR: $message';
     _statusController.add(logMessage);
     print('ESP32_BT_ERROR: $logMessage');
