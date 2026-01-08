@@ -8,6 +8,7 @@ import '../widgets/typing_indicator.dart';
 import 'private_call_screen.dart';
 import '../providers/notification_provider.dart';
 import '../providers/auth_provider.dart';
+import '../services/notification_service.dart';
 
 class ModernPersonalChatScreen extends StatefulWidget {
   final String contactName;
@@ -93,6 +94,10 @@ class _ModernPersonalChatScreenState extends State<ModernPersonalChatScreen> {
     // Start listening via notification provider
     final notificationProvider = context.read<NotificationProvider>();
     notificationProvider.startListeningToPrivateChat(chatId, widget.contactName);
+
+    // Context-aware notifications: if user is currently in this chat thread,
+    // suppress notification surfacing for the same chatId.
+    NotificationService().setActiveChatId(chatId);
   }
   
   String _createChatId(String userId1, String userId2) {
@@ -110,6 +115,9 @@ class _ModernPersonalChatScreenState extends State<ModernPersonalChatScreen> {
     
     final notificationProvider = context.read<NotificationProvider>();
     notificationProvider.stopListeningToPrivateChat(chatId);
+
+    // Clear active chat context
+    NotificationService().setActiveChatId(null);
     
     _messageController.dispose();
     _scrollController.dispose();
@@ -649,6 +657,48 @@ class _ModernPersonalChatScreenState extends State<ModernPersonalChatScreen> {
             onPressed: () {
               Navigator.pop(context);
               Navigator.pop(context); // Go back to previous screen
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.error,
+              foregroundColor: AppColors.white,
+            ),
+            child: const Text('Block'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _clearChat() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Clear Chat'),
+        content: const Text('Are you sure you want to clear all messages?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              setState(() {
+                _messages.clear();
+              });
+              Navigator.pop(context);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.error,
+              foregroundColor: AppColors.white,
+            ),
+            child: const Text('Clear'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.error,

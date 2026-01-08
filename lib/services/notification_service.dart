@@ -1,5 +1,7 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -31,6 +33,8 @@ class NotificationService {
   bool _isInitialized = false;
   String? _fcmToken;
   bool _isInForeground = true;
+  bool _isLocalChatVisible = false;
+  String? _activeChatId;
 
   Future<void> initialize() async {
     if (_isInitialized) return;
@@ -90,7 +94,7 @@ class NotificationService {
       'Emergency Alerts',
       description: 'Critical emergency notifications',
       importance: Importance.max,
-      sound: RawResourceAndroidNotificationSound('emergency_alert'),
+      // Use default device sound. (Custom raw sound file is not bundled in this repo.)
     );
 
     const messageChannel = AndroidNotificationChannel(
@@ -134,9 +138,11 @@ class NotificationService {
   Future<void> _initializeFirebaseMessaging() async {
     // Configure settings
     await _firebaseMessaging.setForegroundNotificationPresentationOptions(
-      alert: true,
+      // When app is open (foreground), DO NOT show system-style notifications.
+      // We'll handle updates in-app via streams/badges instead.
+      alert: false,
       badge: true,
-      sound: true,
+      sound: false,
     );
   }
 
@@ -153,6 +159,18 @@ class NotificationService {
       debugPrint('✅ Notification permissions granted');
     } else {
       debugPrint('❌ Notification permissions denied');
+    }
+
+    // Android 13+ requires runtime POST_NOTIFICATIONS permission; firebase_messaging.requestPermission()
+    // does not request it on Android. Ask via flutter_local_notifications plugin.
+    if (Platform.isAndroid) {
+      try {
+        final androidImpl = _localNotifications
+            .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+        await androidImpl?.requestNotificationsPermission();
+      } catch (e) {
+        debugPrint('⚠️ Failed to request Android notification permission: $e');
+      }
     }
   }
 
@@ -195,29 +213,100 @@ class NotificationService {
   }
 
   void _handleForegroundMessage(RemoteMessage message) {
-    // Show local notification for foreground messages
+    final content = _buildNotificationContent(message);
+
+    // Avoid showing/propagating empty or nonsense notifications
+    final hasMeaningfulContent =
+        content.title.trim().isNotEmpty || content.body.trim().isNotEmpty || message.data.isNotEmpty;
+    if (!hasMeaningfulContent) {
+      return;
+    }
+
+    // If user is currently inside the app, do NOT show a local notification.
+    // Instead, just emit to stream so the UI can update quietly.
+    if (!_isInForeground) {
     _showLocalNotification(
       id: message.hashCode,
-      title: message.notification?.title ?? 'New Message',
-      body: message.notification?.body ?? 'You have a new message',
+        title: content.title,
+        body: content.body,
       payload: jsonEncode(message.data),
       channelId: _getChannelIdFromMessage(message),
     );
+    }
 
-    // Emit to stream
+    // Smart in-app behavior:
+    // If user is currently on Local Chat screen and this is a chat message,
+    // do a silent update (no in-app banners/toasts should trigger from this stream).
+    final channelId = _getChannelIdFromMessage(message);
+    final msgType = (message.data['type'] ?? '').toString();
+    final incomingChatId = (message.data['chatId'] ?? message.data['chat_id'] ?? '').toString();
+    final shouldSuppressInAppSurface =
+        _isInForeground &&
+        channelId == messageChannelId &&
+        (_isLocalChatVisible ||
+            (_activeChatId != null &&
+                _activeChatId!.isNotEmpty &&
+                incomingChatId.isNotEmpty &&
+                incomingChatId == _activeChatId &&
+                msgType == 'message'));
+
+    if (!shouldSuppressInAppSurface) {
     _onMessageController.add(message);
+    }
   }
 
   String _getChannelIdFromMessage(RemoteMessage message) {
     final data = message.data;
-    if (data['type'] == 'emergency') {
+    final type = (data['type'] ?? '').toString();
+    if (type == 'emergency' || type == 'emergency_alert') {
       return emergencyChannelId;
-    } else if (data['type'] == 'message') {
+    } else if (type == 'message') {
       return messageChannelId;
-    } else if (data['type'] == 'reminder') {
+    } else if (type == 'reminder') {
       return reminderChannelId;
     }
     return systemChannelId;
+  }
+
+  ({String title, String body}) _buildNotificationContent(RemoteMessage message) {
+    final data = message.data;
+    final type = (data['type'] ?? '').toString();
+
+    // Prefer server-sent notification fields when present (best source of truth)
+    final serverTitle = message.notification?.title;
+    final serverBody = message.notification?.body;
+    if ((serverTitle ?? '').trim().isNotEmpty || (serverBody ?? '').trim().isNotEmpty) {
+      return (
+        title: (serverTitle ?? '').trim().isNotEmpty ? serverTitle!.trim() : 'Notification',
+        body: (serverBody ?? '').trim().isNotEmpty ? serverBody!.trim() : '',
+      );
+    }
+
+    // Data-only fallback
+    if (type == 'message') {
+      final senderName = (data['senderName'] ?? data['sender_name'] ?? '').toString();
+      final msg = (data['message'] ?? data['body'] ?? '').toString();
+      return (
+        title: senderName.isNotEmpty ? 'New message from $senderName' : 'New message',
+        body: msg,
+      );
+    }
+
+    if (type == 'emergency_alert' || type == 'emergency') {
+      final alertType = (data['alertType'] ?? data['alert_type'] ?? '').toString();
+      final msg = (data['message'] ?? '').toString();
+      final location = (data['location'] ?? '').toString();
+      final t = alertType.isNotEmpty ? '🚨 Emergency Alert - ${alertType.toUpperCase()}' : '🚨 Emergency Alert';
+      final b = [
+        if (msg.isNotEmpty) msg,
+        if (location.isNotEmpty) 'Location: $location',
+      ].join('\n');
+      return (title: t, body: b);
+    }
+
+    final title = (data['title'] ?? '').toString();
+    final body = (data['body'] ?? data['message'] ?? '').toString();
+    return (title: title.isNotEmpty ? title : 'Notification', body: body);
   }
 
   void _onNotificationResponse(NotificationResponse response) {
@@ -233,25 +322,24 @@ class NotificationService {
     String? payload,
     required String channelId,
   }) async {
-    const androidDetails = AndroidNotificationDetails(
-      emergencyChannelId,
-      'Emergency Alerts',
-      channelDescription: 'Critical emergency notifications',
-      importance: Importance.max,
-      priority: Priority.high,
+    // Use the correct channelId passed in (so messages go to the right channel).
+    final androidDetails = AndroidNotificationDetails(
+      channelId,
+      _getChannelName(channelId),
+      channelDescription: _getChannelDescription(channelId),
+      importance: channelId == emergencyChannelId ? Importance.max : Importance.high,
+      priority: channelId == emergencyChannelId ? Priority.high : Priority.defaultPriority,
       icon: '@mipmap/ic_launcher',
     );
 
     const iosDetails = DarwinNotificationDetails(
+      // Foreground banners are already disabled globally; keep this for background/local cases.
       presentAlert: true,
       presentBadge: true,
       presentSound: true,
     );
 
-    const details = NotificationDetails(
-      android: androidDetails,
-      iOS: iosDetails,
-    );
+    final details = NotificationDetails(android: androidDetails, iOS: iosDetails);
 
     await _localNotifications.show(
       id,
@@ -443,13 +531,140 @@ class NotificationService {
     _isInForeground = isInForeground;
     debugPrint('📱 App lifecycle state updated: ${isInForeground ? "Foreground" : "Background"}');
   }
+
+  /// Let the notification system know if Local Chat screen is currently visible.
+  /// Used to suppress in-app notification surfacing for chat messages.
+  void setLocalChatScreenVisible(bool visible) {
+    _isLocalChatVisible = visible;
+  }
+
+  /// Set current active chatId (e.g., private chat thread). When active, message notifications
+  /// for that same chatId will be suppressed while app is in foreground.
+  void setActiveChatId(String? chatId) {
+    _activeChatId = chatId;
+  }
 }
 
 // Background message handler
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  debugPrint('📨 Handling background message: ${message.messageId}');
-  
-  // You can perform background tasks here
-  // Note: This function must be a top-level function
+  // Ensure Firebase is initialized for background handling
+  await Firebase.initializeApp();
+
+  // Data-only FCM messages do NOT display automatically in background.
+  // Show a local notification for meaningful payloads.
+  try {
+    final plugin = FlutterLocalNotificationsPlugin();
+
+    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const iosSettings = DarwinInitializationSettings(
+      requestAlertPermission: false,
+      requestBadgePermission: false,
+      requestSoundPermission: false,
+    );
+    const initSettings = InitializationSettings(android: androidSettings, iOS: iosSettings);
+    await plugin.initialize(initSettings);
+
+    // Ensure channels exist (Android 8+)
+    final androidImpl = plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+    if (androidImpl != null) {
+      await androidImpl.createNotificationChannel(
+        const AndroidNotificationChannel(
+          NotificationService.emergencyChannelId,
+          'Emergency Alerts',
+          description: 'Critical emergency notifications',
+          importance: Importance.max,
+        ),
+      );
+      await androidImpl.createNotificationChannel(
+        const AndroidNotificationChannel(
+          NotificationService.messageChannelId,
+          'Chat Messages',
+          description: 'New messages in chats',
+          importance: Importance.high,
+        ),
+      );
+      await androidImpl.createNotificationChannel(
+        const AndroidNotificationChannel(
+          NotificationService.systemChannelId,
+          'System Notifications',
+          description: 'App updates and system messages',
+          importance: Importance.defaultImportance,
+        ),
+      );
+      await androidImpl.createNotificationChannel(
+        const AndroidNotificationChannel(
+          NotificationService.reminderChannelId,
+          'Reminders',
+          description: 'Scheduled reminders and notifications',
+          importance: Importance.defaultImportance,
+        ),
+      );
+    }
+
+    final data = message.data;
+    final type = (data['type'] ?? '').toString();
+
+    final String channelId;
+    if (type == 'emergency' || type == 'emergency_alert') {
+      channelId = NotificationService.emergencyChannelId;
+    } else if (type == 'message') {
+      channelId = NotificationService.messageChannelId;
+    } else if (type == 'reminder') {
+      channelId = NotificationService.reminderChannelId;
+    } else {
+      channelId = NotificationService.systemChannelId;
+    }
+
+    final serverTitle = message.notification?.title;
+    final serverBody = message.notification?.body;
+
+    String title = (serverTitle ?? '').trim();
+    String body = (serverBody ?? '').trim();
+
+    // Data-only fallback
+    if (title.isEmpty && body.isEmpty) {
+      if (type == 'message') {
+        final senderName = (data['senderName'] ?? data['sender_name'] ?? '').toString();
+        final msg = (data['message'] ?? data['body'] ?? '').toString();
+        title = senderName.isNotEmpty ? 'New message from $senderName' : 'New message';
+        body = msg;
+      } else if (type == 'emergency' || type == 'emergency_alert') {
+        final alertType = (data['alertType'] ?? data['alert_type'] ?? '').toString();
+        final msg = (data['message'] ?? '').toString();
+        title = alertType.isNotEmpty ? '🚨 Emergency Alert - ${alertType.toUpperCase()}' : '🚨 Emergency Alert';
+        body = msg;
+      } else {
+        title = (data['title'] ?? 'Notification').toString();
+        body = (data['body'] ?? data['message'] ?? '').toString();
+      }
+    }
+
+    final hasMeaningfulContent = title.trim().isNotEmpty || body.trim().isNotEmpty || data.isNotEmpty;
+    if (!hasMeaningfulContent) return;
+
+    final androidDetails = AndroidNotificationDetails(
+      channelId,
+      channelId,
+      importance: channelId == NotificationService.emergencyChannelId ? Importance.max : Importance.high,
+      priority: channelId == NotificationService.emergencyChannelId ? Priority.high : Priority.defaultPriority,
+      icon: '@mipmap/ic_launcher',
+    );
+
+    const iosDetails = DarwinNotificationDetails(
+      presentAlert: true,
+      presentBadge: true,
+      presentSound: true,
+    );
+
+    await plugin.show(
+      message.hashCode,
+      title,
+      body,
+      NotificationDetails(android: androidDetails, iOS: iosDetails),
+      payload: jsonEncode(data),
+    );
+  } catch (e) {
+    debugPrint('❌ Background notification display failed: $e');
+  }
 }

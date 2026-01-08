@@ -67,34 +67,34 @@ class CustomButton extends StatelessWidget {
                         valueColor: AlwaysStoppedAnimation<Color>(buttonStyle.textColor),
                       ),
                     )
-                  : Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (icon != null) ...[
-                          Icon(
-                            icon, 
-                            size: buttonStyle.iconSize,
+                : Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Flexible(
+                        child: Text(
+                          text,
+                          style: TextStyle(
+                            fontSize: buttonStyle.fontSize,
+                            fontWeight: buttonStyle.fontWeight,
                             color: buttonStyle.textColor,
+                            letterSpacing: buttonStyle.letterSpacing,
                           ),
-                          const SizedBox(width: AppSpacing.sm),
-                        ],
-                        Flexible(
-                          child: Text(
-                            text,
-                            style: TextStyle(
-                              fontSize: buttonStyle.fontSize,
-                              fontWeight: buttonStyle.fontWeight,
-                              color: buttonStyle.textColor,
-                              letterSpacing: buttonStyle.letterSpacing,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                            maxLines: 1,
-                            textAlign: TextAlign.center,
-                          ),
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                      if (icon != null) ...[
+                        const SizedBox(width: AppSpacing.sm),
+                        Icon(
+                          icon, 
+                          size: buttonStyle.iconSize,
+                          color: buttonStyle.textColor,
                         ),
                       ],
-                    ),
+                    ],
+                  ),
             ),
           ),
         ),

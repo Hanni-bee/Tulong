@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tulong_app/constants/app_colors.dart';
 import 'package:tulong_app/constants/unified_typography.dart';
 import 'package:tulong_app/constants/soft_ui_design.dart';
@@ -16,6 +15,7 @@ import 'package:tulong_app/widgets/accessible_text.dart';
 import 'package:tulong_app/utils/icon_system.dart';
 import '../widgets/user_engagement_dashboard.dart';
 import '../providers/chat_provider.dart';
+import '../widgets/elite_liquid_background.dart';
 
 class ModernProfileScreen extends StatefulWidget {
   const ModernProfileScreen({super.key});
@@ -103,11 +103,15 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
 
   @override
   Widget build(BuildContext context) {
+    final isPushedRoute = ModalRoute.of(context)?.canPop ?? false;
     return Scaffold(
       backgroundColor: Colors.transparent,
-      body: SafeArea(
-        child: Column(
-          children: [
+      body: Stack(
+        children: [
+          if (isPushedRoute) const EliteLiquidBackground(isLight: true),
+          SafeArea(
+            child: Column(
+              children: [
             // Top bar - part of Column layout, fixed at top
             TopBarConfigs.profileTopBar(onEdit: () => _editProfile(context)),
             
@@ -131,14 +135,17 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                         _buildSettingsSections(),
                         const SizedBox(height: 20),
                         _buildActionButtons(),
+                        const SizedBox(height: 120),
                       ],
                     ),
                   ),
                 ),
               ),
             ),
-          ],
-        ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -269,31 +276,37 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                         ),
                        ),
                           const SizedBox(height: 6),
-                          Row(
-                            children: [
-                              Container(
-                                width: 10,
-                                height: 10,
-                                decoration: BoxDecoration(
-                                  color: Colors.greenAccent,
-                                  shape: BoxShape.circle,
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.greenAccent.withOpacity(0.6),
-                                      blurRadius: 8,
-                                      spreadRadius: 2,
+                          Consumer<ChatProvider>(
+                            builder: (context, chat, child) {
+                              final isConnected = chat.isConnected;
+                              return Row(
+                                children: [
+                                  Container(
+                                    width: 10,
+                                    height: 10,
+                                    decoration: BoxDecoration(
+                                      color: isConnected ? Colors.greenAccent : Colors.white.withOpacity(0.5),
+                                      shape: BoxShape.circle,
+                                      boxShadow: [
+                                        if (isConnected)
+                                          BoxShadow(
+                                            color: Colors.greenAccent.withOpacity(0.6),
+                                            blurRadius: 8,
+                                            spreadRadius: 2,
+                                          ),
+                                      ],
                                     ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              const AccessibleBodyText(
-                                'Connected',
-                                size: BodySize.small,
-                                color: Colors.white,
-                                backgroundColor: AppColors.primaryRed,
-                              ),
-                            ],
+                                  ),
+                                  const SizedBox(width: 6),
+                                  AccessibleBodyText(
+                                    isConnected ? 'Connected' : 'Offline',
+                                    size: BodySize.small,
+                                    color: Colors.white.withOpacity(isConnected ? 1.0 : 0.7),
+                                    backgroundColor: AppColors.primaryRed,
+                                  ),
+                                ],
+                              );
+                            },
                           ),
                         ],
                       ),
@@ -392,15 +405,13 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
               Expanded(
                 child: _statCardsStagger.buildAnimatedItem(
                   1,
-                  FutureBuilder<String>(
-                    future: _getConnectedDevicesCountAsync(),
-                    builder: (context, snapshot) {
-                      final deviceCount = snapshot.data ?? '0';
+                  Consumer<ChatProvider>(
+                    builder: (context, chat, child) {
                       return _buildStatCard(
                         title: 'Connected Devices',
-                        value: deviceCount,
-                        icon: Icons.bluetooth_connected,
-                        color: AppColors.primaryRed,
+                        value: chat.isConnected ? '1' : '0',
+                        icon: chat.isConnected ? Icons.bluetooth_connected : Icons.bluetooth_disabled,
+                        color: chat.isConnected ? AppColors.success : AppColors.error.withOpacity(0.7),
                       );
                     },
                   ),
@@ -1321,19 +1332,25 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                           child: const Text('Close'),
                     ),
                     const SizedBox(width: 8),
-                        ElevatedButton.icon(
+                    ElevatedButton(
                       onPressed: () async {
                         final text = controller.text.trim();
                         if (text.isEmpty) return;
-                            await context.read<AuthProvider>().addEmergencyMessage(text, makeDefault: messages.isEmpty);
-                            controller.clear();
-                            setStateSheet(() {});
+                        await context.read<AuthProvider>().addEmergencyMessage(text, makeDefault: messages.isEmpty);
+                        controller.clear();
+                        setStateSheet(() {});
                         if (!context.mounted) return;
-                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Message saved'), backgroundColor: AppColors.success));
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Message saved'), backgroundColor: AppColors.success));
                       },
-                          icon: const Icon(Icons.add, size: 18),
-                          label: const Text('Add'),
                       style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryRed, foregroundColor: AppColors.white),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text('Add'),
+                          SizedBox(width: 8),
+                          Icon(Icons.add, size: 18),
+                        ],
+                      ),
                     ),
                     const SizedBox(width: 12),
                   ],
@@ -1617,37 +1634,6 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
     return '0';
   }
 
-  Future<String> _getConnectedDevicesCountAsync() async {
-    try {
-      int count = 0;
-      
-      // Check SharedPreferences for saved paired device
-      final prefs = await SharedPreferences.getInstance();
-      final pairedDeviceName = prefs.getString('paired_device_name');
-      
-      // Check if we have a paired device saved
-      if (pairedDeviceName != null && pairedDeviceName.isNotEmpty) {
-        count++;
-      }
-      
-      // Also check for ESP32 MAC address and node ID (from previous connections)
-      final esp32Mac = prefs.getString('esp32_mac');
-      final esp32NodeId = prefs.getString('esp32_node_id');
-      
-      // If we have ESP32 connection data but no paired device name, still count it
-      if ((esp32Mac != null && esp32Mac.isNotEmpty) || 
-          (esp32NodeId != null && esp32NodeId.isNotEmpty)) {
-        if (pairedDeviceName == null || pairedDeviceName.isEmpty) {
-          count++;
-        }
-      }
-      
-      return count.toString();
-    } catch (e) {
-      return '0';
-    }
-  }
-
   // Help Center Modal
   void _showHelpCenterModal(BuildContext context) {
     showDialog(
@@ -1756,13 +1742,11 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
               // Contact Support Button
               SizedBox(
                 width: double.infinity,
-                child: ElevatedButton.icon(
+                child: ElevatedButton(
                   onPressed: () {
                     Navigator.pop(context);
                     // TODO: Open support email or contact form
                   },
-                  icon: const Icon(Icons.email),
-                  label: const Text('Contact Support'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primaryRed,
                     foregroundColor: Colors.white,
@@ -1770,6 +1754,14 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
+                  ),
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text('Contact Support'),
+                      SizedBox(width: 8),
+                      Icon(Icons.email),
+                    ],
                   ),
                 ),
               ),

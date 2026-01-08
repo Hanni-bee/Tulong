@@ -504,19 +504,8 @@ class _BiometricVerificationScreenState extends State<BiometricVerificationScree
 
   Widget _buildBiometricButton(BiometricType type) {
     // Only show fingerprint button
-    return ElevatedButton.icon(
+    return ElevatedButton(
       onPressed: _isVerifying ? null : _authenticateWithBiometrics,
-      icon: _isVerifying
-          ? const SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: Colors.white,
-              ),
-            )
-          : const Icon(Icons.fingerprint),
-      label: Text(_isVerifying ? 'Verifying...' : 'Use Fingerprint'),
       style: ElevatedButton.styleFrom(
         backgroundColor: AppColors.primaryRed,
         foregroundColor: Colors.white,
@@ -525,7 +514,25 @@ class _BiometricVerificationScreenState extends State<BiometricVerificationScree
           borderRadius: BorderRadius.circular(12),
         ),
       ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(_isVerifying ? 'Verifying...' : 'Use Fingerprint'),
+          const SizedBox(width: 8),
+          _isVerifying
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+              : const Icon(Icons.fingerprint),
+        ],
+      ),
     );
   }
 }
+
 

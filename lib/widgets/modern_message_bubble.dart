@@ -1,6 +1,11 @@
+import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../constants/app_colors.dart';
+import 'emergency_badge.dart';
+import '../models/emergency_detection_result.dart';
+import '../models/emergency_type.dart';
+import '../utils/emergency_message_parser.dart';
 
 class ModernMessageBubble extends StatefulWidget {
   final String text;
@@ -9,8 +14,11 @@ class ModernMessageBubble extends StatefulWidget {
   final bool isMe;
   final bool isEmergency;
   final bool isRead;
+  final Map<String, dynamic>? messageData; // Full message data for emergency parsing
   final VoidCallback? onLongPress;
   final VoidCallback? onTap;
+  final bool isGlass;
+  final Widget? customContent; // For voice messages or other content types
 
   const ModernMessageBubble({
     super.key,
@@ -20,8 +28,11 @@ class ModernMessageBubble extends StatefulWidget {
     required this.isMe,
     this.isEmergency = false,
     this.isRead = false,
+    this.messageData,
     this.onLongPress,
     this.onTap,
+    this.isGlass = false,
+    this.customContent,
   });
 
   @override
@@ -120,92 +131,119 @@ class _ModernMessageBubbleState extends State<ModernMessageBubble>
                     onTapCancel: _handleTapCancel,
                     onTap: widget.onTap,
                     onLongPress: widget.onLongPress,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      decoration: BoxDecoration(
-                        color: widget.isMe 
-                            ? (widget.isEmergency ? AppColors.error : AppColors.primaryRed)
-                            : AppColors.white,
-                        borderRadius: BorderRadius.only(
-                          topLeft: const Radius.circular(20),
-                          topRight: const Radius.circular(20),
-                          bottomLeft: widget.isMe ? const Radius.circular(20) : const Radius.circular(4),
-                          bottomRight: widget.isMe ? const Radius.circular(4) : const Radius.circular(20),
-                        ),
-                        border: Border.all(
-                          color: widget.isEmergency 
-                              ? AppColors.error 
-                              : widget.isMe 
-                                  ? Colors.white.withOpacity(0.2)
-                                  : AppColors.lightGray.withOpacity(0.5),
-                          width: widget.isEmergency ? 2 : 1.5,
-                        ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.only(
+                        topLeft: const Radius.circular(20),
+                        topRight: const Radius.circular(20),
+                        bottomLeft: widget.isMe ? const Radius.circular(20) : const Radius.circular(4),
+                        bottomRight: widget.isMe ? const Radius.circular(4) : const Radius.circular(20),
                       ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if (!widget.isMe) ...[
-                            // Sender name
-                            Text(
-                              widget.senderName,
-                              style: TextStyle(
-                                color: widget.isEmergency ? AppColors.error : AppColors.primaryRed,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 12,
-                              ),
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(
+                          sigmaX: widget.isGlass && !widget.isMe ? 12 : 0,
+                          sigmaY: widget.isGlass && !widget.isMe ? 12 : 0,
+                        ),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          decoration: BoxDecoration(
+                            color: widget.isMe 
+                                ? (widget.isEmergency ? AppColors.error : AppColors.primaryRed)
+                                : widget.isGlass 
+                                    ? Colors.white.withOpacity(0.85)
+                                    : AppColors.white,
+                            borderRadius: BorderRadius.only(
+                              topLeft: const Radius.circular(20),
+                              topRight: const Radius.circular(20),
+                              bottomLeft: widget.isMe ? const Radius.circular(20) : const Radius.circular(4),
+                              bottomRight: widget.isMe ? const Radius.circular(4) : const Radius.circular(20),
                             ),
-                            const SizedBox(height: 4),
-                          ],
-                          
-                          // Message text
-                          Text(
-                            widget.text,
-                            style: TextStyle(
-                              color: widget.isMe ? AppColors.white : AppColors.textPrimary,
-                              fontSize: 16,
-                              height: 1.4,
-                              fontWeight: widget.isEmergency ? FontWeight.w600 : FontWeight.w500,
+                            border: Border.all(
+                              color: widget.isEmergency 
+                                  ? AppColors.error 
+                                  : widget.isMe 
+                                      ? Colors.white.withOpacity(0.2)
+                                      : widget.isGlass 
+                                          ? Colors.white.withOpacity(0.4)
+                                          : AppColors.lightGray.withOpacity(0.5),
+                              width: widget.isEmergency ? 2 : 1.5,
                             ),
                           ),
-                          
-                          const SizedBox(height: 8),
-                          
-                          // Timestamp and status
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                _formatTime(widget.timestamp),
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: widget.isMe 
-                                      ? AppColors.white.withOpacity(0.7)
-                                      : AppColors.mediumGray,
-                                  fontWeight: FontWeight.w500,
+                              if (!widget.isMe) ...[
+                                // Sender name
+                                Text(
+                                  widget.senderName,
+                                  style: TextStyle(
+                                    color: widget.isEmergency ? AppColors.error : AppColors.primaryRed,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 12,
+                                  ),
                                 ),
-                              ),
-                              if (widget.isMe) ...[
-                                Row(
-                                  children: [
-                                    if (widget.isRead) ...[
-                                      const Icon(
-                                        Icons.done_all,
-                                        size: 14,
-                                        color: AppColors.success,
-                                      ),
-                                    ] else ...[
-                                      const Icon(
-                                        Icons.done,
-                                        size: 14,
-                                        color: AppColors.white,
-                                      ),
-                                    ],
-                                  ],
-                                ),
+                                const SizedBox(height: 4),
                               ],
+                              
+                              // Emergency badge (if emergency message)
+                              if (widget.isEmergency) ...[
+                                _buildEmergencyBadge(),
+                                const SizedBox(height: 8),
+                              ],
+                              
+                              // Message content
+                              if (widget.customContent != null)
+                                widget.customContent!
+                              else
+                                Text(
+                                  widget.text,
+                                  style: TextStyle(
+                                    color: widget.isMe ? AppColors.white : AppColors.textPrimary,
+                                    fontSize: 16,
+                                    height: 1.4,
+                                    fontWeight: widget.isEmergency ? FontWeight.w600 : FontWeight.w500,
+                                  ),
+                                ),
+                              
+                              const SizedBox(height: 8),
+                              
+                              // Timestamp and status
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    _formatTime(widget.timestamp),
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: widget.isMe 
+                                          ? AppColors.white.withOpacity(0.7)
+                                          : AppColors.mediumGray,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                  if (widget.isMe) ...[
+                                    Row(
+                                      children: [
+                                        if (widget.isRead) ...[
+                                          const Icon(
+                                            Icons.done_all,
+                                            size: 14,
+                                            color: AppColors.success,
+                                          ),
+                                        ] else ...[
+                                          const Icon(
+                                            Icons.done,
+                                            size: 14,
+                                            color: AppColors.white,
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  ],
+                                ],
+                              ),
                             ],
                           ),
-                        ],
+                        ),
                       ),
                     ),
                   ),
@@ -265,5 +303,53 @@ class _ModernMessageBubbleState extends State<ModernMessageBubble>
     } else {
       return 'now';
     }
+  }
+
+  /// Build emergency badge widget
+  Widget _buildEmergencyBadge() {
+    EmergencyDetectionResult? emergencyResult;
+    
+    // Try to parse emergency detection from message data
+    if (widget.messageData != null) {
+      emergencyResult = EmergencyMessageParser.parseFromMessageData(widget.messageData!);
+    }
+    
+    // Fallback to parsing from text
+    if (emergencyResult == null) {
+      emergencyResult = EmergencyMessageParser.parseFromMessage(widget.text);
+    }
+    
+    if (emergencyResult != null) {
+      return EmergencyBadge(
+        result: emergencyResult,
+        showPulseAnimation: emergencyResult.severity == SeverityLevel.high ||
+            emergencyResult.severity == SeverityLevel.critical,
+      );
+    }
+    
+    // Fallback: simple emergency indicator
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: AppColors.error.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.error, width: 1.5),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.warning, size: 16, color: AppColors.error),
+          const SizedBox(width: 4),
+          const Text(
+            'Emergency',
+            style: TextStyle(
+              color: AppColors.error,
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

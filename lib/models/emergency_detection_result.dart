@@ -81,3 +81,4 @@ class EmergencyDetectionResult {
   }
 }
 
+/// Result of emergency detection from AI/ML processing

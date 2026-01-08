@@ -303,6 +303,7 @@ class AutoRetrySequencer {
 
 /// Voice recording and playback service for ESP32 Bluetooth chat
 class VoiceChatExtension {
+
   static final VoiceChatExtension _instance = VoiceChatExtension._internal();
   factory VoiceChatExtension() => _instance;
   VoiceChatExtension._internal();
@@ -310,9 +311,11 @@ class VoiceChatExtension {
   final FlutterSoundRecorder _recorder = FlutterSoundRecorder();
   final AudioPlayer _player = AudioPlayer();
   final AutoRetrySequencer _retrySequencer = AutoRetrySequencer();
+  StreamSubscription? _recorderProgressSub;
   
   bool _isRecording = false;
   bool _isPlaying = false;
+  bool _isSendingVoice = false;
   String? _currentRecordingPath;
   String? _currentPlayingPath;
   bool _enableDiagnostics = true;
@@ -324,15 +327,22 @@ class VoiceChatExtension {
   final StreamController<bool> _recordingController = StreamController<bool>.broadcast();
   final StreamController<bool> _playingController = StreamController<bool>.broadcast();
   final StreamController<String> _debugController = StreamController<String>.broadcast();
+  final StreamController<double> _inputLevelController = StreamController<double>.broadcast();
+  final StreamController<bool> _sendingController = StreamController<bool>.broadcast();
+  final StreamController<double> _sendingProgressController = StreamController<double>.broadcast();
 
   // Getters
   bool get isRecording => _isRecording;
   bool get isPlaying => _isPlaying;
+  bool get isSendingVoice => _isSendingVoice;
   bool get isRetrying => _retrySequencer.isRetrying;
   bool get enableDiagnostics => _enableDiagnostics;
   Stream<bool> get recordingStream => _recordingController.stream;
   Stream<bool> get playingStream => _playingController.stream;
   Stream<String> get debugStream => _debugController.stream;
+  Stream<double> get inputLevelStream => _inputLevelController.stream;
+  Stream<bool> get sendingStream => _sendingController.stream;
+  Stream<double> get sendingProgressStream => _sendingProgressController.stream;
 
   // Setters
   set enableDiagnostics(bool value) => _enableDiagnostics = value;
@@ -414,6 +424,30 @@ class VoiceChatExtension {
         audioSource: AudioSource.microphone, // Explicit audio source
       );
 
+      // Stream mic input level for waveform UI (best-effort, never breaks recording)
+      _recorderProgressSub?.cancel();
+      _recorderProgressSub = _recorder.onProgress?.listen((event) {
+        try {
+          // flutter_sound exposes different fields across versions; handle both safely.
+          final dynamic e = event;
+          double db = -60.0;
+          try {
+            final v = e.decibels;
+            if (v is num) db = v.toDouble();
+          } catch (_) {}
+          try {
+            final v = e.dbPeakLevel;
+            if (v is num) db = v.toDouble();
+          } catch (_) {}
+
+          // Normalize roughly from [-60..0] dB to [0..1]
+          final normalized = ((db + 60.0) / 60.0).clamp(0.0, 1.0);
+          _inputLevelController.add(normalized);
+        } catch (_) {
+          // ignore
+        }
+      });
+
       _isRecording = true;
       _recordingStartTime = DateTime.now();
       _recordingController.add(true);
@@ -452,6 +486,9 @@ class VoiceChatExtension {
       await _recorder.stopRecorder();
       _isRecording = false;
       _recordingController.add(false);
+      _recorderProgressSub?.cancel();
+      _recorderProgressSub = null;
+      _inputLevelController.add(0.0);
       
       // Store the actual duration for later use
       _lastRecordingDuration = actualDuration;
@@ -546,11 +583,22 @@ class VoiceChatExtension {
   /// Send voice message over Bluetooth in 28-byte chunks (ESP32 compatible)
   Future<bool> sendVoiceMessage(String base64Audio, Function(String) sendChunk) async {
     try {
+      _isSendingVoice = true;
+      _sendingController.add(true);
+      _sendingProgressController.add(0.0);
+
       _debugController.add('[BT_TX] Sending voice message (${base64Audio.length} chars)');
+
+      final totalChunks = (base64Audio.length / VQVConstants.CHUNK_SIZE).ceil();
+      // +2 for <VOICE_START> and <VOICE_END>
+      final totalSteps = totalChunks + 2;
+      int sentSteps = 0;
       
       // Send start marker
       await sendChunk('<VOICE_START>\n');
       _debugController.add('[BT_TX] Sent <VOICE_START>');
+      sentSteps++;
+      _sendingProgressController.add((sentSteps / totalSteps).clamp(0.0, 1.0));
 
       // Send audio data in 28-byte chunks (ESP32 compatible)
       int chunkCount = 0;
@@ -560,6 +608,9 @@ class VoiceChatExtension {
         await sendChunk('$chunk\n');
         
         chunkCount++;
+        sentSteps++;
+        // Update progress every chunk (lightweight)
+        _sendingProgressController.add((sentSteps / totalSteps).clamp(0.0, 1.0));
         if (_enableDiagnostics && chunkCount % 10 == 0) {
           _debugController.add('[BT_TX] Sent chunk $chunkCount (${((i + VQVConstants.CHUNK_SIZE) / base64Audio.length * 100).toStringAsFixed(1)}%)');
         }
@@ -571,10 +622,17 @@ class VoiceChatExtension {
       // Send end marker
       await sendChunk('<VOICE_END>\n');
       _debugController.add('[BT_TX] Sent <VOICE_END> / <VOICE_END> successfully');
+      sentSteps++;
+      _sendingProgressController.add((sentSteps / totalSteps).clamp(0.0, 1.0));
       
+      _isSendingVoice = false;
+      _sendingController.add(false);
       return true;
     } catch (e) {
       _debugController.add('Error sending voice message: $e');
+      _isSendingVoice = false;
+      _sendingController.add(false);
+      _sendingProgressController.add(0.0);
       return false;
     }
   }
@@ -615,8 +673,10 @@ class VoiceChatExtension {
         
         // Clean up temporary file
         if (_currentPlayingPath != null) {
-          File(_currentPlayingPath!).delete().catchError((e) {
+          final path = _currentPlayingPath!;
+          File(path).delete().catchError((e) {
             _debugController.add('Error deleting temp file: $e');
+            return File(path);
           });
           _currentPlayingPath = null;
         }
@@ -642,8 +702,10 @@ class VoiceChatExtension {
         
         // Clean up temporary file
         if (_currentPlayingPath != null) {
-          File(_currentPlayingPath!).delete().catchError((e) {
+          final path = _currentPlayingPath!;
+          File(path).delete().catchError((e) {
             _debugController.add('Error deleting temp file: $e');
+            return File(path);
           });
           _currentPlayingPath = null;
         }
@@ -740,73 +802,68 @@ class VoiceChatExtension {
     _player.dispose();
     _retrySequencer.dispose();
     _voiceReceiveTimeout?.cancel();
+    _recorderProgressSub?.cancel();
+    _recorderProgressSub = null;
     _recordingController.close();
     _playingController.close();
     _debugController.close();
+    _inputLevelController.close();
+    _sendingController.close();
+    _sendingProgressController.close();
   }
 }
 
 /// Voice message data model
 class VoiceMessage {
-  final String id;
   final String base64Audio;
-  final DateTime timestamp;
-  final bool isMe;
-  MessageStatus status;
   final Duration? duration;
+  final DateTime timestamp;
+  final bool isListened;
 
   VoiceMessage({
-    required this.id,
     required this.base64Audio,
-    required this.timestamp,
-    required this.isMe,
-    this.status = MessageStatus.sent,
     this.duration,
+    required this.timestamp,
+    this.isListened = false,
   });
 
-  /// Create from Base64 audio data
-  factory VoiceMessage.fromBase64({
-    required String base64Audio,
-    required bool isMe,
-    MessageStatus status = MessageStatus.sent,
-    Duration? duration,
-  }) {
+  factory VoiceMessage.fromBase64(String base64String) {
     return VoiceMessage(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      base64Audio: base64Audio,
+      base64Audio: base64String,
       timestamp: DateTime.now(),
-      isMe: isMe,
-      status: status,
-      duration: duration,
     );
   }
 
-  /// Get audio file size in bytes
-  int get audioSizeBytes {
-    try {
-      final bytes = base64Decode(base64Audio);
-      return bytes.length;
-    } catch (e) {
-      return 0;
-    }
+  Map<String, dynamic> toJson() {
+    return {
+      'base64Audio': base64Audio,
+      'duration': duration?.inMilliseconds,
+      'timestamp': timestamp.toIso8601String(),
+      'isListened': isListened,
+    };
   }
 
-  /// Get formatted file size
-  String get formattedSize {
-    final bytes = audioSizeBytes;
-    if (bytes < 1024) return '${bytes}B';
-    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)}KB';
-    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)}MB';
+  factory VoiceMessage.fromJson(Map<String, dynamic> json) {
+    return VoiceMessage(
+      base64Audio: json['base64Audio'],
+      duration: json['duration'] != null ? Duration(milliseconds: json['duration']) : null,
+      timestamp: DateTime.parse(json['timestamp']),
+      isListened: json['isListened'] ?? false,
+    );
   }
 
-  /// Get formatted duration (seconds with milliseconds)
+  /// Helper to get formatted duration (mm:ss)
   String get formattedDuration {
-    if (duration != null) {
-      final totalSeconds = duration!.inMilliseconds / 1000.0;
-      final seconds = totalSeconds.floor();
-      final milliseconds = ((totalSeconds - seconds) * 1000).round();
-      return '$seconds.${milliseconds.toString().padLeft(3, '0')}s';
-    }
-    return '0.000s';
+    if (duration == null) return "00:00";
+    final minutes = duration!.inMinutes;
+    final seconds = duration!.inSeconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  /// Helper to get formatted size of audio data
+  String get formattedSize {
+    final bytes = base64Decode(base64Audio).length;
+    if (bytes < 1024) return '$bytes B';
+    return '${(bytes / 1024).toStringAsFixed(1)} KB';
   }
 }

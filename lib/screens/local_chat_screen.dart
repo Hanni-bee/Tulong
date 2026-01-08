@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../constants/app_colors.dart';
@@ -18,6 +19,7 @@ import '../widgets/enhanced_empty_state.dart';
 import '../widgets/accessible_text.dart';
 import '../widgets/enhanced_message_status.dart';
 import '../widgets/enhanced_voice_message_view.dart';
+import '../widgets/elite_liquid_background.dart';
 
 /// Local Chat Screen - Polished UI with Working Backend
 class LocalChatScreen extends StatefulWidget {
@@ -34,16 +36,73 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
   
   bool _isDebugConsoleVisible = false;
   bool _isRecording = false;
+  bool _isMicPressed = false;
+  bool _markReadScheduled = false;
+  final Set<String> _dismissedPinnedEmergencyIds = <String>{};
+
+  bool _isSosEmergencyMessage(ChatMessage message) {
+    if (!message.isEmergency) return false;
+    final source = message.rawData?['source']?.toString();
+    if (source == 'sos') return true;
+    // Fallback heuristic for older/legacy SOS payloads
+    return message.isMe && message.text.contains('🚨');
+  }
+
+  List<ChatMessage> _getSosEmergencyHistory(List<ChatMessage> messages) {
+    final list = messages.where(_isSosEmergencyMessage).toList();
+    list.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+    return list;
+  }
+
+  Widget _buildTopBarActionButton({
+    required IconData icon,
+    required VoidCallback onPressed,
+    required Color color,
+    String? tooltip,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(12),
+        child: Tooltip(
+          message: tooltip ?? '',
+          child: Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: color.withOpacity(0.2),
+                width: 1.5,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: color.withOpacity(0.06),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                  spreadRadius: 0,
+                ),
+              ],
+            ),
+            child: Icon(
+              icon,
+              color: color,
+              size: 22,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 
   @override
   void initState() {
     super.initState();
+    _scrollController.addListener(_onScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final chatProvider = context.read<ChatProvider>();
-      
-      // Mark chat screen as visible and mark all messages as read
-      chatProvider.setLocalChatScreenVisible(true);
-      chatProvider.markAllMessagesAsRead();
       
       // Load paired devices
       chatProvider.loadPairedDevices();
@@ -79,6 +138,9 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
       }
       
       chatProvider.setCurrentUserName(userName);
+
+      // If user opens Local Chat and they are already at the bottom, clear unread immediately.
+      _maybeMarkAllAsRead();
     });
     
     // Listen to voice extension recording state
@@ -111,26 +173,57 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
 
   Future<void> _startRecording() async {
     final provider = context.read<ChatProvider>();
-    if (provider.isConnected) {
-      final success = await provider.startRecording();
-      if (success) {
-        setState(() {
-          _isRecording = true;
-        });
-        _scrollToBottom();
+    if (!provider.isConnected) {
+      if (!mounted) return;
+      HapticFeedback.lightImpact();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Connect to ESP32 to send voice messages.'),
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    final success = await provider.startRecording();
+    if (!mounted) return;
+
+    if (success) {
+      setState(() {
+        _isRecording = true;
+      });
+      _scrollToBottom();
+
+      // Fix press/release race: if the user already released before start completed,
+      // stop immediately and send what we captured (if any).
+      if (!_isMicPressed) {
+        await _stopRecording(force: true);
       }
+    } else {
+      // Most common reason is mic permission denied (or recorder init failure).
+      HapticFeedback.lightImpact();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Microphone permission is required to record.'),
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 2),
+        ),
+      );
     }
   }
 
-  Future<void> _stopRecording() async {
-    if (_isRecording) {
-      final provider = context.read<ChatProvider>();
-      await provider.stopRecordingAndSend();
-      setState(() {
-        _isRecording = false;
-      });
-      _scrollToBottom();
-    }
+  Future<void> _stopRecording({bool force = false}) async {
+    final provider = context.read<ChatProvider>();
+    final shouldStop = force || _isRecording || provider.isRecording;
+    if (!shouldStop) return;
+
+    await provider.stopRecordingAndSend();
+    if (!mounted) return;
+    setState(() {
+      _isRecording = false;
+    });
+    _scrollToBottom();
   }
 
   Future<void> _playVoiceMessage(voice.VoiceMessage voiceMessage) async {
@@ -154,6 +247,405 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
     });
   }
 
+  String _messageStableId(ChatMessage message) {
+    // ChatMessage currently has no dedicated id; timestamp is stable enough for UI-only pin state.
+    return message.timestamp.millisecondsSinceEpoch.toString();
+  }
+
+  void _unpinEmergencyMessage(ChatMessage message) {
+    setState(() {
+      _dismissedPinnedEmergencyIds.add(_messageStableId(message));
+    });
+    HapticFeedback.selectionClick();
+  }
+
+  void _showPinnedEmergencyDetails(ChatMessage message) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        final bottomInset = MediaQuery.viewInsetsOf(ctx).bottom;
+        return Padding(
+          padding: EdgeInsets.only(bottom: bottomInset),
+          child: Container(
+            margin: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.18),
+                  blurRadius: 22,
+                  offset: const Offset(0, 10),
+                ),
+              ],
+            ),
+            child: SafeArea(
+              top: false,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: AppColors.lightGray.withOpacity(0.7),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: AppColors.error.withOpacity(0.10),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: AppColors.error.withOpacity(0.25)),
+                        ),
+                        child: const Icon(Icons.sos_rounded, color: AppColors.error, size: 20),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Pinned Emergency',
+                              style: AppTypography.titleMedium.copyWith(
+                                color: AppColors.textPrimary,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              _formatDateTime(message.timestamp),
+                              style: AppTypography.bodySmall.copyWith(
+                                color: AppColors.textSecondary,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.of(ctx).pop(),
+                        icon: const Icon(Icons.close_rounded),
+                        color: AppColors.textSecondary,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxHeight: MediaQuery.sizeOf(ctx).height * 0.45,
+                    ),
+                    child: SingleChildScrollView(
+                      child: Text(
+                        message.text,
+                        style: AppTypography.bodyLarge.copyWith(
+                          color: AppColors.textPrimary,
+                          fontWeight: FontWeight.w700,
+                          height: 1.35,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
+                            await Clipboard.setData(ClipboardData(text: message.text));
+                            if (ctx.mounted) Navigator.of(ctx).pop();
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Copied emergency message'),
+                                  behavior: SnackBarBehavior.floating,
+                                  duration: Duration(seconds: 2),
+                                ),
+                              );
+                            }
+                          },
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppColors.textPrimary,
+                            side: BorderSide(color: AppColors.lightGray.withOpacity(0.6)),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          ),
+                          icon: const Icon(Icons.copy_all_rounded, size: 18),
+                          label: const Text('Copy'),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: () {
+                            _unpinEmergencyMessage(message);
+                            Navigator.of(ctx).pop();
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.error,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                            elevation: 0,
+                          ),
+                          icon: const Icon(Icons.push_pin_rounded, size: 18),
+                          label: const Text('Unpin'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Tip: double-tap the pinned banner to unpin quickly.',
+                    style: AppTypography.bodySmall.copyWith(
+                      color: AppColors.textSecondary.withOpacity(0.85),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showPinnedHistoryModal() {
+    final provider = context.read<ChatProvider>();
+    final items = _getSosEmergencyHistory(provider.messages);
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return Container(
+          margin: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.18),
+                blurRadius: 22,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: AppColors.lightGray.withOpacity(0.7),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: AppColors.error.withOpacity(0.10),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppColors.error.withOpacity(0.22)),
+                      ),
+                      child: const Icon(Icons.push_pin_rounded, color: AppColors.error, size: 20),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Pinned SOS History',
+                            style: AppTypography.titleMedium.copyWith(
+                              color: AppColors.textPrimary,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '${items.length} alert${items.length == 1 ? '' : 's'}',
+                            style: AppTypography.bodySmall.copyWith(
+                              color: AppColors.textSecondary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.of(ctx).pop(),
+                      icon: const Icon(Icons.close_rounded),
+                      color: AppColors.textSecondary,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                if (items.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 28),
+                    child: Text(
+                      'No pinned SOS messages yet.',
+                      style: AppTypography.bodyMedium.copyWith(
+                        color: AppColors.textSecondary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  )
+                else
+                  ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxHeight: MediaQuery.sizeOf(ctx).height * 0.55,
+                    ),
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      itemCount: items.length,
+                      separatorBuilder: (_, __) => Divider(
+                        height: 16,
+                        color: AppColors.lightGray.withOpacity(0.45),
+                      ),
+                      itemBuilder: (ctx2, i) {
+                        final m = items[i];
+                        final isDismissed = _dismissedPinnedEmergencyIds.contains(_messageStableId(m));
+                        return InkWell(
+                          onTap: () {
+                            Navigator.of(ctx).pop();
+                            // After the sheet closes, show full details.
+                            Future.delayed(const Duration(milliseconds: 150), () {
+                              if (mounted) _showPinnedEmergencyDetails(m);
+                            });
+                          },
+                          borderRadius: BorderRadius.circular(14),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Container(
+                                  width: 38,
+                                  height: 38,
+                                  decoration: BoxDecoration(
+                                    color: AppColors.error.withOpacity(0.10),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(color: AppColors.error.withOpacity(0.22)),
+                                  ),
+                                  child: const Icon(Icons.sos_rounded, color: AppColors.error, size: 18),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              _formatDateTime(m.timestamp),
+                                              style: AppTypography.bodySmall.copyWith(
+                                                color: AppColors.textSecondary,
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                            ),
+                                          ),
+                                          if (isDismissed)
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                              decoration: BoxDecoration(
+                                                color: AppColors.lightGray.withOpacity(0.25),
+                                                borderRadius: BorderRadius.circular(999),
+                                              ),
+                                              child: Text(
+                                                'unpinned',
+                                                style: AppTypography.bodySmall.copyWith(
+                                                  color: AppColors.textSecondary,
+                                                  fontWeight: FontWeight.w800,
+                                                  fontSize: 11,
+                                                ),
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        m.text,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: AppTypography.bodyMedium.copyWith(
+                                          color: AppColors.textPrimary,
+                                          fontWeight: FontWeight.w700,
+                                          height: 1.2,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                const SizedBox(height: 10),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _onScroll() {
+    _maybeMarkAllAsRead();
+  }
+
+  void _maybeMarkAllAsRead() {
+    if (!mounted) return;
+    if (_markReadScheduled) return;
+
+    _markReadScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _markReadScheduled = false;
+      if (!mounted) return;
+      if (!_scrollController.hasClients) return;
+
+      final provider = context.read<ChatProvider>();
+
+      // Only clear when Local Chat tab is active/visible.
+      if (!provider.isLocalChatScreenVisible) return;
+      if (provider.unreadMessageCount <= 0) return;
+
+      // "Seen" rule: user must be at (or very near) the bottom.
+      const thresholdPx = 56.0;
+      final pos = _scrollController.position;
+      final atBottom = (pos.maxScrollExtent - pos.pixels) <= thresholdPx;
+      if (!atBottom) return;
+
+      provider.markAllMessagesAsRead();
+    });
+  }
+
   void _showConnectedUsersModal() {
     showDialog(
       context: context,
@@ -166,11 +658,21 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isKeyboardVisible = MediaQuery.viewInsetsOf(context).bottom > 20;
+    final isPushedRoute = ModalRoute.of(context)?.canPop ?? false;
+
     return Scaffold(
       backgroundColor: Colors.transparent,
-      body: SafeArea(
-        child: Column(
-          children: [
+      resizeToAvoidBottomInset: true,
+      body: Stack(
+        children: [
+          // When this screen is pushed as a standalone route (e.g., via Home quick action),
+          // provide the same light app background so we don't render over a black canvas.
+          if (isPushedRoute) const EliteLiquidBackground(isLight: true),
+          SafeArea(
+            bottom: true,
+            child: Column(
+              children: [
             // Unified top bar
             Consumer<ChatProvider>(
               builder: (context, provider, child) {
@@ -188,6 +690,14 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
                   onConnectedTap: provider.isConnected ? () {
                     _showConnectedUsersModal();
                   } : null,
+                  additionalActions: [
+                    _buildTopBarActionButton(
+                      icon: Icons.push_pin_rounded,
+                      color: AppColors.error,
+                      tooltip: 'Pinned SOS history',
+                      onPressed: _showPinnedHistoryModal,
+                    ),
+                  ],
                 );
               },
             ),
@@ -203,6 +713,12 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
                   
                   // Show empty state if no messages
                   if (provider.messages.isEmpty) {
+                    final emptyStatePadding = EdgeInsets.fromLTRB(
+                      32,
+                      isKeyboardVisible ? 24 : 48,
+                      32,
+                      isKeyboardVisible ? 20 : 48,
+                    );
                     return EmptyStatePresets.noMessages(
                       onStartChatting: provider.isConnected
                           ? () {
@@ -216,82 +732,111 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
                               _showConnectedUsersModal();
                             }
                           : null,
+                      padding: emptyStatePadding,
+                      scrollable: isKeyboardVisible, // idle: no scrolling; keyboard up: allow if needed
                     );
                   }
                   
+                  // Find the latest SOS emergency message if it's within the last hour (pinned banner source)
+                  final now = DateTime.now();
+                  ChatMessage? latestEmergency;
+                  for (final m in provider.messages.reversed) {
+                    if (!_isSosEmergencyMessage(m)) continue;
+                    if (now.difference(m.timestamp).inHours >= 1) continue;
+                    if (_dismissedPinnedEmergencyIds.contains(_messageStableId(m))) continue;
+                    latestEmergency = m;
+                    break;
+                  }
+                  final hasActiveEmergency = latestEmergency != null;
+
                   // Show messages with refresh indicator overlay
-                  return Stack(
+                  return Column(
                     children: [
-                      ListView.builder(
-                        controller: _scrollController,
-                        padding: const EdgeInsets.all(16),
-                        itemCount: provider.messages.length + (provider.isTyping ? 1 : 0),
-                        itemBuilder: (context, index) {
-                          // Show typing indicator at the end
-                          if (index == provider.messages.length && provider.isTyping) {
-                            return _buildTypingIndicator();
-                          }
-                          
-                          final message = provider.messages[index];
-                          // Auto-scroll to bottom when new messages arrive
-                          WidgetsBinding.instance.addPostFrameCallback((_) {
-                            if (_scrollController.hasClients && index == provider.messages.length - 1) {
-                              _scrollController.animateTo(
-                                _scrollController.position.maxScrollExtent,
-                                duration: const Duration(milliseconds: 300),
-                                curve: Curves.easeOut,
-                              );
-                            }
-                          });
-                          return _buildMessageBubble(message);
-                        },
-                      ),
-                      // Refresh indicator overlay (only show if refreshing, not when receiving real-time messages)
-                      if (provider.isRefreshingMessages && !provider.isConnected)
-                        Positioned(
-                          top: 16,
-                          left: 0,
-                          right: 0,
-                          child: Container(
-                            margin: const EdgeInsets.symmetric(horizontal: 16),
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                            decoration: BoxDecoration(
-                              color: AppColors.info.withOpacity(0.9),
-                              borderRadius: BorderRadius.circular(20),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.1),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 2),
-                                ),
-                              ],
+                      // Pinned Emergency Alert
+                      if (hasActiveEmergency)
+                        _buildPinnedEmergencyAlert(latestEmergency),
+                        
+                      Expanded(
+                        child: Stack(
+                          children: [
+                            ListView.builder(
+                              controller: _scrollController,
+                              padding: EdgeInsets.only(
+                                top: 16,
+                                left: 16,
+                                right: 16,
+                                bottom: 160, // clearance for input bar
+                              ),
+                              itemCount: provider.messages.length + (provider.isTyping ? 1 : 0),
+                              itemBuilder: (context, index) {
+                                // Show typing indicator at the end
+                                if (index == provider.messages.length && provider.isTyping) {
+                                  return _buildTypingIndicator();
+                                }
+                                
+                                final message = provider.messages[index];
+                                // Auto-scroll to bottom when new messages arrive
+                                WidgetsBinding.instance.addPostFrameCallback((_) {
+                                  if (_scrollController.hasClients && index == provider.messages.length - 1) {
+                                    _scrollController.animateTo(
+                                      _scrollController.position.maxScrollExtent,
+                                      duration: const Duration(milliseconds: 300),
+                                      curve: Curves.easeOut,
+                                    );
+                                  }
+                                });
+                                return _buildMessageBubble(message);
+                              },
                             ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                            // Refresh indicator overlay (only show if refreshing, not when receiving real-time messages)
+                            if (provider.isRefreshingMessages && !provider.isConnected)
+                              Positioned(
+                                top: 16,
+                                left: 0,
+                                right: 0,
+                                child: Container(
+                                  margin: const EdgeInsets.symmetric(horizontal: 16),
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.info.withOpacity(0.9),
+                                    borderRadius: BorderRadius.circular(20),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withOpacity(0.1),
+                                        blurRadius: 8,
+                                        offset: const Offset(0, 2),
+                                      ),
+                                    ],
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        provider.hasCachedMessages 
+                                            ? 'Refreshing...' 
+                                            : 'Loading...',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  provider.hasCachedMessages 
-                                      ? 'Refreshing...' 
-                                      : 'Loading...',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
+                              ),
+                          ],
                         ),
+                      ),
                     ],
                   );
                 },
@@ -371,9 +916,17 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
               ),
 
             // Message input area
-            _buildMessageInput(),
-          ],
-        ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: _buildMessageInput(),
+              ),
+            ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -397,6 +950,7 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
 
   Widget _buildMessageBubbleContent(ChatMessage message) {
     final isEmergency = message.isEmergency;
+    final location = _extractSosLocation(message);
     
     return Container(
       margin: EdgeInsets.only(bottom: isEmergency ? 16 : 12),
@@ -530,20 +1084,29 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
                       else
                         isEmergency
                             ? Text(
-                                message.text,
+                                location.displayText,
                                 style: AppTypography.bodyLarge.copyWith(
                                   fontWeight: FontWeight.w700,
                                   color: message.isMe ? Colors.white : AppColors.error,
                                 ),
                               )
                             : AccessibleChatText(
-                                message.text,
+                                location.displayText,
                                 isMe: message.isMe,
                                 backgroundColor: message.isMe
                                     ? AppColors.primaryRed
                                     : Colors.transparent, // Let bubble background show through
                                 maxLines: null,
                               ),
+                      if (location.shouldShowCard) ...[
+                        const SizedBox(height: 10),
+                        _buildSosLocationCard(
+                          full: location.fullAddress!,
+                          code: location.code,
+                          isMe: message.isMe,
+                          isEmergency: isEmergency,
+                        ),
+                      ],
                       const SizedBox(height: 4),
                       Row(
                         mainAxisSize: MainAxisSize.min,
@@ -607,6 +1170,174 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
     );
   }
 
+  ({String displayText, String? fullAddress, String? code, bool shouldShowCard})
+      _extractSosLocation(ChatMessage message) {
+    final raw = message.rawData;
+    final fullFromMeta = raw?['location_full']?.toString().trim();
+    final codeFromMeta = raw?['location_code']?.toString().trim();
+
+    String? full = (fullFromMeta != null && fullFromMeta.isNotEmpty) ? fullFromMeta : null;
+    String? code = (codeFromMeta != null && codeFromMeta.isNotEmpty) ? codeFromMeta : null;
+
+    // Backward-compatible fallback: parse a trailing "📍 ..." line if metadata is missing.
+    // This keeps older clients useful, while still preferring metadata when available.
+    if (full == null) {
+      final lines = message.text.split('\n');
+      final idx = lines.lastIndexWhere((l) => l.trimLeft().startsWith('📍'));
+      if (idx != -1) {
+        final candidate = lines[idx].replaceFirst(RegExp(r'^\s*📍\s*'), '').trim();
+        if (candidate.isNotEmpty) {
+          full = candidate;
+        }
+      }
+    }
+
+    // If we have a "real" location (metadata or parsed), show the card for emergency SOS style messages.
+    final shouldShow = message.isEmergency && full != null && full.isNotEmpty;
+
+    // If we're showing the card, remove the 📍 line from the visible message text to avoid duplication.
+    var display = message.text;
+    if (shouldShow && display.contains('📍')) {
+      final lines = display.split('\n');
+      final filtered = <String>[];
+      var removed = false;
+      for (final l in lines) {
+        final isPinLine = !removed && l.trimLeft().startsWith('📍');
+        if (isPinLine) {
+          removed = true;
+          continue;
+        }
+        filtered.add(l);
+      }
+      display = filtered.join('\n').trim();
+      if (display.isEmpty) display = message.text; // safety fallback
+    }
+
+    return (
+      displayText: display,
+      fullAddress: full,
+      code: code,
+      shouldShowCard: shouldShow,
+    );
+  }
+
+  Widget _buildSosLocationCard({
+    required String full,
+    required String? code,
+    required bool isMe,
+    required bool isEmergency,
+  }) {
+    final bg = isEmergency
+        ? (isMe ? Colors.white.withOpacity(0.12) : AppColors.error.withOpacity(0.08))
+        : (isMe ? Colors.white.withOpacity(0.12) : Colors.black.withOpacity(0.05));
+
+    final border = isEmergency
+        ? (isMe ? Colors.white.withOpacity(0.22) : AppColors.error.withOpacity(0.22))
+        : Colors.white.withOpacity(0.18);
+
+    final titleColor = isEmergency
+        ? (isMe ? Colors.white.withOpacity(0.95) : AppColors.error.withOpacity(0.95))
+        : (isMe ? Colors.white.withOpacity(0.95) : AppColors.textPrimary);
+
+    final textColor = isEmergency
+        ? (isMe ? Colors.white.withOpacity(0.90) : AppColors.textPrimary)
+        : (isMe ? Colors.white.withOpacity(0.90) : AppColors.textPrimary);
+
+    Future<void> copy(String v, String label) async {
+      await Clipboard.setData(ClipboardData(text: v));
+      if (!mounted) return;
+      HapticFeedback.lightImpact();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('$label copied'),
+          duration: const Duration(milliseconds: 1200),
+        ),
+      );
+    }
+
+    return GestureDetector(
+      onTap: () => copy(full, 'Address'),
+      onLongPress: code != null && code.trim().isNotEmpty ? () => copy(code.trim(), 'Location code') : null,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: border, width: 1.2),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.location_on_rounded,
+                  size: 16,
+                  color: isEmergency
+                      ? (isMe ? Colors.white.withOpacity(0.95) : AppColors.error)
+                      : titleColor,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  'Location',
+                  style: AppTypography.bodySmall.copyWith(
+                    color: titleColor,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0.4,
+                  ),
+                ),
+                const Spacer(),
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                  icon: Icon(
+                    Icons.copy_all_rounded,
+                    size: 16,
+                    color: titleColor.withOpacity(0.9),
+                  ),
+                  onPressed: () => copy(full, 'Address'),
+                  tooltip: 'Copy address',
+                ),
+              ],
+            ),
+            Text(
+              full,
+              style: AppTypography.bodySmall.copyWith(
+                color: textColor,
+                fontWeight: FontWeight.w700,
+                height: 1.25,
+              ),
+            ),
+            if (code != null && code.trim().isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: isMe ? Colors.black.withOpacity(0.08) : Colors.white.withOpacity(0.75),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(
+                    color: isMe ? Colors.white.withOpacity(0.18) : AppColors.error.withOpacity(0.15),
+                    width: 1,
+                  ),
+                ),
+                child: Text(
+                  code.trim(),
+                  style: AppTypography.bodySmall.copyWith(
+                    color: isMe ? Colors.white.withOpacity(0.92) : AppColors.textPrimary,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0.6,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildVoiceMessageContent(voice.VoiceMessage voiceMessage, String messageId, bool isMe) {
     final provider = context.watch<ChatProvider>();
     // For now, we'll use a simple check - if any voice message is playing
@@ -657,6 +1388,109 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
     } else {
       return DateFormat('MMM dd, HH:mm').format(dateTime);
     }
+  }
+
+  Widget _buildPinnedEmergencyAlert(ChatMessage message) {
+    return GestureDetector(
+      onTap: () => _showPinnedEmergencyDetails(message),
+      onDoubleTap: () => _unpinEmergencyMessage(message),
+      child: Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      decoration: BoxDecoration(
+        color: AppColors.error,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.error.withOpacity(0.3),
+            blurRadius: 15,
+            spreadRadius: 2,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: Stack(
+          children: [
+            // Decorative background pattern
+            Positioned(
+              right: -20,
+              top: -20,
+              child: Icon(
+                Icons.sos_rounded,
+                size: 100,
+                color: Colors.white.withOpacity(0.1),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.warning_amber_rounded,
+                      color: Colors.white,
+                      size: 24,
+                    ),
+                  ).animate(onPlay: (c) => c.repeat(reverse: true))
+                   .scale(begin: const Offset(1, 1), end: const Offset(1.1, 1.1), duration: 1.seconds),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Row(
+                          children: [
+                            const Text(
+                              'PINNED EMERGENCY',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 1.5,
+                              ),
+                            ),
+                            const Spacer(),
+                            Text(
+                              _formatDateTime(message.timestamp),
+                              style: TextStyle(
+                                color: Colors.white.withOpacity(0.7),
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          message.text,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            height: 1.2,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+    ).animate().slideY(begin: -0.2, end: 0, curve: Curves.easeOutBack).fade();
   }
 
   Widget _buildTypingIndicator() {
@@ -731,18 +1565,12 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
 
   Widget _buildMessageInput() {
     return Container(
-      decoration: SoftUIDesign.cardDecoration(
-        backgroundColor: Colors.white,
-        borderRadius: 0,
-        elevation: 3.0,
-        borderColor: AppColors.lightGray.withOpacity(0.3),
-        showBorder: true,
-      ).copyWith(
-        borderRadius: null,
-      ),
+      // Bottom input panel (kept subtle because the nav is floating)
       child: SafeArea(
+        top: false,
+        bottom: true,
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
           child: Column(
             children: [
               // Voice status indicator
@@ -763,11 +1591,22 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(
-                            provider.isRecording ? Icons.mic : Icons.volume_up,
-                            color: provider.isRecording ? AppColors.error : AppColors.success,
-                            size: 16,
-                          ),
+                          if (provider.isRecording) ...[
+                            const Icon(
+                              Icons.mic_rounded,
+                              color: AppColors.error,
+                              size: 16,
+                            ),
+                            const SizedBox(width: 10),
+                            _MiniWaveform(
+                              stream: provider.voiceExtension.inputLevelStream,
+                              color: AppColors.error,
+                            ),
+                            const SizedBox(width: 10),
+                          ] else ...[
+                            const Icon(Icons.volume_up, color: AppColors.success, size: 16),
+                            const SizedBox(width: 8),
+                          ],
                           const SizedBox(width: 8),
                           Text(
                             provider.isRecording ? 'Recording...' : 'Playing...',
@@ -783,84 +1622,238 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
                   return const SizedBox.shrink();
                 },
               ),
-              
-              // Input row
-              Row(
-                children: [
-                  // Voice recording button
-                  GestureDetector(
-                    onTapDown: (_) => _startRecording(),
-                    onTapUp: (_) => _stopRecording(),
-                    onTapCancel: () => _stopRecording(),
-                    child: Consumer<ChatProvider>(
-                      builder: (context, provider, child) {
-                        return Container(
-                          width: 48,
-                          height: 48,
-                          decoration: SoftUIDesign.buttonDecoration(
-                            backgroundColor: provider.isRecording ? AppColors.error : AppColors.online,
-                            borderRadius: 24.0,
-                            shadowColor: provider.isRecording ? AppColors.error : AppColors.online,
-                          ),
-                          child: Icon(
-                            provider.isRecording ? Icons.stop : Icons.mic,
-                            color: Colors.white,
-                            size: 20,
-                          ),
+
+              // Sending voice progress (UI only; driven by VoiceChatExtension chunk loop)
+              StreamBuilder<bool>(
+                stream: context.read<ChatProvider>().voiceExtension.sendingStream,
+                initialData: false,
+                builder: (context, snapshot) {
+                  final isSending = snapshot.data ?? false;
+                  if (!isSending) return const SizedBox.shrink();
+
+                  return Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
+                    margin: const EdgeInsets.only(bottom: 12),
+                    decoration: SoftUIDesign.cardDecoration(
+                      backgroundColor: AppColors.primaryRed.withOpacity(0.06),
+                      borderRadius: SoftUIDesign.buttonBorderRadius,
+                      elevation: 2.0,
+                      borderColor: AppColors.primaryRed.withOpacity(0.22),
+                      showBorder: true,
+                    ),
+                    child: StreamBuilder<double>(
+                      stream: context.read<ChatProvider>().voiceExtension.sendingProgressStream,
+                      initialData: 0.0,
+                      builder: (context, pSnap) {
+                        final progress = (pSnap.data ?? 0.0).clamp(0.0, 1.0);
+                        final pct = (progress * 100).round();
+                        return Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(Icons.upload_rounded, color: AppColors.primaryRed, size: 16),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Sending voice… $pct%',
+                                  style: AppTypography.bodySmall.copyWith(
+                                    color: AppColors.primaryRed,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(999),
+                              child: LinearProgressIndicator(
+                                value: progress,
+                                minHeight: 6,
+                                backgroundColor: AppColors.primaryRed.withOpacity(0.12),
+                                valueColor: const AlwaysStoppedAnimation<Color>(AppColors.primaryRed),
+                              ),
+                            ),
+                          ],
                         );
                       },
                     ),
-                  ),
-                  
-                  const SizedBox(width: 12),
-                  
-                  // Text input
-                  Expanded(
-                    child: Container(
-                      decoration: SoftUIDesign.cardDecoration(
-                        backgroundColor: AppColors.white,
-                        borderRadius: 24.0,
-                        elevation: 2.0,
-                        borderColor: AppColors.lightGray.withOpacity(0.3),
-                        showBorder: true,
+                  );
+                },
+              ),
+              
+              // Input row
+              ClipRRect(
+                borderRadius: BorderRadius.circular(28),
+                child: BackdropFilter(
+                  // Less glass: lower blur, more solid surface
+                  filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          Colors.white.withOpacity(0.98),
+                          Colors.white.withOpacity(0.94),
+                        ],
                       ),
-                      child: TextField(
-                        controller: _messageController,
-                        decoration: const InputDecoration(
-                          hintText: 'Type a message...',
-                          border: InputBorder.none,
-                          contentPadding: EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 12,
+                      borderRadius: BorderRadius.circular(28),
+                      border: Border.all(color: Colors.white.withOpacity(0.55), width: 1.2),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.06),
+                          blurRadius: 20,
+                          offset: const Offset(0, 10),
+                          spreadRadius: -6,
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        // Voice recording button (kept hold behavior)
+                        Consumer<ChatProvider>(
+                          builder: (context, provider, _) {
+                            final isRec = provider.isRecording;
+                            final color = isRec ? AppColors.error : AppColors.online;
+                            final canRecord = provider.isConnected;
+                            return GestureDetector(
+                              onTapDown: (_) {
+                                _isMicPressed = true;
+                                if (canRecord) {
+                                  _startRecording();
+                                } else {
+                                  _startRecording(); // shows snackbar feedback
+                                }
+                              },
+                              onTapUp: (_) async {
+                                _isMicPressed = false;
+                                await _stopRecording(force: true);
+                              },
+                              onTapCancel: () async {
+                                _isMicPressed = false;
+                                await _stopRecording(force: true);
+                              },
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 220),
+                                curve: Curves.easeOutCubic,
+                                width: 46,
+                                height: 46,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  gradient: LinearGradient(
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                    colors: [
+                                      color.withOpacity(canRecord ? 0.95 : 0.45),
+                                      color.withOpacity(canRecord ? 0.75 : 0.35),
+                                    ],
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: color.withOpacity(canRecord ? 0.25 : 0.10),
+                                      blurRadius: 16,
+                                      offset: const Offset(0, 8),
+                                      spreadRadius: -6,
+                                    ),
+                                  ],
+                                ),
+                                child: Icon(
+                                  isRec ? Icons.stop_rounded : Icons.mic_rounded,
+                                  color: Colors.white,
+                                  size: 20,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+
+                        const SizedBox(width: 10),
+
+                        // Text input
+                        Expanded(
+                          child: Container(
+                            height: 46,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.98),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: AppColors.lightGray.withOpacity(0.35),
+                                width: 1,
+                              ),
+                            ),
+                            alignment: Alignment.center,
+                            child: TextField(
+                              controller: _messageController,
+                              decoration: InputDecoration(
+                                hintText: 'Type a message...',
+                                hintStyle: AppTypography.bodyMedium.copyWith(
+                                  color: AppColors.textSecondary.withOpacity(0.55),
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                border: InputBorder.none,
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                              ),
+                              style: AppTypography.bodyMedium.copyWith(
+                                color: AppColors.textPrimary,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              maxLines: 1,
+                              textInputAction: TextInputAction.send,
+                              onSubmitted: (_) => _sendMessage(),
+                            ),
                           ),
                         ),
-                        maxLines: null,
-                        textInputAction: TextInputAction.send,
-                        onSubmitted: (_) => _sendMessage(),
-                      ),
+
+                        const SizedBox(width: 10),
+
+                        // Send button (visual enabled/disabled without changing logic)
+                        ValueListenableBuilder<TextEditingValue>(
+                          valueListenable: _messageController,
+                          builder: (context, value, _) {
+                            final hasText = value.text.trim().isNotEmpty;
+                            final base = AppColors.primaryRed;
+                            return GestureDetector(
+                              onTap: _sendMessage,
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 180),
+                                curve: Curves.easeOutCubic,
+                                width: 46,
+                                height: 46,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  gradient: LinearGradient(
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                    colors: [
+                                      base.withOpacity(hasText ? 0.98 : 0.55),
+                                      base.withOpacity(hasText ? 0.82 : 0.45),
+                                    ],
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: base.withOpacity(hasText ? 0.28 : 0.12),
+                                      blurRadius: 16,
+                                      offset: const Offset(0, 8),
+                                      spreadRadius: -6,
+                                    ),
+                                  ],
+                                ),
+                                child: const Icon(
+                                  Icons.send_rounded,
+                                  color: Colors.white,
+                                  size: 20,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ],
                     ),
                   ),
-                  
-                  const SizedBox(width: 12),
-                  
-                  // Send button
-                  GestureDetector(
-                    onTap: _sendMessage,
-                    child: Container(
-                      width: 48,
-                      height: 48,
-                      decoration: BoxDecoration(
-                        color: AppColors.primaryRed,
-                        borderRadius: BorderRadius.circular(24),
-                      ),
-                      child: const Icon(
-                        Icons.send_rounded,
-                        color: Colors.white,
-                        size: 20,
-                      ),
-                    ),
-                  ),
-                ],
+                ),
               ),
             ],
           ),
@@ -871,14 +1864,56 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
 
   @override
   void dispose() {
-    // Mark chat screen as not visible
-    final chatProvider = context.read<ChatProvider>();
-    chatProvider.setLocalChatScreenVisible(false);
-    
+    _scrollController.removeListener(_onScroll);
     _messageController.dispose();
     _scrollController.dispose();
     _debugScrollController.dispose();
     super.dispose();
+  }
+
+}
+
+class _MiniWaveform extends StatelessWidget {
+  final Stream<double> stream;
+  final Color color;
+  const _MiniWaveform({required this.stream, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<double>(
+      stream: stream,
+      initialData: 0.0,
+      builder: (context, snapshot) {
+        final v = (snapshot.data ?? 0.0).clamp(0.0, 1.0);
+        // Create a pleasing "wave" by phase shifting bars
+        final bars = <double>[
+          (v * 0.70).clamp(0.0, 1.0),
+          (v * 0.90).clamp(0.0, 1.0),
+          (v * 1.10).clamp(0.0, 1.0),
+          (v * 0.95).clamp(0.0, 1.0),
+          (v * 0.75).clamp(0.0, 1.0),
+        ];
+
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: bars.map((t) {
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 1.5),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 90),
+                curve: Curves.easeOutCubic,
+                width: 3.5,
+                height: 6 + 14 * t,
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.85),
+                  borderRadius: BorderRadius.circular(99),
+                ),
+              ),
+            );
+          }).toList(),
+        );
+      },
+    );
   }
 }
 
@@ -1102,21 +2137,10 @@ class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
                           color: AppColors.darkGray,
                         ),
                       ),
-                      ElevatedButton.icon(
+                      ElevatedButton(
                         onPressed: provider.isConnecting ? null : () {
                           provider.loadPairedDevices();
                         },
-                        icon: provider.isConnecting 
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                ),
-                              )
-                            : const Icon(Icons.refresh, size: 18),
-                        label: Text(provider.isConnecting ? 'Connecting...' : 'Refresh'),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: cyanBlue,
                           foregroundColor: Colors.white,
@@ -1124,6 +2148,24 @@ class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(provider.isConnecting ? 'Connecting...' : 'Refresh'),
+                            const SizedBox(width: 8),
+                            if (provider.isConnecting)
+                              const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                ),
+                              )
+                            else
+                              const Icon(Icons.refresh, size: 18),
+                          ],
                         ),
                       ),
                     ],
@@ -1327,14 +2369,13 @@ class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
                                           ),
                                         ),
                                         trailing: isConnected
-                                            ? ElevatedButton.icon(
+                                            ? ElevatedButton(
                                                 onPressed: () async {
                                                   await provider.disconnect();
                                                   if (mounted) {
                                                     setState(() {}); // Refresh UI
                                                   }
                                                 },
-                                                icon: const Icon(Icons.bluetooth_disabled, size: 18),
                                                 style: ElevatedButton.styleFrom(
                                                   backgroundColor: Colors.red,
                                                   foregroundColor: Colors.white,
@@ -1343,9 +2384,16 @@ class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
                                                     borderRadius: BorderRadius.circular(8),
                                                   ),
                                                 ),
-                                                label: const Text('Disconnect'),
+                                                child: const Row(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    Text('Disconnect'),
+                                                    SizedBox(width: 8),
+                                                    Icon(Icons.bluetooth_disabled, size: 18),
+                                                  ],
+                                                ),
                                               )
-                                            : ElevatedButton.icon(
+                                            : ElevatedButton(
                                                 onPressed: provider.isConnecting ? null : () async {
                                                   HapticFeedback.mediumImpact();
                                                   bool success = await provider.connectToDevice(device);
@@ -1385,10 +2433,6 @@ class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
                                                     );
                                                   }
                                                 },
-                                                icon: Icon(
-                                                  wasDisconnected ? Icons.refresh : Icons.bluetooth,
-                                                  size: 18,
-                                                ),
                                                 style: ElevatedButton.styleFrom(
                                                   backgroundColor: wasDisconnected ? Colors.orange : cyanBlue,
                                                   foregroundColor: Colors.white,
@@ -1397,10 +2441,20 @@ class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
                                                     borderRadius: BorderRadius.circular(8),
                                                   ),
                                                 ),
-                                                label: Text(
-                                                  provider.isConnecting 
-                                                      ? 'Connecting...' 
-                                                      : (wasDisconnected ? 'Reconnect' : 'Connect'),
+                                                child: Row(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    Text(
+                                                      provider.isConnecting 
+                                                          ? 'Connecting...' 
+                                                          : (wasDisconnected ? 'Reconnect' : 'Connect'),
+                                                    ),
+                                                    const SizedBox(width: 8),
+                                                    Icon(
+                                                      wasDisconnected ? Icons.refresh : Icons.bluetooth,
+                                                      size: 18,
+                                                    ),
+                                                  ],
                                                 ),
                                               ),
                                       ),
@@ -1415,19 +2469,25 @@ class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
                               const SizedBox(height: 8),
                               Padding(
                                 padding: const EdgeInsets.symmetric(horizontal: 20),
-                                child: TextButton.icon(
+                                child: TextButton(
                                   onPressed: () {
                                     setState(() {
                                       _showAllDevices = true;
                                     });
                                   },
-                                  icon: const Icon(Icons.expand_more, color: cyanBlue),
-                                  label: Text(
-                                    'Show more (${provider.pairedDevices.length - 5} more devices)',
-                                    style: AppTypography.bodyMedium.copyWith(
-                                      color: cyanBlue,
-                                      fontWeight: FontWeight.w600,
-                                    ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        'Show more (${provider.pairedDevices.length - 5} more devices)',
+                                        style: AppTypography.bodyMedium.copyWith(
+                                          color: cyanBlue,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      const Icon(Icons.expand_more, color: cyanBlue),
+                                    ],
                                   ),
                                 ),
                               ),
@@ -1438,19 +2498,25 @@ class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
                               const SizedBox(height: 8),
                               Padding(
                                 padding: const EdgeInsets.symmetric(horizontal: 20),
-                                child: TextButton.icon(
+                                child: TextButton(
                                   onPressed: () {
                                     setState(() {
                                       _showAllDevices = false;
                                     });
                                   },
-                                  icon: const Icon(Icons.expand_less, color: cyanBlue),
-                                  label: Text(
-                                    'Show less',
-                                    style: AppTypography.bodyMedium.copyWith(
-                                      color: cyanBlue,
-                                      fontWeight: FontWeight.w600,
-                                    ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        'Show less',
+                                        style: AppTypography.bodyMedium.copyWith(
+                                          color: cyanBlue,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      const Icon(Icons.expand_less, color: cyanBlue),
+                                    ],
                                   ),
                                 ),
                               ),

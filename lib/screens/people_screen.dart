@@ -182,14 +182,20 @@ class _PeopleScreenState extends State<PeopleScreen> {
                     ),
                   ),
                   const Spacer(),
-                  TextButton.icon(
+                  TextButton(
                     onPressed: () {
                       // TODO: Show filter options
                     },
-                    icon: const Icon(Icons.filter_list, size: 18),
-                    label: const Text('Filter'),
                     style: TextButton.styleFrom(
                       foregroundColor: AppColors.primaryRed,
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('Filter'),
+                        SizedBox(width: 8),
+                        Icon(Icons.filter_list, size: 18),
+                      ],
                     ),
                   ),
                 ],
@@ -356,17 +362,23 @@ class _PeopleScreenState extends State<PeopleScreen> {
               child: Row(
                 children: [
                   Expanded(
-                    child: OutlinedButton.icon(
+                    child: OutlinedButton(
                       onPressed: () {
                         Navigator.pop(context);
                         _openPersonalMessage(context, user);
                       },
-                      icon: const Icon(Icons.message),
-                      label: const Text('Message'),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: AppColors.primaryRed,
                         side: const BorderSide(color: AppColors.primaryRed),
                         padding: const EdgeInsets.symmetric(vertical: 16),
+                      ),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text('Message'),
+                          SizedBox(width: 8),
+                          Icon(Icons.message),
+                        ],
                       ),
                     ),
                   ),
@@ -411,6 +423,18 @@ class _PeopleScreenState extends State<PeopleScreen> {
     if (mounted) {
       HapticFeedback.lightImpact();
       ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Users refreshed', style: AppTypography.bodyMedium.copyWith(color: Colors.white)),
+          duration: const Duration(seconds: 1),
+          backgroundColor: AppColors.success,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
+    }
+  }
+}
+
         SnackBar(
           content: Text('Users refreshed', style: AppTypography.bodyMedium.copyWith(color: Colors.white)),
           duration: const Duration(seconds: 1),

@@ -99,7 +99,8 @@ class _TulongAppState extends State<TulongApp> with WidgetsBindingObserver {
         ChangeNotifierProvider(create: (_) => AuthProvider()..loadSession()),
         ChangeNotifierProvider(create: (_) => NetworkProvider()),
         ChangeNotifierProvider(create: (_) => PowerProvider()),
-        ChangeNotifierProvider(create: (_) => SimpleBluetoothService()),
+        // Initialize once so platform callbacks update connection state app-wide.
+        ChangeNotifierProvider(create: (_) => SimpleBluetoothService()..initialize()),
         ChangeNotifierProvider(create: (_) => HardwareService()..initialize()),
         ChangeNotifierProvider(create: (_) => ChatProvider()),
         ChangeNotifierProvider(create: (_) => NotificationProvider()),

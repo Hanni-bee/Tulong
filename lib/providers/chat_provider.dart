@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bluetooth_serial_plus/flutter_bluetooth_serial_plus.dart';
 import '../services/bluetooth_service.dart';
 import '../services/voice_chat_extension.dart' as voice;
-import '../services/sqlite_service.dart';
+import '../services/notification_service.dart';
 
 class ChatProvider with ChangeNotifier {
   final BluetoothService _bluetoothService = BluetoothService();
@@ -151,6 +151,8 @@ class ChatProvider with ChangeNotifier {
   
   void setLocalChatScreenVisible(bool visible) {
     _isLocalChatScreenVisible = visible;
+    // Suppress in-app notification surfacing while Local Chat is open.
+    NotificationService().setLocalChatScreenVisible(visible);
     notifyListeners();
   }
   
@@ -203,8 +205,19 @@ class ChatProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  Future<bool> sendMessage(String text) async {
+  Future<bool> sendMessage(String text, {bool isEmergency = false, Map<String, dynamic>? additionalData}) async {
     if (text.trim().isEmpty) return false;
+
+    // Build the full message data for internal tracking
+    final Map<String, dynamic> rawData = {
+      'message': text.trim(),
+      'is_emergency': isEmergency,
+      'sender_name': _currentUserName ?? 'Me',
+      'timestamp': DateTime.now().toIso8601String(),
+    };
+    if (additionalData != null) {
+      rawData.addAll(additionalData);
+    }
 
     ChatMessage message = ChatMessage(
       text: text.trim(),
@@ -212,10 +225,21 @@ class ChatProvider with ChangeNotifier {
       timestamp: DateTime.now(),
       status: voice.MessageStatus.sending,
       type: voice.MessageType.text,
+      isEmergency: isEmergency,
+      rawData: rawData,
     );
 
-    _addMessage(message.text, true, message: message);
-    bool success = await _bluetoothService.sendMessage(text);
+    _addMessage(message.text, true, message: message, rawData: rawData);
+    
+    // For ESP32 transmission, we send a JSON string if it's an emergency or has metadata
+    String dataToSend;
+    if (isEmergency || additionalData != null) {
+      dataToSend = json.encode(rawData);
+    } else {
+      dataToSend = text.trim();
+    }
+    
+    bool success = await _bluetoothService.sendMessage(dataToSend);
     
     if (success) {
       message.status = voice.MessageStatus.sent;
@@ -225,6 +249,39 @@ class ChatProvider with ChangeNotifier {
     
     notifyListeners();
     return success;
+  }
+
+  /// Mirror a message into the local chat UI without transmitting over Bluetooth.
+  /// Used to keep UI consistent when other services (e.g., SimpleBluetoothService) handle sending.
+  void addMirroredMessage({
+    required String text,
+    bool isEmergency = false,
+    Map<String, dynamic>? rawData,
+    DateTime? timestamp,
+  }) {
+    final ts = timestamp ?? DateTime.now();
+    final data = rawData ??
+        <String, dynamic>{
+          'message': text,
+          'is_emergency': isEmergency,
+          'sender_name': _currentUserName ?? 'Me',
+          'timestamp': ts.toIso8601String(),
+          'source': 'mirrored',
+        };
+
+    _messages.add(
+      ChatMessage(
+        text: text,
+        isMe: true,
+        timestamp: ts,
+        status: voice.MessageStatus.sent,
+        type: voice.MessageType.text,
+        senderName: _currentUserName,
+        isEmergency: isEmergency,
+        rawData: data,
+      ),
+    );
+    notifyListeners();
   }
 
   /// Process incoming message and handle voice messages
@@ -283,40 +340,55 @@ class ChatProvider with ChangeNotifier {
         final parts = message.split(':');
         if (parts.length >= 2) {
           final sender = parts[0].replaceAll('From', '').trim();
-          final messageText = parts.sublist(1).join(':').trim();
+          final rawText = parts.sublist(1).join(':').trim();
+          final parsed = _parseDisplayMessage(rawText);
           _addConnectedUser(sender);
-          _addMessage(messageText, false, senderName: sender);
+          _addMessage(
+            parsed.text,
+            false,
+            senderName: parsed.senderName ?? sender,
+            rawData: parsed.rawData,
+          );
         } else {
-          _addMessage(message, false);
+          final parsed = _parseDisplayMessage(message);
+          _addMessage(parsed.text, false, senderName: parsed.senderName, rawData: parsed.rawData);
         }
       } else {
-        // Regular text message - try to extract user info
-        String? extractedSender = _extractUserFromMessage(message);
-        _addMessage(message, false, senderName: extractedSender);
+        // Regular text message - try to extract user info and metadata
+        final parsed = _parseDisplayMessage(message);
+        if (parsed.senderName != null && parsed.senderName!.isNotEmpty) {
+          _addConnectedUser(parsed.senderName!);
+        }
+        _addMessage(parsed.text, false, senderName: parsed.senderName, rawData: parsed.rawData);
       }
     }
   }
-  
-  /// Extract and track user from message, returns sender name if found
-  String? _extractUserFromMessage(String message) {
-    // Try to parse JSON messages that might contain sender info
+
+  ({String text, Map<String, dynamic>? rawData, String? senderName}) _parseDisplayMessage(String raw) {
+    // Default: show raw text (trimmed).
+    var text = raw.trim();
+    Map<String, dynamic>? rawData;
+    String? senderName;
+
+    // Try JSON decode; if it is a message envelope, extract display fields.
     try {
-      final jsonData = json.decode(message);
-      if (jsonData is Map) {
-        final senderName = jsonData['sender_name'] as String?;
-        final senderId = jsonData['sender_id'] as String?;
-        if (senderName != null && senderName.isNotEmpty) {
-          _addConnectedUser(senderName);
-          return senderName;
-        } else if (senderId != null && senderId.isNotEmpty) {
-          _addConnectedUser(senderId);
-          return senderId;
+      final decoded = json.decode(text);
+      if (decoded is Map<String, dynamic>) {
+        rawData = decoded;
+        senderName = decoded['sender_name'] as String? ?? decoded['sender_id'] as String?;
+        final extractedText = decoded['message'] ?? decoded['body'] ?? decoded['text'];
+        if (extractedText != null) {
+          final candidate = extractedText.toString().trim();
+          if (candidate.isNotEmpty) {
+            text = candidate;
+          }
         }
       }
-    } catch (e) {
-      // Not JSON, ignore
+    } catch (_) {
+      // Not JSON
     }
-    return null;
+
+    return (text: text, rawData: rawData, senderName: senderName);
   }
   
   /// Add connected user to the list
@@ -369,11 +441,10 @@ class ChatProvider with ChangeNotifier {
       }
     }
     
-    final voiceMessage = voice.VoiceMessage.fromBase64(
+    final voiceMessage = voice.VoiceMessage(
       base64Audio: base64Audio,
-      isMe: isMe,
-      status: isMe ? voice.MessageStatus.sent : voice.MessageStatus.received,
       duration: messageDuration,
+      timestamp: DateTime.now(),
     );
 
     final chatMessage = ChatMessage(
@@ -445,12 +516,11 @@ class ChatProvider with ChangeNotifier {
     // Calculate recording duration
     final recordingDuration = _voiceExtension.getRecordingDuration();
     
-    // Create voice message
-    final voiceMessage = voice.VoiceMessage.fromBase64(
+    // Create voice message (status is tracked on ChatMessage)
+    final voiceMessage = voice.VoiceMessage(
       base64Audio: base64Audio,
-      isMe: true,
-      status: voice.MessageStatus.sending,
       duration: recordingDuration,
+      timestamp: DateTime.now(),
     );
 
     // Add to messages
@@ -474,7 +544,6 @@ class ChatProvider with ChangeNotifier {
 
     if (success) {
       chatMessage.status = voice.MessageStatus.sent;
-      voiceMessage.status = voice.MessageStatus.sent;
       addStructuredDebug({
         'source': 'VOICE',
         'event': 'Voice message sent successfully',
@@ -485,7 +554,6 @@ class ChatProvider with ChangeNotifier {
       });
     } else {
       chatMessage.status = voice.MessageStatus.failed;
-      voiceMessage.status = voice.MessageStatus.failed;
       addStructuredDebug({
         'source': 'VOICE',
         'event': 'Voice message send failed',
@@ -507,8 +575,16 @@ class ChatProvider with ChangeNotifier {
     await _voiceExtension.stopPlayback();
   }
 
-  void _addMessage(String text, bool isMe, {String? senderName, ChatMessage? message}) {
+  void _addMessage(String text, bool isMe, {String? senderName, ChatMessage? message, Map<String, dynamic>? rawData}) {
     if (message == null) {
+      // Check for emergency in text if not explicitly set
+      final rawEmergency = rawData?['is_emergency'] ?? rawData?['isEmergency'];
+      final isEmergencyFlag = rawEmergency == true || rawEmergency?.toString() == 'true' || rawEmergency?.toString() == '1';
+      bool isEmergencyText = isEmergencyFlag ||
+          text.contains('🚨') ||
+          text.contains('Emergency:') ||
+          text.toUpperCase().contains('SOS');
+      
       message = ChatMessage(
         text: text,
         isMe: isMe,
@@ -516,9 +592,11 @@ class ChatProvider with ChangeNotifier {
         status: isMe ? voice.MessageStatus.sent : voice.MessageStatus.delivered,
         type: voice.MessageType.text,
         senderName: senderName,
+        isEmergency: isEmergencyText,
+        rawData: rawData,
       );
-    } else if (!isMe && senderName != null) {
-      // Update sender name if provided
+    } else if (!isMe && (senderName != null || rawData != null)) {
+      // Update sender name and rawData if provided
       message = ChatMessage(
         text: message.text,
         isMe: message.isMe,
@@ -526,7 +604,9 @@ class ChatProvider with ChangeNotifier {
         status: message.status,
         type: message.type,
         voiceMessage: message.voiceMessage,
-        senderName: senderName,
+        senderName: senderName ?? message.senderName,
+        isEmergency: message.isEmergency,
+        rawData: rawData ?? message.rawData,
       );
     }
     
@@ -600,6 +680,7 @@ class ChatMessage {
   final voice.VoiceMessage? voiceMessage;
   final String? senderName; // Sender's name for received messages
   final bool isEmergency; // Emergency message flag
+  final Map<String, dynamic>? rawData; // Full message data for metadata parsing
 
   ChatMessage({
     required this.text,
@@ -610,12 +691,10 @@ class ChatMessage {
     this.voiceMessage,
     this.senderName,
     this.isEmergency = false,
+    this.rawData,
   });
   
   // Check if message is read
   bool get isRead => status == voice.MessageStatus.received;
 }
-
-// voice.MessageStatus is defined in voice_chat_extension.dart
-
 

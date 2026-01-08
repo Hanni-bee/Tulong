@@ -87,8 +87,11 @@ class EmergencyMessageParser {
       var severityMatch = RegExp(r'-\s*(\w+)\s+Severity', caseSensitive: false)
           .firstMatch(message);
       
-      severityMatch ??= RegExp(r'-\s*(\w+)(?:\s|$)', caseSensitive: false)
+      if (severityMatch == null) {
+        // Try relaxed format: " - {severity}"
+        severityMatch = RegExp(r'-\s*(\w+)(?:\s|$)', caseSensitive: false)
             .firstMatch(message);
+      }
       
       if (severityMatch == null) {
         // Try finding severity anywhere in message
@@ -146,4 +149,3 @@ class EmergencyMessageParser {
     return parseFromMessage(message);
   }
 }
-

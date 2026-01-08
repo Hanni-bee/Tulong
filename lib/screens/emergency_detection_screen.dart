@@ -16,6 +16,7 @@ import '../services/image_preprocessing_service.dart';
 import '../services/emergency_detection_service.dart';
 import '../services/simple_bluetooth_service.dart';
 import '../services/ml_model_service.dart';
+import '../providers/chat_provider.dart';
 
 /// Emergency Detection Screen - Replaces Calls Screen
 /// Allows users to capture photos and detect emergency types using AI/ML
@@ -608,35 +609,49 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                     Row(
                       children: [
                         Expanded(
-                          child: OutlinedButton.icon(
+                          child: OutlinedButton(
                             onPressed: () {
                               Navigator.pop(context);
                               _showAnalysisDetails(result);
                             },
-                            icon: const Icon(Icons.insights, size: 18),
-                            label: const Text('Details'),
                             style: OutlinedButton.styleFrom(
                               padding: const EdgeInsets.symmetric(vertical: 12),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(10),
                               ),
                             ),
+                            child: const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text('Details'),
+                                SizedBox(width: 8),
+                                Icon(Icons.insights, size: 18),
+                              ],
+                            ),
                           ),
                         ),
                         const SizedBox(width: 8),
                         Expanded(
-                          child: OutlinedButton.icon(
+                          child: OutlinedButton(
                             onPressed: () {
                               Navigator.pop(context);
                               _reportFalsePositive(result);
                             },
-                            icon: const Icon(Icons.close, size: 18),
-                            label: const Text('Incorrect'),
                             style: OutlinedButton.styleFrom(
                               padding: const EdgeInsets.symmetric(vertical: 12),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(10),
                               ),
+                            ),
+                            child: const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text('Incorrect'),
+                                SizedBox(width: 8),
+                                Icon(Icons.close, size: 18),
+                              ],
                             ),
                           ),
                         ),
@@ -694,31 +709,45 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                     Row(
                       children: [
                         Expanded(
-                          child: TextButton.icon(
+                          child: TextButton(
                             onPressed: () {
                               Navigator.pop(context);
                               _reportFalsePositive(result);
                             },
-                            icon: const Icon(Icons.close, size: 18),
-                            label: const Text('Not an Emergency'),
                             style: TextButton.styleFrom(
                               foregroundColor: AppColors.mediumGray,
                               padding: const EdgeInsets.symmetric(vertical: 10),
+                            ),
+                            child: const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text('Not an Emergency'),
+                                SizedBox(width: 8),
+                                Icon(Icons.close, size: 18),
+                              ],
                             ),
                           ),
                         ),
                         const SizedBox(width: 8),
                         Expanded(
-                          child: TextButton.icon(
+                          child: TextButton(
                             onPressed: () {
                               Navigator.pop(context);
                               _showAnalysisDetails(result);
                             },
-                            icon: const Icon(Icons.info_outline, size: 18),
-                            label: const Text('View Analysis'),
                             style: TextButton.styleFrom(
                               foregroundColor: AppColors.info,
                               padding: const EdgeInsets.symmetric(vertical: 10),
+                            ),
+                            child: const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text('View Analysis'),
+                                SizedBox(width: 8),
+                                Icon(Icons.info_outline, size: 18),
+                              ],
                             ),
                           ),
                         ),
@@ -729,35 +758,35 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                     Row(
                       children: [
                         Expanded(
-                          child: OutlinedButton.icon(
+                          child: OutlinedButton(
                             onPressed: () {
                               Navigator.pop(context);
                             },
-                            icon: const Icon(Icons.refresh, size: 18),
-                            label: const Text('Retake'),
                             style: OutlinedButton.styleFrom(
                               padding: const EdgeInsets.symmetric(vertical: 14),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
                               ),
                             ),
+                            child: const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text('Retake'),
+                                SizedBox(width: 8),
+                                Icon(Icons.refresh, size: 18),
+                              ],
+                            ),
                           ),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
                           flex: 2,
-                          child: ElevatedButton.icon(
+                          child: ElevatedButton(
                             onPressed: () {
                               Navigator.pop(context);
                               _sendToChat(result);
                             },
-                            icon: const Icon(Icons.send, size: 18),
-                            label: const Text(
-                              'Send to Chat',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: AppColors.primaryRed,
                               foregroundColor: Colors.white,
@@ -766,6 +795,20 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               elevation: 2,
+                            ),
+                            child: const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  'Send to Chat',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                SizedBox(width: 8),
+                                Icon(Icons.send, size: 18),
+                              ],
                             ),
                           ),
                         ),
@@ -810,6 +853,7 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
     
     try {
       final btService = Provider.of<SimpleBluetoothService>(context, listen: false);
+      final chatProvider = Provider.of<ChatProvider>(context, listen: false);
       
       // Check if connected and authenticated
       if (!btService.isConnected || !btService.isAuthenticated) {
@@ -839,6 +883,21 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
       // The SimpleBluetoothService will handle adding it to message store
       // Emergency detection will be parsed automatically on receiving end
       await btService.sendGroupMessage(formattedMessage, additionalData: emergencyMetadata);
+
+      // Mirror into Local Chat UI so it consistently appears there too
+      chatProvider.addMirroredMessage(
+        text: formattedMessage,
+        isEmergency: true,
+        rawData: {
+          'type': 'group',
+          'message': formattedMessage,
+          'is_emergency': true,
+          'sender_name': chatProvider.currentUserName ?? 'Me',
+          'timestamp': DateTime.now().toIso8601String(),
+          ...emergencyMetadata,
+          'source': 'emergency_detection',
+        },
+      );
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1004,10 +1063,8 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                                     if (!_isCameraInitialized)
                                       Padding(
                                         padding: const EdgeInsets.only(top: 16),
-                                        child: ElevatedButton.icon(
+                                        child: ElevatedButton(
                                           onPressed: _initializeCamera,
-                                          icon: const Icon(Icons.refresh, size: 18),
-                                          label: const Text('Retry'),
                                           style: ElevatedButton.styleFrom(
                                             backgroundColor: AppColors.primaryRed,
                                             foregroundColor: Colors.white,
@@ -1015,6 +1072,14 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                                               horizontal: 20,
                                               vertical: 12,
                                             ),
+                                          ),
+                                          child: const Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Text('Retry'),
+                                              SizedBox(width: 8),
+                                              Icon(Icons.refresh, size: 18),
+                                            ],
                                           ),
                                         ),
                                       ),
@@ -2281,4 +2346,5 @@ class _GridPainter extends CustomPainter {
   @override
   bool shouldRepaint(_GridPainter oldDelegate) => false;
 }
+
 

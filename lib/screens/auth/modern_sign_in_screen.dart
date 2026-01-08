@@ -1,3 +1,4 @@
+import '../../utils/enhanced_error_handler.dart';
 import 'dart:math' as math;
 import 'dart:ui' show lerpDouble, ImageFilter;
 
@@ -127,7 +128,7 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
 
   Future<void> _quickSignInWithBiometric() async {
     if (_lastLoggedInUsername == null || _lastLoggedInUsername!.isEmpty) {
-      ErrorHandlerService.showErrorSnackbar(
+      EnhancedErrorHandler.showErrorSnackbar(
         context,
         'No previous login found. Please sign in manually.',
       );
@@ -183,7 +184,7 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
         throw Exception('Authentication cancelled');
       }
     } catch (e) {
-      if (mounted) ErrorHandlerService.showErrorSnackbar(context, e);
+      if (mounted) EnhancedErrorHandler.showErrorSnackbar(context, e);
     } finally {
       if (mounted) setState(() => _isQuickSignInLoading = false);
     }
@@ -238,9 +239,9 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
       _doShake();
       HapticHelper.error();
       if (mounted) {
-        ErrorHandlerService.showErrorDialog(
+        EnhancedErrorHandler.showError(
           context,
-          e,
+          AppError.fromException(e, category: ErrorCategory.authentication),
           onRetry: _signIn,
         );
       }
@@ -594,26 +595,33 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
   Widget _buildQuickSignInButton() {
     return SizedBox(
       height: 56,
-      child: OutlinedButton.icon(
+      child: OutlinedButton(
         onPressed: _isQuickSignInLoading ? null : _quickSignInWithBiometric,
-        icon: _isQuickSignInLoading
-            ? const SizedBox.shrink()
-            : const Icon(Icons.fingerprint, size: 24),
-        label: _isQuickSignInLoading
-            ? const SmartLoader.inline(color: AppColors.primaryRed)
-            : Text(
-                'Quick Sign In',
-                style: UnifiedTypography.buttonLarge.copyWith(
-                  color: AppColors.primaryRed,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
         style: OutlinedButton.styleFrom(
           foregroundColor: AppColors.primaryRed,
           side: const BorderSide(color: AppColors.primaryRed, width: 2),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (_isQuickSignInLoading)
+              const SmartLoader.inline(color: AppColors.primaryRed)
+            else ...[
+              Text(
+                'Quick Sign In',
+                style: UnifiedTypography.buttonLarge.copyWith(
+                  color: AppColors.primaryRed,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(width: 10),
+              const Icon(Icons.fingerprint, size: 24),
+            ],
+          ],
         ),
       ),
     );

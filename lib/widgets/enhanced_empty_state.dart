@@ -44,6 +44,13 @@ class EnhancedEmptyState extends StatefulWidget {
   /// Custom illustration widget
   final Widget? illustration;
 
+  /// Padding around the empty state content (lets screens adapt layout for keyboard/nav).
+  final EdgeInsetsGeometry padding;
+
+  /// If false, the empty state will not be scrollable (better for chat idle state).
+  /// When true, it uses a scroll view to avoid overflow on small screens / keyboard up.
+  final bool scrollable;
+
   const EnhancedEmptyState({
     super.key,
     this.icon,
@@ -59,6 +66,8 @@ class EnhancedEmptyState extends StatefulWidget {
     this.iconBackgroundColor,
     this.animated = true,
     this.illustration,
+    this.padding = const EdgeInsets.symmetric(horizontal: 32, vertical: 48),
+    this.scrollable = true,
   }) : assert(icon != null || iconWidget != null || illustration != null,
          'Either icon, iconWidget, or illustration must be provided');
 
@@ -177,10 +186,9 @@ class _EnhancedEmptyStateState extends State<EnhancedEmptyState>
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, child) {
-        return Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 48),
-            child: Column(
+        final content = Padding(
+          padding: widget.padding,
+          child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -337,6 +345,19 @@ class _EnhancedEmptyStateState extends State<EnhancedEmptyState>
                 ],
               ],
             ),
+        );
+
+        if (widget.scrollable) {
+          return Center(
+            child: SingleChildScrollView(child: content),
+          );
+        }
+
+        // Non-scrollable: keep centered without allowing drag/scroll bounce.
+        return Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 520),
+            child: content,
           ),
         );
       },
@@ -350,6 +371,8 @@ class EmptyStatePresets {
   static EnhancedEmptyState noMessages({
     VoidCallback? onStartChatting,
     VoidCallback? onConnectDevice,
+    EdgeInsetsGeometry? padding,
+    bool scrollable = true,
   }) {
     return EnhancedEmptyState(
       icon: Icons.chat_bubble_outline,
@@ -361,6 +384,8 @@ class EmptyStatePresets {
       secondaryActionLabel: onConnectDevice != null ? 'Connect Device' : null,
       onSecondaryAction: onConnectDevice,
       iconColor: AppColors.primaryRed,
+      padding: padding ?? const EdgeInsets.symmetric(horizontal: 32, vertical: 48),
+      scrollable: scrollable,
     );
   }
 

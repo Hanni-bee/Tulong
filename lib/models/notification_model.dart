@@ -116,39 +116,95 @@ enum NotificationType {
 class NotificationAction {
   final String id;
   final String label;
-  final IconData? icon;
+  /// A stable icon identifier that maps to a const `Icons.*`.
+  /// Stored instead of raw codePoint to keep release builds compatible with icon tree-shaking.
+  final NotificationActionIcon? iconKey;
   final VoidCallback? onTap;
   final NotificationActionStyle style;
 
   const NotificationAction({
     required this.id,
     required this.label,
-    this.icon,
+    this.iconKey,
     this.onTap,
     this.style = NotificationActionStyle.primary,
   });
+
+  IconData? get icon => iconKey?.icon;
 
   Map<String, dynamic> toMap() {
     return {
       'id': id,
       'label': label,
-      'icon': icon?.codePoint,
+      'icon': iconKey?.name,
       'style': style.name,
     };
   }
 
   factory NotificationAction.fromMap(Map<String, dynamic> map) {
+    // Backwards compatible decode:
+    // - New format: icon is a String (enum name)
+    // - Old format: icon is an int (MaterialIcons codePoint)
+    NotificationActionIcon? iconKey;
+    final rawIcon = map['icon'];
+    if (rawIcon is String && rawIcon.isNotEmpty) {
+      iconKey = NotificationActionIcon.values.cast<NotificationActionIcon?>().firstWhere(
+            (e) => e?.name == rawIcon,
+            orElse: () => null,
+          );
+    } else if (rawIcon is int) {
+      // Map known codePoints to a stable icon key without constructing IconData dynamically.
+      if (rawIcon == Icons.open_in_new_rounded.codePoint) {
+        iconKey = NotificationActionIcon.open;
+      } else if (rawIcon == Icons.close_rounded.codePoint) {
+        iconKey = NotificationActionIcon.dismiss;
+      } else if (rawIcon == Icons.check_rounded.codePoint) {
+        iconKey = NotificationActionIcon.confirm;
+      } else if (rawIcon == Icons.phone_rounded.codePoint) {
+        iconKey = NotificationActionIcon.call;
+      } else if (rawIcon == Icons.share_rounded.codePoint) {
+        iconKey = NotificationActionIcon.share;
+      }
+    }
+
     return NotificationAction(
       id: map['id'] as String,
       label: map['label'] as String,
-      icon: map['icon'] != null
-          ? IconData(map['icon'] as int, fontFamily: 'MaterialIcons')
-          : null,
+      iconKey: iconKey,
       style: NotificationActionStyle.values.firstWhere(
         (e) => e.name == map['style'],
         orElse: () => NotificationActionStyle.primary,
       ),
     );
+  }
+}
+
+/// Allowed icon keys for `NotificationAction`.
+///
+/// IMPORTANT: Only add icons here that are const `Icons.*` to keep release builds
+/// compatible with icon tree-shaking.
+enum NotificationActionIcon {
+  open,
+  dismiss,
+  confirm,
+  call,
+  share,
+}
+
+extension NotificationActionIconX on NotificationActionIcon {
+  IconData get icon {
+    switch (this) {
+      case NotificationActionIcon.open:
+        return Icons.open_in_new_rounded;
+      case NotificationActionIcon.dismiss:
+        return Icons.close_rounded;
+      case NotificationActionIcon.confirm:
+        return Icons.check_rounded;
+      case NotificationActionIcon.call:
+        return Icons.phone_rounded;
+      case NotificationActionIcon.share:
+        return Icons.share_rounded;
+    }
   }
 }
 
@@ -178,6 +234,7 @@ class NotificationGroup {
   int get unreadCount => notifications.where((n) => !n.isRead).length;
   bool get hasUnread => unreadCount > 0;
 }
+
 
 
 

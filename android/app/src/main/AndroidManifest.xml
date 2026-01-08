@@ -80,7 +80,7 @@
         <!-- Notification Channel -->
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
-            android:value="tulong_notifications" />
+            android:value="system_notifications" />
             
         <!-- Notification Icon -->
         <meta-data

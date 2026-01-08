@@ -271,15 +271,64 @@ class NotificationProvider extends ChangeNotifier {
 
   void _listenToNotifications() {
     _notificationService.onMessage.listen((message) {
+      final data = message.data;
+      final type = (data['type'] ?? '').toString();
+
+      // Build meaningful, dynamic title/body (avoid generic/random notifications)
+      String title = (message.notification?.title ?? '').trim();
+      String body = (message.notification?.body ?? '').trim();
+
+      if (title.isEmpty) {
+        if (type == 'message') {
+          final sender = (data['senderName'] ?? data['sender_name'] ?? 'Someone').toString();
+          title = 'New message from $sender';
+        } else if (type == 'emergency_alert' || type == 'emergency') {
+          final alertType = (data['alertType'] ?? data['alert_type'] ?? '').toString();
+          title = alertType.isNotEmpty
+              ? '🚨 Emergency Alert - ${alertType.toUpperCase()}'
+              : '🚨 Emergency Alert';
+        } else if ((data['title'] ?? '').toString().trim().isNotEmpty) {
+          title = data['title'].toString().trim();
+        } else {
+          title = 'Notification';
+        }
+      }
+
+      if (body.isEmpty) {
+        if (type == 'message') {
+          body = (data['message'] ?? data['body'] ?? '').toString();
+        } else if (type == 'emergency_alert' || type == 'emergency') {
+          final msg = (data['message'] ?? '').toString();
+          final loc = (data['location'] ?? '').toString();
+          body = [if (msg.isNotEmpty) msg, if (loc.isNotEmpty) 'Location: $loc'].join('\n');
+        } else if ((data['body'] ?? '').toString().trim().isNotEmpty) {
+          body = data['body'].toString().trim();
+        } else if ((data['message'] ?? '').toString().trim().isNotEmpty) {
+          body = data['message'].toString().trim();
+        } else {
+          body = '';
+        }
+      }
+
+      // If still nothing meaningful, ignore
+      if (title.trim().isEmpty && body.trim().isEmpty && data.isEmpty) {
+        return;
+      }
+
       final notification = AppNotification(
         id: message.messageId ?? DateTime.now().millisecondsSinceEpoch.toString(),
-        title: message.notification?.title ?? 'Notification',
-        body: message.notification?.body ?? '',
+        title: title,
+        body: body,
         type: _getNotificationTypeFromMessage(message),
         timestamp: message.sentTime ?? DateTime.now(),
         isRead: false,
         data: message.data,
-        channelId: message.data['channelId'] as String?,
+        // Backend doesn't always provide this; derive from type for consistency
+        channelId: type == 'message'
+            ? 'chat_messages'
+            : (type == 'emergency_alert' || type == 'emergency')
+                ? 'emergency_alerts'
+                : (type == 'reminder' ? 'reminders' : 'system_notifications'),
       );
       addNotification(notification);
     });
@@ -653,4 +702,5 @@ class NotificationProvider extends ChangeNotifier {
     super.dispose();
   }
 }
+
 

@@ -315,6 +315,27 @@ class EnhancedErrorHandler {
     return null;
   }
 
+  /// Show error snackbar with recovery options
+  static void showErrorSnackbar(
+    BuildContext context, 
+    dynamic error, {
+    String? actionLabel,
+    VoidCallback? onAction,
+  }) {
+    AppError appError;
+    if (error is AppError) {
+      appError = error;
+    } else {
+      appError = AppError.fromException(error);
+    }
+    
+    _showErrorSnackBar(
+      context, 
+      appError, 
+      onRetry: actionLabel == 'Retry' ? onAction : null,
+    );
+  }
+
   /// Show error with recovery options
   static void showError(BuildContext context, AppError error, {
     VoidCallback? onRetry,
@@ -723,6 +744,7 @@ class OfflineModeIndicator extends StatelessWidget {
     );
   }
 }
+
 
 
 

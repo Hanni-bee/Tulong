@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../constants/app_colors.dart';
-import '../constants/soft_ui_design.dart';
 import '../providers/network_provider.dart';
 import '../providers/notification_provider.dart';
 import '../providers/chat_provider.dart';
@@ -38,7 +37,7 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
   late AnimationController _floatingNavController;
   late Animation<Offset> _floatingNavSlide;
   late Animation<double> _floatingNavFade;
-  
+
   // Icon wobble and glow animations
   final Map<int, AnimationController> _iconWobbleControllers = {};
   final Map<int, Animation<double>> _iconWobbleScaleAnimations = {};
@@ -234,6 +233,14 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
       
       _updateBadgeCounts();
     });
+
+    // Keep ChatProvider "Local Chat visible" state in sync with the active tab.
+    // Important: tabs are kept alive via IndexedStack, so LocalChatScreen init/dispose
+    // does NOT reliably represent actual visibility.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _syncLocalChatVisibility();
+    });
   }
 
   @override
@@ -277,6 +284,9 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
   void _onTabTapped(int index) {
     if (_currentIndex != index) {
       HapticFeedback.lightImpact();
+
+      // Sync Local Chat visibility & clear unread when user navigates to Local Chat.
+      _handleLocalChatTabChange(nextIndex: index);
       
       // Start icon wobble animation (from prototype)
       if (_iconWobbleControllers.containsKey(index)) {
@@ -304,10 +314,39 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
     }
   }
 
+  void _handleLocalChatTabChange({required int nextIndex}) {
+    try {
+      final chatProvider = Provider.of<ChatProvider>(context, listen: false);
+
+      // Leaving Local Chat
+      if (_currentIndex == 1 && nextIndex != 1) {
+        chatProvider.setLocalChatScreenVisible(false);
+      }
+
+      // Entering Local Chat
+      if (nextIndex == 1) {
+        chatProvider.setLocalChatScreenVisible(true);
+      }
+    } catch (_) {
+      // Providers might not be available during transitions
+    }
+  }
+
+  void _syncLocalChatVisibility() {
+    try {
+      final chatProvider = Provider.of<ChatProvider>(context, listen: false);
+      final isLocalChatActive = _currentIndex == 1;
+      chatProvider.setLocalChatScreenVisible(isLocalChatActive);
+    } catch (_) {
+      // Providers might not be available
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      extendBody: true, // allow body to render under the floating nav pill
+      // Fixed bottom nav (non-floating): keep body ABOVE the nav to avoid overlap issues.
+      extendBody: false,
       backgroundColor: Colors.white, // Base layer
       body: Stack(
         children: [
@@ -348,25 +387,35 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
         position: _floatingNavSlide,
         child: RepaintBoundary(
           child: Container(
-            margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+            // Fixed, non-floating bar: no outer margin; keep glass style but attached to bottom.
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(32),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
               child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+                filter: ImageFilter.blur(
+                  sigmaX: 18,
+                  sigmaY: 18,
+                ),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.8),
-                    borderRadius: BorderRadius.circular(32),
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.white.withOpacity(0.98),
+                        Colors.white.withOpacity(0.92),
+                      ],
+                    ),
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
                     border: Border.all(
-                      color: Colors.white.withOpacity(0.4),
-                      width: 1.5,
+                      color: Colors.white.withOpacity(0.18),
+                      width: 1.0,
                     ),
                     boxShadow: [
                       BoxShadow(
                         color: Colors.black.withOpacity(0.08),
-                        blurRadius: 30,
-                        offset: const Offset(0, 10),
+                        blurRadius: 18,
+                        offset: const Offset(0, -6),
                       ),
                     ],
                   ),
@@ -391,15 +440,27 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
                                 animation: _glowPulseController,
                                 builder: (context, _) {
                                   final pulse = _glowPulseAnimation.value;
+                                  final c = _navigationItems[_currentIndex].color;
                                   return Container(
                                     margin: const EdgeInsets.symmetric(horizontal: 8),
                                     decoration: BoxDecoration(
-                                      color: _navigationItems[_currentIndex].color.withOpacity(0.12),
+                                      gradient: LinearGradient(
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
+                                        colors: [
+                                          c.withOpacity(0.16),
+                                          c.withOpacity(0.10),
+                                        ],
+                                      ),
                                       borderRadius: BorderRadius.circular(24),
+                                      border: Border.all(
+                                        color: c.withOpacity(0.14),
+                                        width: 1.0,
+                                      ),
                                       boxShadow: [
                                         BoxShadow(
-                                          color: _navigationItems[_currentIndex].color.withOpacity(0.15 + 0.1 * pulse),
-                                          blurRadius: 12,
+                                          color: c.withOpacity(0.14 + 0.08 * pulse),
+                                          blurRadius: 14,
                                           spreadRadius: 1,
                                         ),
                                       ],
@@ -509,7 +570,6 @@ class _AnimatedNavItemState extends State<_AnimatedNavItem>
     with SingleTickerProviderStateMixin {
   late AnimationController _pressController;
   late Animation<double> _pressScale;
-  bool _isPressed = false;
 
   @override
   void initState() {
@@ -535,17 +595,14 @@ class _AnimatedNavItemState extends State<_AnimatedNavItem>
       color: Colors.transparent,
       child: GestureDetector(
         onTapDown: (_) {
-          setState(() => _isPressed = true);
           _pressController.forward();
           HapticFeedback.selectionClick();
         },
         onTapUp: (_) {
-          setState(() => _isPressed = false);
           _pressController.reverse();
           widget.onTap();
         },
         onTapCancel: () {
-          setState(() => _isPressed = false);
           _pressController.reverse();
         },
         child: AnimatedBuilder(
@@ -571,19 +628,13 @@ class _AnimatedNavItemState extends State<_AnimatedNavItem>
                 margin: const EdgeInsets.symmetric(horizontal: 4),
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 decoration: BoxDecoration(
-                  color: widget.isSelected ? Colors.white : Colors.transparent,
+                  // Keep the item visually integrated with the floating bar.
+                  // The sliding indicator behind already provides the "selected pill".
+                  color: Colors.transparent,
                   borderRadius: BorderRadius.circular(20),
                   boxShadow: widget.isSelected
                       ? [
-                          ...SoftUIDesign.getSoftShadow(
-                            elevation: _isPressed ? 4.0 : 3.0,
-                            shadowColor: widget.item.color.withOpacity(0.2),
-                          ),
-                          ...SoftUIDesign.getGlowOverlay(
-                            color: widget.item.color,
-                            intensity: 0.08,
-                            blur: 6.0,
-                          ),
+                          // Subtle glow only (avoid "card inside a card" look).
                           BoxShadow(
                             color: widget.item.color.withOpacity(glowOpacity * 0.3),
                             blurRadius: 12,
@@ -739,11 +790,17 @@ class _AnimatedNavItemState extends State<_AnimatedNavItem>
                               : Colors.transparent,
                           borderRadius: BorderRadius.circular(8),
                         ),
-                        child: Text(
-                          widget.item.label,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.center,
+                        child: SizedBox(
+                          width: 72, // keeps all labels aligned and prevents "detached" feel
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              widget.item.label,
+                              maxLines: 1,
+                              softWrap: false,
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -784,3 +841,4 @@ class _NoScrollbarsBehavior extends ScrollBehavior {
     return child; // no scrollbar
   }
 }
+

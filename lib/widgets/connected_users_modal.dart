@@ -252,10 +252,8 @@ class _ConnectedUsersModalState extends State<ConnectedUsersModal> {
                 padding: const EdgeInsets.all(20),
                 child: SizedBox(
                   width: double.infinity,
-                  child: ElevatedButton.icon(
+                  child: ElevatedButton(
                     onPressed: _startScan,
-                    icon: const Icon(Icons.refresh),
-                    label: const Text('Retry Finding Device'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.info,
                       foregroundColor: Colors.white,
@@ -264,6 +262,14 @@ class _ConnectedUsersModalState extends State<ConnectedUsersModal> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                       elevation: 0,
+                    ),
+                    child: const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text('Retry Finding Device'),
+                        SizedBox(width: 8),
+                        Icon(Icons.refresh),
+                      ],
                     ),
                   ),
                 ),
@@ -403,6 +409,12 @@ class _ConnectedUsersModalState extends State<ConnectedUsersModal> {
             },
           ),
         );
+      },
+    );
+  }
+}
+
+
       },
     );
   }

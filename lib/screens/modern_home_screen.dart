@@ -31,6 +31,7 @@ import '../widgets/animated_neumorphic_card.dart';
 import '../utils/icon_system.dart';
 import '../utils/enhanced_page_transitions.dart';
 import '../services/simple_bluetooth_service.dart';
+import '../utils/address_encoder.dart';
 
 class ModernHomeScreen extends StatefulWidget {
   const ModernHomeScreen({super.key});
@@ -299,6 +300,8 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                         delay: const Duration(milliseconds: 500),
                         child: _buildSampleEmergencyAlert(),
                       ),
+                      
+                      const SizedBox(height: 120),
                       ],
                     ),
                   ),
@@ -717,59 +720,74 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                       ),
                     ),
                     
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center, // Vertically center content
-                        crossAxisAlignment: CrossAxisAlignment.center, // Horizontally center content
-                        children: [
-                          // Icon Shell
-                          Container(
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              color: backgroundColor.withOpacity(0.08),
-                              borderRadius: BorderRadius.circular(12),
+                    Center(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min, // keep content block tight
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            // Icon Shell
+                            Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: backgroundColor.withOpacity(0.08),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Icon(
+                                icon,
+                                color: backgroundColor,
+                                size: 24,
+                              ),
                             ),
-                            child: Icon(
-                              icon,
-                              color: backgroundColor,
-                              size: 24, // Slightly larger icon
+
+                            const SizedBox(height: 8),
+
+                            // Title
+                            SizedBox(
+                              width: double.infinity,
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  title,
+                                  textAlign: TextAlign.center,
+                                  maxLines: 1,
+                                  softWrap: false,
+                                  style: const TextStyle(
+                                    color: Color(0xFF1A1A1A),
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 14,
+                                    letterSpacing: -0.3,
+                                    height: 1.1,
+                                  ),
+                                ),
+                              ),
                             ),
-                          ),
-                          
-                          const SizedBox(height: 10),
-                          
-                          // Title
-                          Text(
-                            title,
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: const Color(0xFF1A1A1A),
-                              fontWeight: FontWeight.w900,
-                              fontSize: 14,
-                              letterSpacing: -0.3,
-                              height: 1.1,
+
+                            const SizedBox(height: 3),
+
+                            // Subtitle
+                            SizedBox(
+                              width: double.infinity,
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  subtitle,
+                                  textAlign: TextAlign.center,
+                                  maxLines: 1,
+                                  softWrap: false,
+                                  style: TextStyle(
+                                    color: AppColors.textSecondary.withOpacity(0.55),
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 9,
+                                    height: 1.1,
+                                  ),
+                                ),
+                              ),
                             ),
-                            maxLines: 1,
-                            overflow: TextOverflow.visible,
-                          ),
-                          
-                          const SizedBox(height: 4),
-                          
-                          // Subtitle
-                          Text(
-                            subtitle,
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: AppColors.textSecondary.withOpacity(0.5),
-                              fontWeight: FontWeight.w700,
-                              fontSize: 9,
-                              height: 1.1,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   ],
@@ -1286,17 +1304,23 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
             ),
             if (messages.length > 1) ...[
               const SizedBox(height: 12),
-              TextButton.icon(
+              TextButton(
                 onPressed: () {
                   // Close this dialog and open full emergency messages manager
                   Navigator.of(dialogContext).pop();
                   _showFullEmergencyMessagesManager(context);
                 },
-                icon: const Icon(Icons.list_alt, size: 16),
-                label: const Text('Manage all messages'),
                 style: TextButton.styleFrom(
                   foregroundColor: AppColors.primaryRed,
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('Manage all messages'),
+                    SizedBox(width: 8),
+                    Icon(Icons.list_alt, size: 16),
+                  ],
                 ),
               ),
             ],
@@ -1515,7 +1539,7 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                           child: const Text('Close'),
                         ),
                         const SizedBox(width: 8),
-                        ElevatedButton.icon(
+                        ElevatedButton(
                           onPressed: () async {
                             final text = controller.text.trim();
                             if (text.isEmpty) return;
@@ -1525,9 +1549,15 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                             if (!context.mounted) return;
                             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Message saved'), backgroundColor: AppColors.success));
                           },
-                          icon: const Icon(Icons.add, size: 18),
-                          label: const Text('Add'),
                           style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryRed, foregroundColor: AppColors.white),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text('Add'),
+                              SizedBox(width: 8),
+                              Icon(Icons.add, size: 18),
+                            ],
+                          ),
                         ),
                         const SizedBox(width: 12),
                       ],
@@ -1558,10 +1588,40 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
     await _sendEmergencyMessageConfirmed(context);
   }
 
+  bool _isEmergencyEsp32Ready({
+    required ChatProvider chatProvider,
+    required SimpleBluetoothService bluetoothService,
+  }) {
+    // Two different connection stacks exist in the app today:
+    // - SimpleBluetoothService: platform-channel based (mesh / auth flow)
+    // - ChatProvider/BluetoothService: flutter_bluetooth_serial_plus based (local chat)
+    // Treat either as "ready" for sending emergency alerts.
+    final meshReady = bluetoothService.isConnected && bluetoothService.isAuthenticated;
+    final localChatReady = chatProvider.isConnected;
+    return meshReady || localChatReady;
+  }
+
+  ({String message, Map<String, dynamic> meta}) _buildSosPayload(
+    AuthProvider authProvider,
+    String baseMessage,
+  ) {
+    final addr = AddressEncoder.fromUser(authProvider.currentUserModel);
+    final msg = addr.fullAddress.isNotEmpty ? '$baseMessage\n📍 ${addr.fullAddress}' : baseMessage;
+    final meta = <String, dynamic>{
+      'source': 'sos',
+      if (addr.fullAddress.isNotEmpty) 'location_full': addr.fullAddress,
+      if (addr.encodedAddress.isNotEmpty) 'location_code': addr.encodedAddress,
+      if (addr.regionKey.isNotEmpty) 'region_key': addr.regionKey,
+    };
+    return (message: msg, meta: meta);
+  }
+
   /// Show confirmation modal for emergency message
   /// Offline-first: Only works with ESP32 connection
   Future<bool> _showEmergencyConfirmationModal(BuildContext context) async {
       final authProvider = context.read<AuthProvider>();
+      final chatProvider = context.read<ChatProvider>();
+      final bluetoothService = context.read<SimpleBluetoothService>();
     
     // Get the user's emergency message (use default if not set)
     String emergencyMessage = authProvider.emergencyMessage ?? 
@@ -1572,12 +1632,13 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
       emergencyMessage = '🚨 EMERGENCY: I need immediate assistance!';
     }
     
-    // Check if ESP32 is connected
-    final bluetoothService = SimpleBluetoothService();
-    final isESP32Connected = bluetoothService.isConnected && bluetoothService.isAuthenticated;
+    final isESP32Ready = _isEmergencyEsp32Ready(
+      chatProvider: chatProvider,
+      bluetoothService: bluetoothService,
+    );
     
     // If ESP32 not connected, show error and return false
-    if (!isESP32Connected) {
+    if (!isESP32Ready) {
       if (context.mounted) {
         _showESP32ConnectionRequiredDialog(context);
       }
@@ -1636,19 +1697,25 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                           fontWeight: FontWeight.w600,
                         ),
                       ),
-                      TextButton.icon(
+                      TextButton(
                         onPressed: () {
                           // Close confirmation modal and open edit dialog
                           Navigator.of(dialogContext).pop(false);
                           _showEditEmergencyMessageDialog(context);
                         },
-                        icon: const Icon(Icons.edit_note_rounded, size: 16),
-                        label: const Text('Edit'),
                         style: TextButton.styleFrom(
                           foregroundColor: AppColors.primaryRed,
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                           minimumSize: Size.zero,
                           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text('Edit'),
+                            SizedBox(width: 8),
+                            Icon(Icons.edit_note_rounded, size: 16),
+                          ],
                         ),
                       ),
                     ],
@@ -1745,6 +1812,8 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
   Future<void> _sendEmergencyMessageConfirmed(BuildContext context) async {
     try {
       final authProvider = context.read<AuthProvider>();
+      final chatProvider = context.read<ChatProvider>();
+      final bluetoothService = context.read<SimpleBluetoothService>();
       
       // Get the user's emergency message (use default if not set)
       String emergencyMessage = authProvider.emergencyMessage ?? 
@@ -1754,17 +1823,36 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
       if (emergencyMessage.trim().isEmpty) {
         emergencyMessage = '🚨 EMERGENCY: I need immediate assistance!';
       }
+
+      final sos = _buildSosPayload(authProvider, emergencyMessage);
       
-      // Check if ESP32 is connected via SimpleBluetoothService
-      final bluetoothService = SimpleBluetoothService();
-      final isESP32Connected = bluetoothService.isConnected && bluetoothService.isAuthenticated;
+      final meshReady = bluetoothService.isConnected && bluetoothService.isAuthenticated;
+      final localChatReady = chatProvider.isConnected;
       
-      if (isESP32Connected) {
-        // Send via local chat to ESP32 with emergency flag
+      if (meshReady) {
+        // Send via platform-channel mesh service
         try {
-          await bluetoothService.sendGroupMessage(emergencyMessage, isEmergency: true);
+          await bluetoothService.sendGroupMessage(
+            sos.message,
+            isEmergency: true,
+            additionalData: sos.meta,
+          );
       
       if (context.mounted) {
+        // Mirror into Local Chat UI so it always shows (and pins) even though the send is handled by SimpleBluetoothService
+        chatProvider.addMirroredMessage(
+          text: sos.message,
+          isEmergency: true,
+          rawData: {
+            'type': 'group',
+            'message': sos.message,
+            'is_emergency': true,
+            'sender_name': chatProvider.currentUserName ?? authProvider.userName ?? 'Me',
+            'timestamp': DateTime.now().toIso8601String(),
+            ...sos.meta,
+          },
+        );
+
         ModernToastManager.showSuccess(
           context,
               'Emergency message sent to local chat network',
@@ -1782,8 +1870,27 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
             );
           }
         }
+      } else if (localChatReady) {
+        // Send via existing Local Chat Bluetooth link (flutter_bluetooth_serial_plus stack)
+        final success = await chatProvider.sendMessage(
+          sos.message,
+          isEmergency: true,
+          additionalData: sos.meta,
+        );
+        if (success && context.mounted) {
+          ModernToastManager.showSuccess(
+            context,
+            'Emergency message sent via Local Chat connection',
+          );
+          _showEmergencySuccessAnimation(context);
+        } else if (context.mounted) {
+          ModernToastManager.showError(
+            context,
+            'Failed to send emergency message. Please check ESP32 connection.',
+          );
+        }
       } else {
-        // ESP32 not connected - show error message
+        // Not connected on either stack - show error message
         if (context.mounted) {
           ModernToastManager.showError(
             context,
@@ -1811,169 +1918,259 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
     showDialog(
       context: context,
       barrierDismissible: true,
-      builder: (dialogContext) => AlertDialog(
-        backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(SoftUIDesign.cardBorderRadius),
-        ),
-        title: const SolidModalHeader(
-          icon: Icons.bluetooth_disabled,
-          iconColor: AppColors.warning,
-          title: 'ESP32 Connection Required',
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Emergency messages can only be sent when connected to ESP32.',
-              style: TextStyle(
-                color: AppColors.textPrimary,
-                fontSize: 16,
-              ),
-            ),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(12),
+      builder: (dialogContext) => Consumer2<ChatProvider, SimpleBluetoothService>(
+        builder: (context, chatProvider, bluetoothService, _) {
+          final meshReady = bluetoothService.isConnected && bluetoothService.isAuthenticated;
+          final localChatReady = chatProvider.isConnected;
+          final isReady = meshReady || localChatReady;
+
+          Widget buildStatusRow({
+            required IconData icon,
+            required String label,
+            required bool ok,
+          }) {
+            final color = ok ? AppColors.success : AppColors.warning;
+            return Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
-                color: AppColors.warning.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: AppColors.warning.withOpacity(0.3),
-                ),
+                color: color.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: color.withOpacity(0.25)),
               ),
-              child: const Row(
+              child: Row(
                 children: [
-                  Icon(
-                    Icons.info_outline,
-                    color: AppColors.warning,
-                    size: 20,
-                  ),
-                  SizedBox(width: 8),
+                  Icon(icon, size: 18, color: color),
+                  const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      'Please connect to ESP32 to send emergency messages through the local mesh network.',
+                      label,
                       style: TextStyle(
-                        color: AppColors.warning,
+                        color: AppColors.textPrimary,
                         fontSize: 13,
-                        fontWeight: FontWeight.w600,
+                        fontWeight: FontWeight.w700,
                       ),
+                    ),
+                  ),
+                  Text(
+                    ok ? 'Connected' : 'Disconnected',
+                    style: TextStyle(
+                      color: color,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
                 ],
               ),
+            );
+          }
+
+          return AlertDialog(
+            backgroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(SoftUIDesign.cardBorderRadius),
             ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              HapticFeedback.lightImpact();
-              Navigator.of(dialogContext).pop();
-            },
-            style: TextButton.styleFrom(
-              foregroundColor: AppColors.textSecondary,
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            title: SolidModalHeader(
+              icon: isReady ? Icons.bluetooth_connected : Icons.bluetooth_disabled,
+              iconColor: isReady ? AppColors.success : AppColors.warning,
+              title: isReady ? 'ESP32 Connected' : 'ESP32 Connection Required',
             ),
-            child: const Text(
-              'OK',
-              style: TextStyle(
-                fontWeight: FontWeight.w600,
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  isReady
+                      ? 'You’re connected. You can send emergency messages now.'
+                      : 'Emergency messages can only be sent when connected to ESP32.',
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 16,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                buildStatusRow(
+                  icon: Icons.hub_rounded,
+                  label: 'Mesh connection',
+                  ok: meshReady,
+                ),
+                const SizedBox(height: 10),
+                buildStatusRow(
+                  icon: Icons.chat_bubble_rounded,
+                  label: 'Local Chat connection',
+                  ok: localChatReady,
+                ),
+                if (!isReady) ...[
+                  const SizedBox(height: 14),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.warning.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: AppColors.warning.withOpacity(0.3),
+                      ),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(
+                          Icons.info_outline,
+                          color: AppColors.warning,
+                          size: 20,
+                        ),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Connect via Local Chat (Bluetooth) or via the ESP32 scanner/auth screen.',
+                            style: TextStyle(
+                              color: AppColors.warning,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            actions: [
+              if (isReady)
+                ElevatedButton(
+                  onPressed: () {
+                    HapticFeedback.mediumImpact();
+                    Navigator.of(dialogContext).pop();
+                    _sendEmergencyMessageConfirmed(context);
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.error,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Text(
+                    'Send Now',
+                    style: TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                ),
+              TextButton(
+                onPressed: () {
+                  HapticFeedback.lightImpact();
+                  Navigator.of(dialogContext).pop();
+                  _navigateToChat(context);
+                },
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.primaryRed,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                ),
+                child: const Text(
+                  'Open Local Chat',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
               ),
-            ),
-          ),
-        ],
+              TextButton(
+                onPressed: () {
+                  HapticFeedback.lightImpact();
+                  Navigator.of(dialogContext).pop();
+                },
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.textSecondary,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                ),
+                child: const Text(
+                  'OK',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
 
   void _showEmergencySuccessAnimation(BuildContext context) {
-    showDialog(
+    showGeneralDialog(
       context: context,
-      barrierColor: Colors.black.withOpacity(0.7),
       barrierDismissible: false,
-      builder: (context) => Dialog(
-        backgroundColor: Colors.transparent,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Success checkmark with urgent styling
-            micro.SuccessAnimation(
-              size: 120,
-              color: AppColors.error, // Red for emergency, not green
-              onComplete: () {
-                Future.delayed(const Duration(milliseconds: 800), () {
-                  if (context.mounted) {
-                    Navigator.of(context).pop();
-                  }
-                });
-              },
-            ),
-            const SizedBox(height: 24),
-            // Emergency confirmation message
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.2),
-                    blurRadius: 16,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'Emergency Alert Sent',
-                    style: AppTypography.headlineSmall.copyWith(
-                      color: AppColors.error,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Help is on the way',
-                    style: AppTypography.bodyMedium.copyWith(
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+      barrierLabel: 'Emergency sent',
+      barrierColor: Colors.black.withOpacity(0.35),
+      pageBuilder: (context, _, __) {
+        // Auto-dismiss quickly; this is just confirmation feedback.
+        Future.delayed(const Duration(milliseconds: 1150), () {
+          if (context.mounted) Navigator.of(context).pop();
+        });
 
-  void _showSuccessAnimation(BuildContext context, String message) {
-    showDialog(
-      context: context,
-      barrierColor: Colors.black.withOpacity(0.3),
-      barrierDismissible: false,
-      builder: (context) => Dialog(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        child: micro.SuccessAnimation(
-          onComplete: () {
-            if (context.mounted) {
-              Navigator.of(context).pop();
-            }
-          },
-        ),
-      ),
+        return SafeArea(
+          child: Align(
+            alignment: Alignment.center,
+            child: Material(
+              color: Colors.transparent,
+              child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 28),
+                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.96),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: AppColors.error.withOpacity(0.18)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.14),
+                      blurRadius: 22,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    micro.SuccessAnimation(
+                      size: 56, // smaller, premium
+                      color: AppColors.error, // emergency-themed (not green)
+                    ),
+                    const SizedBox(width: 14),
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Emergency sent',
+                          style: AppTypography.titleMedium.copyWith(
+                            color: AppColors.textPrimary,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Broadcasting to nearby devices…',
+                          style: AppTypography.bodySmall.copyWith(
+                            color: AppColors.textSecondary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+      transitionBuilder: (context, anim, __, child) {
+        final curved = Curves.easeOutCubic.transform(anim.value);
+        return Opacity(
+          opacity: curved,
+          child: Transform.translate(
+            offset: Offset(0, (1 - curved) * 12),
+            child: child,
+          ),
+        );
+      },
+      transitionDuration: const Duration(milliseconds: 220),
     );
-    
-    // Also show toast message
-    Future.delayed(const Duration(milliseconds: 600), () {
-      if (context.mounted) {
-        ModernToastManager.showSuccess(context, message);
-      }
-    });
   }
 
   void _showEmergencyDialog(BuildContext context, [String? emergencyType]) {
@@ -2094,19 +2291,58 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                       HapticFeedback.heavyImpact();
                       
                       // Check ESP32 connection first (offline-first approach)
-                      final bluetoothService = SimpleBluetoothService();
-                      final isESP32Connected = bluetoothService.isConnected && bluetoothService.isAuthenticated;
+                      final chatProvider = context.read<ChatProvider>();
+                      final bluetoothService = context.read<SimpleBluetoothService>();
+                      final authProvider = context.read<AuthProvider>();
+                      final sos = _buildSosPayload(authProvider, emergencyMessage);
+                      final meshReady = bluetoothService.isConnected && bluetoothService.isAuthenticated;
+                      final localChatReady = chatProvider.isConnected;
                       
-                      if (isESP32Connected) {
-                        // Send via ESP32
+                      if (meshReady) {
+                        // Send via ESP32 mesh service
                         try {
-                          await bluetoothService.sendGroupMessage(emergencyMessage, isEmergency: true);
+                          await bluetoothService.sendGroupMessage(
+                            sos.message,
+                            isEmergency: true,
+                            additionalData: sos.meta,
+                          );
                       
                       if (dialogContext.mounted) {
                         Navigator.of(dialogContext).pop();
-                            _showSuccessAnimation(context, 'Emergency message sent to local chat network!');
-                          }
+                        _showEmergencySuccessAnimation(context);
+                      }
                         } catch (e) {
+                          if (dialogContext.mounted) {
+                            setDialogState(() {
+                              isSending = false;
+                            });
+                            ModernToastManager.showError(
+                              context,
+                              'Failed to send. Please check ESP32 connection.',
+                            );
+                          }
+                        }
+                      } else if (localChatReady) {
+                        // Send via Local Chat connection
+                        try {
+                          final success = await chatProvider.sendMessage(
+                            sos.message,
+                            isEmergency: true,
+                            additionalData: sos.meta,
+                          );
+                          if (success && dialogContext.mounted) {
+                            Navigator.of(dialogContext).pop();
+                            _showEmergencySuccessAnimation(context);
+                          } else if (dialogContext.mounted) {
+                            setDialogState(() {
+                              isSending = false;
+                            });
+                            ModernToastManager.showError(
+                              context,
+                              'Failed to send. Please check ESP32 connection.',
+                            );
+                          }
+                        } catch (_) {
                           if (dialogContext.mounted) {
                             setDialogState(() {
                               isSending = false;
@@ -2328,21 +2564,10 @@ class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
                           color: AppColors.darkGray,
                         ),
                       ),
-                      ElevatedButton.icon(
+                      ElevatedButton(
                         onPressed: provider.isConnecting ? null : () {
                           provider.loadPairedDevices();
                         },
-                        icon: provider.isConnecting 
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                ),
-                              )
-                            : const Icon(Icons.refresh, size: 18),
-                        label: Text(provider.isConnecting ? 'Connecting...' : 'Refresh'),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: cyanBlue,
                           foregroundColor: Colors.white,
@@ -2350,6 +2575,24 @@ class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(provider.isConnecting ? 'Connecting...' : 'Refresh'),
+                            const SizedBox(width: 8),
+                            if (provider.isConnecting)
+                              const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                ),
+                              )
+                            else
+                              const Icon(Icons.refresh, size: 18),
+                          ],
                         ),
                       ),
                     ],
@@ -2518,19 +2761,25 @@ class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
                               const SizedBox(height: 8),
                               Padding(
                                 padding: const EdgeInsets.symmetric(horizontal: 20),
-                                child: TextButton.icon(
+                                child: TextButton(
                                   onPressed: () {
                                     setState(() {
                                       _showAllDevices = true;
                                     });
                                   },
-                                  icon: const Icon(Icons.expand_more, color: cyanBlue),
-                                  label: Text(
-                                    'Show more (${provider.pairedDevices.length - 5} more devices)',
-                                    style: AppTypography.bodyMedium.copyWith(
-                                      color: cyanBlue,
-                                      fontWeight: FontWeight.w600,
-                                    ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        'Show more (${provider.pairedDevices.length - 5} more devices)',
+                                        style: AppTypography.bodyMedium.copyWith(
+                                          color: cyanBlue,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      const Icon(Icons.expand_more, color: cyanBlue),
+                                    ],
                                   ),
                                 ),
                               ),
@@ -2541,19 +2790,25 @@ class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
                               const SizedBox(height: 8),
                               Padding(
                                 padding: const EdgeInsets.symmetric(horizontal: 20),
-                                child: TextButton.icon(
+                                child: TextButton(
                                   onPressed: () {
                                     setState(() {
                                       _showAllDevices = false;
                                     });
                                   },
-                                  icon: const Icon(Icons.expand_less, color: cyanBlue),
-                                  label: Text(
-                                    'Show less',
-                                    style: AppTypography.bodyMedium.copyWith(
-                                      color: cyanBlue,
-                                      fontWeight: FontWeight.w600,
-                                    ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        'Show less',
+                                        style: AppTypography.bodyMedium.copyWith(
+                                          color: cyanBlue,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      const Icon(Icons.expand_less, color: cyanBlue),
+                                    ],
                                   ),
                                 ),
                               ),
