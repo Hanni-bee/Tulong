@@ -8,6 +8,7 @@
 #include <SPI.h>
 #include <nRF24L01.h>
 #include <RF24.h>
+#include <Preferences.h>
 #include "esp_bt.h"
 #include "esp_bt_main.h"
 #include "esp_bt_device.h"
@@ -23,6 +24,7 @@
 
 BluetoothSerial BT;
 RF24 radio(CE_PIN, CSN_PIN);
+Preferences prefs;
 
 const byte address[][6] = {"1Node", "2Node"};
 const byte thisNode = 1;
@@ -31,6 +33,7 @@ const byte otherNode = 0;
 String nId = "";
 String buf = "";
 bool conn = false;
+String receiverId = "";
 
 // Phone binary chunking variables (for messages > 128 bytes)
 uint8_t phoneChunkData[4][128];  // Store up to 4 chunks from phone (128 bytes each)
@@ -46,6 +49,19 @@ struct ChunkHeader {
   uint8_t totalChunks;
   uint8_t dataLen;
   uint8_t reserved;
+};
+
+// RF packet types for header/receiverId/SOS
+enum : uint8_t {
+  PTYPE_HEADER_START = 0xB0,
+  PTYPE_HEADER_DATA  = 0xB1,
+  PTYPE_HEADER_END   = 0xB2,
+  PTYPE_RXID_START   = 0xC0,
+  PTYPE_RXID_DATA    = 0xC1,
+  PTYPE_RXID_END     = 0xC2,
+  PTYPE_SOS_START    = 0xE0,
+  PTYPE_SOS_DATA     = 0xE1,
+  PTYPE_SOS_END      = 0xE2
 };
 
 // Receiving chunks structure - store chunks by index for proper reassembly
@@ -66,6 +82,11 @@ void sendViaNRF24(String message);
 void handleNRF24();
 void sendStatus();
 void forwardMessageToPhone(String message);
+void forwardReceiverIdToNodeA();
+bool sendChunkedPayload(uint8_t typeStart, uint8_t typeData, uint8_t typeEnd, const String& payload);
+void handleReceiverIdBlock(const String& msg);
+void handleHeaderRx(const String& payload);
+void handleSosRx(const String& payload);
 
 void setup() {
   delay(2000);
@@ -98,6 +119,8 @@ void setup() {
   
   Serial.println("[OK] NRF24 ready.");
   
+  prefs.begin("rxcache", false);
+
   // Bluetooth init
   esp_spp_deinit();
   delay(100);
@@ -121,6 +144,9 @@ void loop() {
       conn = true;
       Serial.println("\n[BT] ✓ Client connected");
       sendStatus();
+      // push receiverId if stored
+      receiverId = prefs.getString("receiver_id", "");
+      if (receiverId.length() > 0) forwardReceiverIdToNodeA();
     }
     handleBluetooth();
   } else if (conn) {
@@ -155,7 +181,11 @@ void handleBluetooth() {
           if (buf.length() > 0) {
             Serial.println("[BT] ✓✓✓ COMPLETE TEXT MESSAGE RECEIVED FROM PHONE! ✓✓✓");
             Serial.println("[BT] Buffer length: " + String(buf.length()) + " characters");
-            processBluetoothMessage(buf);
+            if (buf.startsWith("<RECEIVER_ID>")) {
+              handleReceiverIdBlock(buf);
+            } else {
+              processBluetoothMessage(buf);
+            }
             buf = "";
           }
         } else if (buf.length() < 512) {
@@ -314,6 +344,24 @@ void processBluetoothMessage(String msg) {
   Serial.println("==========================================\n");
 }
 
+void handleReceiverIdBlock(const String& msg) {
+  // <RECEIVER_ID>\nID=<uuid>\n<END_RECEIVER_ID>
+  int idIdx = msg.indexOf("ID=");
+  if (idIdx < 0) return;
+  int end = msg.indexOf('\n', idIdx);
+  if (end < 0) end = msg.length();
+  receiverId = msg.substring(idIdx + 3, end);
+  receiverId.trim();
+  prefs.putString("receiver_id", receiverId);
+  Serial.println("[BT] ReceiverId set: " + receiverId);
+  forwardReceiverIdToNodeA();
+}
+
+void forwardReceiverIdToNodeA() {
+  if (receiverId.isEmpty()) return;
+  sendChunkedPayload(PTYPE_RXID_START, PTYPE_RXID_DATA, PTYPE_RXID_END, receiverId);
+}
+
 void sendViaNRF24(String message) {
   Serial.println("[NRF24 TX] Preparing to send message...");
   
@@ -407,6 +455,39 @@ void handleNRF24() {
     uint8_t total = header->totalChunks;
     uint8_t len = header->dataLen;
     
+    // Handle header/receiverId/SOS packet types (msgId not used)
+    if (header->reserved == PTYPE_HEADER_START) {
+      buf = "";
+      // repurpose buf as temp aggregator not used elsewhere here
+      return;
+    }
+    if (header->reserved == PTYPE_HEADER_DATA) {
+      buf += String((char*)(chunk + sizeof(ChunkHeader)), len);
+      return;
+    }
+    if (header->reserved == PTYPE_HEADER_END) {
+      String payload = buf;
+      payload.trim();
+      buf = "";
+      handleHeaderRx(payload);
+      return;
+    }
+    if (header->reserved == PTYPE_SOS_START) {
+      buf = "";
+      return;
+    }
+    if (header->reserved == PTYPE_SOS_DATA) {
+      buf += String((char*)(chunk + sizeof(ChunkHeader)), len);
+      return;
+    }
+    if (header->reserved == PTYPE_SOS_END) {
+      String payload = buf;
+      payload.trim();
+      buf = "";
+      handleSosRx(payload);
+      return;
+    }
+
     // Validate chunk data
     if (idx >= 32 || total > 32 || total == 0 || len > NRF24_DATA_SIZE || len == 0) {
       Serial.println("[ERROR] Invalid chunk header! idx=" + String(idx) + " total=" + String(total) + " len=" + String(len));
@@ -552,4 +633,49 @@ void sendStatus() {
   String status = "{\"status\":\"connected\",\"node_id\":\"" + nId + "\"}";
   BT.println(status);
   Serial.println("[STATUS] Sent to phone.");
+}
+
+bool sendChunkedPayload(uint8_t typeStart, uint8_t typeData, uint8_t typeEnd, const String& payload) {
+  radio.stopListening();
+  radio.openWritingPipe(address[otherNode]);
+
+  ChunkHeader startH = {};
+  startH.reserved = typeStart;
+  radio.write(&startH, sizeof(ChunkHeader));
+  delay(5);
+
+  for (int i = 0; i < payload.length(); i += NRF24_DATA_SIZE) {
+    ChunkHeader h = {};
+    h.reserved = typeData;
+    h.dataLen = min((int)NRF24_DATA_SIZE, (int)payload.length() - i);
+    uint8_t pkt[NRF24_PAYLOAD_SIZE] = {0};
+    memcpy(pkt, &h, sizeof(ChunkHeader));
+    memcpy(pkt + sizeof(ChunkHeader), payload.c_str() + i, h.dataLen);
+    radio.write(&pkt, NRF24_PAYLOAD_SIZE);
+    delay(5);
+  }
+
+  ChunkHeader endH = {};
+  endH.reserved = typeEnd;
+  radio.write(&endH, sizeof(ChunkHeader));
+  delay(5);
+
+  radio.startListening();
+  return true;
+}
+
+void handleHeaderRx(const String& payload) {
+  if (!(conn && BT.hasClient())) return;
+  BT.println("<HEADER_START>");
+  BT.println(payload);
+  BT.println("<HEADER_END>");
+  Serial.println("[HDR] Forwarded header to phone");
+}
+
+void handleSosRx(const String& payload) {
+  if (!(conn && BT.hasClient())) return;
+  BT.println("<SOS_START>");
+  BT.println(payload);
+  BT.println("<SOS_END>");
+  Serial.println("[SOS] Forwarded SOS to phone");
 }

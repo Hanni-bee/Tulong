@@ -9,6 +9,7 @@
 #include <SPI.h>
 #include <nRF24L01.h>
 #include <RF24.h>
+#include <Preferences.h>
 #include "esp_bt.h"
 #include "esp_bt_main.h"
 #include "esp_bt_device.h"
@@ -26,6 +27,7 @@
 
 BluetoothSerial BT;
 RF24 radio(CE_PIN, CSN_PIN);
+Preferences prefs;
 
 const byte address[][6] = {"1Node", "2Node"};
 const byte thisNode = 0;
@@ -34,6 +36,11 @@ const byte otherNode = 1;
 String nId = "";
 String buf = "";
 bool conn = false;
+String currentReceiverId = "";
+String profileFullname = "";
+String profileAddress = "";
+uint32_t profileVer = 0;
+String sentMap = ""; // "receiverId:ver,receiverId2:ver"
 
 struct ChunkHeader {
   uint32_t msgId;
@@ -41,6 +48,23 @@ struct ChunkHeader {
   uint8_t totalChunks;
   uint8_t dataLen;
   uint8_t msgType;  // 0 = text, 1 = voice (Base64)
+};
+
+// RF packet types for header/receiverID/SOS
+enum : uint8_t {
+  VTYPE_START = 0xD0,
+  VTYPE_DATA  = 0xD1,
+  VTYPE_END   = 0xD2,
+  PTYPE_TEXT  = 0xA0,
+  PTYPE_HEADER_START = 0xB0,
+  PTYPE_HEADER_DATA  = 0xB1,
+  PTYPE_HEADER_END   = 0xB2,
+  PTYPE_RXID_START   = 0xC0,
+  PTYPE_RXID_DATA    = 0xC1,
+  PTYPE_RXID_END     = 0xC2,
+  PTYPE_SOS_START    = 0xE0,
+  PTYPE_SOS_DATA     = 0xE1,
+  PTYPE_SOS_END      = 0xE2
 };
 
 // Receiving chunks structure with missing packet tracking
@@ -62,6 +86,14 @@ uint8_t missingChunksList[MAX_CHUNKS];
 uint8_t missingChunksCount = 0;
 unsigned long retransmissionRequestTime = 0;
 
+// Header/SOS/ReceiverId reassembly
+String rxIdBuffer = "";
+bool rxIdActive = false;
+String headerBuffer = "";
+bool headerActive = false;
+String sosBuffer = "";
+bool sosActive = false;
+
 // --- Forward declarations ---
 void handleBluetooth();
 void processBluetoothMessage(String msg);
@@ -71,6 +103,15 @@ void sendStatus();
 void forwardMessageToPhone(String message);
 void requestMissingChunks(uint32_t msgId, uint8_t* missingList, uint8_t count);
 String extractJsonValue(String json, String key);
+void loadProfileFromNVS();
+void saveProfileToNVS();
+void clearSentMap();
+bool hasSentHeaderFor(const String& rxId);
+void markHeaderSent(const String& rxId);
+bool sendHeaderIfNeeded(const String& rxId);
+bool sendChunkedPayload(uint8_t typeStart, uint8_t typeData, uint8_t typeEnd, const String& payload);
+void handleProfileCommand(const String& msg);
+void handleSosCommand(const String& msg);
 
 void setup() {
   delay(2000);
@@ -78,7 +119,7 @@ void setup() {
   delay(200);
   
   uint64_t c = ESP.getEfuseMac();
-  nId = "NodeA_" + String((uint32_t)(c >> 32), HEX);
+  nId = "NODE_" + String((uint32_t)(c >> 32), HEX);
   nId.toUpperCase();
   
   Serial.println("\n=== ESP32 NODE A START ===");
@@ -103,6 +144,9 @@ void setup() {
   
   Serial.println("[OK] NRF24 ready.");
   
+  prefs.begin("profile", false);
+  loadProfileFromNVS();
+
   // Bluetooth init
   esp_spp_deinit();
   delay(100);
@@ -171,7 +215,14 @@ void handleBluetooth() {
         if (buf.length() > 0) {
           Serial.println("[BT] ✓✓✓ COMPLETE MESSAGE RECEIVED FROM PHONE! ✓✓✓");
           Serial.println("[BT] Buffer length: " + String(buf.length()) + " characters");
-          processBluetoothMessage(buf);
+          // Handle line-based control blocks
+          if (buf.startsWith("<SET_PROFILE>")) {
+            handleProfileCommand(buf);
+          } else if (buf.startsWith("<SOS>")) {
+            handleSosCommand(buf);
+          } else {
+            processBluetoothMessage(buf);
+          }
           buf = "";
         }
       } else if (buf.length() < BUFFER_SIZE) {  // Increased buffer for Base64
@@ -307,6 +358,51 @@ void processBluetoothMessage(String msg) {
   Serial.println("==========================================\n");
 }
 
+void handleProfileCommand(const String& msg) {
+  // Expect multi-line:
+  // <SET_PROFILE>
+  // FULLNAME=...
+  // ADDRESS=...
+  // <END_PROFILE>
+  profileFullname = "";
+  profileAddress = "";
+
+  int fnIdx = msg.indexOf("FULLNAME=");
+  if (fnIdx >= 0) {
+    int end = msg.indexOf('\n', fnIdx);
+    if (end < 0) end = msg.length();
+    profileFullname = msg.substring(fnIdx + 9, end);
+    profileFullname.trim();
+  }
+  int adIdx = msg.indexOf("ADDRESS=");
+  if (adIdx >= 0) {
+    int end = msg.indexOf('\n', adIdx);
+    if (end < 0) end = msg.length();
+    profileAddress = msg.substring(adIdx + 8, end);
+    profileAddress.trim();
+  }
+  profileVer += 1;
+  clearSentMap();
+  saveProfileToNVS();
+  Serial.println("[PROFILE] Saved profile, ver=" + String(profileVer));
+  BT.println("<PROFILE_SAVED>");
+}
+
+void handleSosCommand(const String& msg) {
+  // <SOS>\nMESSAGE=...\n<END_SOS>
+  int mIdx = msg.indexOf("MESSAGE=");
+  if (mIdx < 0) return;
+  int end = msg.indexOf('\n', mIdx);
+  if (end < 0) end = msg.length();
+  String sos = msg.substring(mIdx + 8, end);
+  sos.trim();
+  if (sos.length() > 200) sos = sos.substring(0, 200);
+
+  // Ensure header sent first if we know receiverId
+  sendHeaderIfNeeded(currentReceiverId);
+  sendChunkedPayload(PTYPE_SOS_START, PTYPE_SOS_DATA, PTYPE_SOS_END, sos);
+}
+
 void sendViaNRF24(String message, uint8_t msgType) {
   Serial.println("[NRF24 TX] Preparing to send " + String(msgType == 1 ? "voice" : "text") + " message...");
   
@@ -392,6 +488,53 @@ void handleNRF24() {
     uint8_t len = header->dataLen;
     uint8_t msgType = header->msgType;
     
+    // Handle receiver-id/header/sos control packets encoded in msgType
+    if (msgType == PTYPE_RXID_START) {
+      rxIdBuffer = "";
+      rxIdActive = true;
+      return;
+    }
+    if (msgType == PTYPE_RXID_DATA && rxIdActive) {
+      rxIdBuffer += String((char*)(chunk + sizeof(ChunkHeader)), len);
+      return;
+    }
+    if (msgType == PTYPE_RXID_END && rxIdActive) {
+      rxIdActive = false;
+      rxIdBuffer.trim();
+      currentReceiverId = rxIdBuffer;
+      Serial.println("[RXID] Receiver ID set: " + currentReceiverId);
+      return;
+    }
+    if (msgType == PTYPE_HEADER_START) {
+      headerBuffer = "";
+      headerActive = true;
+      return;
+    }
+    if (msgType == PTYPE_HEADER_DATA && headerActive) {
+      headerBuffer += String((char*)(chunk + sizeof(ChunkHeader)), len);
+      return;
+    }
+    if (msgType == PTYPE_HEADER_END && headerActive) {
+      headerActive = false;
+      headerBuffer.trim();
+      Serial.println("[HDR] header rx ignored on Node A");
+      return;
+    }
+    if (msgType == PTYPE_SOS_START) {
+      sosBuffer = "";
+      sosActive = true;
+      return;
+    }
+    if (msgType == PTYPE_SOS_DATA && sosActive) {
+      sosBuffer += String((char*)(chunk + sizeof(ChunkHeader)), len);
+      return;
+    }
+    if (msgType == PTYPE_SOS_END && sosActive) {
+      sosActive = false;
+      Serial.println("[SOS] Incoming SOS ignored on Node A");
+      return;
+    }
+
     // Check if it's a retransmission request (special msgId = 0xFFFFFFFF)
     if (msgId == 0xFFFFFFFF && msgType == 0xFF) {
       // This is a retransmission request
@@ -546,5 +689,110 @@ void sendStatus() {
   String status = "{\"status\":\"connected\",\"node_id\":\"" + nId + "\"}";
   BT.println(status);
   Serial.println("[STATUS] Sent to phone.");
+}
+
+// ---------- Profile storage helpers ----------
+void loadProfileFromNVS() {
+  profileFullname = prefs.getString("fullname", "");
+  profileAddress = prefs.getString("address", "");
+  profileVer = prefs.getULong("profile_ver", 0);
+  sentMap = prefs.getString("sent_map", "");
+  // ensure sender_device_id stored
+  prefs.putString("sender_device_id", nId);
+}
+
+void saveProfileToNVS() {
+  prefs.putString("fullname", profileFullname);
+  prefs.putString("address", profileAddress);
+  prefs.putULong("profile_ver", profileVer);
+  prefs.putString("sent_map", sentMap);
+  prefs.putString("sender_device_id", nId);
+}
+
+void clearSentMap() {
+  sentMap = "";
+  prefs.putString("sent_map", sentMap);
+}
+
+bool hasSentHeaderFor(const String& rxId) {
+  if (rxId.isEmpty()) return false;
+  int pos = sentMap.indexOf(rxId + ":");
+  if (pos < 0) return false;
+  int comma = sentMap.indexOf(',', pos);
+  String verStr = (comma < 0) ? sentMap.substring(pos + rxId.length() + 1)
+                              : sentMap.substring(pos + rxId.length() + 1, comma);
+  return (verStr.toInt() == (int)profileVer);
+}
+
+void markHeaderSent(const String& rxId) {
+  if (rxId.isEmpty()) return;
+  // remove existing
+  String newMap = "";
+  int start = 0;
+  while (start < sentMap.length()) {
+    int comma = sentMap.indexOf(',', start);
+    String entry = (comma < 0) ? sentMap.substring(start) : sentMap.substring(start, comma);
+    if (!entry.startsWith(rxId + ":") && entry.length() > 0) {
+      if (newMap.length()) newMap += ",";
+      newMap += entry;
+    }
+    if (comma < 0) break;
+    start = comma + 1;
+  }
+  if (newMap.length()) newMap += ",";
+  newMap += rxId + ":" + String(profileVer);
+  sentMap = newMap;
+  prefs.putString("sent_map", sentMap);
+}
+
+bool sendHeaderIfNeeded(const String& rxId) {
+  if (rxId.isEmpty()) {
+    Serial.println("[HDR] No receiverId yet; skip header");
+    return false;
+  }
+  if (hasSentHeaderFor(rxId)) return true;
+  String payload = "";
+  payload += "SENDER_DEVICE_ID=" + nId + "\n";
+  payload += "PROFILE_VER=" + String(profileVer) + "\n";
+  payload += "FULLNAME=" + profileFullname + "\n";
+  payload += "ADDRESS=" + profileAddress + "\n";
+  bool ok = sendChunkedPayload(PTYPE_HEADER_START, PTYPE_HEADER_DATA, PTYPE_HEADER_END, payload);
+  if (ok) {
+    markHeaderSent(rxId);
+  }
+  return ok;
+}
+
+bool sendChunkedPayload(uint8_t typeStart, uint8_t typeData, uint8_t typeEnd, const String& payload) {
+  // Reuse RF pipe with our 32B payload (header + data)
+  radio.stopListening();
+  radio.openWritingPipe(address[otherNode]);
+
+  // START
+  ChunkHeader hdrStart = {};
+  hdrStart.msgType = typeStart;
+  radio.write(&hdrStart, sizeof(ChunkHeader));
+  delay(10);
+
+  // DATA chunks (<=24 bytes text)
+  for (int i = 0; i < payload.length(); i += NRF24_DATA_SIZE) {
+    ChunkHeader hdr = {};
+    hdr.msgType = typeData;
+    hdr.dataLen = min((int)NRF24_DATA_SIZE, (int)payload.length() - i);
+    uint8_t pkt[NRF24_PAYLOAD_SIZE] = {0};
+    memcpy(pkt, &hdr, sizeof(ChunkHeader));
+    memcpy(pkt + sizeof(ChunkHeader), payload.c_str() + i, hdr.dataLen);
+    radio.write(&pkt, NRF24_PAYLOAD_SIZE);
+    delay(10);
+  }
+
+  // END
+  ChunkHeader hdrEnd = {};
+  hdrEnd.msgType = typeEnd;
+  radio.write(&hdrEnd, sizeof(ChunkHeader));
+  delay(10);
+
+  radio.startListening();
+  return true;
 }
 

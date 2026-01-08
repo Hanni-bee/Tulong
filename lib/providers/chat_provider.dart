@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_bluetooth_serial_plus/flutter_bluetooth_serial_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/bluetooth_service.dart';
 import '../services/voice_chat_extension.dart' as voice;
 import '../services/notification_service.dart';
@@ -21,6 +22,12 @@ class ChatProvider with ChangeNotifier {
   // Connected users on the channel (extracted from messages)
   final Set<String> _connectedUsers = {};
   String? _currentUserName;
+  bool _headerCollecting = false;
+  String _headerBuffer = '';
+  bool _sosCollecting = false;
+  String _sosBuffer = '';
+  Map<String, Map<String, String>> _senderProfiles = {};
+  String? _lastHeaderSenderId;
 
   List<BluetoothDevice> get pairedDevices => _pairedDevices;
   BluetoothDevice? get selectedDevice => _selectedDevice;
@@ -74,6 +81,7 @@ class ChatProvider with ChangeNotifier {
   }
 
   void _init() {
+    _loadCachedProfiles();
     _messageSubscription = _bluetoothService.messageStream.listen((message) {
       _processIncomingMessage(message);
     });
@@ -232,15 +240,20 @@ class ChatProvider with ChangeNotifier {
 
     _addMessage(message.text, true, message: message, rawData: rawData);
     
-    // For ESP32 transmission, we send a JSON string if it's an emergency or has metadata
-    String dataToSend;
-    if (isEmergency || additionalData != null) {
-      dataToSend = json.encode(rawData);
+    bool success;
+    if (isEmergency) {
+      // Use dedicated SOS protocol for ESP32
+      success = await _bluetoothService.sendSosMessage(text.trim());
     } else {
-      dataToSend = text.trim();
+      // For ESP32 transmission, we send a JSON string if it has metadata
+      String dataToSend;
+      if (additionalData != null) {
+        dataToSend = json.encode(rawData);
+      } else {
+        dataToSend = text.trim();
+      }
+      success = await _bluetoothService.sendMessage(dataToSend);
     }
-    
-    bool success = await _bluetoothService.sendMessage(dataToSend);
     
     if (success) {
       message.status = voice.MessageStatus.sent;
@@ -293,6 +306,39 @@ class ChatProvider with ChangeNotifier {
       'metrics': {'dataLength': data.length}
     });
     
+    // Handle header/SOS framing before voice processing
+    final trimmed = data.trim();
+    if (trimmed == '<HEADER_START>') {
+      _headerCollecting = true;
+      _headerBuffer = '';
+      return;
+    }
+    if (trimmed == '<HEADER_END>') {
+      _headerCollecting = false;
+      _handleHeaderBuffer(_headerBuffer);
+      _headerBuffer = '';
+      return;
+    }
+    if (_headerCollecting) {
+      _headerBuffer += data + '\n';
+      return;
+    }
+    if (trimmed == '<SOS_START>') {
+      _sosCollecting = true;
+      _sosBuffer = '';
+      return;
+    }
+    if (trimmed == '<SOS_END>') {
+      _sosCollecting = false;
+      _handleSosBuffer(_sosBuffer);
+      _sosBuffer = '';
+      return;
+    }
+    if (_sosCollecting) {
+      _sosBuffer += data + '\n';
+      return;
+    }
+
     final messages = _voiceExtension.processIncomingData(data);
     
     addStructuredDebug({
@@ -390,6 +436,77 @@ class ChatProvider with ChangeNotifier {
     }
 
     return (text: text, rawData: rawData, senderName: senderName);
+  }
+
+  Future<void> _loadCachedProfiles() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('sender_profiles');
+      if (raw != null && raw.isNotEmpty) {
+        final Map<String, dynamic> decoded = json.decode(raw);
+        _senderProfiles = decoded.map((k, v) => MapEntry(k, Map<String, String>.from(v as Map)));
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _persistProfiles() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('sender_profiles', json.encode(_senderProfiles));
+    } catch (_) {}
+  }
+
+  void _handleHeaderBuffer(String buf) {
+    final lines = buf.split('\n').where((l) => l.trim().isNotEmpty);
+    String? senderId;
+    String? fullname;
+    String? address;
+    String? profileVer;
+    for (final l in lines) {
+      final idx = l.indexOf('=');
+      if (idx <= 0) continue;
+      final key = l.substring(0, idx).trim();
+      final val = l.substring(idx + 1).trim();
+      if (key == 'SENDER_DEVICE_ID') senderId = val;
+      else if (key == 'FULLNAME') fullname = val;
+      else if (key == 'ADDRESS') address = val;
+      else if (key == 'PROFILE_VER') profileVer = val;
+    }
+    if (senderId != null) {
+      _senderProfiles[senderId] = {
+        'fullname': fullname ?? '',
+        'address': address ?? '',
+        'profile_ver': profileVer ?? '',
+      };
+      _lastHeaderSenderId = senderId;
+      _persistProfiles();
+      addStructuredDebug({
+        'source': 'CHAT',
+        'event': 'Header cached',
+        'metrics': {'senderId': senderId}
+      });
+    }
+  }
+
+  void _handleSosBuffer(String buf) {
+    final sosText = buf.trim();
+    String? senderName;
+    if (_lastHeaderSenderId != null) {
+      final prof = _senderProfiles[_lastHeaderSenderId!];
+      if (prof != null && (prof['fullname'] ?? '').isNotEmpty) {
+        senderName = prof['fullname'];
+      }
+    }
+    _addMessage(
+      'SOS: $sosText',
+      false,
+      senderName: senderName,
+      rawData: {
+        'type': 'sos',
+        'message': sosText,
+        'sender_device_id': _lastHeaderSenderId
+      },
+    );
   }
   
   /// Add connected user to the list

@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter_bluetooth_serial_plus/flutter_bluetooth_serial_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uuid/uuid.dart';
 
 class BluetoothService {
   static final BluetoothService _instance = BluetoothService._internal();
@@ -21,6 +23,7 @@ class BluetoothService {
   Stream<String> get debugStream => _debugController.stream;
   
   bool get isConnected => _connection?.isConnected ?? false;
+  final Uuid _uuid = const Uuid();
 
   Future<List<BluetoothDevice>> getPairedDevices() async {
     try {
@@ -72,6 +75,9 @@ class BluetoothService {
             _connection = null;
           },
         );
+
+        // Send receiver ID once per install to Node B immediately after connect
+        unawaited(_sendReceiverId());
         return true;
       } else {
         _debugController.add('Failed to connect to ${device.name}');
@@ -101,6 +107,52 @@ class BluetoothService {
       _debugController.add('Error sending message: $e');
       return false;
     }
+  }
+
+  /// Generate (if needed) and send receiver_id to Node B/ESP32.
+  Future<void> _sendReceiverId() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      var receiverId = prefs.getString('receiver_id');
+      if (receiverId == null || receiverId.isEmpty) {
+        receiverId = _uuid.v4();
+        await prefs.setString('receiver_id', receiverId);
+      }
+
+      final payload = StringBuffer()
+        ..writeln('<RECEIVER_ID>')
+        ..writeln('ID=$receiverId')
+        ..write('<END_RECEIVER_ID>');
+
+      await sendMessage(payload.toString());
+      _debugController.add('Sent receiver_id: $receiverId');
+    } catch (e) {
+      _debugController.add('Error sending receiver_id: $e');
+    }
+  }
+
+  /// Send profile header update to Node A (FULLNAME + ADDRESS)
+  Future<bool> sendProfileHeader({
+    required String fullName,
+    required String address,
+  }) async {
+    final payload = StringBuffer()
+      ..writeln('<SET_PROFILE>')
+      ..writeln('FULLNAME=$fullName')
+      ..writeln('ADDRESS=$address')
+      ..write('<END_PROFILE>');
+    return sendMessage(payload.toString());
+  }
+
+  /// Send SOS message to Node A (<=200 chars)
+  Future<bool> sendSosMessage(String message) async {
+    final trimmed = message.trim();
+    final int maxLen = trimmed.length > 200 ? 200 : trimmed.length;
+    final payload = StringBuffer()
+      ..writeln('<SOS>')
+      ..writeln('MESSAGE=${trimmed.substring(0, maxLen)}')
+      ..write('<END_SOS>');
+    return sendMessage(payload.toString());
   }
 
   Future<void> disconnect() async {

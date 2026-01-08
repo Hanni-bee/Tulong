@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import '../services/bluetooth_service.dart';
 import '../constants/app_colors.dart';
 import '../constants/unified_typography.dart';
 import '../models/user_model.dart';
@@ -307,6 +309,14 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
           province: provinceName,
         );
         authProvider.updateUser(updatedUser);
+
+        // Push profile header to Node A via Bluetooth (if connected)
+        final bt = BluetoothService();
+        if (bt.isConnected) {
+          final fullName = updatedUser.name;
+          final addressString = '${_addressController.text.trim()}, $cityName';
+          unawaited(bt.sendProfileHeader(fullName: fullName, address: addressString));
+        }
       }
 
       HapticFeedback.mediumImpact();
