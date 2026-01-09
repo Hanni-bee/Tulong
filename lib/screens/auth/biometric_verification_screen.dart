@@ -206,6 +206,7 @@ class _BiometricVerificationScreenState extends State<BiometricVerificationScree
       final userData = {
         'first_name': data['firstName'].toString(),
         'last_name': data['lastName'].toString(),
+        'suffix': data['suffix']?.toString(),
         'username': data['username'].toString(),
         'street': address,
         'region': region,
@@ -240,6 +241,7 @@ class _BiometricVerificationScreenState extends State<BiometricVerificationScree
           final firebaseData = {
             'FirstName': data['firstName'],
             'LastName': data['lastName'],
+            'Suffix': data['suffix'],
             'Username': data['username'],
             'Address': address,
             'Region': region,

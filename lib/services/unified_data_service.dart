@@ -219,6 +219,7 @@ class UnifiedDataService {
     return {
       'FirstName': sqliteUser['first_name'],
       'LastName': sqliteUser['last_name'],
+      'Suffix': sqliteUser['suffix'],
       'Username': sqliteUser['username'] ?? sqliteUser['email'], // Support migration
       'Address': sqliteUser['street'],
       'Region': sqliteUser['region'],
@@ -241,6 +242,7 @@ class UnifiedDataService {
     return {
       'first_name': firebaseUser['FirstName'] ?? '',
       'last_name': firebaseUser['LastName'] ?? '',
+      'suffix': firebaseUser['Suffix'],
       'username': firebaseUser['Username'] ?? firebaseUser['Email'] ?? '', // Support migration
       'street': firebaseUser['Address'] ?? '',
       'region': firebaseUser['Region'] ?? '',

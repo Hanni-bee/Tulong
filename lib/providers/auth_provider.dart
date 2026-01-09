@@ -106,10 +106,13 @@ class AuthProvider extends ChangeNotifier {
       if (sqliteUser != null) {
         print('Found user in SQLite: ${sqliteUser.toString()}');
         
-        // Combine first and last name
+        // Combine first, last name, and suffix
         final firstName = sqliteUser['first_name']?.toString() ?? '';
         final lastName = sqliteUser['last_name']?.toString() ?? '';
-        final fullName = '$firstName $lastName'.trim();
+        final suffix = sqliteUser['suffix']?.toString() ?? '';
+        final fullName = suffix.isNotEmpty 
+            ? '$firstName $lastName $suffix'.trim()
+            : '$firstName $lastName'.trim();
         
         // Handle legacy data where province might be stored in city field
         final province = sqliteUser['province']?.toString() ?? '';
@@ -161,10 +164,13 @@ class AuthProvider extends ChangeNotifier {
       }
       
       if (userEntry != null) {
-        // Combine first and last name for Firebase (handle both PascalCase and camelCase)
+        // Combine first, last name, and suffix for Firebase (handle both PascalCase and camelCase)
         final firstName = userEntry['FirstName']?.toString() ?? userEntry['firstName']?.toString() ?? '';
         final lastName = userEntry['LastName']?.toString() ?? userEntry['lastName']?.toString() ?? '';
-        final fullName = '$firstName $lastName'.trim();
+        final suffix = userEntry['Suffix']?.toString() ?? userEntry['suffix']?.toString() ?? '';
+        final fullName = suffix.isNotEmpty 
+            ? '$firstName $lastName $suffix'.trim()
+            : '$firstName $lastName'.trim();
         
         final userModel = UserModel(
           id: userEntry['ID']?.toString() ?? userEntry['id']?.toString() ?? _userUsername!,

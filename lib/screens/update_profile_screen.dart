@@ -11,6 +11,7 @@ import '../services/unified_data_service.dart';
 import '../widgets/custom_button.dart';
 import '../widgets/custom_text_field.dart';
 import '../widgets/enhanced_micro_interactions.dart' as micro;
+import '../utils/input_validator.dart';
 
 class UpdateProfileScreen extends StatefulWidget {
   const UpdateProfileScreen({super.key});
@@ -21,7 +22,9 @@ class UpdateProfileScreen extends StatefulWidget {
 
 class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _fullNameController = TextEditingController();
+  final _firstNameController = TextEditingController();
+  final _lastNameController = TextEditingController();
+  final _suffixController = TextEditingController();
   final _usernameController = TextEditingController();
   final _addressController = TextEditingController();
   
@@ -65,17 +68,39 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
         print('  - Province: ${user.province}');
         print('  - Barangay: ${user.barangay}');
         
-        // Pre-fill full name (concatenated, read-only)
-        _fullNameController.text = user.name.isNotEmpty ? user.name : '';
+        // Get user data directly from SQLite to get separate first_name, last_name, suffix
+        final sqliteService = UnifiedDataService();
+        final sqliteUser = await sqliteService.getUserByUsername(user.username);
         
-        // Pre-fill username (read-only)
+        if (sqliteUser != null) {
+          // Pre-fill first name, last name, and suffix
+          _firstNameController.text = sqliteUser['first_name']?.toString() ?? '';
+          _lastNameController.text = sqliteUser['last_name']?.toString() ?? '';
+          _suffixController.text = sqliteUser['suffix']?.toString() ?? '';
+        } else {
+          // Fallback: try to parse from full name (for legacy data)
+          final nameParts = user.name.trim().split(' ');
+          if (nameParts.length >= 2) {
+            _firstNameController.text = nameParts.first;
+            _lastNameController.text = nameParts.last;
+            _suffixController.text = '';
+          } else {
+            _firstNameController.text = user.name;
+            _lastNameController.text = '';
+            _suffixController.text = '';
+          }
+        }
+        
+        // Pre-fill username (now editable)
         _usernameController.text = user.username.isNotEmpty ? user.username : '';
         
         // Pre-fill address info - ALWAYS set the text, even if empty
         _addressController.text = user.street.isNotEmpty ? user.street : '';
         
         print('✅ Controllers set:');
-        print('  - Full Name Controller: "${_fullNameController.text}"');
+        print('  - First Name Controller: "${_firstNameController.text}"');
+        print('  - Last Name Controller: "${_lastNameController.text}"');
+        print('  - Suffix Controller: "${_suffixController.text}"');
         print('  - Username Controller: "${_usernameController.text}"');
         print('  - Address Controller: "${_addressController.text}"');
       
@@ -203,7 +228,9 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
 
   @override
   void dispose() {
-    _fullNameController.dispose();
+    _firstNameController.dispose();
+    _lastNameController.dispose();
+    _suffixController.dispose();
     _usernameController.dispose();
     _addressController.dispose();
     super.dispose();
@@ -252,6 +279,64 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
     }
   }
 
+  void _showConfirmationModal() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: Text(
+          'Are you sure on changes?',
+          style: UnifiedTypography.titleLarge.copyWith(
+            color: AppColors.textPrimary,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        content: Text(
+          'This will update your profile information.',
+          style: UnifiedTypography.bodyMedium.copyWith(
+            color: AppColors.textSecondary,
+          ),
+        ),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop(); // Close modal
+            },
+            child: Text(
+              'NO',
+              style: UnifiedTypography.bodyLarge.copyWith(
+                color: AppColors.textSecondary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(context).pop(); // Close modal
+              _updateProfile(); // Proceed with update
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: Text(
+              'YES',
+              style: UnifiedTypography.bodyLarge.copyWith(
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _updateProfile() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -282,11 +367,15 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
       )['brgy_name'] ?? _selectedBarangay ?? '';
       
       // Use unified data service for profile update
-      // Note: Name and username are read-only, so we only update address fields
+      // Now updating first_name, last_name, suffix, username, and address fields
       final unifiedDataService = UnifiedDataService();
       await unifiedDataService.updateUserProfileWithMap(
         authProvider.userUsername!,
         {
+          'first_name': _firstNameController.text.trim(),
+          'last_name': _lastNameController.text.trim(),
+          'suffix': _suffixController.text.trim().isEmpty ? null : _suffixController.text.trim(),
+          'username': _usernameController.text.trim(),
           'street': _addressController.text.trim(),
           'region': regionName,
           'province': provinceName,
@@ -298,9 +387,18 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
       // Reload user model to ensure all saved data is loaded from database
       await authProvider.loadUserModel();
       
-      // Update local user model with latest data (keep existing name and username)
+      // Update local user model with latest data
       if (authProvider.currentUserModel != null) {
+        final firstName = _firstNameController.text.trim();
+        final lastName = _lastNameController.text.trim();
+        final suffix = _suffixController.text.trim();
+        final fullName = suffix.isNotEmpty 
+            ? '$firstName $lastName $suffix'.trim()
+            : '$firstName $lastName'.trim();
+        
         final updatedUser = authProvider.currentUserModel!.copyWith(
+          name: fullName,
+          username: _usernameController.text.trim(),
           street: _addressController.text.trim(),
           barangay: barangayName,
           city: cityName,
@@ -572,32 +670,65 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
                 ),
                 const SizedBox(height: 16),
 
-                // Full Name (read-only, concatenated)
+                // First Name (required, editable)
                 CustomTextField(
-                  controller: _fullNameController,
-                  label: 'Full Name',
-                  hint: 'Your full name',
+                  controller: _firstNameController,
+                  label: 'First Name',
+                  hint: 'Enter your first name',
                   prefixIcon: Icons.person_outline,
-                  enabled: false, // Disabled for editing
                   validator: (value) {
-                    // No validation needed since it's read-only
+                    if (value == null || value.trim().isEmpty) {
+                      return 'First Name is required';
+                    }
+                    return InputValidator.validateName(value, 'First Name');
+                  },
+                ),
+
+                const SizedBox(height: 16),
+
+                // Last Name (required, editable)
+                CustomTextField(
+                  controller: _lastNameController,
+                  label: 'Last Name',
+                  hint: 'Enter your last name',
+                  prefixIcon: Icons.badge_outlined,
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Last Name is required';
+                    }
+                    return InputValidator.validateName(value, 'Last Name');
+                  },
+                ),
+
+                const SizedBox(height: 16),
+
+                // Suffix (optional, editable)
+                CustomTextField(
+                  controller: _suffixController,
+                  label: 'Suffix (optional)',
+                  hint: 'Jr., Sr., III, etc.',
+                  prefixIcon: Icons.text_fields,
+                  validator: (value) {
+                    // Optional field - no validation error if empty
+                    if (value != null && value.trim().isNotEmpty) {
+                      // If provided, validate it's reasonable
+                      if (value.trim().length > 10) {
+                        return 'Suffix is too long';
+                      }
+                    }
                     return null;
                   },
                 ),
 
                 const SizedBox(height: 16),
 
-                // Username (read-only)
+                // Username (editable)
                 CustomTextField(
                   controller: _usernameController,
                   label: 'Username',
                   hint: 'Your username',
                   prefixIcon: Icons.alternate_email,
-                  enabled: false, // Disabled for editing
-                  validator: (value) {
-                    // No validation needed since it's read-only
-                    return null;
-                  },
+                  validator: InputValidator.validateUsername,
                 ),
 
                 const SizedBox(height: 32),
@@ -743,7 +874,7 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
                 // Update button
                 CustomButton(
                   text: _isLoading ? 'Updating...' : 'Update Profile',
-                  onPressed: _isLoading ? null : _updateProfile,
+                  onPressed: _isLoading ? null : _showConfirmationModal,
                   isLoading: _isLoading,
                 ),
               ],

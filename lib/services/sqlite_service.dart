@@ -10,7 +10,7 @@ class SQLiteService {
 
   static Database? _database;
   static const String _databaseName = 'tulong_offline.db';
-  static const int _databaseVersion = 5;
+  static const int _databaseVersion = 6;
 
   // Table names
   static const String _usersTable = 'users';
@@ -45,6 +45,7 @@ class SQLiteService {
         firebase_uid TEXT UNIQUE,
         first_name TEXT NOT NULL,
         last_name TEXT NOT NULL,
+        suffix TEXT,
         username TEXT NOT NULL UNIQUE,
         street TEXT,
         region TEXT,
@@ -163,6 +164,10 @@ class SQLiteService {
       
       // Remove is_google_auth (no longer needed)
       // We'll ignore this column going forward
+    }
+    if (oldVersion < 6) {
+      // Add suffix column
+      await db.execute('ALTER TABLE $_usersTable ADD COLUMN suffix TEXT');
     }
   }
 
