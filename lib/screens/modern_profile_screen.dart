@@ -16,6 +16,7 @@ import 'package:tulong_app/utils/icon_system.dart';
 import '../widgets/user_engagement_dashboard.dart';
 import '../providers/chat_provider.dart';
 import '../widgets/elite_liquid_background.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 
 class ModernProfileScreen extends StatefulWidget {
   const ModernProfileScreen({super.key});
@@ -33,6 +34,10 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
   
   // Stagger animations for Stat Cards (2 cards)
   late StaggeredListAnimations _statCardsStagger;
+  
+  // Scroll controller for enhanced scroll behavior
+  final ScrollController _scrollController = ScrollController();
+  bool _showScrollToTop = false;
   
   // Loading state
   bool _isLoadingProfile = true;
@@ -76,6 +81,9 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
       itemCount: 4,
     );
     
+    // Listen to scroll position for scroll-to-top button
+    _scrollController.addListener(_onScroll);
+    
     // Load user model immediately when screen opens to ensure data is available
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
@@ -93,8 +101,49 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
     });
   }
 
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final shouldShow = _scrollController.offset > 400;
+    if (shouldShow != _showScrollToTop) {
+      setState(() {
+        _showScrollToTop = shouldShow;
+      });
+    }
+  }
+
+  Future<void> _scrollToTop() async {
+    if (!_scrollController.hasClients) return;
+    HapticFeedback.lightImpact();
+    await _scrollController.animateTo(
+      0,
+      duration: const Duration(milliseconds: 400),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  Future<void> _refreshProfile() async {
+    HapticFeedback.mediumImpact();
+    setState(() {
+      _isLoadingProfile = true;
+    });
+    
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    await authProvider.loadUserModel();
+    
+    // Simulate refresh delay
+    await Future.delayed(const Duration(milliseconds: 800));
+    
+    if (mounted) {
+      setState(() {
+        _isLoadingProfile = false;
+      });
+    }
+  }
+
   @override
   void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
     _fadeController.dispose();
     _slideController.dispose();
     _statCardsStagger.dispose();
@@ -117,9 +166,15 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
             
             // Scrollable content - only this part scrolls
             Expanded(
-              child: SingleChildScrollView(
-                physics: const BouncingScrollPhysics(),
-                padding: const EdgeInsets.all(16),
+              child: RefreshIndicator(
+                onRefresh: _refreshProfile,
+                color: AppColors.primaryRed,
+                backgroundColor: Colors.white,
+                displacement: 60,
+                child: SingleChildScrollView(
+                  controller: _scrollController,
+                  physics: const ClampingScrollPhysics(),
+                  padding: const EdgeInsets.all(16),
                 child: FadeTransition(
                   opacity: _fadeAnimation,
                   child: SlideTransition(
@@ -142,9 +197,23 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                 ),
               ),
             ),
+            ),
               ],
             ),
           ),
+          // Scroll-to-top button
+          if (_showScrollToTop)
+            Positioned(
+              bottom: 100,
+              right: 20,
+              child: FloatingActionButton.small(
+                onPressed: _scrollToTop,
+                backgroundColor: AppColors.primaryRed,
+                child: const Icon(Icons.arrow_upward_rounded, color: Colors.white),
+              ).animate()
+                  .fadeIn(duration: 200.ms)
+                  .scale(begin: const Offset(0.8, 0.8), end: const Offset(1, 1)),
+            ),
         ],
       ),
     );
@@ -756,23 +825,23 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                   padding: EdgeInsets.symmetric(vertical: 16, horizontal: 12),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                        Icons.logout,
-                        color: AppColors.white,
-                        size: 20,
-                            ),
-                            SizedBox(width: 8),
+                    children: [
                       Text(
                         'Sign Out',
-                                style: TextStyle(
+                        style: TextStyle(
                           color: AppColors.white,
                           fontWeight: FontWeight.w600,
                           fontSize: 14,
-                              ),
-                            ),
-                          ],
                         ),
+                      ),
+                      const SizedBox(width: 8),
+                      Icon(
+                        Icons.logout,
+                        color: AppColors.white,
+                        size: 20,
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -1833,141 +1902,296 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
     showDialog(
       context: context,
       barrierDismissible: true,
-      barrierColor: Colors.black54,
+      barrierColor: Colors.black.withOpacity(0.6),
       builder: (context) => Dialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(24),
-        ),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
         child: Container(
           constraints: const BoxConstraints(maxWidth: 400),
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Header
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: AppColors.primaryRed.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(
-                      Icons.info_outline,
-                      color: AppColors.primaryRed,
-                      size: 28,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Text(
-                      'About',
-                      style: UnifiedTypography.titleLarge.copyWith(
-                        color: AppColors.textPrimary,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close),
-                    onPressed: () => Navigator.pop(context),
-                    color: AppColors.textSecondary,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-              
-              // App Logo/Icon
-              Container(
-                width: 80,
-                height: 80,
-                decoration: BoxDecoration(
-                  color: AppColors.primaryRed,
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.primaryRed.withOpacity(0.3),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: const Icon(
-                  Icons.emergency,
-                  color: Colors.white,
-                  size: 40,
-                ),
-              ),
-              const SizedBox(height: 16),
-              
-              // App Name
-              Text(
-                'T.U.L.O.N.G',
-                style: UnifiedTypography.headlineSmall.copyWith(
-                  color: AppColors.textPrimary,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 4),
-              
-              // Full Name
-              Text(
-                'Transmission Unit for Local\nOffline Network Generation',
-                textAlign: TextAlign.center,
-                style: UnifiedTypography.bodyMedium.copyWith(
-                  color: AppColors.textSecondary,
-                ),
-              ),
-              const SizedBox(height: 24),
-              
-              // Version Info
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: AppColors.lightGray.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Column(
-                  children: [
-                    _buildAboutRow('Version', '1.0.0'),
-                    const Divider(height: 24),
-                    _buildAboutRow('Build', 'Release'),
-                    const Divider(height: 24),
-                    _buildAboutRow('Platform', 'Android'),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-              
-              // Description
-              Text(
-                'A disaster-ready communication system for emergency situations. Connect with nearby users through mesh networking when traditional communication fails.',
-                textAlign: TextAlign.center,
-                style: UnifiedTypography.bodySmall.copyWith(
-                  color: AppColors.textSecondary,
-                  height: 1.5,
-                ),
-              ),
-              const SizedBox(height: 24),
-              
-              // Close Button
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () => Navigator.pop(context),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primaryRed,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child: const Text('Close'),
-                ),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(28),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.15),
+                blurRadius: 24,
+                offset: const Offset(0, 8),
+                spreadRadius: 0,
               ),
             ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Header with Gradient
+                Container(
+                  padding: const EdgeInsets.fromLTRB(24, 20, 16, 20),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        AppColors.primaryRed.withOpacity(0.08),
+                        AppColors.primaryRed.withOpacity(0.03),
+                      ],
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: AppColors.primaryRed.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: AppColors.primaryRed.withOpacity(0.2),
+                            width: 1.5,
+                          ),
+                        ),
+                        child: const Icon(
+                          Icons.info_outline_rounded,
+                          color: AppColors.primaryRed,
+                          size: 24,
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Text(
+                          'About',
+                          style: UnifiedTypography.titleLarge.copyWith(
+                            color: AppColors.textPrimary,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: -0.5,
+                            fontSize: 22,
+                          ),
+                        ),
+                      ),
+                      Material(
+                        color: Colors.transparent,
+                        borderRadius: BorderRadius.circular(12),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: () => Navigator.pop(context),
+                          child: Container(
+                            padding: const EdgeInsets.all(8),
+                            child: Icon(
+                              Icons.close_rounded,
+                              color: AppColors.textSecondary,
+                              size: 22,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                
+                // Content
+                Padding(
+                  padding: const EdgeInsets.all(28),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // App Logo with Enhanced Styling - Full visibility
+                      Container(
+                        width: 120,
+                        height: 120,
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: AppColors.white,
+                          borderRadius: BorderRadius.circular(28),
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppColors.primaryRed.withOpacity(0.25),
+                              blurRadius: 20,
+                              offset: const Offset(0, 8),
+                              spreadRadius: 2,
+                            ),
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.1),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                          border: Border.all(
+                            color: AppColors.primaryRed.withOpacity(0.15),
+                            width: 1.5,
+                          ),
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(20),
+                          child: Image.asset(
+                            'assets/images/app_logo (3).png',
+                            fit: BoxFit.contain,
+                            width: 104,
+                            height: 104,
+                            errorBuilder: (context, error, stackTrace) {
+                              return Container(
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                    colors: [
+                                      AppColors.primaryRed,
+                                      AppColors.primaryRed.withOpacity(0.8),
+                                    ],
+                                  ),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: const Icon(
+                                  Icons.emergency_rounded,
+                                  color: Colors.white,
+                                  size: 50,
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      
+                      // App Name
+                      Text(
+                        'T.U.L.O.N.G',
+                        style: UnifiedTypography.headlineSmall.copyWith(
+                          color: AppColors.textPrimary,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 1.2,
+                          fontSize: 26,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      
+                      // Full Name
+                      Text(
+                        'Transmission Unit for Local\nOffline Network Generation',
+                        textAlign: TextAlign.center,
+                        style: UnifiedTypography.bodyMedium.copyWith(
+                          color: AppColors.textSecondary,
+                          height: 1.4,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 28),
+                      
+                      // Version Info Card
+                      Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [
+                              AppColors.lightGray.withOpacity(0.15),
+                              AppColors.lightGray.withOpacity(0.08),
+                            ],
+                          ),
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(
+                            color: AppColors.lightGray.withOpacity(0.3),
+                            width: 1.5,
+                          ),
+                        ),
+                        child: Column(
+                          children: [
+                            _buildAboutRow('Version', '1.0.0'),
+                            const SizedBox(height: 20),
+                            Container(
+                              height: 1,
+                              color: AppColors.lightGray.withOpacity(0.4),
+                            ),
+                            const SizedBox(height: 20),
+                            _buildAboutRow('Build', 'Release'),
+                            const SizedBox(height: 20),
+                            Container(
+                              height: 1,
+                              color: AppColors.lightGray.withOpacity(0.4),
+                            ),
+                            const SizedBox(height: 20),
+                            _buildAboutRow('Platform', 'Android'),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 28),
+                      
+                      // Description
+                      Container(
+                        padding: const EdgeInsets.all(18),
+                        decoration: BoxDecoration(
+                          color: AppColors.primaryRed.withOpacity(0.05),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: AppColors.primaryRed.withOpacity(0.15),
+                            width: 1,
+                          ),
+                        ),
+                        child: Text(
+                          'A disaster-ready communication system for emergency situations. Connect with nearby users through mesh networking when traditional communication fails.',
+                          textAlign: TextAlign.center,
+                          style: UnifiedTypography.bodySmall.copyWith(
+                            color: AppColors.textSecondary,
+                            height: 1.6,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 28),
+                      
+                      // Close Button
+                      SizedBox(
+                        width: double.infinity,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                AppColors.primaryRed,
+                                AppColors.primaryRed.withOpacity(0.85),
+                              ],
+                            ),
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppColors.primaryRed.withOpacity(0.4),
+                                blurRadius: 12,
+                                offset: const Offset(0, 6),
+                              ),
+                            ],
+                          ),
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(16),
+                              onTap: () {
+                                HapticFeedback.lightImpact();
+                                Navigator.pop(context);
+                              },
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 16),
+                                child: Center(
+                                  child: Text(
+                                    'Close',
+                                    style: UnifiedTypography.bodyLarge.copyWith(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w800,
+                                      letterSpacing: 0.5,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

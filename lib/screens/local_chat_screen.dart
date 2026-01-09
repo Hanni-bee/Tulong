@@ -39,9 +39,17 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
   bool _isRecording = false;
   bool _isMicPressed = false;
   bool _markReadScheduled = false;
+  int _lastMessageCount = 0;
+  bool _isUserScrolling = false;
+  bool _isAtBottom = true; // Track if user is at bottom (Messenger-style)
+  int _newMessagesCount = 0; // Count of new messages when scrolled up
 
-  static const Duration _pinnedRetention = Duration(days: 1);
+  static const Duration _pinnedRetention = Duration(days: 1); // For history
+  static const Duration _pinnedBannerDuration = Duration(seconds: 30); // For banner display
   Timer? _pinnedRefreshTimer;
+  Timer? _pinnedBannerTimer;
+  DateTime? _pinnedBannerStartTime;
+  bool _isPinnedBannerAnimatingOut = false;
 
   bool _isSosEmergencyMessage(ChatMessage message) {
     if (!message.isEmergency) return false;
@@ -103,14 +111,110 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
     );
   }
 
+  Widget _buildPinnedHistoryButton() {
+    final provider = context.watch<ChatProvider>();
+    final pinnedCount = _getSosEmergencyHistory(provider.messages).length;
+    
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: _showPinnedHistoryModal,
+        borderRadius: BorderRadius.circular(12),
+        child: Tooltip(
+          message: 'Pinned SOS history',
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: AppColors.error.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: AppColors.error.withOpacity(0.2),
+                    width: 1.5,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.error.withOpacity(0.06),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
+                      spreadRadius: 0,
+                    ),
+                  ],
+                ),
+                child: Icon(
+                  Icons.push_pin_rounded,
+                  color: AppColors.error,
+                  size: 22,
+                ),
+              ),
+              // Badge counter
+              if (pinnedCount > 0)
+                Positioned(
+                  right: -4,
+                  top: -4,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: AppColors.error,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: Colors.white,
+                        width: 2,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.error.withOpacity(0.4),
+                          blurRadius: 4,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    constraints: const BoxConstraints(
+                      minWidth: 20,
+                      minHeight: 20,
+                    ),
+                    child: Center(
+                      child: Text(
+                        pinnedCount > 99 ? '99+' : '$pinnedCount',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: -0.5,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
+    
+    // Initialize message count tracking
+    final chatProvider = context.read<ChatProvider>();
+    _lastMessageCount = chatProvider.messages.length;
+    
     // Keep pinned banner/history time-window accurate while the screen stays open.
     _pinnedRefreshTimer = Timer.periodic(const Duration(minutes: 1), (_) {
       if (!mounted) return;
       setState(() {});
+    });
+    // Check for pinned banner timer
+    _pinnedRefreshTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      _checkPinnedBannerTimer();
     });
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final chatProvider = context.read<ChatProvider>();
@@ -150,6 +254,11 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
       
       chatProvider.setCurrentUserName(userName);
 
+      // Initial scroll to bottom (Messenger-style)
+      _scrollToBottom();
+      _isAtBottom = true;
+      _lastMessageCount = chatProvider.messages.length;
+
       // If user opens Local Chat and they are already at the bottom, clear unread immediately.
       _maybeMarkAllAsRead();
     });
@@ -187,9 +296,21 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
         HapticFeedback.lightImpact();
         // Message appears in chat, so no need for full animation
         // Just haptic feedback is enough for message sending
+        
+        // User sent message: always scroll to bottom (Messenger-style)
+        setState(() {
+          _isAtBottom = true;
+          _newMessagesCount = 0;
+        });
+        _scrollToBottom();
+        // Update message count after scroll
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            final provider = context.read<ChatProvider>();
+            _lastMessageCount = provider.messages.length;
+          }
+        });
       }
-      
-      _scrollToBottom();
     }
   }
 
@@ -257,7 +378,7 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
     await provider.playVoiceMessage(voiceMessage);
   }
 
-  void _scrollToBottom() {
+  void _scrollToBottom({bool resetNewMessagesCount = true}) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
@@ -265,8 +386,20 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
           duration: const Duration(milliseconds: 300),
           curve: Curves.easeOut,
         );
+        
+        if (resetNewMessagesCount && mounted) {
+          setState(() {
+            _isAtBottom = true;
+            _newMessagesCount = 0;
+          });
+        }
       }
     });
+  }
+  
+  void _onNewMessagesIndicatorTap() {
+    HapticFeedback.lightImpact();
+    _scrollToBottom();
   }
 
   void _showPinnedEmergencyDetails(ChatMessage message) {
@@ -585,6 +718,48 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
 
   void _onScroll() {
     _maybeMarkAllAsRead();
+    
+    // Track if user is at bottom (Messenger-style)
+    if (_scrollController.hasClients) {
+      final position = _scrollController.position;
+      // Threshold: consider "at bottom" if within 100px of max scroll extent
+      final threshold = 100.0;
+      final isAtBottom = (position.maxScrollExtent - position.pixels) <= threshold;
+      
+      if (mounted) {
+        setState(() {
+          _isAtBottom = isAtBottom;
+          _isUserScrolling = !isAtBottom;
+        });
+        
+        // If user scrolled to bottom, reset new messages count
+        if (isAtBottom && _newMessagesCount > 0) {
+          _newMessagesCount = 0;
+        }
+      }
+    }
+  }
+  
+  void _handleNewMessages(int currentMessageCount) {
+    if (!mounted) return;
+    
+    final newMessages = currentMessageCount - _lastMessageCount;
+    
+    if (newMessages > 0) {
+      // New messages arrived
+      if (_isAtBottom) {
+        // User is at bottom: auto-scroll (Messenger-style)
+        _scrollToBottom();
+        _newMessagesCount = 0;
+      } else {
+        // User is scrolled up: don't auto-scroll, show indicator
+        setState(() {
+          _newMessagesCount += newMessages;
+        });
+      }
+    }
+    
+    _lastMessageCount = currentMessageCount;
   }
 
   void _maybeMarkAllAsRead() {
@@ -658,12 +833,7 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
                     _showConnectedUsersModal();
                   } : null,
                   additionalActions: [
-                    _buildTopBarActionButton(
-                      icon: Icons.push_pin_rounded,
-                      color: AppColors.error,
-                      tooltip: 'Pinned SOS history',
-                      onPressed: _showPinnedHistoryModal,
-                    ),
+                    _buildPinnedHistoryButton(),
                   ],
                 );
               },
@@ -673,6 +843,13 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
             Expanded(
               child: Consumer<ChatProvider>(
                 builder: (context, provider, child) {
+                  // Detect new messages (Messenger-style) - check after build
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (mounted) {
+                      _handleNewMessages(provider.messages.length);
+                    }
+                  });
+                  
                   // Show loading skeleton if initial load
                   if (provider.isLoadingMessages && provider.messages.isEmpty) {
                     return const SkeletonMessageList(itemCount: 5);
@@ -713,20 +890,38 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
                     latestEmergency = m;
                     break;
                   }
+                  
+                  // Check if this is a new emergency message (not the one currently showing)
                   final hasActiveEmergency = latestEmergency != null;
+                  ChatMessage? currentEmergency = latestEmergency;
+                  final isNewEmergency = hasActiveEmergency && 
+                      (_pinnedBannerStartTime == null || 
+                       (currentEmergency != null && currentEmergency.timestamp.isAfter(_pinnedBannerStartTime!)));
+                  
+                  // Start timer for new emergency
+                  if (isNewEmergency && !_isPinnedBannerAnimatingOut && currentEmergency != null) {
+                    _startPinnedBannerTimer(currentEmergency.timestamp);
+                  }
+                  
+                  // Check if banner should be visible (within 30 seconds)
+                  final shouldShowBanner = hasActiveEmergency && 
+                      !_isPinnedBannerAnimatingOut &&
+                      (_pinnedBannerStartTime == null || 
+                       now.difference(_pinnedBannerStartTime!) < _pinnedBannerDuration);
 
                   // Show messages with refresh indicator overlay
                   return Column(
                     children: [
-                      // Pinned Emergency Alert
-                      if (hasActiveEmergency)
-                        _buildPinnedEmergencyAlert(latestEmergency),
+                      // Pinned Emergency Alert (only show for 30 seconds)
+                      if (shouldShowBanner && currentEmergency != null)
+                        _buildPinnedEmergencyAlert(currentEmergency),
                         
                       Expanded(
                         child: Stack(
                           children: [
                             ListView.builder(
                               controller: _scrollController,
+                              physics: const ClampingScrollPhysics(),
                               padding: EdgeInsets.only(
                                 top: 16,
                                 left: 16,
@@ -741,19 +936,19 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
                                 }
                                 
                                 final message = provider.messages[index];
-                                // Auto-scroll to bottom when new messages arrive
-                                WidgetsBinding.instance.addPostFrameCallback((_) {
-                                  if (_scrollController.hasClients && index == provider.messages.length - 1) {
-                                    _scrollController.animateTo(
-                                      _scrollController.position.maxScrollExtent,
-                                      duration: const Duration(milliseconds: 300),
-                                      curve: Curves.easeOut,
-                                    );
-                                  }
-                                });
                                 return _buildMessageBubble(message);
                               },
                             ),
+                            // New Messages Indicator (Messenger-style)
+                            if (_newMessagesCount > 0 && !_isAtBottom)
+                              Positioned(
+                                bottom: 180, // Above input bar
+                                left: 0,
+                                right: 0,
+                                child: Center(
+                                  child: _buildNewMessagesIndicator(),
+                                ),
+                              ),
                             // Refresh indicator overlay (only show if refreshing, not when receiving real-time messages)
                             if (provider.isRefreshingMessages && !provider.isConnected)
                               Positioned(
@@ -929,7 +1124,8 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
             GestureDetector(
               onTap: message.senderName != null && message.senderName!.isNotEmpty
                   ? () {
-                      _showSenderInfoModal(message.senderName!);
+                      final senderAddress = message.rawData?['sender_address']?.toString();
+                      _showSenderInfoModal(message.senderName!, senderAddress: senderAddress);
                     }
                   : null,
               child: Container(
@@ -1320,10 +1516,13 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
     );
   }
 
-  void _showSenderInfoModal(String senderName) {
+  void _showSenderInfoModal(String senderName, {String? senderAddress}) {
     showDialog(
       context: context,
-      builder: (context) => SenderInfoModal(senderName: senderName),
+      builder: (context) => SenderInfoModal(
+        senderName: senderName,
+        senderAddress: senderAddress,
+      ),
     );
   }
 
@@ -1356,106 +1555,244 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
     }
   }
 
+  void _startPinnedBannerTimer(DateTime messageTimestamp) {
+    _pinnedBannerStartTime = messageTimestamp;
+    _isPinnedBannerAnimatingOut = false;
+    
+    // Clear existing timer
+    _pinnedBannerTimer?.cancel();
+    
+    // Start 30-second timer
+    _pinnedBannerTimer = Timer(_pinnedBannerDuration, () {
+      if (!mounted) return;
+      setState(() {
+        _isPinnedBannerAnimatingOut = true;
+      });
+      
+      // After outro animation completes, hide banner
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (!mounted) return;
+        setState(() {
+          _isPinnedBannerAnimatingOut = false;
+        });
+      });
+    });
+  }
+
+  void _checkPinnedBannerTimer() {
+    if (_pinnedBannerStartTime == null) return;
+    
+    final now = DateTime.now();
+    final elapsed = now.difference(_pinnedBannerStartTime!);
+    
+    if (elapsed >= _pinnedBannerDuration && !_isPinnedBannerAnimatingOut) {
+      setState(() {
+        _isPinnedBannerAnimatingOut = true;
+      });
+      
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (!mounted) return;
+        setState(() {
+          _isPinnedBannerAnimatingOut = false;
+        });
+      });
+    }
+  }
+
   Widget _buildPinnedEmergencyAlert(ChatMessage message) {
     return GestureDetector(
       onTap: () => _showPinnedEmergencyDetails(message),
       child: Container(
-      width: double.infinity,
-      margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-      decoration: BoxDecoration(
-        color: AppColors.error,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.error.withOpacity(0.3),
-            blurRadius: 15,
-            spreadRadius: 2,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: Stack(
-          children: [
-            // Decorative background pattern
-            Positioned(
-              right: -20,
-              top: -20,
-              child: Icon(
-                Icons.sos_rounded,
-                size: 100,
-                color: Colors.white.withOpacity(0.1),
-              ),
+        width: double.infinity,
+        margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+        decoration: BoxDecoration(
+          color: AppColors.error,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.error.withOpacity(0.3),
+              blurRadius: 15,
+              spreadRadius: 2,
+              offset: const Offset(0, 4),
             ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.warning_amber_rounded,
-                      color: Colors.white,
-                      size: 24,
-                    ),
-                  ).animate(onPlay: (c) => c.repeat(reverse: true))
-                   .scale(begin: const Offset(1, 1), end: const Offset(1.1, 1.1), duration: 1.seconds),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Row(
-                          children: [
-                            const Text(
-                              'PINNED EMERGENCY',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 1.5,
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: Stack(
+            children: [
+              // Decorative background pattern
+              Positioned(
+                right: -20,
+                top: -20,
+                child: Icon(
+                  Icons.sos_rounded,
+                  size: 100,
+                  color: Colors.white.withOpacity(0.1),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.warning_amber_rounded,
+                        color: Colors.white,
+                        size: 24,
+                      ),
+                    ).animate(onPlay: (c) => c.repeat(reverse: true))
+                     .scale(begin: const Offset(1, 1), end: const Offset(1.1, 1.1), duration: 1.seconds),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Row(
+                            children: [
+                              const Text(
+                                'PINNED EMERGENCY',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 1.5,
+                                ),
                               ),
-                            ),
-                            const Spacer(),
-                            Text(
-                              _formatDateTime(message.timestamp),
-                              style: TextStyle(
-                                color: Colors.white.withOpacity(0.7),
-                                fontSize: 10,
-                                fontWeight: FontWeight.w600,
+                              const Spacer(),
+                              Text(
+                                _formatDateTime(message.timestamp),
+                                style: TextStyle(
+                                  color: Colors.white.withOpacity(0.7),
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          message.text,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                            height: 1.2,
+                            ],
                           ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
+                          const SizedBox(height: 4),
+                          Text(
+                            message.text,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              height: 1.2,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    )
+    // Intro animation
+    .animate()
+    .slideY(
+      begin: -0.3,
+      end: 0,
+      duration: 400.ms,
+      curve: Curves.easeOutBack,
+    )
+    .fadeIn(
+      duration: 300.ms,
+      curve: Curves.easeOut,
+    )
+    .scale(
+      begin: const Offset(0.9, 0.9),
+      end: const Offset(1, 1),
+      duration: 400.ms,
+      curve: Curves.easeOutBack,
+    )
+    // Outro animation (when animating out)
+    .then()
+    .animate(target: _isPinnedBannerAnimatingOut ? 1 : 0)
+    .slideY(
+      begin: 0,
+      end: -0.3,
+      duration: 500.ms,
+      curve: Curves.easeInBack,
+    )
+    .fadeOut(
+      duration: 400.ms,
+      curve: Curves.easeIn,
+    )
+    .scale(
+      begin: const Offset(1, 1),
+      end: const Offset(0.9, 0.9),
+      duration: 500.ms,
+      curve: Curves.easeInBack,
+    );
+  }
+
+  Widget _buildNewMessagesIndicator() {
+    return GestureDetector(
+      onTap: _onNewMessagesIndicatorTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              AppColors.info,
+              AppColors.info.withOpacity(0.85),
+            ],
+          ),
+          borderRadius: BorderRadius.circular(28),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.info.withOpacity(0.4),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+              spreadRadius: 1,
+            ),
+            BoxShadow(
+              color: Colors.black.withOpacity(0.1),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.arrow_downward_rounded,
+              color: Colors.white,
+              size: 18,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              _newMessagesCount == 1
+                  ? '1 new message'
+                  : '$_newMessagesCount new messages',
+              style: AppTypography.bodyMedium.copyWith(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+                fontSize: 14,
+                letterSpacing: 0.2,
               ),
             ),
           ],
         ),
       ),
-    ),
-    ).animate().slideY(begin: -0.2, end: 0, curve: Curves.easeOutBack).fade();
+    ).animate()
+        .slideY(begin: 0.3, end: 0, duration: 300.ms, curve: Curves.easeOut)
+        .fadeIn(duration: 300.ms, curve: Curves.easeOut);
   }
 
   Widget _buildTypingIndicator() {
@@ -1831,6 +2168,7 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
   void dispose() {
     _scrollController.removeListener(_onScroll);
     _pinnedRefreshTimer?.cancel();
+    _pinnedBannerTimer?.cancel();
     _messageController.dispose();
     _scrollController.dispose();
     _debugScrollController.dispose();

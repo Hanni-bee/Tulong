@@ -1,24 +1,28 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 import '../constants/app_colors.dart';
 import '../constants/soft_ui_design.dart';
+import '../providers/chat_provider.dart';
 
 class EmergencyAlertWidget extends StatefulWidget {
-  final String title;
-  final String message;
-  final String severity;
+  final String? title;
+  final String? message;
+  final String? severity;
   final VoidCallback? onTap;
   final bool showGif;
   final String? gifPath;
+  final bool useDynamicStatus;
 
   const EmergencyAlertWidget({
     super.key,
-    required this.title,
-    required this.message,
-    required this.severity,
+    this.title,
+    this.message,
+    this.severity,
     this.onTap,
     this.showGif = false,
     this.gifPath,
+    this.useDynamicStatus = false,
   });
 
   @override
@@ -152,10 +156,52 @@ class _EmergencyAlertWidgetState extends State<EmergencyAlertWidget>
     _pressController.reverse();
   }
 
+  String _getDynamicTitle(ChatProvider? chatProvider) {
+    if (!widget.useDynamicStatus) {
+      return widget.title ?? 'Emergency System Active';
+    }
+    
+    final isConnected = chatProvider?.isConnected ?? false;
+    if (isConnected) {
+      return 'Emergency System Active';
+    } else {
+      return 'Emergency System Standby';
+    }
+  }
+
+  String _getDynamicMessage(ChatProvider? chatProvider) {
+    if (!widget.useDynamicStatus) {
+      return widget.message ?? 'Emergency alert system is monitoring for disasters and will automatically notify all users in your area.';
+    }
+    
+    final isConnected = chatProvider?.isConnected ?? false;
+    if (isConnected) {
+      return 'Emergency alert system is monitoring for disasters and will automatically notify all users in your area. Mesh network is active and ready.';
+    } else {
+      return 'Emergency alert system is ready. Connect to ESP32 mesh network to enable automatic disaster monitoring and area-wide notifications.';
+    }
+  }
+
+  String _getDynamicSeverity(ChatProvider? chatProvider) {
+    if (!widget.useDynamicStatus) {
+      return widget.severity ?? 'High';
+    }
+    
+    final isConnected = chatProvider?.isConnected ?? false;
+    return isConnected ? 'High' : 'Medium';
+  }
+
   @override
   Widget build(BuildContext context) {
     // Use app's red theme for emergency
     final emergencyColor = AppColors.primaryRed;
+    final chatProvider = widget.useDynamicStatus 
+        ? Provider.of<ChatProvider>(context, listen: true)
+        : null;
+    
+    final dynamicTitle = _getDynamicTitle(chatProvider);
+    final dynamicMessage = _getDynamicMessage(chatProvider);
+    final dynamicSeverity = _getDynamicSeverity(chatProvider);
     
     return AnimatedBuilder(
       animation: Listenable.merge([_pulseAnimation, _pressScaleAnimation, _pressElevationAnimation, _enterAnimation, _slideAnimation]),
@@ -179,7 +225,7 @@ class _EmergencyAlertWidgetState extends State<EmergencyAlertWidget>
                     boxShadow: SoftUIDesign.getCardShadow(elevation: _pressElevationAnimation.value),
                   ),
                   child: ClipRRect(
-                    borderRadius: BorderRadius.circular(SoftUIDesign.cardBorderRadius),
+                    borderRadius: BorderRadius.circular(20),
                     child: Stack(
                       children: [
                         // Emergency GIF background if enabled (subtle, behind content)
@@ -199,20 +245,11 @@ class _EmergencyAlertWidgetState extends State<EmergencyAlertWidget>
                             ),
                           ),
                         
-                        // Soft overlay gradient for readability (only if GIF shown)
+                        // Soft overlay for readability (only if GIF shown)
                         if (widget.showGif && widget.gifPath != null)
                           Positioned.fill(
                             child: Container(
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  begin: Alignment.topCenter,
-                                  end: Alignment.bottomCenter,
-                                  colors: [
-                                    AppColors.white.withOpacity(0.85),
-                                    AppColors.white.withOpacity(0.95),
-                                  ],
-                                ),
-                              ),
+                              color: AppColors.white.withOpacity(0.9),
                             ),
                           ),
                         
@@ -221,7 +258,7 @@ class _EmergencyAlertWidgetState extends State<EmergencyAlertWidget>
                           padding: const EdgeInsets.all(20),
                           decoration: BoxDecoration(
                             color: Colors.transparent,
-                            borderRadius: BorderRadius.circular(SoftUIDesign.cardBorderRadius),
+                            borderRadius: BorderRadius.circular(20),
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -229,50 +266,63 @@ class _EmergencyAlertWidgetState extends State<EmergencyAlertWidget>
                               // Header with icon and severity - Neumorphic card style
                               Row(
                                 children: [
-                              // Icon container - Neumorphic raised with pulse
+                              // Icon container - Enhanced with app logo
                               AnimatedBuilder(
                                 animation: _iconPulseAnimation,
                                 builder: (context, child) {
                                   return Transform.scale(
                                     scale: _iconPulseAnimation.value,
                                     child: Container(
-                                      padding: const EdgeInsets.all(12),
+                                      width: 60,
+                                      height: 60,
                                       decoration: BoxDecoration(
                                         color: AppColors.white,
-                                        borderRadius: BorderRadius.circular(12),
+                                        borderRadius: BorderRadius.circular(16),
                                         boxShadow: [
-                                          ...SoftUIDesign.getSoftShadow(elevation: 2.0),
-                                          // Subtle glow on icon
                                           BoxShadow(
-                                            color: emergencyColor.withOpacity(0.15 * (_iconPulseAnimation.value - 1.0) / 0.08),
+                                            color: emergencyColor.withOpacity(0.2 * (_iconPulseAnimation.value - 1.0) / 0.08),
+                                            blurRadius: 12,
+                                            spreadRadius: 1,
+                                            offset: const Offset(0, 4),
+                                          ),
+                                          BoxShadow(
+                                            color: Colors.black.withOpacity(0.04),
                                             blurRadius: 8,
-                                            spreadRadius: 0,
+                                            offset: const Offset(0, 2),
                                           ),
                                         ],
                                         border: Border.all(
-                                          color: emergencyColor.withOpacity(0.1),
-                                          width: 1,
+                                          color: emergencyColor.withOpacity(0.25),
+                                          width: 1.5,
                                         ),
                                       ),
-                                      child: Container(
-                                        padding: const EdgeInsets.all(8),
-                                        decoration: BoxDecoration(
-                                          gradient: LinearGradient(
-                                            begin: Alignment.topLeft,
-                                            end: Alignment.bottomRight,
-                                            colors: [
-                                              emergencyColor,
-                                              emergencyColor.withOpacity(0.8),
-                                            ],
+                                        child: Container(
+                                          padding: const EdgeInsets.all(8),
+                                          decoration: BoxDecoration(
+                                            color: emergencyColor,
+                                            borderRadius: BorderRadius.circular(12),
+                                            border: Border.all(
+                                              color: emergencyColor.withOpacity(0.3),
+                                              width: 1.5,
+                                            ),
                                           ),
-                                          borderRadius: BorderRadius.circular(8),
+                                          child: ClipRRect(
+                                            borderRadius: BorderRadius.circular(12),
+                                            child: Image.asset(
+                                              'assets/images/app_logo (3).png',
+                                              width: 44,
+                                              height: 44,
+                                              fit: BoxFit.cover,
+                                              errorBuilder: (context, error, stackTrace) {
+                                                return Icon(
+                                                  Icons.emergency_rounded,
+                                                  color: AppColors.white,
+                                                  size: 28,
+                                                );
+                                              },
+                                            ),
+                                          ),
                                         ),
-                                        child: Icon(
-                                          Icons.emergency,
-                                          color: AppColors.white,
-                                          size: 24,
-                                        ),
-                                      ),
                                     ),
                                   );
                                 },
@@ -281,19 +331,52 @@ class _EmergencyAlertWidgetState extends State<EmergencyAlertWidget>
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Text(
-                                      widget.title,
-                                      style: TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.w700,
-                                        color: AppColors.textPrimary,
-                                        letterSpacing: -0.3,
-                                      ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
+                                    // Title - Single line to prevent splitting
+                                    Row(
+                                      children: [
+                                        Flexible(
+                                          flex: 1,
+                                          child: Text(
+                                            dynamicTitle,
+                                            style: TextStyle(
+                                              fontSize: 17,
+                                              fontWeight: FontWeight.w900,
+                                              color: AppColors.textPrimary,
+                                              letterSpacing: -0.2,
+                                              height: 1.2,
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        // Emergency badge - Compact style
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                          decoration: BoxDecoration(
+                                            color: emergencyColor,
+                                            borderRadius: BorderRadius.circular(10),
+                                            boxShadow: SoftUIDesign.getSoftShadow(elevation: 2.0),
+                                            border: Border.all(
+                                              color: Colors.white.withOpacity(0.3),
+                                              width: 1,
+                                            ),
+                                          ),
+                                          child: const Text(
+                                            'EMERGENCY',
+                                            style: TextStyle(
+                                              color: AppColors.white,
+                                              fontSize: 8,
+                                              fontWeight: FontWeight.w900,
+                                              letterSpacing: 1.0,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                    const SizedBox(height: 6),
+                                    const SizedBox(height: 8),
                                     // Severity badge - Neumorphic style with subtle pulse
                                     AnimatedBuilder(
                                       animation: _iconPulseController,
@@ -328,10 +411,10 @@ class _EmergencyAlertWidgetState extends State<EmergencyAlertWidget>
                                               ),
                                               const SizedBox(width: 6),
                                               Text(
-                                                'Severity: ${widget.severity.toUpperCase()}',
+                                                'Severity: ${dynamicSeverity.toUpperCase()}',
                                                 style: TextStyle(
                                                   fontSize: 11,
-                                                  fontWeight: FontWeight.w600,
+                                                  fontWeight: FontWeight.w700,
                                                   color: emergencyColor,
                                                   letterSpacing: 0.3,
                                                 ),
@@ -344,79 +427,42 @@ class _EmergencyAlertWidgetState extends State<EmergencyAlertWidget>
                                   ],
                                 ),
                               ),
-                              // Emergency badge - Neumorphic style
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                    colors: [
-                                      emergencyColor,
-                                      emergencyColor.withOpacity(0.8),
-                                    ],
-                                  ),
-                                  borderRadius: BorderRadius.circular(10),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: emergencyColor.withOpacity(0.3),
-                                      blurRadius: 4,
-                                      offset: const Offset(0, 2),
-                                    ),
-                                  ],
-                                ),
-                                child: const Text(
-                                  'EMERGENCY',
-                                  style: TextStyle(
-                                    color: AppColors.white,
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.w700,
-                                    letterSpacing: 1.2,
-                                  ),
-                                ),
-                              ),
                             ],
                           ),
                             
-                          const SizedBox(height: 20),
+                          const SizedBox(height: 24),
                           
-                          // Message - Neumorphic card style with subtle separator
+                          // Message - Enhanced card style with subtle separator
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              // Subtle divider
+                              // Enhanced divider
                               Container(
-                                height: 1,
-                                margin: const EdgeInsets.only(bottom: 12),
+                                height: 2,
+                                margin: const EdgeInsets.only(bottom: 16),
                                 decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    colors: [
-                                      Colors.transparent,
-                                      emergencyColor.withOpacity(0.1),
-                                      Colors.transparent,
-                                    ],
-                                  ),
+                                  color: emergencyColor.withOpacity(0.25),
+                                  borderRadius: BorderRadius.circular(1),
                                 ),
                               ),
                               Container(
                                 width: double.infinity,
-                                padding: const EdgeInsets.all(16),
-                                decoration: BoxDecoration(
-                                  color: AppColors.white,
-                                  borderRadius: BorderRadius.circular(12),
-                                  boxShadow: SoftUIDesign.getSoftShadow(elevation: 2.0),
-                                  border: Border.all(
-                                    color: emergencyColor.withOpacity(0.1),
-                                    width: 1,
-                                  ),
+                                padding: const EdgeInsets.all(18),
+                                decoration: SoftUIDesign.cardDecoration(
+                                  backgroundColor: AppColors.white,
+                                  borderRadius: 14,
+                                  elevation: 2.0,
+                                  borderColor: emergencyColor.withOpacity(0.15),
+                                  showBorder: true,
                                 ),
                                 child: Text(
-                                  widget.message,
+                                  dynamicMessage,
                                   style: TextStyle(
                                     fontSize: 15,
                                     color: AppColors.textPrimary,
-                                    fontWeight: FontWeight.w500,
-                                    height: 1.5,
+                                    fontWeight: FontWeight.w600,
+                                    height: 1.6,
+                                    letterSpacing: -0.1,
                                   ),
                                 ),
                               ),
@@ -433,46 +479,37 @@ class _EmergencyAlertWidgetState extends State<EmergencyAlertWidget>
                                   color: Colors.transparent,
                                   child: InkWell(
                                     onTap: () {
-                                      HapticFeedback.lightImpact();
+                                      HapticFeedback.mediumImpact();
                                       widget.onTap!();
                                     },
-                                    borderRadius: BorderRadius.circular(12),
+                                    borderRadius: BorderRadius.circular(16),
                                     child: Container(
                                       width: double.infinity,
-                                      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
-                                      decoration: BoxDecoration(
-                                        color: AppColors.white,
-                                        borderRadius: BorderRadius.circular(12),
-                                        boxShadow: SoftUIDesign.getSoftShadow(elevation: 2.0),
-                                        border: Border.all(
-                                          color: emergencyColor.withOpacity(0.15),
-                                          width: 1,
-                                        ),
+                                      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+                                      decoration: SoftUIDesign.cardDecoration(
+                                        backgroundColor: emergencyColor.withOpacity(0.06),
+                                        borderRadius: 16,
+                                        elevation: 2.0,
+                                        borderColor: emergencyColor.withOpacity(0.25),
+                                        showBorder: true,
                                       ),
                                       child: Row(
                                         mainAxisAlignment: MainAxisAlignment.center,
                                         children: [
-                                          Container(
-                                            padding: const EdgeInsets.all(6),
-                                            decoration: BoxDecoration(
-                                              color: emergencyColor.withOpacity(0.1),
-                                              borderRadius: BorderRadius.circular(6),
-                                            ),
-                                            child: Icon(
-                                              Icons.arrow_forward_ios,
-                                              color: emergencyColor,
-                                              size: 14,
-                                            ),
-                                          ),
-                                          const SizedBox(width: 10),
                                           Text(
                                             'Tap for more information',
                                             style: TextStyle(
                                               color: emergencyColor,
-                                              fontWeight: FontWeight.w600,
-                                              fontSize: 14,
+                                              fontWeight: FontWeight.w800,
+                                              fontSize: 15,
                                               letterSpacing: -0.2,
                                             ),
+                                          ),
+                                          const SizedBox(width: 10),
+                                          Icon(
+                                            Icons.arrow_forward_rounded,
+                                            color: emergencyColor,
+                                            size: 18,
                                           ),
                                         ],
                                       ),

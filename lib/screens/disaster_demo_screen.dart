@@ -3,8 +3,10 @@ import 'package:flutter/services.dart';
 import 'dart:async';
 import '../constants/app_colors.dart';
 import '../constants/app_typography.dart';
-import '../widgets/unified_top_bar.dart';
 import '../constants/soft_ui_design.dart';
+import '../widgets/unified_top_bar.dart';
+import '../utils/custom_scroll_physics.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 
 class DisasterDemoScreen extends StatefulWidget {
   const DisasterDemoScreen({super.key});
@@ -29,45 +31,69 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
   int _affectedUsers = 0;
   int _responseCount = 0;
   
+  // Scroll controller for enhanced scroll behavior
+  final ScrollController _scrollController = ScrollController();
+  bool _showScrollToTop = false;
+  
   final List<DisasterScenario> _scenarios = [
     DisasterScenario(
       title: 'General Emergency',
-      description: 'Emergency situation detected in your area',
+      description: 'Emergency situation detected in your area. All users will be notified through the mesh network.',
       severity: 'Critical',
-      icon: Icons.emergency,
+      icon: Icons.emergency_rounded,
       color: AppColors.primaryRed,
       disasterGif: 'assets/gifs/disasters/emergency.gif',
-      actions: ['Stay alert', 'Follow instructions', 'Contact authorities'],
+      actions: [
+        'Stay alert and monitor updates',
+        'Follow emergency instructions',
+        'Contact local authorities if needed',
+        'Check on neighbors and family',
+      ],
       timeLeft: 10, // 10 minutes
     ),
     DisasterScenario(
       title: 'Fire Emergency',
-      description: 'Fire outbreak detected in nearby area',
+      description: 'Fire outbreak detected in nearby area. Immediate evacuation may be required.',
       severity: 'Critical',
-      icon: Icons.local_fire_department,
-      color: Colors.red,
+      icon: Icons.local_fire_department_rounded,
+      color: Colors.red.shade700,
       disasterGif: 'assets/gifs/disasters/fire.gif',
-      actions: ['Evacuate immediately', 'Call fire department', 'Stay low to ground'],
+      actions: [
+        'Evacuate immediately if in danger zone',
+        'Call fire department (911)',
+        'Stay low to ground to avoid smoke',
+        'Do not use elevators during fire',
+      ],
       timeLeft: 15, // 15 minutes
     ),
     DisasterScenario(
       title: 'Earthquake Warning',
-      description: 'Magnitude 6.5 earthquake detected nearby',
+      description: 'Seismic activity detected. Magnitude 6.5 earthquake detected nearby.',
       severity: 'Critical',
-      icon: Icons.vibration,
-      color: Colors.orange,
+      icon: Icons.vibration_rounded,
+      color: Colors.orange.shade700,
       disasterGif: 'assets/gifs/disasters/earthquake.gif',
-      actions: ['Drop, Cover, Hold', 'Move to open area', 'Check for injuries'],
+      actions: [
+        'Drop, Cover, and Hold On',
+        'Move to open area away from buildings',
+        'Check for injuries and help others',
+        'Avoid damaged structures',
+      ],
       timeLeft: 30, // 30 minutes
     ),
     DisasterScenario(
       title: 'Flood Alert',
-      description: 'Heavy rainfall causing flash floods',
+      description: 'Heavy rainfall causing flash floods. Water levels rising rapidly.',
       severity: 'High',
-      icon: Icons.water_drop,
-      color: Colors.blue,
+      icon: Icons.water_drop_rounded,
+      color: Colors.blue.shade700,
       disasterGif: 'assets/gifs/disasters/flood.gif',
-      actions: ['Move to higher ground', 'Avoid flooded areas', 'Stay informed'],
+      actions: [
+        'Move to higher ground immediately',
+        'Avoid walking or driving through floodwaters',
+        'Stay informed about water levels',
+        'Secure important documents and supplies',
+      ],
       timeLeft: 60, // 1 hour
     ),
   ];
@@ -75,6 +101,9 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
   @override
   void initState() {
     super.initState();
+    
+    // Listen to scroll position for scroll-to-top button
+    _scrollController.addListener(_onScroll);
     
     _pulseController = AnimationController(
       duration: const Duration(milliseconds: 1000),
@@ -108,8 +137,36 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
     _responseCount = 12;
   }
 
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final shouldShow = _scrollController.offset > 400;
+    if (shouldShow != _showScrollToTop) {
+      setState(() {
+        _showScrollToTop = shouldShow;
+      });
+    }
+  }
+
+  Future<void> _scrollToTop() async {
+    if (!_scrollController.hasClients) return;
+    HapticFeedback.lightImpact();
+    await _scrollController.animateTo(
+      0,
+      duration: const Duration(milliseconds: 400),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  Future<void> _refreshData() async {
+    HapticFeedback.mediumImpact();
+    // Refresh scenario data if needed
+    await Future.delayed(const Duration(milliseconds: 800));
+  }
+
   @override
   void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
     _pulseController.dispose();
     _shakeController.dispose();
     _scenarioTimer?.cancel();
@@ -203,51 +260,83 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
     
     return Scaffold(
       backgroundColor: AppColors.backgroundLight,
-      body: SafeArea(
-        child: Column(
+      body: Stack(
+        children: [
+          SafeArea(
+            child: Column(
           children: [
             // Unified Top Bar
             UnifiedTopBar(
-              title: 'Disaster Simulation',
-              subtitle: _isAutoPlaying ? 'Auto-playing' : 'Paused',
-              icon: Icons.science_rounded,
-              iconColor: AppColors.warning,
+              title: 'Emergency Monitoring',
+              icon: Icons.emergency_rounded,
+              iconColor: AppColors.primaryRed,
               showBackButton: true,
               onBackPressed: () => Navigator.of(context).pop(),
               actions: [
-                IconButton(
-                  icon: Icon(_isAutoPlaying ? Icons.pause : Icons.play_arrow),
-                  onPressed: () {
-                    setState(() {
-                      _isAutoPlaying = !_isAutoPlaying;
-                    });
-                    if (_isAutoPlaying) {
-                      _startScenarioDemo();
-                    } else {
-                      _scenarioTimer?.cancel();
-                    }
-                  },
-                  tooltip: _isAutoPlaying ? 'Pause' : 'Play',
+                Container(
+                  margin: const EdgeInsets.only(right: 8),
+                  decoration: BoxDecoration(
+                    color: _isAutoPlaying 
+                        ? AppColors.primaryRed.withOpacity(0.1)
+                        : AppColors.lightGray.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: _isAutoPlaying 
+                          ? AppColors.primaryRed.withOpacity(0.3)
+                          : AppColors.lightGray.withOpacity(0.3),
+                      width: 1.5,
+                    ),
+                  ),
+                  child: IconButton(
+                    icon: Icon(
+                      _isAutoPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                      color: _isAutoPlaying ? AppColors.primaryRed : AppColors.textSecondary,
+                    ),
+                    onPressed: () {
+                      HapticFeedback.lightImpact();
+                      setState(() {
+                        _isAutoPlaying = !_isAutoPlaying;
+                      });
+                      if (_isAutoPlaying) {
+                        _startScenarioDemo();
+                      } else {
+                        _scenarioTimer?.cancel();
+                      }
+                    },
+                    tooltip: _isAutoPlaying ? 'Pause simulation' : 'Start simulation',
+                  ),
                 ),
               ],
             ),
             
             // Main Content
             Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(16),
+              child: RefreshIndicator(
+                onRefresh: _refreshData,
+                color: AppColors.primaryRed,
+                backgroundColor: Colors.white,
+                displacement: 60,
+                child: SingleChildScrollView(
+                  controller: _scrollController,
+                  physics: const EnhancedScrollPhysics(),
+                  padding: const EdgeInsets.all(16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // System Overview Card
+                    _buildSystemOverview(),
+                    
+                    const SizedBox(height: 20),
+                    
                     // Scenario Selector
                     _buildScenarioSelector(),
                     
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 20),
                     
                     // Statistics Panel
                     _buildStatisticsPanel(),
                     
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 20),
             
             // Emergency alert simulation
             AnimatedBuilder(
@@ -260,40 +349,64 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
               },
             ),
             
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 20),
                     
                     // Current scenario info
                     _buildScenarioInfo(_scenarios[_currentScenario]),
                     
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 20),
                     
                     // Manual trigger button
-                    SizedBox(
+                    Container(
                       width: double.infinity,
-                      height: 56,
-                      child: ElevatedButton.icon(
-                        onPressed: _simulateEmergency,
-                        icon: const Icon(Icons.sos_rounded),
-                        label: const Text(
-                          'Trigger Emergency Alert',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
+                      decoration: SoftUIDesign.buttonDecoration(
+                        backgroundColor: AppColors.primaryRed,
+                        borderRadius: 18,
+                        shadowColor: AppColors.primaryRed,
+                      ),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(18),
+                          onTap: () {
+                            HapticFeedback.mediumImpact();
+                            _simulateEmergency();
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 24),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withOpacity(0.2),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: const Icon(
+                                    Icons.sos_rounded,
+                                    color: Colors.white,
+                                    size: 24,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                const Text(
+                                  'Trigger Emergency Alert',
+                                  style: TextStyle(
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.w800,
+                                    color: Colors.white,
+                                    letterSpacing: 0.3,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primaryRed,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          elevation: 8,
-                          shadowColor: AppColors.primaryRed.withOpacity(0.3),
                         ),
                       ),
                     ),
                     
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 20),
             
             // Community response simulation
             _buildCommunityResponse(currentScenario),
@@ -305,20 +418,150 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
                   ],
                 ),
               ),
+              ),
             ),
           ],
         ),
+          ),
+          // Scroll-to-top button  
+          if (_showScrollToTop)
+            Positioned(
+              bottom: 100,
+              right: 20,
+              child: FloatingActionButton.small(
+                onPressed: _scrollToTop,
+                backgroundColor: AppColors.primaryRed,
+                child: const Icon(Icons.arrow_upward_rounded, color: Colors.white),
+              ).animate()
+                  .fadeIn(duration: 200.ms)
+                  .scale(begin: const Offset(0.8, 0.8), end: const Offset(1, 1)),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSystemOverview() {
+    return Container(
+      padding: const EdgeInsets.all(28),
+      decoration: SoftUIDesign.cardDecoration(
+        backgroundColor: AppColors.white,
+        borderRadius: 28,
+        elevation: 4.0,
+        borderColor: AppColors.primaryRed.withOpacity(0.2),
+        showBorder: true,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(
+                  color: AppColors.primaryRed,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: SoftUIDesign.getCardShadow(elevation: 4.0),
+                  border: Border.all(
+                    color: AppColors.primaryRed.withOpacity(0.3),
+                    width: 1.5,
+                  ),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: Image.asset(
+                    'assets/images/app_logo (3).png',
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
+                      return const Icon(
+                        Icons.emergency_rounded,
+                        color: Colors.white,
+                        size: 32,
+                      );
+                    },
+                  ),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'T.U.L.O.N.G Emergency System',
+                      style: AppTypography.cardTitle.copyWith(
+                        color: AppColors.textPrimary,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 18,
+                        letterSpacing: -0.3,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '24/7 Disaster Monitoring',
+                      style: AppTypography.bodySmall.copyWith(
+                        color: AppColors.textSecondary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: SoftUIDesign.cardDecoration(
+              backgroundColor: AppColors.white,
+              borderRadius: 20,
+              elevation: 2.0,
+              borderColor: AppColors.lightGray.withOpacity(0.3),
+              showBorder: true,
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppColors.info.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    Icons.info_outline_rounded,
+                    color: AppColors.info,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Text(
+                    'The emergency alert system continuously monitors for disasters and automatically notifies all users in your area through the mesh network. This simulation demonstrates how the system responds to different emergency scenarios.',
+                    style: AppTypography.bodyMedium.copyWith(
+                      color: AppColors.textSecondary,
+                      height: 1.7,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildScenarioSelector() {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(24),
       decoration: SoftUIDesign.cardDecoration(
         backgroundColor: AppColors.white,
-        borderRadius: SoftUIDesign.cardBorderRadius,
-        elevation: 3.0,
+        borderRadius: 28,
+        elevation: 4.0,
         borderColor: AppColors.lightGray.withOpacity(0.3),
         showBorder: true,
       ),
@@ -327,13 +570,29 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
         children: [
           Row(
             children: [
-              Icon(Icons.category_rounded, color: AppColors.primaryRed, size: 20),
-              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppColors.primaryRed.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: AppColors.primaryRed.withOpacity(0.2),
+                    width: 1.5,
+                  ),
+                ),
+                child: Icon(
+                  Icons.category_rounded,
+                  color: AppColors.primaryRed,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 12),
               Text(
-                'Select Scenario',
+                'Emergency Scenarios',
                 style: AppTypography.cardTitle.copyWith(
                   color: AppColors.textPrimary,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 18,
                 ),
               ),
             ],
@@ -346,37 +605,48 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
               final scenario = _scenarios[index];
               final isSelected = index == _currentScenario;
               return GestureDetector(
-                onTap: () => _selectScenario(index),
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  _selectScenario(index);
+                },
                 child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: isSelected 
-                        ? scenario.color.withOpacity(0.15)
-                        : AppColors.lightGray.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: isSelected 
-                          ? scenario.color
-                          : AppColors.lightGray.withOpacity(0.3),
-                      width: isSelected ? 2 : 1,
-                    ),
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeOutCubic,
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                  decoration: SoftUIDesign.cardDecoration(
+                    backgroundColor: AppColors.white,
+                    borderRadius: 18,
+                    elevation: isSelected ? 4.0 : 2.0,
+                    borderColor: isSelected 
+                        ? scenario.color.withOpacity(0.4)
+                        : AppColors.lightGray.withOpacity(0.3),
+                    showBorder: true,
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(
-                        scenario.icon,
-                        size: 18,
-                        color: isSelected ? scenario.color : AppColors.textSecondary,
+                      Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? scenario.color.withOpacity(0.2)
+                              : AppColors.lightGray.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Icon(
+                          scenario.icon,
+                          size: 18,
+                          color: isSelected ? scenario.color : AppColors.textSecondary,
+                        ),
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 10),
                       Text(
                         scenario.title,
                         style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+                          fontSize: 14,
+                          fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
                           color: isSelected ? scenario.color : AppColors.textSecondary,
+                          letterSpacing: -0.2,
                         ),
                       ),
                     ],
@@ -396,11 +666,11 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
         : 0;
     
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(24),
       decoration: SoftUIDesign.cardDecoration(
         backgroundColor: AppColors.white,
-        borderRadius: SoftUIDesign.cardBorderRadius,
-        elevation: 3.0,
+        borderRadius: 28,
+        elevation: 4.0,
         borderColor: AppColors.lightGray.withOpacity(0.3),
         showBorder: true,
       ),
@@ -409,29 +679,46 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
         children: [
           Row(
             children: [
-              Icon(Icons.analytics_rounded, color: AppColors.info, size: 20),
-              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.info.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: AppColors.info.withOpacity(0.25),
+                    width: 1.5,
+                  ),
+                  boxShadow: SoftUIDesign.getSoftShadow(elevation: 2.0),
+                ),
+                child: Icon(
+                  Icons.analytics_rounded,
+                  color: AppColors.info,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 12),
               Text(
-                'Simulation Stats',
+                'Network Statistics',
                 style: AppTypography.cardTitle.copyWith(
                   color: AppColors.textPrimary,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 18,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 20),
           Row(
             children: [
               Expanded(
                 child: _buildStatItem(
                   icon: Icons.people_rounded,
-                  label: 'Affected',
+                  label: 'Users Affected',
                   value: '$_affectedUsers',
                   color: AppColors.error,
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 14),
               Expanded(
                 child: _buildStatItem(
                   icon: Icons.check_circle_rounded,
@@ -440,11 +727,11 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
                   color: AppColors.success,
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 14),
               Expanded(
                 child: _buildStatItem(
                   icon: Icons.trending_up_rounded,
-                  label: 'Rate',
+                  label: 'Response Rate',
                   value: '$responseRate%',
                   color: AppColors.info,
                 ),
@@ -463,31 +750,48 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
     required Color color,
   }) {
     return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.2)),
+      padding: const EdgeInsets.all(18),
+      decoration: SoftUIDesign.cardDecoration(
+        backgroundColor: AppColors.white,
+        borderRadius: 20,
+        elevation: 3.0,
+        borderColor: color.withOpacity(0.25),
+        showBorder: true,
       ),
       child: Column(
         children: [
-          Icon(icon, color: color, size: 24),
-          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: color.withOpacity(0.25),
+                width: 1.5,
+              ),
+              boxShadow: SoftUIDesign.getSoftShadow(elevation: 2.0),
+            ),
+            child: Icon(icon, color: color, size: 28),
+          ),
+          const SizedBox(height: 12),
           Text(
             value,
             style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
+              fontSize: 22,
+              fontWeight: FontWeight.w900,
               color: color,
+              letterSpacing: -0.5,
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 6),
           Text(
             label,
+            textAlign: TextAlign.center,
             style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
               color: AppColors.textSecondary,
+              letterSpacing: 0.2,
             ),
           ),
         ],
@@ -505,21 +809,13 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
             0.0,
           ),
           child: Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: scenario.color.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: scenario.color,
-                width: 2,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: scenario.color.withOpacity(0.3),
-                  blurRadius: 20,
-                  offset: const Offset(0, 8),
-                ),
-              ],
+            padding: const EdgeInsets.all(28),
+            decoration: SoftUIDesign.cardDecoration(
+              backgroundColor: AppColors.white,
+              borderRadius: 24,
+              elevation: 5.0,
+              borderColor: scenario.color.withOpacity(0.4),
+              showBorder: true,
             ),
             child: Column(
               children: [
@@ -675,52 +971,58 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
                 
                 const SizedBox(height: 20),
                 
-                // Real-time Countdown
+                // Real-time Countdown - Enhanced
                 Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: scenario.color.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: scenario.color.withOpacity(0.3),
-                      width: 1.5,
-                    ),
+                  padding: const EdgeInsets.all(20),
+                  decoration: SoftUIDesign.cardDecoration(
+                    backgroundColor: AppColors.white,
+                    borderRadius: 20,
+                    elevation: 3.0,
+                    borderColor: scenario.color.withOpacity(0.3),
+                    showBorder: true,
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Container(
-                        padding: const EdgeInsets.all(8),
+                        padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
                           color: scenario.color,
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: BorderRadius.circular(14),
+                          boxShadow: SoftUIDesign.getCardShadow(elevation: 3.0),
+                          border: Border.all(
+                            color: scenario.color.withOpacity(0.3),
+                            width: 1.5,
+                          ),
                         ),
                         child: const Icon(
                           Icons.timer_rounded,
                           color: Colors.white,
-                          size: 20,
+                          size: 24,
                         ),
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 16),
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
                             'Time Remaining',
                             style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
                               color: AppColors.textSecondary,
+                              letterSpacing: 0.3,
                             ),
                           ),
-                          const SizedBox(height: 2),
+                          const SizedBox(height: 4),
                           Text(
                             _formatTime(_remainingSeconds),
                             style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w800,
+                              fontSize: 24,
+                              fontWeight: FontWeight.w900,
                               color: scenario.color,
                               fontFeatures: [FontFeature.tabularFigures()],
+                              letterSpacing: 1.0,
                             ),
                           ),
                         ],
@@ -738,12 +1040,12 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
 
   Widget _buildScenarioInfo(DisasterScenario scenario) {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(28),
       decoration: SoftUIDesign.cardDecoration(
         backgroundColor: AppColors.white,
-        borderRadius: SoftUIDesign.cardBorderRadius,
-        elevation: 3.0,
-        borderColor: scenario.color.withOpacity(0.2),
+        borderRadius: 28,
+        elevation: 4.0,
+        borderColor: scenario.color.withOpacity(0.25),
         showBorder: true,
       ),
       child: Column(
@@ -752,18 +1054,23 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(8),
+                padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: scenario.color.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(10),
+                  color: scenario.color.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: scenario.color.withOpacity(0.25),
+                    width: 1.5,
+                  ),
+                  boxShadow: SoftUIDesign.getSoftShadow(elevation: 2.0),
                 ),
                 child: Icon(
                   scenario.icon,
                   color: scenario.color,
-                  size: 24,
+                  size: 32,
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 16),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -772,51 +1079,25 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
                       scenario.title,
                       style: AppTypography.cardTitle.copyWith(
                         color: AppColors.textPrimary,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 22,
+                        letterSpacing: -0.3,
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 6),
                     Text(
                       scenario.description,
-                      style: AppTypography.bodySmall.copyWith(
+                      style: AppTypography.bodyMedium.copyWith(
                         color: AppColors.textSecondary,
+                        height: 1.6,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                   ],
                 ),
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: scenario.color,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  scenario.severity.toUpperCase(),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-              ),
             ],
-          ),
-          const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: AppColors.backgroundLight,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Text(
-              'This is how T.U.L.O.N.G would respond to a ${scenario.title.toLowerCase()}. The app automatically sends alerts to all users in the affected area through the mesh network.',
-              style: AppTypography.bodyMedium.copyWith(
-                color: AppColors.textSecondary,
-                height: 1.5,
-              ),
-            ),
           ),
         ],
       ),
@@ -825,11 +1106,11 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
 
   Widget _buildCommunityResponse(DisasterScenario scenario) {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(28),
       decoration: SoftUIDesign.cardDecoration(
         backgroundColor: AppColors.white,
-        borderRadius: SoftUIDesign.cardBorderRadius,
-        elevation: 3.0,
+        borderRadius: 28,
+        elevation: 4.0,
         borderColor: AppColors.lightGray.withOpacity(0.3),
         showBorder: true,
       ),
@@ -838,17 +1119,29 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
         children: [
           Row(
             children: [
-              Icon(
-                Icons.people,
-                color: Colors.green,
-                size: 24,
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.green.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: Colors.green.withOpacity(0.25),
+                    width: 1.5,
+                  ),
+                  boxShadow: SoftUIDesign.getSoftShadow(elevation: 2.0),
+                ),
+                child: Icon(
+                  Icons.people_rounded,
+                  color: Colors.green.shade700,
+                  size: 26,
+                ),
               ),
               const SizedBox(width: 12),
-              const Text(
+              Text(
                 'Community Response',
-                style: TextStyle(
+                style: AppTypography.cardTitle.copyWith(
                   fontSize: 18,
-                  fontWeight: FontWeight.bold,
+                  fontWeight: FontWeight.w800,
                   color: AppColors.textPrimary,
                 ),
               ),
@@ -948,11 +1241,11 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
 
   Widget _buildSafetyTips(DisasterScenario scenario) {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(28),
       decoration: SoftUIDesign.cardDecoration(
         backgroundColor: AppColors.white,
-        borderRadius: SoftUIDesign.cardBorderRadius,
-        elevation: 3.0,
+        borderRadius: 28,
+        elevation: 4.0,
         borderColor: AppColors.lightGray.withOpacity(0.3),
         showBorder: true,
       ),
@@ -961,52 +1254,80 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
         children: [
           Row(
             children: [
-              Icon(
-                Icons.tips_and_updates,
-                color: Colors.amber,
-                size: 24,
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.amber.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: Colors.amber.withOpacity(0.25),
+                    width: 1.5,
+                  ),
+                  boxShadow: SoftUIDesign.getSoftShadow(elevation: 2.0),
+                ),
+                child: Icon(
+                  Icons.tips_and_updates_rounded,
+                  color: Colors.amber.shade700,
+                  size: 26,
+                ),
               ),
               const SizedBox(width: 12),
-              const Text(
-                'Safety Actions',
-                style: TextStyle(
+              Text(
+                'Recommended Safety Actions',
+                style: AppTypography.cardTitle.copyWith(
                   fontSize: 18,
-                  fontWeight: FontWeight.bold,
+                  fontWeight: FontWeight.w800,
                   color: AppColors.textPrimary,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 20),
           ...scenario.actions.map((action) => Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Row(
-              children: [
-                Container(
-                  width: 24,
-                  height: 24,
-                  decoration: BoxDecoration(
-                    color: scenario.color,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(
-                    Icons.check,
-                    color: Colors.white,
-                    size: 16,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    action,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      color: AppColors.textSecondary,
-                      fontWeight: FontWeight.w500,
+            padding: const EdgeInsets.only(bottom: 16),
+            child: Container(
+              padding: const EdgeInsets.all(18),
+              decoration: SoftUIDesign.cardDecoration(
+                backgroundColor: AppColors.white,
+                borderRadius: 20,
+                elevation: 3.0,
+                borderColor: scenario.color.withOpacity(0.25),
+                showBorder: true,
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: scenario.color,
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: SoftUIDesign.getCardShadow(elevation: 3.0),
+                      border: Border.all(
+                        color: scenario.color.withOpacity(0.3),
+                        width: 1.5,
+                      ),
+                    ),
+                    child: const Icon(
+                      Icons.check_rounded,
+                      color: Colors.white,
+                      size: 18,
                     ),
                   ),
-                ),
-              ],
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Text(
+                      action,
+                      style: TextStyle(
+                        fontSize: 15,
+                        color: AppColors.textPrimary,
+                        fontWeight: FontWeight.w700,
+                        height: 1.4,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           )),
         ],

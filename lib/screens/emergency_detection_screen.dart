@@ -17,6 +17,7 @@ import '../services/emergency_detection_service.dart';
 import '../services/simple_bluetooth_service.dart';
 import '../services/ml_model_service.dart';
 import '../providers/chat_provider.dart';
+import '../widgets/unified_top_bar.dart';
 
 /// Emergency Detection Screen - Replaces Calls Screen
 /// Allows users to capture photos and detect emergency types using AI/ML
@@ -390,6 +391,26 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
     }
   }
 
+  /// Get icon for emergency type
+  IconData _getEmergencyTypeIcon(EmergencyType type) {
+    switch (type) {
+      case EmergencyType.calamity:
+        return Icons.warning_rounded;
+      case EmergencyType.earthquake:
+        return Icons.vibration_rounded;
+      case EmergencyType.flood:
+        return Icons.water_drop_rounded;
+      case EmergencyType.fire:
+        return Icons.local_fire_department_rounded;
+      case EmergencyType.accident:
+        return Icons.medical_services_rounded;
+      case EmergencyType.general:
+        return Icons.emergency_rounded;
+      case EmergencyType.noEmergency:
+        return Icons.check_circle_rounded;
+    }
+  }
+
   /// Show detection result dialog with enhanced UI
   void _showDetectionResult(EmergencyDetectionResult result) {
     // Special handling for "No Emergency" - positive, reassuring message
@@ -405,35 +426,43 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
       barrierColor: Colors.black54,
       builder: (context) => Dialog(
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(SoftUIDesign.cardBorderRadius),
         ),
         child: Container(
-          constraints: const BoxConstraints(maxWidth: 400),
+          constraints: const BoxConstraints(maxWidth: 420),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Header with gradient
+              // Header
               Container(
-                padding: const EdgeInsets.all(20),
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      severityColor,
-                      severityColor.withOpacity(0.8),
-                    ],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(20),
-                    topRight: Radius.circular(20),
+                  color: severityColor,
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(SoftUIDesign.cardBorderRadius),
+                    topRight: Radius.circular(SoftUIDesign.cardBorderRadius),
                   ),
                 ),
                 child: Row(
                   children: [
-                    Text(
-                      result.type.emoji,
-                      style: const TextStyle(fontSize: 40),
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(14),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.1),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Icon(
+                        _getEmergencyTypeIcon(result.type),
+                        size: 32,
+                        color: Colors.white,
+                      ),
                     ),
                     const SizedBox(width: 16),
                     Expanded(
@@ -443,18 +472,27 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                           Text(
                             result.type.label.toUpperCase(),
                             style: const TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
+                              fontSize: 22,
+                              fontWeight: FontWeight.w900,
                               color: Colors.white,
+                              letterSpacing: 0.5,
                             ),
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'DETECTED',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Colors.white.withOpacity(0.9),
-                              fontWeight: FontWeight.w500,
+                          const SizedBox(height: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              'DETECTED',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.white,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 1.0,
+                              ),
                             ),
                           ),
                         ],
@@ -466,7 +504,7 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
               
               // Content
               Padding(
-                padding: const EdgeInsets.all(20),
+                padding: const EdgeInsets.all(24),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -474,25 +512,17 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                     // Captured image preview
                     if (result.imagePath != null)
                       Container(
-                        height: 200,
+                        height: 220,
                         width: double.infinity,
                         margin: const EdgeInsets.only(bottom: 20),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: AppColors.lightGray,
-                            width: 2,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.1),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
+                        decoration: SoftUIDesign.cardDecoration(
+                          backgroundColor: AppColors.white,
+                          elevation: 2.0,
+                          showBorder: true,
+                          borderColor: AppColors.lightGray,
                         ),
                         child: ClipRRect(
-                          borderRadius: BorderRadius.circular(10),
+                          borderRadius: BorderRadius.circular(SoftUIDesign.cardBorderRadius),
                           child: Image.file(
                             File(result.imagePath!),
                             fit: BoxFit.cover,
@@ -503,33 +533,40 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                     // Severity indicator
                     Container(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
+                        horizontal: 18,
+                        vertical: 14,
                       ),
                       decoration: BoxDecoration(
                         color: severityColor.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(SoftUIDesign.cardBorderRadius),
                         border: Border.all(
                           color: severityColor.withOpacity(0.3),
-                          width: 1.5,
+                          width: 1.0,
                         ),
                       ),
                       child: Row(
                         children: [
                           Container(
-                            width: 12,
-                            height: 12,
+                            width: 14,
+                            height: 14,
                             decoration: BoxDecoration(
                               color: severityColor,
                               shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: severityColor.withOpacity(0.3),
+                                  blurRadius: 4,
+                                  spreadRadius: 1,
+                                ),
+                              ],
                             ),
                           ),
-                          const SizedBox(width: 12),
+                          const SizedBox(width: 14),
                           Text(
                             'Severity: ${result.severity.label}',
                             style: TextStyle(
                               fontSize: 16,
-                              fontWeight: FontWeight.bold,
+                              fontWeight: FontWeight.w700,
                               color: severityColor,
                             ),
                           ),
@@ -537,7 +574,7 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                       ),
                     ),
                     
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 20),
                     
                     // Confidence indicator with progress bar
                     Column(
@@ -545,30 +582,37 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                       children: [
                         Row(
                           children: [
-                            const Icon(
-                              Icons.analytics,
-                              size: 20,
-                              color: AppColors.darkGray,
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: AppColors.info.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Icon(
+                                Icons.analytics_rounded,
+                                size: 20,
+                                color: AppColors.info,
+                              ),
                             ),
-                            const SizedBox(width: 8),
+                            const SizedBox(width: 12),
                             Text(
                               'Confidence: ${result.getConfidenceString()}',
                               style: const TextStyle(
-                                fontSize: 14,
+                                fontSize: 15,
                                 color: AppColors.darkGray,
-                                fontWeight: FontWeight.w500,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 14),
                         ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: BorderRadius.circular(SoftUIDesign.buttonBorderRadius),
                           child: Container(
-                            height: 8,
+                            height: 10,
                             decoration: BoxDecoration(
                               color: AppColors.lightGray.withOpacity(0.3),
-                              borderRadius: BorderRadius.circular(8),
+                              borderRadius: BorderRadius.circular(SoftUIDesign.buttonBorderRadius),
                             ),
                             child: Stack(
                               children: [
@@ -579,20 +623,8 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                                   widthFactor: result.confidence,
                                   child: Container(
                                     decoration: BoxDecoration(
-                                      gradient: LinearGradient(
-                                        colors: [
-                                          severityColor,
-                                          severityColor.withOpacity(0.7),
-                                        ],
-                                      ),
-                                      borderRadius: BorderRadius.circular(8),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: severityColor.withOpacity(0.3),
-                                          blurRadius: 4,
-                                          spreadRadius: 0,
-                                        ),
-                                      ],
+                                      color: severityColor,
+                                      borderRadius: BorderRadius.circular(SoftUIDesign.buttonBorderRadius),
                                     ),
                                   ),
                                 ),
@@ -603,86 +635,43 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                       ],
                     ),
                     
-                    const SizedBox(height: 20),
-                    
-                    // Quick actions
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: () {
-                              Navigator.pop(context);
-                              _showAnalysisDetails(result);
-                            },
-                            style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                            ),
-                            child: const Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text('Details'),
-                                SizedBox(width: 8),
-                                Icon(Icons.insights, size: 18),
-                              ],
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: () {
-                              Navigator.pop(context);
-                              _reportFalsePositive(result);
-                            },
-                            style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                            ),
-                            child: const Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text('Incorrect'),
-                                SizedBox(width: 8),
-                                Icon(Icons.close, size: 18),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 24),
                     
                     // Info note
                     Container(
-                      padding: const EdgeInsets.all(12),
+                      padding: const EdgeInsets.all(18),
                       decoration: BoxDecoration(
-                        color: AppColors.lightGray.withOpacity(0.5),
-                        borderRadius: BorderRadius.circular(8),
+                        color: AppColors.lightGray.withOpacity(0.3),
+                        borderRadius: BorderRadius.circular(SoftUIDesign.cardBorderRadius),
+                        border: Border.all(
+                          color: AppColors.lightGray.withOpacity(0.5),
+                          width: 1.0,
+                        ),
                       ),
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Icon(
-                            Icons.info_outline,
-                            size: 16,
-                            color: AppColors.mediumGray,
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: AppColors.info.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(SoftUIDesign.buttonBorderRadius),
+                            ),
+                            child: const Icon(
+                              Icons.info_outline_rounded,
+                              size: 18,
+                              color: AppColors.info,
+                            ),
                           ),
-                          const SizedBox(width: 8),
+                          const SizedBox(width: 12),
                           Expanded(
                             child: Text(
                               'Image stays on device. Only detection result will be sent via ESP32/radio.',
                               style: TextStyle(
-                                fontSize: 11,
-                                color: AppColors.darkGray.withOpacity(0.7),
-                                height: 1.4,
+                                fontSize: 13,
+                                color: AppColors.darkGray.withOpacity(0.8),
+                                height: 1.5,
+                                fontWeight: FontWeight.w500,
                               ),
                             ),
                           ),
@@ -695,65 +684,16 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
               
               // Actions
               Container(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
                   color: AppColors.backgroundLight,
-                  borderRadius: const BorderRadius.only(
-                    bottomLeft: Radius.circular(20),
-                    bottomRight: Radius.circular(20),
+                  borderRadius: BorderRadius.only(
+                    bottomLeft: Radius.circular(SoftUIDesign.cardBorderRadius),
+                    bottomRight: Radius.circular(SoftUIDesign.cardBorderRadius),
                   ),
                 ),
                 child: Column(
                   children: [
-                    // User feedback buttons
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextButton(
-                            onPressed: () {
-                              Navigator.pop(context);
-                              _reportFalsePositive(result);
-                            },
-                            style: TextButton.styleFrom(
-                              foregroundColor: AppColors.mediumGray,
-                              padding: const EdgeInsets.symmetric(vertical: 10),
-                            ),
-                            child: const Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text('Not an Emergency'),
-                                SizedBox(width: 8),
-                                Icon(Icons.close, size: 18),
-                              ],
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: TextButton(
-                            onPressed: () {
-                              Navigator.pop(context);
-                              _showAnalysisDetails(result);
-                            },
-                            style: TextButton.styleFrom(
-                              foregroundColor: AppColors.info,
-                              padding: const EdgeInsets.symmetric(vertical: 10),
-                            ),
-                            child: const Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text('View Analysis'),
-                                SizedBox(width: 8),
-                                Icon(Icons.info_outline, size: 18),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
                     // Main action buttons
                     Row(
                       children: [
@@ -763,18 +703,28 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                               Navigator.pop(context);
                             },
                             style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              padding: const EdgeInsets.symmetric(vertical: 16),
                               shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
+                                borderRadius: BorderRadius.circular(SoftUIDesign.buttonBorderRadius),
+                              ),
+                              side: BorderSide(
+                                color: AppColors.lightGray.withOpacity(0.5),
+                                width: 1.5,
                               ),
                             ),
                             child: const Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Text('Retake'),
+                                Icon(Icons.refresh_rounded, size: 20),
                                 SizedBox(width: 8),
-                                Icon(Icons.refresh, size: 18),
+                                Text(
+                                  'Retake',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 15,
+                                  ),
+                                ),
                               ],
                             ),
                           ),
@@ -782,32 +732,99 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                         const SizedBox(width: 12),
                         Expanded(
                           flex: 2,
-                          child: ElevatedButton(
+                          child: Container(
+                            decoration: SoftUIDesign.buttonDecoration(
+                              backgroundColor: AppColors.primaryRed,
+                              shadowColor: AppColors.primaryRed,
+                            ),
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(SoftUIDesign.buttonBorderRadius),
+                                onTap: () {
+                                  Navigator.pop(context);
+                                  _sendToChat(result);
+                                },
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 16),
+                                  child: const Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.send_rounded, size: 20, color: Colors.white),
+                                      SizedBox(width: 8),
+                                      Text(
+                                        'Send to Chat',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 15,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    // Secondary action buttons
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextButton(
                             onPressed: () {
                               Navigator.pop(context);
-                              _sendToChat(result);
+                              _showAnalysisDetails(result);
                             },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.primaryRed,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              elevation: 2,
+                            style: TextButton.styleFrom(
+                              foregroundColor: AppColors.info,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
                             ),
                             child: const Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               mainAxisSize: MainAxisSize.min,
                               children: [
+                                Icon(Icons.insights_rounded, size: 18),
+                                SizedBox(width: 6),
                                 Text(
-                                  'Send to Chat',
+                                  'View Analysis',
                                   style: TextStyle(
-                                    fontWeight: FontWeight.bold,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 14,
                                   ),
                                 ),
-                                SizedBox(width: 8),
-                                Icon(Icons.send, size: 18),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: TextButton(
+                            onPressed: () {
+                              Navigator.pop(context);
+                              _reportFalsePositive(result);
+                            },
+                            style: TextButton.styleFrom(
+                              foregroundColor: AppColors.mediumGray,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                            child: const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.close_rounded, size: 18),
+                                SizedBox(width: 6),
+                                Text(
+                                  'Incorrect',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 14,
+                                  ),
+                                ),
                               ],
                             ),
                           ),
@@ -904,8 +921,19 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
           SnackBar(
             content: Row(
               children: [
-                Text(result.type.emoji, style: const TextStyle(fontSize: 20)),
-                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    _getEmergencyTypeIcon(result.type),
+                    size: 20,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Text(
                     'Emergency detection sent to chat',
@@ -936,80 +964,119 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.transparent,
-      appBar: AppBar(
-        backgroundColor: AppColors.white,
-        elevation: 0,
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: AppColors.primaryRed.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Icon(
-                Icons.camera_alt_rounded,
-                color: AppColors.primaryRed,
-                size: 20,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Text(
-              'Emergency Detection',
-              style: AppTypography.titleLarge.copyWith(
-                color: AppColors.textPrimary,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          // Grid toggle
-          IconButton(
-            icon: Icon(_showGrid ? Icons.grid_on_rounded : Icons.grid_off_rounded),
-            color: AppColors.textPrimary,
-            tooltip: _showGrid ? 'Hide grid' : 'Show grid',
-            onPressed: () {
-              setState(() {
-                _showGrid = !_showGrid;
-              });
-              HapticFeedback.lightImpact();
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.info_outline_rounded),
-            color: AppColors.textPrimary,
-            tooltip: 'About Emergency Detection',
-            onPressed: () {
-              _showInfoDialog();
-            },
-          ),
-        ],
-      ),
+      backgroundColor: AppColors.backgroundLight,
       body: SafeArea(
         child: Column(
           children: [
+            // Unified Top Bar
+            UnifiedTopBar(
+              title: 'Emergency Detection',
+              icon: Icons.camera_alt_rounded,
+              iconColor: AppColors.primaryRed,
+              showBackButton: false,
+              actions: [
+                // Grid toggle
+                Container(
+                  margin: const EdgeInsets.only(right: 8),
+                  decoration: BoxDecoration(
+                    color: _showGrid 
+                        ? AppColors.primaryRed.withOpacity(0.1)
+                        : AppColors.lightGray.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(SoftUIDesign.buttonBorderRadius),
+                    border: Border.all(
+                      color: _showGrid 
+                          ? AppColors.primaryRed.withOpacity(0.3)
+                          : AppColors.lightGray.withOpacity(0.3),
+                      width: 1.0,
+                    ),
+                  ),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(SoftUIDesign.buttonBorderRadius),
+                      onTap: () {
+                        setState(() {
+                          _showGrid = !_showGrid;
+                        });
+                        HapticFeedback.lightImpact();
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.all(10),
+                        child: Icon(
+                          _showGrid ? Icons.grid_on_rounded : Icons.grid_off_rounded,
+                          size: 20,
+                          color: _showGrid ? AppColors.primaryRed : AppColors.textSecondary,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                // Info button
+                Container(
+                  margin: const EdgeInsets.only(right: 8),
+                  decoration: BoxDecoration(
+                    color: AppColors.lightGray.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(SoftUIDesign.buttonBorderRadius),
+                    border: Border.all(
+                      color: AppColors.lightGray.withOpacity(0.3),
+                      width: 1.0,
+                    ),
+                  ),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(SoftUIDesign.buttonBorderRadius),
+                      onTap: () {
+                        _showInfoDialog();
+                        HapticFeedback.lightImpact();
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.all(10),
+                        child: Icon(
+                          Icons.info_outline_rounded,
+                          size: 20,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            
+            // Main Content
+            Expanded(
+              child: Column(
+                children: [
             // Camera preview area with improved layout
             Expanded(
               flex: 3,
               child: Container(
                 margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                decoration: SoftUIDesign.cardDecoration(
-                  backgroundColor: Colors.black,
-                  borderRadius: SoftUIDesign.cardBorderRadius,
-                  elevation: 6.0,
-                  showBorder: true,
-                  borderColor: AppColors.primaryRed.withOpacity(0.3),
+                decoration: BoxDecoration(
+                  color: Colors.black,
+                  borderRadius: BorderRadius.circular(SoftUIDesign.cardBorderRadius),
+                  border: Border.all(
+                    color: AppColors.primaryRed.withOpacity(0.3),
+                    width: 1.5,
+                  ),
+                  boxShadow: SoftUIDesign.getCardShadow(elevation: 6.0),
                 ),
-                child: Stack(
-                  children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(SoftUIDesign.cardBorderRadius - 2),
-                      child: _isCameraInitialized && _cameraService.isReady
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(SoftUIDesign.cardBorderRadius),
+                  child: Stack(
+                    children: [
+                      // Camera preview with proper aspect ratio
+                      _isCameraInitialized && _cameraService.isReady
                           ? Stack(
                               children: [
-                                CameraPreview(_cameraService.controller!),
+                                // Properly sized camera preview
+                                Positioned.fill(
+                                  child: FittedBox(
+                                    fit: BoxFit.cover,
+                                    child: CameraPreview(_cameraService.controller!),
+                                  ),
+                                ),
                                 // Grid lines overlay for composition
                                 if (_showGrid && !_isProcessing)
                                   _buildCameraGrid(),
@@ -1019,15 +1086,8 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                               ],
                             )
                           : Container(
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                  colors: [
-                                    Colors.black87,
-                                    Colors.black54,
-                                  ],
-                                ),
+                              decoration: const BoxDecoration(
+                                color: Colors.black,
                               ),
                               child: Center(
                                 child: Column(
@@ -1063,23 +1123,37 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                                     if (!_isCameraInitialized)
                                       Padding(
                                         padding: const EdgeInsets.only(top: 16),
-                                        child: ElevatedButton(
-                                          onPressed: _initializeCamera,
-                                          style: ElevatedButton.styleFrom(
+                                        child: Container(
+                                          decoration: SoftUIDesign.buttonDecoration(
                                             backgroundColor: AppColors.primaryRed,
-                                            foregroundColor: Colors.white,
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 20,
-                                              vertical: 12,
-                                            ),
+                                            shadowColor: AppColors.primaryRed,
                                           ),
-                                          child: const Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Text('Retry'),
-                                              SizedBox(width: 8),
-                                              Icon(Icons.refresh, size: 18),
-                                            ],
+                                          child: Material(
+                                            color: Colors.transparent,
+                                            child: InkWell(
+                                              borderRadius: BorderRadius.circular(SoftUIDesign.buttonBorderRadius),
+                                              onTap: _initializeCamera,
+                                              child: Padding(
+                                                padding: const EdgeInsets.symmetric(
+                                                  horizontal: SoftUIDesign.buttonPadding,
+                                                  vertical: 12,
+                                                ),
+                                                child: const Row(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    Text(
+                                                      'Retry',
+                                                      style: TextStyle(
+                                                        color: Colors.white,
+                                                        fontWeight: FontWeight.bold,
+                                                      ),
+                                                    ),
+                                                    SizedBox(width: 8),
+                                                    Icon(Icons.refresh, size: 18, color: Colors.white),
+                                                  ],
+                                                ),
+                                              ),
+                                            ),
                                           ),
                                         ),
                                       ),
@@ -1087,7 +1161,6 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                                 ),
                               ),
                             ),
-                    ),
                     
                     // Camera overlay guides with enhanced design
                     if (_isCameraInitialized && _cameraService.isReady && !_isProcessing)
@@ -1109,21 +1182,14 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                             );
                           },
                           child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                             decoration: BoxDecoration(
                               color: Colors.black.withOpacity(0.6),
-                              borderRadius: BorderRadius.circular(24),
+                              borderRadius: BorderRadius.circular(SoftUIDesign.buttonBorderRadius),
                               border: Border.all(
-                                color: AppColors.primaryRed.withOpacity(0.4),
-                                width: 1.5,
+                                color: AppColors.primaryRed.withOpacity(0.3),
+                                width: 1.0,
                               ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: AppColors.primaryRed.withOpacity(0.2),
-                                  blurRadius: 12,
-                                  spreadRadius: 0,
-                                ),
-                              ],
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
@@ -1182,10 +1248,10 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                         child: Container(
                           decoration: BoxDecoration(
                             color: Colors.black.withOpacity(0.85),
-                            borderRadius: BorderRadius.circular(SoftUIDesign.cardBorderRadius - 2),
+                            borderRadius: BorderRadius.circular(SoftUIDesign.cardBorderRadius),
                             border: Border.all(
                               color: AppColors.primaryRed.withOpacity(0.3),
-                              width: 2,
+                              width: 1.5,
                             ),
                           ),
                           child: Center(
@@ -1200,19 +1266,11 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                                       padding: const EdgeInsets.all(28),
                                       decoration: BoxDecoration(
                                         shape: BoxShape.circle,
-                                        gradient: RadialGradient(
-                                          colors: [
-                                            AppColors.primaryRed.withOpacity(0.2 * _processingAnimation.value),
-                                            AppColors.primaryRed.withOpacity(0.05),
-                                          ],
+                                        color: AppColors.primaryRed.withOpacity(0.1),
+                                        boxShadow: SoftUIDesign.getSoftShadow(
+                                          elevation: 2.0 + (2.0 * _processingAnimation.value),
+                                          shadowColor: AppColors.primaryRed.withOpacity(0.2 * _processingAnimation.value),
                                         ),
-                                        boxShadow: [
-                                          BoxShadow(
-                                            color: AppColors.primaryRed.withOpacity(0.3 * _processingAnimation.value),
-                                            blurRadius: 20 + (10 * _processingAnimation.value),
-                                            spreadRadius: 5,
-                                          ),
-                                        ],
                                       ),
                                       child: CircularProgressIndicator(
                                         valueColor: AlwaysStoppedAnimation<Color>(
@@ -1263,7 +1321,8 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                           ),
                         ),
                       ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -1350,7 +1409,7 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                                     padding: const EdgeInsets.all(6),
                                     decoration: BoxDecoration(
                                       color: Colors.white.withOpacity(0.2),
-                                      borderRadius: BorderRadius.circular(8),
+                                      borderRadius: BorderRadius.circular(SoftUIDesign.buttonBorderRadius),
                                     ),
                                     child: const Icon(
                                       Icons.timer_outlined,
@@ -1373,14 +1432,14 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
                                   Container(
-                                    padding: const EdgeInsets.all(6),
+                                    padding: const EdgeInsets.all(8),
                                     decoration: BoxDecoration(
                                       color: Colors.white.withOpacity(0.2),
-                                      borderRadius: BorderRadius.circular(8),
+                                      borderRadius: BorderRadius.circular(SoftUIDesign.buttonBorderRadius),
                                     ),
                                     child: const Icon(
                                       Icons.camera_alt,
-                                      size: 24,
+                                      size: 20,
                                       color: Colors.white,
                                     ),
                                   ),
@@ -1412,20 +1471,25 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                   backgroundColor: AppColors.white,
                   borderRadius: SoftUIDesign.cardBorderRadius,
                   elevation: 4.0,
+                  showBorder: true,
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     // Header
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+                      padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
                       child: Row(
                         children: [
                           Container(
-                            padding: const EdgeInsets.all(8),
+                            padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(
                               color: AppColors.primaryRed.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(8),
+                              borderRadius: BorderRadius.circular(SoftUIDesign.buttonBorderRadius),
+                              border: Border.all(
+                                color: AppColors.primaryRed.withOpacity(0.2),
+                                width: 1.0,
+                              ),
                             ),
                             child: const Icon(
                               Icons.history_rounded,
@@ -1433,20 +1497,28 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                               color: AppColors.primaryRed,
                             ),
                           ),
-                          const SizedBox(width: 12),
-                          Text(
-                            'Recent Detections',
-                            style: AppTypography.titleLarge.copyWith(
-                              fontWeight: FontWeight.bold,
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Text(
+                              'Recent Detections',
+                              style: AppTypography.titleLarge.copyWith(
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                           ),
-                          const Spacer(),
                           if (_recentDetections.isNotEmpty)
-                            Text(
-                              '${_recentDetections.length}',
-                              style: AppTypography.bodySmall.copyWith(
-                                color: AppColors.mediumGray,
-                                fontWeight: FontWeight.w600,
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: AppColors.primaryRed,
+                                borderRadius: BorderRadius.circular(SoftUIDesign.buttonBorderRadius),
+                              ),
+                              child: Text(
+                                '${_recentDetections.length}',
+                                style: AppTypography.bodySmall.copyWith(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                             ),
                         ],
@@ -1572,30 +1644,33 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                                   },
                                   child: Container(
                                     margin: const EdgeInsets.only(bottom: 12),
-                                    padding: const EdgeInsets.all(14),
+                                    padding: const EdgeInsets.all(SoftUIDesign.cardPadding),
                                     decoration: BoxDecoration(
                                       color: severityColor.withOpacity(0.05),
-                                      borderRadius: BorderRadius.circular(12),
+                                      borderRadius: BorderRadius.circular(SoftUIDesign.cardBorderRadius),
                                       border: Border.all(
                                         color: severityColor.withOpacity(0.2),
-                                        width: 1.5,
+                                        width: 1.0,
                                       ),
+                                      boxShadow: SoftUIDesign.getSoftShadow(elevation: 1.0),
                                     ),
                                     child: Row(
                                       children: [
                                         Container(
-                                          padding: const EdgeInsets.all(10),
+                                          padding: const EdgeInsets.all(12),
                                           decoration: BoxDecoration(
                                             color: severityColor.withOpacity(0.15),
-                                            borderRadius: BorderRadius.circular(10),
+                                            borderRadius: BorderRadius.circular(SoftUIDesign.buttonBorderRadius),
                                             border: Border.all(
                                               color: severityColor.withOpacity(0.3),
-                                              width: 1,
+                                              width: 1.0,
                                             ),
+                                            boxShadow: SoftUIDesign.getSoftShadow(elevation: 1.0),
                                           ),
-                                          child: Text(
-                                            detection.type.emoji,
-                                            style: const TextStyle(fontSize: 28),
+                                          child: Icon(
+                                            _getEmergencyTypeIcon(detection.type),
+                                            size: 28,
+                                            color: severityColor,
                                           ),
                                         ),
                                         const SizedBox(width: 14),
@@ -1669,6 +1744,9 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                     ),
                   ],
                 ),
+              ),
+            ),
+                ],
               ),
             ),
           ],
@@ -1927,7 +2005,7 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                           ],
                         ),
                         child: ClipRRect(
-                          borderRadius: BorderRadius.circular(10),
+                          borderRadius: BorderRadius.circular(SoftUIDesign.buttonBorderRadius),
                           child: Image.file(
                             File(result.imagePath!),
                             fit: BoxFit.cover,

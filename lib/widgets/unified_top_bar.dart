@@ -240,16 +240,18 @@ class _UnifiedTopBarState extends State<UnifiedTopBar>
                     mainAxisAlignment: MainAxisAlignment.center,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(
-                        widget.title,
-                        overflow: TextOverflow.ellipsis,
-                        maxLines: 1,
-                        style: UnifiedTypography.appBarTitle.copyWith(
-                          color: AppColors.textPrimary,
-                          fontSize: titleFontSize,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: -0.3,
-                          height: 1.2,
+                      Flexible(
+                        child: Text(
+                          widget.title,
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
+                          style: UnifiedTypography.appBarTitle.copyWith(
+                            color: AppColors.textPrimary,
+                            fontSize: titleFontSize,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: -0.3,
+                            height: 1.2,
+                          ),
                         ),
                       ),
                       if ((widget.subtitle != null && widget.subtitle!.isNotEmpty) || (widget.statusBadges != null && widget.statusBadges!.isNotEmpty)) ...[
@@ -308,8 +310,11 @@ class _UnifiedTopBarState extends State<UnifiedTopBar>
                 ),
 
                 if (widget.actions != null) ...[
-                  const SizedBox(width: 12),
-                  ...widget.actions!,
+                  const SizedBox(width: 8),
+                  ...widget.actions!.map((action) => Padding(
+                    padding: const EdgeInsets.only(left: 4),
+                    child: action,
+                  )),
                 ],
               ],
             ),

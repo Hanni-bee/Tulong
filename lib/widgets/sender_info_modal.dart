@@ -31,12 +31,21 @@ class _SenderInfoModalState extends State<SenderInfoModal> {
   }
 
   Future<void> _loadSenderInfo() async {
+    if (!mounted) return;
+    
     setState(() {
       _isLoading = true;
       _errorMessage = null;
     });
 
     try {
+      // If sender address is provided directly, use it immediately
+      if (widget.senderAddress != null && widget.senderAddress!.isNotEmpty) {
+        // Still try to get phone number from database, but use provided address
+        _loadUserInfoWithAddress();
+        return;
+      }
+
       // Try to find user by name in the database
       final sqliteService = SQLiteService();
       
@@ -67,6 +76,7 @@ class _SenderInfoModalState extends State<SenderInfoModal> {
 
       if (results.isNotEmpty) {
         final user = results.first;
+        if (!mounted) return;
         setState(() {
           _userInfo = {
             'name': '${user['first_name'] ?? ''} ${user['last_name'] ?? ''}'.trim(),
@@ -78,10 +88,12 @@ class _SenderInfoModalState extends State<SenderInfoModal> {
         return;
       }
 
-      // If not found in SQLite, try Firebase
+      // If not found in SQLite, try Firebase with timeout
       try {
         final firebaseService = FirebaseService();
-        final snapshot = await firebaseService.database.ref('users').get();
+        final snapshot = await firebaseService.database.ref('users')
+            .get()
+            .timeout(const Duration(seconds: 5));
         
         if (snapshot.exists) {
           final users = snapshot.value as Map<dynamic, dynamic>;
@@ -98,7 +110,7 @@ class _SenderInfoModalState extends State<SenderInfoModal> {
               foundUser = {
                 'name': fullName,
                 'phone': user['Phone']?.toString() ?? 'Not provided',
-                'address': _formatFirebaseAddress(user),
+                'address': widget.senderAddress ?? _formatFirebaseAddress(user),
               };
             } else if (fullName.toLowerCase().contains(widget.senderName.toLowerCase().trim()) ||
                 firstName.toLowerCase().contains(widget.senderName.toLowerCase().trim()) ||
@@ -107,15 +119,13 @@ class _SenderInfoModalState extends State<SenderInfoModal> {
               foundUser ??= {
                   'name': fullName,
                   'phone': user['Phone']?.toString() ?? 'Not provided',
-                  'address': _formatFirebaseAddress(user),
+                  'address': widget.senderAddress ?? _formatFirebaseAddress(user),
                 };
             }
           });
 
           if (foundUser != null) {
-            if (widget.senderAddress != null) {
-              foundUser!['address'] = widget.senderAddress;
-            }
+            if (!mounted) return;
             setState(() {
               _userInfo = foundUser;
               _isLoading = false;
@@ -125,9 +135,11 @@ class _SenderInfoModalState extends State<SenderInfoModal> {
         }
       } catch (e) {
         print('Firebase search error: $e');
+        // Continue to fallback
       }
 
-      // If not found, show limited info
+      // If not found, show limited info with provided address
+      if (!mounted) return;
       setState(() {
         _userInfo = {
           'name': widget.senderName,
@@ -137,11 +149,65 @@ class _SenderInfoModalState extends State<SenderInfoModal> {
         _isLoading = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _errorMessage = 'Failed to load user information';
         _isLoading = false;
+        // Still show what we have
+        _userInfo = {
+          'name': widget.senderName,
+          'phone': 'Not available',
+          'address': widget.senderAddress ?? 'Not available',
+        };
       });
       print('Error loading sender info: $e');
+    }
+  }
+
+  Future<void> _loadUserInfoWithAddress() async {
+    try {
+      // Try to get phone number from database
+      final sqliteService = SQLiteService();
+      final db = await sqliteService.database;
+      
+      String fullNameQuery = 'first_name || " " || last_name';
+      var results = await db.query(
+        'users',
+        where: '$fullNameQuery = ? OR first_name LIKE ? OR last_name LIKE ?',
+        whereArgs: [
+          widget.senderName.trim(),
+          '%${widget.senderName.trim()}%',
+          '%${widget.senderName.trim()}%',
+        ],
+        limit: 1,
+      );
+
+      String phone = 'Not available';
+      if (results.isNotEmpty) {
+        phone = results.first['phone']?.toString() ?? 'Not available';
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _userInfo = {
+          'name': widget.senderName,
+          'phone': phone,
+          'address': widget.senderAddress ?? 'Not available',
+        };
+        _isLoading = false;
+      });
+    } catch (e) {
+      // If database lookup fails, just show what we have
+      if (!mounted) return;
+      setState(() {
+        _userInfo = {
+          'name': widget.senderName,
+          'phone': 'Not available',
+          'address': widget.senderAddress ?? 'Not available',
+        };
+        _isLoading = false;
+      });
+      print('Error loading user info with address: $e');
     }
   }
 
