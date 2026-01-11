@@ -181,7 +181,7 @@ class UserEngagementDashboard extends StatelessWidget {
       crossAxisCount: 2,
       crossAxisSpacing: 12,
       mainAxisSpacing: 12,
-      childAspectRatio: 1.5,
+      childAspectRatio: 1.4, // Increased from 1.5 to give more height and prevent overflow
       children: [
         _buildMetricCard(
           icon: Icons.warning_amber_rounded,
@@ -230,27 +230,35 @@ class UserEngagementDashboard extends StatelessWidget {
         ),
       ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(icon, color: color, size: 20),
-          const SizedBox(height: 8),
-          Text(
-            value,
-            style: UnifiedTypography.titleMedium.copyWith(
-              fontWeight: FontWeight.bold,
-              color: AppColors.textPrimary,
+          const SizedBox(height: 6), // Reduced from 8 to 6
+          Flexible(
+            child: Text(
+              value,
+              style: UnifiedTypography.titleMedium.copyWith(
+                fontWeight: FontWeight.bold,
+                color: AppColors.textPrimary,
+                fontSize: 18, // Slightly reduced font size
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: UnifiedTypography.bodySmall.copyWith(
-              color: AppColors.textSecondary,
-              fontSize: 11,
+          const SizedBox(height: 3), // Reduced from 4 to 3
+          Flexible(
+            child: Text(
+              label,
+              style: UnifiedTypography.bodySmall.copyWith(
+                color: AppColors.textSecondary,
+                fontSize: 10, // Reduced from 11 to 10
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
           ),
         ],
       ),

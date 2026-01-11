@@ -149,16 +149,21 @@ class _EnhancedEmptyStateState extends State<EnhancedEmptyState>
     if (widget.iconWidget != null) {
       iconWidget = widget.iconWidget!;
     } else {
+      // Reduce icon size when not scrollable to save space
+      final iconSize = widget.scrollable ? 64.0 : 56.0;
       iconWidget = Icon(
         widget.icon,
-        size: 64,
+        size: iconSize,
         color: iconColor,
       );
     }
 
+    // Reduce container size when not scrollable to save space
+    final containerSize = widget.scrollable ? 140.0 : 120.0;
+    
     return Container(
-      width: 140,
-      height: 140,
+      width: containerSize,
+      height: containerSize,
       decoration: BoxDecoration(
         color: iconBgColor,
         shape: BoxShape.circle,
@@ -207,7 +212,7 @@ class _EnhancedEmptyStateState extends State<EnhancedEmptyState>
                 else
                   _buildIcon(),
 
-                const SizedBox(height: 32),
+                SizedBox(height: widget.scrollable ? 32 : 24), // Reduced spacing when not scrollable
 
                 // Title and message with slide animation
                 SlideTransition(
@@ -215,6 +220,7 @@ class _EnhancedEmptyStateState extends State<EnhancedEmptyState>
                   child: FadeTransition(
                     opacity: _fadeAnimation,
                     child: Column(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
                           widget.title,
@@ -225,7 +231,7 @@ class _EnhancedEmptyStateState extends State<EnhancedEmptyState>
                           ),
                           textAlign: TextAlign.center,
                         ),
-                        const SizedBox(height: 12),
+                        SizedBox(height: widget.scrollable ? 12 : 8), // Reduced spacing when not scrollable
                         Text(
                           widget.message,
                           style: AppTypography.bodyLarge.copyWith(
@@ -236,7 +242,7 @@ class _EnhancedEmptyStateState extends State<EnhancedEmptyState>
                         ),
                         // Optional tip
                         if (widget.tip != null) ...[
-                          const SizedBox(height: 16),
+                          SizedBox(height: widget.scrollable ? 16 : 12), // Reduced spacing when not scrollable
                           Container(
                             padding: const EdgeInsets.symmetric(
                               horizontal: 16,
@@ -280,7 +286,7 @@ class _EnhancedEmptyStateState extends State<EnhancedEmptyState>
 
                 // Action buttons
                 if (widget.actionLabel != null && widget.onAction != null) ...[
-                  const SizedBox(height: 32),
+                  SizedBox(height: widget.scrollable ? 32 : 24), // Reduced spacing when not scrollable
                   FadeTransition(
                     opacity: _fadeAnimation,
                     child: Column(
@@ -354,11 +360,22 @@ class _EnhancedEmptyStateState extends State<EnhancedEmptyState>
         }
 
         // Non-scrollable: keep centered without allowing drag/scroll bounce.
-        return Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 520),
-            child: content,
-          ),
+        // Use LayoutBuilder to get available height and constrain content
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            return Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: 520,
+                  maxHeight: constraints.maxHeight * 0.8, // Limit to 80% of available height
+                ),
+                child: SingleChildScrollView(
+                  physics: const NeverScrollableScrollPhysics(), // Prevent scrolling but allow overflow handling
+                  child: content,
+                ),
+              ),
+            );
+          },
         );
       },
     );

@@ -1988,12 +1988,16 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                   ),
                 ),
                 
-                // Content
-                Padding(
-                  padding: const EdgeInsets.all(28),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
+                // Content - Made scrollable to prevent overflow
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.of(context).size.height * 0.7,
+                  ),
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(28),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
                       // App Logo with Enhanced Styling - Full visibility
                       Container(
                         width: 120,
@@ -2189,6 +2193,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                       ),
                     ],
                   ),
+                ),
                 ),
               ],
             ),

@@ -3157,8 +3157,9 @@ class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
                                                 provider.loadPairedDevices();
                                               },
                                               child: Padding(
-                                                padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
+                                                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
                                                 child: Row(
+                                                  mainAxisAlignment: MainAxisAlignment.center,
                                                   mainAxisSize: MainAxisSize.min,
                                                   children: [
                                                     if (provider.isConnecting)
@@ -3176,14 +3177,18 @@ class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
                                                         color: Colors.white,
                                                         size: 22,
                                                       ),
-                                                    const SizedBox(width: 12),
-                                                    Text(
-                                                      provider.isConnecting ? 'Scanning...' : 'Refresh Devices',
-                                                      style: AppTypography.bodyLarge.copyWith(
-                                                        color: Colors.white,
-                                                        fontWeight: FontWeight.w800,
-                                                        fontSize: 16,
-                                                        letterSpacing: 0.2,
+                                                    const SizedBox(width: 10),
+                                                    Flexible(
+                                                      child: Text(
+                                                        provider.isConnecting ? 'Scanning...' : 'Refresh Devices',
+                                                        style: AppTypography.bodyLarge.copyWith(
+                                                          color: Colors.white,
+                                                          fontWeight: FontWeight.w800,
+                                                          fontSize: 16,
+                                                          letterSpacing: 0.2,
+                                                        ),
+                                                        overflow: TextOverflow.ellipsis,
+                                                        maxLines: 1,
                                                       ),
                                                     ),
                                                   ],

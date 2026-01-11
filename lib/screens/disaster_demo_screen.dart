@@ -1272,12 +1272,16 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
                 ),
               ),
               const SizedBox(width: 12),
-              Text(
-                'Recommended Safety Actions',
-                style: AppTypography.cardTitle.copyWith(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                  color: AppColors.textPrimary,
+              Flexible(
+                child: Text(
+                  'Recommended Safety Actions',
+                  style: AppTypography.cardTitle.copyWith(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.textPrimary,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
                 ),
               ),
             ],

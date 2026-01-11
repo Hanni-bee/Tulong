@@ -1,0 +1,64 @@
+// ============================================================================
+// ESP32 FIRMWARE FIX - TEXT MESSAGE HANDLING
+// ============================================================================
+// 
+// REPLACE THE ENTIRE "TEXT PACKET HANDLING (0xA0)" SECTION IN handleRfPacket()
+// WITH THIS CODE:
+// ============================================================================
+
+// ----------------- TEXT PACKET HANDLING (0xA0) -----------------
+if (hdr->type == VTYPE_TEXT) {
+  uint16_t seq = hdr->seq;
+  uint8_t payLen = len - sizeof(VoiceHdr);
+
+  // First packet of text
+  if (!rxText) {
+    textBuffer = "";
+    textExpect = seq;
+    rxText = true;
+  }
+
+  // Sequence check
+  if (seq != textExpect) {
+    logEvent("RF_LOSS", String("TEXT out of order: got=") + seq + " expect=" + textExpect);
+    textExpect = seq + 1;   // continue anyway
+  } else {
+    textExpect++;
+  }
+
+  // Append payload
+  textBuffer += String((char*)(raw + sizeof(VoiceHdr)), payLen);
+
+  // Check if this is the last packet (if payload is less than 28, it's likely the last)
+  if (payLen < 28) {
+    // ✅ FIX: Send as JSON format (like SOS messages) instead of plain text
+    StaticJsonDocument<512> doc;
+    doc["type"] = "group";
+    doc["message"] = textBuffer;
+    doc["is_emergency"] = false;
+    doc["timestamp"] = millis();
+    
+    String jsonOutput;
+    serializeJson(doc, jsonOutput);
+    SerialBT.println(jsonOutput);
+    logEvent("RF", "Text forwarded (JSON): " + textBuffer);
+    rxText = false;
+    textBuffer = "";
+  }
+  return;
+}
+
+// ============================================================================
+// END OF FIX
+// ============================================================================
+//
+// INSTRUCTIONS:
+// 1. Open your Arduino IDE
+// 2. Find the handleRfPacket() function
+// 3. Locate the section that starts with: "// ----------------- TEXT PACKET HANDLING (0xA0) -----------------"
+// 4. Replace the ENTIRE section (from "if (hdr->type == VTYPE_TEXT)" until "return;") with the code above
+// 5. Make sure you have #include <ArduinoJson.h> at the top of your file
+// 6. Upload to ESP32
+// 7. Test!
+// ============================================================================
+

@@ -411,6 +411,11 @@ class NotificationProvider extends ChangeNotifier {
       return;
     }
     
+    // Only show notification when app is in background (not when app is open)
+    if (NotificationService().isInForeground) {
+      return;
+    }
+    
     // Get current user to avoid notifying for own alerts
     final prefs = await SharedPreferences.getInstance();
     final currentUserEmail = prefs.getString('user_email') ?? '';
@@ -518,6 +523,11 @@ class NotificationProvider extends ChangeNotifier {
   }) async {
     // Check if message notifications are enabled
     if (!isNotificationTypeEnabled(NotificationType.message)) {
+      return;
+    }
+    
+    // Only show notification when app is in background (not when app is open)
+    if (NotificationService().isInForeground) {
       return;
     }
     
@@ -653,6 +663,11 @@ class NotificationProvider extends ChangeNotifier {
   }) async {
     // Check if message notifications are enabled
     if (!isNotificationTypeEnabled(NotificationType.message)) {
+      return;
+    }
+    
+    // Only show notification when app is in background (not when app is open)
+    if (NotificationService().isInForeground) {
       return;
     }
     

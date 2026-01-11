@@ -54,6 +54,10 @@ class NotificationService {
   bool _isInForeground = true;
   bool _isLocalChatVisible = false;
   String? _activeChatId;
+  
+  // Deduplication: Track recently shown notification IDs to prevent spam
+  final Set<int> _recentNotificationIds = {};
+  static const int _maxRecentNotificationIds = 100;
 
   Future<void> initialize() async {
     if (_isInitialized) return;
@@ -86,7 +90,8 @@ class NotificationService {
   }
 
   Future<void> _initializeLocalNotifications() async {
-    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    // Use app logo for notification initialization
+    const androidSettings = AndroidInitializationSettings('@mipmap/launcher_icon');
     const iosSettings = DarwinInitializationSettings(
       requestAlertPermission: true,
       requestBadgePermission: true,
@@ -341,7 +346,23 @@ class NotificationService {
     String? payload,
     required String channelId,
   }) async {
-    // Determine style based on channel and payload
+    // Deduplication: Skip if we've shown this notification recently
+    if (_recentNotificationIds.contains(id)) {
+      debugPrint('🔔 Skipping duplicate notification (ID: $id)');
+      return;
+    }
+    
+    // Add to recent IDs and clean up old ones periodically
+    _recentNotificationIds.add(id);
+    if (_recentNotificationIds.length > _maxRecentNotificationIds) {
+      // Remove oldest entries (simple FIFO)
+      final toRemove = _recentNotificationIds.length - _maxRecentNotificationIds;
+      final idsToRemove = _recentNotificationIds.take(toRemove).toList();
+      for (final oldId in idsToRemove) {
+        _recentNotificationIds.remove(oldId);
+      }
+    }
+    // Determine style based on channel and payload with app colors
     StyleInformation? styleInformation;
     Color? color;
     
@@ -355,7 +376,7 @@ class NotificationService {
     }
 
     if (channelId == emergencyChannelId) {
-      // Emergency Style - Professional Red #D32F2F
+      // Emergency Style - Professional Red #D32F2F (AppColors.primary)
       color = const Color(0xFFD32F2F);
       styleInformation = BigTextStyleInformation(
         body,
@@ -367,39 +388,72 @@ class NotificationService {
       );
     } else if (channelId == messageChannelId) {
       if (isVoice) {
-        // Voice Message Style - Teal #009688 for communication
+        // Voice Message Style - Teal #009688 for communication (AppColors.teal)
         color = const Color(0xFF009688);
         styleInformation = BigTextStyleInformation(
           body,
           htmlFormatBigText: true,
           contentTitle: '<b>$title</b>',
           htmlFormatContentTitle: true,
-          summaryText: '🎤 Voice Message',
+          summaryText: '🎤 <b>Voice Message</b>',
           htmlFormatSummaryText: true,
         );
       } else {
-        // Standard Text Message Style - Info Blue #3498DB
+        // Standard Text Message Style - Info Blue #3498DB (AppColors.info)
         color = const Color(0xFF3498DB);
         styleInformation = BigTextStyleInformation(
           body,
           htmlFormatBigText: true,
           contentTitle: '<b>$title</b>',
           htmlFormatContentTitle: true,
-          summaryText: '💬 New Message',
+          summaryText: '💬 <b>New Message</b>',
           htmlFormatSummaryText: true,
         );
       }
+    } else if (channelId == reminderChannelId) {
+      // Reminder Style - Warning Orange #E67E22 (AppColors.warning)
+      color = const Color(0xFFE67E22);
+      styleInformation = BigTextStyleInformation(
+        body,
+        htmlFormatBigText: true,
+        contentTitle: '<b>$title</b>',
+        htmlFormatContentTitle: true,
+        summaryText: '⏰ <b>Reminder</b>',
+        htmlFormatSummaryText: true,
+      );
+    } else {
+      // System Style - Medium Gray #757575
+      color = const Color(0xFF757575);
+      styleInformation = BigTextStyleInformation(
+        body,
+        htmlFormatBigText: true,
+        contentTitle: '<b>$title</b>',
+        htmlFormatContentTitle: true,
+        summaryText: 'ℹ️ <b>System</b>',
+        htmlFormatSummaryText: true,
+      );
     }
 
+    // Use app logo for notifications
+    // Try launcher_icon first (from pubspec.yaml), fallback to ic_launcher
+    const String notificationIcon = '@mipmap/launcher_icon';
+    
     final androidDetails = AndroidNotificationDetails(
       channelId,
       _getChannelName(channelId),
       channelDescription: _getChannelDescription(channelId),
       importance: channelId == emergencyChannelId ? Importance.max : Importance.high,
       priority: channelId == emergencyChannelId ? Priority.high : Priority.defaultPriority,
-      icon: '@mipmap/ic_launcher',
+      icon: notificationIcon, // App logo in status bar
+      largeIcon: const DrawableResourceAndroidBitmap(notificationIcon), // App logo in notification panel
       color: color,
       styleInformation: styleInformation,
+      showWhen: true, // Show timestamp
+      enableVibration: true,
+      playSound: true,
+      channelShowBadge: true,
+      // Add app name as subtitle
+      subText: 'T.U.L.O.N.G',
     );
 
     const iosDetails = DarwinNotificationDetails(
@@ -425,8 +479,35 @@ class NotificationService {
     required String body,
     String? payload,
   }) async {
+    // Generate stable ID from payload or content to prevent duplicates
+    int notificationId;
+    if (payload != null) {
+      try {
+        final data = jsonDecode(payload);
+        final userId = data['userId'] as String?;
+        final timestamp = data['timestamp'] as String?;
+        final message = data['message'] as String?;
+        if (userId != null && timestamp != null) {
+          // Use userId + timestamp for stable deduplication
+          notificationId = (userId + timestamp).hashCode;
+        } else if (message != null) {
+          // Fallback to message hash
+          notificationId = message.hashCode;
+        } else {
+          // Last resort: content hash
+          notificationId = (title + body).hashCode;
+        }
+      } catch (_) {
+        // If payload parsing fails, use content hash
+        notificationId = (title + body).hashCode;
+      }
+    } else {
+      // No payload, use content hash
+      notificationId = (title + body).hashCode;
+    }
+    
     await _showLocalNotification(
-      id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      id: notificationId,
       title: title,
       body: body,
       payload: payload,
@@ -439,8 +520,35 @@ class NotificationService {
     required String message,
     String? payload,
   }) async {
+    // Generate stable ID from message content to prevent duplicates
+    // Use hash of sender + message + timestamp from payload if available
+    int notificationId;
+    if (payload != null) {
+      try {
+        final data = jsonDecode(payload);
+        final messageId = data['messageId'] as String?;
+        final timestamp = data['timestamp'] as String?;
+        if (messageId != null) {
+          // Use messageId hash for stable deduplication
+          notificationId = messageId.hashCode;
+        } else if (timestamp != null) {
+          // Fallback to timestamp hash
+          notificationId = (sender + message + timestamp).hashCode;
+        } else {
+          // Last resort: hash of sender + message
+          notificationId = (sender + message).hashCode;
+        }
+      } catch (_) {
+        // If payload parsing fails, use content hash
+        notificationId = (sender + message).hashCode;
+      }
+    } else {
+      // No payload, use content hash
+      notificationId = (sender + message).hashCode;
+    }
+    
     await _showLocalNotification(
-      id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      id: notificationId,
       title: 'New message from $sender',
       body: message,
       payload: payload,
@@ -612,6 +720,9 @@ class NotificationService {
   void setActiveChatId(String? chatId) {
     _activeChatId = chatId;
   }
+  
+  /// Get current active chatId
+  String? get activeChatId => _activeChatId;
 }
 
 // Background message handler
@@ -625,7 +736,8 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   try {
     final plugin = FlutterLocalNotificationsPlugin();
 
-    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    // Use app logo for background notifications
+    const androidSettings = AndroidInitializationSettings('@mipmap/launcher_icon');
     const iosSettings = DarwinInitializationSettings(
       requestAlertPermission: false,
       requestBadgePermission: false,
@@ -712,12 +824,21 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     final hasMeaningfulContent = title.trim().isNotEmpty || body.trim().isNotEmpty || data.isNotEmpty;
     if (!hasMeaningfulContent) return;
 
+    // Use app logo for background notifications
+    const String notificationIcon = '@mipmap/launcher_icon';
+    
     final androidDetails = AndroidNotificationDetails(
       channelId,
       channelId,
       importance: channelId == NotificationService.emergencyChannelId ? Importance.max : Importance.high,
       priority: channelId == NotificationService.emergencyChannelId ? Priority.high : Priority.defaultPriority,
-      icon: '@mipmap/ic_launcher',
+      icon: notificationIcon, // App logo
+      largeIcon: const DrawableResourceAndroidBitmap(notificationIcon), // Large app logo in notification panel
+      showWhen: true,
+      enableVibration: true,
+      playSound: true,
+      channelShowBadge: true,
+      subText: 'T.U.L.O.N.G', // App name
     );
 
     const iosDetails = DarwinNotificationDetails(

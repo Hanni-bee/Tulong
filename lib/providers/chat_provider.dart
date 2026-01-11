@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bluetooth_serial_plus/flutter_bluetooth_serial_plus.dart';
 import '../services/bluetooth_service.dart';
 import '../services/voice_chat_extension.dart' as voice;
@@ -75,6 +76,37 @@ class ChatProvider with ChangeNotifier {
 
   void _init() {
     _messageSubscription = _bluetoothService.messageStream.listen((message) {
+      // Filter out ESP32 debug/error logs BEFORE any processing
+      if (_isEsp32DebugLog(message)) {
+        addStructuredDebug({
+          'source': 'CHAT',
+          'event': 'Filtered ESP32 debug log (early)',
+          'metrics': {'message': message.length > 50 ? '${message.substring(0, 50)}...' : message}
+        });
+        return; // Don't process debug logs as messages
+      }
+      
+      // Try to parse as JSON first (for ESP32/SimpleBluetoothService messages)
+      try {
+        final jsonData = json.decode(message);
+        if (jsonData is Map<String, dynamic>) {
+          addStructuredDebug({
+            'source': 'CHAT',
+            'event': 'Parsed JSON message',
+            'metrics': {'keys': jsonData.keys.toList().toString()}
+          });
+          _processIncomingMapMessage(jsonData);
+          return;
+        }
+      } catch (e) {
+        // Not JSON, process as regular string message
+        addStructuredDebug({
+          'source': 'CHAT',
+          'event': 'JSON parse failed, treating as plain text',
+          'metrics': {'error': e.toString(), 'messagePreview': message.length > 50 ? '${message.substring(0, 50)}...' : message}
+        });
+      }
+      // Process as regular string message (handles voice messages and plain text)
       _processIncomingMessage(message);
     });
 
@@ -232,14 +264,20 @@ class ChatProvider with ChangeNotifier {
 
     _addMessage(message.text, true, message: message, rawData: rawData);
     
-    // For ESP32 transmission, we send a JSON string if it's an emergency or has metadata
-    String dataToSend;
-    if (isEmergency || additionalData != null) {
-      dataToSend = json.encode(rawData);
-    } else {
-      dataToSend = text.trim();
-    }
+    // ESP32 requires JSON format with "type" and "message" fields
+    // Always send JSON format to ensure ESP32 can process the message
+    final Map<String, dynamic> esp32Message = {
+      'type': 'group',  // Default to group for local chat
+      'sender_name': _currentUserName ?? 'Me',
+      'sender_id': _currentUserName ?? 'Me',
+      'receiver_id': 'all',
+      'message': text.trim(),
+      'timestamp': DateTime.now().toIso8601String(),
+      if (isEmergency) 'is_emergency': true,
+      ...?additionalData,
+    };
     
+    String dataToSend = json.encode(esp32Message);
     bool success = await _bluetoothService.sendMessage(dataToSend);
     
     if (success) {
@@ -285,13 +323,160 @@ class ChatProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  /// Process incoming Map message (JSON format from ESP32)
+  void _processIncomingMapMessage(Map<String, dynamic> data) {
+    try {
+      // Skip system messages that aren't chat messages
+      if (data.containsKey('status') || 
+          data.containsKey('auth_request') || 
+          data.containsKey('sync_complete') ||
+          data.containsKey('ack') ||
+          data.containsKey('echo')) {
+        // These are system messages, not chat messages
+        addStructuredDebug({
+          'source': 'CHAT',
+          'event': 'Skipped system message',
+          'metrics': {'type': data.keys.first}
+        });
+        return;
+      }
+      
+      final messageText = data['message'] ?? '';
+      final messageType = data['type'] ?? '';
+      
+      // Only process chat messages (group, private, voice_message)
+      if (messageType != 'group' && messageType != 'private' && messageType != 'voice_message' && messageText.isEmpty) {
+        addStructuredDebug({
+          'source': 'CHAT',
+          'event': 'Skipped non-chat message',
+          'metrics': {'type': messageType}
+        });
+        return;
+      }
+      
+      final senderName = data['sender_name'] ?? data['sender_id'] ?? 'Unknown';
+      final isEmergency = data['is_emergency'] == true || data['isEmergency'] == true || data['is_emergency']?.toString() == 'true';
+      
+      if (messageText.isEmpty) {
+        // Check if it's a voice message
+        if (messageType == 'voice_message' || data['data_b64_pcm16le'] != null) {
+          final base64Audio = data['data_b64_pcm16le'] ?? data['pcm16le_b64'] ?? '';
+          if (base64Audio.isNotEmpty) {
+            _addVoiceMessage(base64Audio, false, senderName: senderName.isNotEmpty && senderName != 'Unknown' ? senderName : null);
+            return;
+          }
+        }
+        // Empty message and not voice - skip
+        addStructuredDebug({
+          'source': 'CHAT',
+          'event': 'Skipped empty message',
+          'metrics': {'type': messageType, 'sender': senderName}
+        });
+        return;
+      }
+      
+      // Add connected user if sender name is available
+      if (senderName.isNotEmpty && senderName != 'Unknown') {
+        _addConnectedUser(senderName);
+      }
+      
+      // Log received message for debugging
+      addStructuredDebug({
+        'source': 'CHAT',
+        'event': 'Processing incoming chat message',
+        'metrics': {
+          'type': messageType,
+          'sender': senderName,
+          'messageLength': messageText.length,
+          'isEmergency': isEmergency
+        }
+      });
+      
+      // Add message with emergency flag (rawData contains isEmergency)
+      _addMessage(messageText, false, senderName: senderName, rawData: data);
+      
+      // Trigger haptic feedback for emergency messages
+      if (isEmergency) {
+        HapticFeedback.heavyImpact();
+        addStructuredDebug({
+          'source': 'EMERGENCY',
+          'event': 'Emergency message received',
+          'metrics': {
+            'sender': senderName,
+            'message': messageText.length > 50 ? '${messageText.substring(0, 50)}...' : messageText
+          }
+        });
+      }
+    } catch (e) {
+      addStructuredDebug({
+        'source': 'CHAT',
+        'event': 'Error processing map message',
+        'metrics': {'error': e.toString(), 'data': data.toString()}
+      });
+    }
+  }
+
+  /// Check if message is ESP32 debug/error log (should be filtered out)
+  /// IMPORTANT: Only filter if it's NOT a valid JSON message
+  bool _isEsp32DebugLog(String message) {
+    final trimmed = message.trim();
+    if (trimmed.isEmpty) return false;
+    
+    // First check if it's valid JSON - if yes, it's NOT a debug log
+    try {
+      final decoded = json.decode(trimmed);
+      if (decoded is Map<String, dynamic>) {
+        // If it has "type" and "message" fields, it's a valid chat message, not a debug log
+        if (decoded.containsKey('type') && decoded.containsKey('message')) {
+          return false; // Valid chat message, don't filter
+        }
+        // Other JSON messages (status, auth, etc.) are not debug logs either
+        return false;
+      }
+    } catch (e) {
+      // Not JSON, check if it matches debug log patterns
+    }
+    
+    // ESP32 debug logs patterns to filter out (only for non-JSON messages)
+    final debugPatterns = [
+      r'^\[\d+\]\[RF_ERR\]',      // [timestamp][RF_ERR] at start
+      r'^\[\d+\]\[.*_ERR\]',      // [timestamp][*_ERR] at start
+      r'^\[BT\]',                 // [BT] debug logs at start
+      r'^\[LORA\]',               // [LORA] debug logs at start
+      r'^\[NRF24\]',              // [NRF24] debug logs at start
+      r'CRC mismatch',            // CRC errors - anywhere in message
+      r'dropping packet',         // Packet drop messages - anywhere in message
+      r'RF_ERR.*CRC',             // RF_ERR with CRC
+      r'CRC.*mismatch',           // CRC mismatch variations
+    ];
+    
+    for (final pattern in debugPatterns) {
+      if (RegExp(pattern, caseSensitive: false).hasMatch(trimmed)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   /// Process incoming message and handle voice messages
   void _processIncomingMessage(String data) {
     addStructuredDebug({
       'source': 'CHAT',
       'event': 'Processing incoming data',
-      'metrics': {'dataLength': data.length}
+      'metrics': {'dataLength': data.length, 'preview': data.length > 50 ? '${data.substring(0, 50)}...' : data}
     });
+    
+    // Filter out ESP32 debug/error logs before processing
+    // Note: _isEsp32DebugLog already checks if it's valid JSON first
+    if (_isEsp32DebugLog(data)) {
+      addStructuredDebug({
+        'source': 'CHAT',
+        'event': 'Filtered ESP32 debug log',
+        'metrics': {'message': data.length > 50 ? '${data.substring(0, 50)}...' : data}
+      });
+      // Send to debug stream but don't process as chat message
+      return;
+    }
     
     final messages = _voiceExtension.processIncomingData(data);
     
@@ -302,6 +487,15 @@ class ChatProvider with ChangeNotifier {
     });
     
     for (final message in messages) {
+      // Also filter individual messages after processing
+      if (_isEsp32DebugLog(message)) {
+        addStructuredDebug({
+          'source': 'CHAT',
+          'event': 'Filtered ESP32 debug log (processed)',
+          'metrics': {'message': message.length > 50 ? '${message.substring(0, 50)}...' : message}
+        });
+        continue;
+      }
       if (message.startsWith('VOICE_MESSAGE:')) {
         // Extract the Base64 data from the voice message marker
         final base64Audio = message.substring(14); // Remove 'VOICE_MESSAGE:' prefix
@@ -355,12 +549,38 @@ class ChatProvider with ChangeNotifier {
           _addMessage(parsed.text, false, senderName: parsed.senderName, rawData: parsed.rawData);
         }
       } else {
-        // Regular text message - try to extract user info and metadata
+        // Regular text message - could be plain text from ESP32 (VTYPE_TEXT sends plain text)
+        // Try to parse as JSON first, then fallback to plain text
         final parsed = _parseDisplayMessage(message);
-        if (parsed.senderName != null && parsed.senderName!.isNotEmpty) {
-          _addConnectedUser(parsed.senderName!);
+        
+        // If it's plain text (not JSON), wrap it in a proper message format
+        if (parsed.rawData == null && parsed.senderName == null) {
+          // Plain text message from ESP32 - create proper message structure
+          addStructuredDebug({
+            'source': 'CHAT',
+            'event': 'Received plain text message (wrapping as JSON)',
+            'metrics': {'messageLength': message.length}
+          });
+          
+          _addMessage(
+            parsed.text,
+            false,
+            senderName: 'ESP32', // Default sender if not specified
+            rawData: {
+              'type': 'group',
+              'message': parsed.text,
+              'is_emergency': false,
+              'timestamp': DateTime.now().toIso8601String(),
+              'source': 'esp32_plain_text',
+            },
+          );
+        } else {
+          // Already parsed JSON or has sender info
+          if (parsed.senderName != null && parsed.senderName!.isNotEmpty) {
+            _addConnectedUser(parsed.senderName!);
+          }
+          _addMessage(parsed.text, false, senderName: parsed.senderName, rawData: parsed.rawData);
         }
-        _addMessage(parsed.text, false, senderName: parsed.senderName, rawData: parsed.rawData);
       }
     }
   }
@@ -466,10 +686,12 @@ class ChatProvider with ChangeNotifier {
     });
     notifyListeners();
 
-    // Trigger local notification if not me and in background
+    // Trigger local notification ONLY when app is in background (not when app is open)
     if (!isMe && !NotificationService().isInForeground) {
+      // Use message hash as ID to prevent duplicates
+      final notificationId = chatMessage.timestamp.millisecondsSinceEpoch.hashCode;
       NotificationService().showLocalNotification(
-        id: DateTime.now().millisecondsSinceEpoch,
+        id: notificationId,
         title: senderName ?? 'New Voice Message',
         body: '🎤 Voice message received',
         channelId: NotificationService.messageChannelId,
@@ -477,7 +699,8 @@ class ChatProvider with ChangeNotifier {
           'type': 'message',
           'sender_name': senderName,
           'message': 'Voice Message',
-          'is_voice': true
+          'is_voice': true,
+          'timestamp': chatMessage.timestamp.toIso8601String(),
         }),
       );
     }
@@ -630,10 +853,12 @@ class ChatProvider with ChangeNotifier {
     _messages.add(message);
     notifyListeners();
 
-    // Trigger local notification if message received in background
+    // Trigger local notification ONLY when app is in background (not when app is open)
     if (!isMe && !NotificationService().isInForeground) {
+      // Use message timestamp hash as ID to prevent duplicates
+      final notificationId = message.timestamp.millisecondsSinceEpoch.hashCode ^ message.text.hashCode;
       NotificationService().showLocalNotification(
-        id: DateTime.now().millisecondsSinceEpoch,
+        id: notificationId,
         title: message.senderName ?? 'New Message',
         body: message.isEmergency ? '🚨 ${message.text}' : message.text,
         channelId: message.isEmergency ? NotificationService.emergencyChannelId : NotificationService.messageChannelId,
@@ -641,7 +866,8 @@ class ChatProvider with ChangeNotifier {
           'message': message.text, 
           'sender_name': message.senderName,
           'type': 'message',
-          'is_emergency': message.isEmergency
+          'is_emergency': message.isEmergency,
+          'timestamp': message.timestamp.toIso8601String(),
         }),
       );
     }
