@@ -35,38 +35,46 @@ class BluetoothService {
 
   Future<bool> connectToDevice(BluetoothDevice device) async {
     try {
+      print('BT_DEBUG: connectToDevice() called for ${device.name} ${device.address}');
       _debugController.add('Attempting to connect to ${device.name}...');
       
+      print('BT_DEBUG: Calling BluetoothConnection.toAddress(${device.address})...');
       _connection = await BluetoothConnection.toAddress(device.address);
+      print('BT_DEBUG: toAddress() returned. isConnected=${_connection?.isConnected}');
       
       if (_connection?.isConnected == true) {
+        print('BT_DEBUG: Connected!');
         _debugController.add('Connected to ${device.name}');
         _connectionController.add(true);
         
         _connection!.input!.listen(
           (Uint8List data) {
-            String chunk = utf8.decode(data);
+            final chunk = utf8.decode(data, allowMalformed: true);
             _lineBuffer += chunk;
+            print('BT_DEBUG: RX chunk "${chunk.replaceAll("\n", "\\n")}"');
             _debugController.add('Received chunk: ${chunk.length} chars, buffer: ${_lineBuffer.length} chars');
             
             // Process complete lines
             while (_lineBuffer.contains('\n')) {
-              int newlineIndex = _lineBuffer.indexOf('\n');
-              String completeLine = _lineBuffer.substring(0, newlineIndex);
+              final newlineIndex = _lineBuffer.indexOf('\n');
+              final completeLine = _lineBuffer.substring(0, newlineIndex);
               _lineBuffer = _lineBuffer.substring(newlineIndex + 1);
               
-              if (completeLine.isNotEmpty) {
+              if (completeLine.trim().isNotEmpty) {
+                print('BT_DEBUG: RX line "$completeLine"');
                 _debugController.add('Received line: ${completeLine.length} chars');
                 _messageController.add('$completeLine\n');
               }
             }
           },
           onDone: () {
+            print('BT_DEBUG: onDone() connection closed');
             _debugController.add('Bluetooth connection lost (onDone)');
             _connectionController.add(false);
             _connection = null;
           },
           onError: (error) {
+            print('BT_DEBUG: onError() $error');
             _debugController.add('Bluetooth error: $error');
             _connectionController.add(false);
             _connection = null;
@@ -74,10 +82,12 @@ class BluetoothService {
         );
         return true;
       } else {
+        print('BT_DEBUG: Failed to connect (isConnected false)');
         _debugController.add('Failed to connect to ${device.name}');
         return false;
       }
     } catch (e) {
+      print('BT_DEBUG: Connection error $e');
       _debugController.add('Connection error: $e');
       return false;
     }
@@ -85,6 +95,7 @@ class BluetoothService {
 
   Future<bool> sendMessage(String message) async {
     if (_connection?.isConnected != true) {
+      print('BT_DEBUG: Cannot send message: not connected');
       _debugController.add('Cannot send message: not connected');
       return false;
     }
@@ -92,12 +103,15 @@ class BluetoothService {
       // Ensure message ends with newline for ESP32 compatibility
       String messageWithNewline = message.endsWith('\n') ? message : '$message\n';
       
+      print('BT_DEBUG: Sending message: "$message" (${messageWithNewline.length} bytes)');
       _connection!.output.add(utf8.encode(messageWithNewline));
       await _connection!.output.allSent;
+      print('BT_DEBUG: Message sent successfully');
       
       _debugController.add('Sent: $message');
       return true;
     } catch (e) {
+      print('BT_DEBUG: Error sending message: $e');
       _debugController.add('Error sending message: $e');
       return false;
     }

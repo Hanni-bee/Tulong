@@ -6,13 +6,18 @@ import 'package:flutter_bluetooth_serial_plus/flutter_bluetooth_serial_plus.dart
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/bluetooth_service.dart';
 import '../services/voice_chat_extension.dart' as voice;
-// import '../services/sqlite_service.dart'; // Reserved for future cached message loading
+import '../services/sqlite_service.dart';
+import '../providers/auth_provider.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import '../utils/enhanced_error_handler.dart';
 import '../services/notification_service.dart';
 import '../widgets/modern_toast.dart';
 
 class ChatProvider with ChangeNotifier {
+  // Static instance for access from services without context
+  static ChatProvider? _instance;
+  static ChatProvider? get instance => _instance;
+  
   final BluetoothService _bluetoothService = BluetoothService();
   final voice.VoiceChatExtension _voiceExtension = voice.VoiceChatExtension();
   
@@ -140,6 +145,7 @@ class ChatProvider with ChangeNotifier {
   StreamSubscription<String>? _debugSubscription;
 
   ChatProvider() {
+    _instance = this; // Store static instance
     _init();
     // Auto-unpin old emergencies every 5 minutes
     Timer.periodic(const Duration(minutes: 5), (_) {
@@ -149,6 +155,7 @@ class ChatProvider with ChangeNotifier {
 
   void _init() {
     _messageSubscription = _bluetoothService.messageStream.listen((message) {
+      print('BT_RX_LINE: $message');
       // Try to parse as JSON first (for SimpleBluetoothService messages)
       try {
         final jsonData = json.decode(message);
@@ -163,7 +170,8 @@ class ChatProvider with ChangeNotifier {
       _processIncomingMessage(message);
     });
 
-    _connectionSubscription = _bluetoothService.connectionStream.listen((connected) {
+    _connectionSubscription = _bluetoothService.connectionStream.listen((connected) async {
+      print('BT_CONN: $connected');
       _isConnected = connected;
       
       if (!connected && _selectedDevice != null && _isAutoReconnectEnabled) {
@@ -174,12 +182,17 @@ class ChatProvider with ChangeNotifier {
         _reconnectAttempts = 0;
         _reconnectTimer?.cancel();
         _reconnectTimer = null;
+        
+        // Trigger data sync to ESP32 flash memory
+        print('BT_CONN: Connection established, triggering sync...');
+        _triggerDataSync();
       }
       
       notifyListeners();
     });
 
     _debugSubscription = _bluetoothService.debugStream.listen((log) {
+      print('BT_DEBUG: $log');
       _debugLogs.add('${DateTime.now().toString().substring(11, 19)}: $log');
       if (_debugLogs.length > 100) {
         _debugLogs.removeAt(0);
@@ -989,6 +1002,202 @@ class ChatProvider with ChangeNotifier {
     // Check if string contains only valid Base64 characters
     final base64Pattern = RegExp(r'^[A-Za-z0-9+/]*={0,2}$');
     return base64Pattern.hasMatch(str);
+  }
+
+  /// Sync profile data to ESP32 flash memory (public method)
+  /// Can be called when profile is updated while connected
+  Future<void> syncProfileToESP32() async {
+    if (!_bluetoothService.isConnected) {
+      print('BT_SYNC: Cannot sync profile: Not connected');
+      return;
+    }
+    
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final username = prefs.getString('session_username') ?? prefs.getString('session_email');
+      
+      if (username == null || username.isEmpty) {
+        print('BT_SYNC: Cannot sync profile: No user logged in');
+        return;
+      }
+      
+      print('BT_SYNC: Syncing profile for user: $username');
+      
+      // Get user profile data from SQLite database
+      final sqliteService = SQLiteService();
+      final userData = await sqliteService.getUserByUsername(username);
+      
+      if (userData == null) {
+        print('BT_SYNC: Cannot sync profile: User not found in database');
+        return;
+      }
+      
+      // Build full name from first_name and last_name
+      final firstName = userData['first_name']?.toString() ?? '';
+      final lastName = userData['last_name']?.toString() ?? '';
+      final fullName = '$firstName $lastName'.trim();
+      final finalName = fullName.isNotEmpty 
+          ? fullName 
+          : (prefs.getString('session_name') ?? username);
+      
+      // Build profile JSON (flat structure as expected by ESP32)
+      final profileJson = jsonEncode({
+        "command": "sync_profile",
+        "name": finalName,
+        "username": username,
+        "street": userData['street']?.toString() ?? "",
+        "province": userData['province']?.toString() ?? "",
+        "city": userData['city']?.toString() ?? "",
+        "barangay": userData['barangay']?.toString() ?? "",
+      });
+      
+      print('BT_SYNC: Sending profile data: $profileJson');
+      await _bluetoothService.sendMessage(profileJson);
+      print('BT_SYNC: Profile data sent successfully');
+    } catch (e) {
+      print('BT_SYNC: Error syncing profile: $e');
+    }
+  }
+
+  /// Sync SOS message to ESP32 flash memory (public method)
+  /// Can be called when SOS message is updated while connected
+  Future<void> syncSosToESP32() async {
+    if (!_bluetoothService.isConnected) {
+      print('BT_SYNC: Cannot sync SOS: Not connected');
+      return;
+    }
+    
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final username = prefs.getString('session_username') ?? prefs.getString('session_email');
+      
+      if (username == null || username.isEmpty) {
+        print('BT_SYNC: Cannot sync SOS: No user logged in');
+        return;
+      }
+      
+      print('BT_SYNC: Syncing SOS for user: $username');
+      
+      // Get SOS message from SharedPreferences
+      final sosMessage = prefs.getString('emergency_message_$username') ?? 
+                        'I need help. Please contact me immediately.';
+      
+      final sosJson = jsonEncode({
+        "command": "sync_sos",
+        "message": sosMessage,
+      });
+      
+      print('BT_SYNC: Sending SOS message: $sosJson');
+      await _bluetoothService.sendMessage(sosJson);
+      print('BT_SYNC: SOS message sent successfully');
+    } catch (e) {
+      print('BT_SYNC: Error syncing SOS: $e');
+    }
+  }
+
+  /// Trigger data sync to ESP32 flash memory when connection is established
+  /// Reads user data from SharedPreferences and SQLite (not AuthProvider instance)
+  Future<void> _triggerDataSync() async {
+    if (!_bluetoothService.isConnected) {
+      print('BT_SYNC: Cannot sync: Not connected');
+      return;
+    }
+    
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      
+      // Get username from SharedPreferences
+      final username = prefs.getString('session_username') ?? prefs.getString('session_email');
+      
+      // Option A: Allow sync even without logged-in user (temporary test)
+      if (username == null || username.isEmpty) {
+        print('BT_SYNC: No user logged in — sending TEST payloads');
+        _debugLogs.add('BT_SYNC: No user logged in — sending TEST payloads');
+        notifyListeners();
+        
+        // Send test profile data
+        final testProfileJson = jsonEncode({
+          "command": "sync_profile",
+          "name": "TEST USER",
+          "username": "test",
+          "street": "123",
+          "province": "NCR",
+          "city": "Manila",
+          "barangay": "1"
+        });
+        
+        print('BT_SYNC: Sending TEST profile data: $testProfileJson');
+        await _bluetoothService.sendMessage(testProfileJson);
+        print('BT_SYNC: TEST profile data sent successfully');
+        
+        // Send test SOS message
+        final testSosJson = jsonEncode({
+          "command": "sync_sos",
+          "message": "TEST SOS"
+        });
+        
+        print('BT_SYNC: Sending TEST SOS message: $testSosJson');
+        await _bluetoothService.sendMessage(testSosJson);
+        print('BT_SYNC: TEST SOS message sent successfully');
+        
+        print('BT_SYNC: TEST sync completed successfully');
+        return;
+      }
+      
+      print('BT_SYNC: Starting sync for user: $username');
+      
+      // Get user profile data from SQLite database
+      final sqliteService = SQLiteService();
+      final userData = await sqliteService.getUserByUsername(username);
+      
+      if (userData == null) {
+        print('BT_SYNC: Cannot sync profile: User not found in database');
+      } else {
+        // Build full name from first_name and last_name
+        final firstName = userData['first_name']?.toString() ?? '';
+        final lastName = userData['last_name']?.toString() ?? '';
+        final fullName = '$firstName $lastName'.trim();
+        if (fullName.isEmpty) {
+          // Fallback to session_name if available
+          final sessionName = prefs.getString('session_name') ?? '';
+          final finalName = sessionName.isNotEmpty ? sessionName : username;
+        }
+        
+        // Build profile JSON (flat structure as expected by ESP32)
+        final profileJson = jsonEncode({
+          "command": "sync_profile",
+          "name": fullName.isNotEmpty ? fullName : (prefs.getString('session_name') ?? username),
+          "username": username,
+          "street": userData['street']?.toString() ?? "",
+          "province": userData['province']?.toString() ?? "",
+          "city": userData['city']?.toString() ?? "",
+          "barangay": userData['barangay']?.toString() ?? "",
+        });
+        
+        print('BT_SYNC: Sending profile data: $profileJson');
+        await _bluetoothService.sendMessage(profileJson);
+        print('BT_SYNC: Profile data sent successfully');
+      }
+      
+      // Get SOS message from SharedPreferences
+      final sosMessage = prefs.getString('emergency_message_$username') ?? 
+                        'I need help. Please contact me immediately.';
+      
+      final sosJson = jsonEncode({
+        "command": "sync_sos",
+        "message": sosMessage,
+      });
+      
+      print('BT_SYNC: Sending SOS message: $sosJson');
+      await _bluetoothService.sendMessage(sosJson);
+      print('BT_SYNC: SOS message sent successfully');
+      
+      print('BT_SYNC: Sync completed successfully');
+    } catch (e) {
+      print('BT_SYNC: Error during sync: $e');
+      _debugLogs.add('BT_SYNC: Error during sync: $e');
+      notifyListeners();
+    }
   }
 
   @override

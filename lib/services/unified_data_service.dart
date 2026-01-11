@@ -4,6 +4,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:crypto/crypto.dart';
 import 'sqlite_service.dart';
 import 'firebase_service.dart';
+import '../providers/chat_provider.dart';
 
 /// Unified data service that uses SQLite as primary database and Firebase as backup
 /// All data operations go through this service to ensure consistency
@@ -517,6 +518,27 @@ class UnifiedDataService {
 
       await _sqliteService.updateUser(currentUser['id'], updateData);
       print('✅ Profile updated in SQLite: $username');
+
+      // Increment profile update count in database
+      try {
+        await _sqliteService.incrementProfileUpdateCount(username);
+      } catch (e) {
+        print('⚠️ Failed to increment profile update count: $e');
+      }
+
+      // Sync profile to ESP32 if connected (only if profile fields were updated)
+      final profileFields = ['street', 'province', 'city', 'barangay', 'region', 'first_name', 'last_name'];
+      final hasProfileUpdate = updates.keys.any((key) => profileFields.contains(key));
+      if (hasProfileUpdate) {
+        try {
+          final chatProvider = ChatProvider.instance;
+          if (chatProvider != null && chatProvider.isConnected) {
+            await chatProvider.syncProfileToESP32();
+          }
+        } catch (e) {
+          print('⚠️ Failed to sync profile to ESP32: $e');
+        }
+      }
 
       // STEP 2: Sync to Firebase if online
       final firebaseUid = currentUser['firebase_uid'];

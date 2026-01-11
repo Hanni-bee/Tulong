@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/auth_provider.dart';
 import '../utils/emergency_message_parser.dart';
+import '../services/sqlite_service.dart';
 
 /// Simple Bluetooth Service for ESP32 Communication
 /// Uses platform channels to communicate with Android Bluetooth
@@ -37,6 +38,10 @@ class SimpleBluetoothService extends ChangeNotifier {
   String _userName = '';
   String _pairedDeviceName = '';
   String _pairedDeviceAddress = '';
+  
+  // ESP32 flash memory counts
+  int _esp32ProfileSavedCount = 0;
+  int _esp32SosSavedCount = 0;
   
   // Connected users from ESP32
   List<Map<String, dynamic>> _connectedUsers = [];
@@ -128,6 +133,7 @@ class SimpleBluetoothService extends ChangeNotifier {
     _connectionStatus = data['status'] ?? 'Unknown';
     
     if (_isConnected) {
+      print('🔵 [CONNECTION] ESP32 Connected - State changed to connected');
       _addStatusLog('Connected to ESP32');
       
       // BYPASS AUTH: Auto-authenticate for testing
@@ -137,8 +143,14 @@ class SimpleBluetoothService extends ChangeNotifier {
       _addStatusLog('✅ Auto-authenticated (testing mode)');
       _addStatusLog('Ready to send/receive messages!');
       
+      print('🔵 [CONNECTION] Authentication set to true, triggering data sync...');
+      
       // Still send auth request for ESP32 (non-blocking)
       _sendAuthRequest();
+      
+      // Trigger sync after connection
+      print('🔵 [SYNC] Calling _triggerDataSync()...');
+      _triggerDataSync();
     } else {
       _addStatusLog('Disconnected from ESP32');
       _isAuthenticated = false;
@@ -175,6 +187,14 @@ class SimpleBluetoothService extends ChangeNotifier {
           _handleAuthRequest(data);
         } else if (data.containsKey('sync_complete')) {
           _handleSyncComplete(data);
+        } else if (data.containsKey('profile_saved_count')) {
+          _handleProfileSavedCount(data).catchError((e) {
+            _addErrorLog('Error in profile saved count handler: $e');
+          });
+        } else if (data.containsKey('sos_saved_count')) {
+          _handleSosSavedCount(data).catchError((e) {
+            _addErrorLog('Error in SOS saved count handler: $e');
+          });
         } else if (data.containsKey('discovered_users')) {
           _handleDiscoveredUsers(data);
         } else if (data.containsKey('type')) {
@@ -370,10 +390,37 @@ class SimpleBluetoothService extends ChangeNotifier {
       // Save authentication status
       _saveStoredData();
       
+      // Trigger sync after authentication
+      _triggerDataSync();
+      
       notifyListeners();
       
     } catch (e) {
       _addErrorLog('Error handling sync complete: $e');
+    }
+  }
+
+  Future<void> _handleProfileSavedCount(Map<String, dynamic> data) async {
+    try {
+      final count = data['profile_saved_count'] as int? ?? 0;
+      _esp32ProfileSavedCount = count;
+      await _saveStoredData();
+      _addStatusLog('✅ Profile saved to ESP32 flash (count: $count)');
+      notifyListeners();
+    } catch (e) {
+      _addErrorLog('Error handling profile saved count: $e');
+    }
+  }
+
+  Future<void> _handleSosSavedCount(Map<String, dynamic> data) async {
+    try {
+      final count = data['sos_saved_count'] as int? ?? 0;
+      _esp32SosSavedCount = count;
+      await _saveStoredData();
+      _addStatusLog('✅ SOS message saved to ESP32 flash (count: $count)');
+      notifyListeners();
+    } catch (e) {
+      _addErrorLog('Error handling SOS saved count: $e');
     }
   }
 
@@ -539,13 +586,26 @@ class SimpleBluetoothService extends ChangeNotifier {
 
   void sendMessage(Map<String, dynamic> data) {
     try {
-      _channel.invokeMethod('sendMessage', data);
-      
       String jsonMessage = json.encode(data);
-      _addStatusLog('📤 Sent: $jsonMessage');
+      
+      // Debug logging before sending
+      print('🔍 [SEND] sendMessage() called with data: $data');
+      print('I/flutter: 🔍 [SEND] Data map: $data');
+      print('🔍 [SEND] JSON encoded message: $jsonMessage');
+      print('I/flutter: 🔍 [SEND] JSON string: $jsonMessage');
+      _addStatusLog('🔍 [DEBUG] Invoking sendMessage via platform channel');
+      
+      print('🔍 [SEND] Invoking platform channel method: sendMessage');
+      _channel.invokeMethod('sendMessage', data);
+      print('✅ [SEND] Platform channel invokeMethod completed');
+      
+      _addStatusLog('📤 Sent via Bluetooth: $jsonMessage');
+      print('✅ [SEND] Message sent successfully via platform channel');
+      print('I/flutter: ✅ [SEND] Message forwarded to ESP32');
       
     } catch (e) {
-      _addErrorLog('Error sending message: $e');
+      _addErrorLog('❌ Error sending message: $e');
+      print('❌ [DEBUG] sendMessage() error: $e');
     }
   }
 
@@ -562,6 +622,8 @@ class SimpleBluetoothService extends ChangeNotifier {
       _isAuthenticated = prefs.getBool('esp32_authenticated') ?? false;
       _pairedDeviceName = prefs.getString('paired_device_name') ?? '';
       _pairedDeviceAddress = prefs.getString('paired_device_address') ?? '';
+      _esp32ProfileSavedCount = prefs.getInt('esp32_profile_saved_count') ?? 0;
+      _esp32SosSavedCount = prefs.getInt('esp32_sos_saved_count') ?? 0;
       
       if (_esp32Mac.isNotEmpty) {
         _addStatusLog('Loaded stored ESP32 data: $_esp32NodeId');
@@ -569,6 +631,10 @@ class SimpleBluetoothService extends ChangeNotifier {
       
       if (_pairedDeviceName.isNotEmpty) {
         _addStatusLog('✅ Previously paired: $_pairedDeviceName');
+      }
+      
+      if (_esp32ProfileSavedCount > 0 || _esp32SosSavedCount > 0) {
+        _addStatusLog('ESP32 flash counts - Profile: $_esp32ProfileSavedCount, SOS: $_esp32SosSavedCount');
       }
       
     } catch (e) {
@@ -585,6 +651,8 @@ class SimpleBluetoothService extends ChangeNotifier {
       await prefs.setBool('esp32_authenticated', _isAuthenticated);
       await prefs.setString('paired_device_name', _pairedDeviceName);
       await prefs.setString('paired_device_address', _pairedDeviceAddress);
+      await prefs.setInt('esp32_profile_saved_count', _esp32ProfileSavedCount);
+      await prefs.setInt('esp32_sos_saved_count', _esp32SosSavedCount);
       
       _addStatusLog('Saved ESP32 data to storage');
       
@@ -617,6 +685,207 @@ class SimpleBluetoothService extends ChangeNotifier {
   }
 
   // ============================================================================
+  // DATA SYNC TO ESP32 FLASH MEMORY
+  // ============================================================================
+  
+  /// Trigger data sync to ESP32 flash memory
+  /// Checks if first-time connect or if counts changed
+  Future<void> _triggerDataSync() async {
+    print('🔵 [SYNC] _triggerDataSync() called');
+    print('🔵 [SYNC] Connection status - isConnected: $_isConnected, isAuthenticated: $_isAuthenticated');
+    
+    if (!_isConnected || !_isAuthenticated) {
+      print('❌ [SYNC] Cannot sync: Not connected or authenticated');
+      _addStatusLog('⚠️ Cannot sync: Not connected or authenticated');
+      return;
+    }
+    
+    try {
+      final authProvider = AuthProvider();
+      print('🔵 [SYNC] AuthProvider userUsername: ${authProvider.userUsername}');
+      
+      if (authProvider.userUsername == null) {
+        print('❌ [SYNC] Cannot sync: No user logged in');
+        _addStatusLog('⚠️ Cannot sync: No user logged in');
+        return;
+      }
+      
+      // Check if first-time connect (no previous authentication)
+      final prefs = await SharedPreferences.getInstance();
+      final wasAuthenticatedBefore = prefs.getBool('esp32_authenticated') ?? false;
+      
+      print('🔵 [SYNC] wasAuthenticatedBefore: $wasAuthenticatedBefore');
+      
+      if (!wasAuthenticatedBefore) {
+        // First time connecting - send all data
+        print('🆕 [SYNC] FIRST TIME CONNECTION - Will forward all data to ESP32');
+        _addStatusLog('🆕 FIRST TIME CONNECTION DETECTED - Forwarding all data to ESP32 flash');
+        _addStatusLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        print('🆕 [SYNC] Calling syncProfileDataToESP32()...');
+        await syncProfileDataToESP32();
+        _addStatusLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        print('🆕 [SYNC] Calling syncSosMessageToESP32()...');
+        await syncSosMessageToESP32();
+        _addStatusLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      } else {
+        // Subsequent connection - check if counts changed
+        print('🔄 [SYNC] SUBSEQUENT CONNECTION - Checking for updates...');
+        _addStatusLog('🔄 SUBSEQUENT CONNECTION - Checking for updates...');
+        final sqliteService = SQLiteService();
+        final updateCounts = await sqliteService.getUpdateCounts(authProvider.userUsername!);
+        
+        print('🔵 [SYNC] Update counts from DB: $updateCounts');
+        
+        if (updateCounts != null) {
+          final appProfileCount = updateCounts['profile_update_count'] as int? ?? 0;
+          final appSosCount = updateCounts['sos_message_update_count'] as int? ?? 0;
+          
+          print('🔵 [SYNC] App counts - Profile: $appProfileCount, SOS: $appSosCount');
+          print('🔵 [SYNC] ESP32 counts - Profile: $_esp32ProfileSavedCount, SOS: $_esp32SosSavedCount');
+          
+          _addStatusLog('   App counts - Profile: $appProfileCount, SOS: $appSosCount');
+          _addStatusLog('   ESP32 counts - Profile: $_esp32ProfileSavedCount, SOS: $_esp32SosSavedCount');
+          
+          // Compare with ESP32 saved counts
+          if (appProfileCount > _esp32ProfileSavedCount) {
+            print('📝 [SYNC] Profile update detected! ($appProfileCount > $_esp32ProfileSavedCount) - Will sync profile');
+            _addStatusLog('📝 Profile update detected ($appProfileCount > $_esp32ProfileSavedCount)');
+            _addStatusLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+            print('📝 [SYNC] Calling syncProfileDataToESP32()...');
+            await syncProfileDataToESP32();
+            _addStatusLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+          } else {
+            print('✓ [SYNC] Profile count unchanged ($appProfileCount) - skipping profile sync');
+            _addStatusLog('✓ Profile count unchanged ($appProfileCount) - skipping profile sync');
+          }
+          
+          if (appSosCount > _esp32SosSavedCount) {
+            print('📝 [SYNC] SOS update detected! ($appSosCount > $_esp32SosSavedCount) - Will sync SOS');
+            _addStatusLog('📝 SOS update detected ($appSosCount > $_esp32SosSavedCount)');
+            _addStatusLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+            print('📝 [SYNC] Calling syncSosMessageToESP32()...');
+            await syncSosMessageToESP32();
+            _addStatusLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+          } else {
+            print('✓ [SYNC] SOS count unchanged ($appSosCount) - skipping SOS sync');
+            _addStatusLog('✓ SOS count unchanged ($appSosCount) - skipping SOS sync');
+          }
+        } else {
+          // No update counts record - send all data
+          _addStatusLog('⚠️ No update counts record found - Forwarding all data to ESP32 flash');
+          _addStatusLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+          await syncProfileDataToESP32();
+          _addStatusLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+          await syncSosMessageToESP32();
+          _addStatusLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        }
+      }
+    } catch (e) {
+      _addErrorLog('Error triggering data sync: $e');
+    }
+  }
+  
+  /// Sync profile data to ESP32 flash memory
+  Future<void> syncProfileDataToESP32() async {
+    if (!_isConnected || !_isAuthenticated) {
+      _addErrorLog('Cannot sync profile: Not connected or authenticated');
+      return;
+    }
+    
+    try {
+      final authProvider = AuthProvider();
+      final userModel = authProvider.currentUserModel;
+      
+      if (userModel == null) {
+        _addErrorLog('Cannot sync profile: No user model available');
+        return;
+      }
+      
+      // Get profile data (name, username, street, province, city, barangay)
+      final name = userModel.name ?? '';
+      final username = userModel.username ?? '';
+      final street = userModel.street ?? '';
+      final province = userModel.province ?? '';
+      final city = userModel.city ?? '';
+      final barangay = userModel.barangay ?? '';
+      
+      final profileData = {
+        'command': 'sync_profile',
+        'data': {
+          'name': name,
+          'username': username,
+          'street': street,
+          'province': province,
+          'city': city,
+          'barangay': barangay,
+        }
+      };
+      
+      // Log profile data being forwarded
+      _addStatusLog('📤 FORWARDING PROFILE DATA TO ESP32 FLASH MEMORY');
+      _addStatusLog('   Name: $name');
+      _addStatusLog('   Username: $username');
+      _addStatusLog('   Street: $street');
+      _addStatusLog('   Province: $province');
+      _addStatusLog('   City: $city');
+      _addStatusLog('   Barangay: $barangay');
+      
+      // Debug: Print exact JSON being sent
+      final jsonString = json.encode(profileData);
+      print('🔍 [PROFILE SYNC] Sending sync_profile command: $jsonString');
+      print('I/flutter: 🔍 [PROFILE SYNC] JSON payload: $jsonString');
+      _addStatusLog('🔍 [DEBUG] JSON payload: $jsonString');
+      
+      print('🔍 [PROFILE SYNC] Calling sendMessage() with profileData...');
+      sendMessage(profileData);
+      print('✅ [PROFILE SYNC] sendMessage() completed');
+      
+      _addStatusLog('✅ Profile data forwarded to ESP32 successfully');
+      
+    } catch (e) {
+      _addErrorLog('❌ Error syncing profile data: $e');
+    }
+  }
+  
+  /// Sync SOS message to ESP32 flash memory
+  Future<void> syncSosMessageToESP32() async {
+    if (!_isConnected || !_isAuthenticated) {
+      _addErrorLog('Cannot sync SOS: Not connected or authenticated');
+      return;
+    }
+    
+    try {
+      final authProvider = AuthProvider();
+      final sosMessage = authProvider.emergencyMessage ?? 'I need help. Please contact me immediately.';
+      
+      final sosData = {
+        'command': 'sync_sos',
+        'message': sosMessage,
+      };
+      
+      // Log SOS message being forwarded
+      _addStatusLog('📤 FORWARDING SOS MESSAGE TO ESP32 FLASH MEMORY');
+      _addStatusLog('   Message: "$sosMessage"');
+      _addStatusLog('   Message length: ${sosMessage.length} characters');
+      
+      // Debug: Print exact JSON being sent
+      final jsonString = json.encode(sosData);
+      print('🔍 [SOS SYNC] Sending sync_sos command: $jsonString');
+      print('I/flutter: 🔍 [SOS SYNC] JSON payload: $jsonString');
+      _addStatusLog('🔍 [DEBUG] JSON payload: $jsonString');
+      
+      print('🔍 [SOS SYNC] Calling sendMessage() with sosData...');
+      sendMessage(sosData);
+      print('✅ [SOS SYNC] sendMessage() completed');
+      
+      _addStatusLog('✅ SOS message forwarded to ESP32 successfully');
+      
+    } catch (e) {
+      _addErrorLog('❌ Error syncing SOS message: $e');
+    }
+  }
+
+  // ============================================================================ 
   // UTILITY FUNCTIONS
   // ============================================================================
   
@@ -625,6 +894,7 @@ class SimpleBluetoothService extends ChangeNotifier {
     String logMessage = '[$timestamp] $message';
     _statusController.add(logMessage);
     print('ESP32_BT: $logMessage');
+    print('I/flutter: ESP32_BT: $logMessage'); // Ensure it shows in Flutter logs
   }
 
   void _addErrorLog(String message) {
@@ -632,6 +902,7 @@ class SimpleBluetoothService extends ChangeNotifier {
     String logMessage = '[$timestamp] ERROR: $message';
     _statusController.add(logMessage);
     print('ESP32_BT_ERROR: $logMessage');
+    print('I/flutter: ESP32_BT_ERROR: $logMessage'); // Ensure it shows in Flutter logs
   }
 
   // ============================================================================

@@ -8,6 +8,7 @@ import '../services/sqlite_service.dart';
 import '../services/unified_data_service.dart';
 import '../services/two_factor_auth_service.dart';
 import '../models/user_model.dart';
+import 'chat_provider.dart';
 
 class AuthProvider extends ChangeNotifier {
   bool _isAuthenticated = false;
@@ -350,6 +351,17 @@ class AuthProvider extends ChangeNotifier {
         });
       } catch (_) {}
     }
+    
+    // Sync SOS to ESP32 if connected
+    try {
+      final chatProvider = ChatProvider.instance;
+      if (chatProvider != null && chatProvider.isConnected) {
+        await chatProvider.syncSosToESP32();
+      }
+    } catch (e) {
+      print('⚠️ Failed to sync SOS to ESP32: $e');
+    }
+    
     notifyListeners();
   }
 
@@ -362,6 +374,26 @@ class AuthProvider extends ChangeNotifier {
       _emergencyMessage = _emergencyMessages[_defaultEmergencyMessageIndex!];
     }
     await _persistEmergencyMessages();
+    
+    // Increment SOS message update count in database
+    if (_userUsername != null) {
+      try {
+        await _sqliteService.incrementSosMessageUpdateCount(_userUsername!);
+      } catch (e) {
+        print('⚠️ Failed to increment SOS message update count: $e');
+      }
+    }
+    
+    // Sync SOS to ESP32 if connected
+    try {
+      final chatProvider = ChatProvider.instance;
+      if (chatProvider != null && chatProvider.isConnected) {
+        await chatProvider.syncSosToESP32();
+      }
+    } catch (e) {
+      print('⚠️ Failed to sync SOS to ESP32: $e');
+    }
+    
     notifyListeners();
   }
 
@@ -372,6 +404,26 @@ class AuthProvider extends ChangeNotifier {
       _emergencyMessage = _emergencyMessages[index];
     }
     await _persistEmergencyMessages();
+    
+    // Increment SOS message update count in database
+    if (_userUsername != null) {
+      try {
+        await _sqliteService.incrementSosMessageUpdateCount(_userUsername!);
+      } catch (e) {
+        print('⚠️ Failed to increment SOS message update count: $e');
+      }
+    }
+    
+    // Sync SOS to ESP32 if connected
+    try {
+      final chatProvider = ChatProvider.instance;
+      if (chatProvider != null && chatProvider.isConnected) {
+        await chatProvider.syncSosToESP32();
+      }
+    } catch (e) {
+      print('⚠️ Failed to sync SOS to ESP32: $e');
+    }
+    
     notifyListeners();
   }
 
