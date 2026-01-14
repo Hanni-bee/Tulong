@@ -33,6 +33,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   final _formKey = GlobalKey<FormState>();
   final _firstNameController = TextEditingController();
   final _lastNameController = TextEditingController();
+  final _suffixController = TextEditingController();
   final _usernameController = TextEditingController(); // Replaced email with username
   final _addressController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -69,6 +70,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   void dispose() {
     _firstNameController.dispose();
     _lastNameController.dispose();
+    _suffixController.dispose();
     _usernameController.dispose(); // Replaced email with username
     _addressController.dispose();
     _passwordController.dispose();
@@ -178,6 +180,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
     try {
       final first = _firstNameController.text.trim();
       final last = _lastNameController.text.trim();
+      final suffix = _suffixController.text.trim();
       final username = _usernameController.text.trim();
       final pwd = _passwordController.text;
 
@@ -209,6 +212,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
       final registrationData = {
         'firstName': first,
         'lastName': last,
+        'suffix': suffix.isEmpty ? null : suffix,
         'username': username,
         'address': _addressController.text.trim(),
         'region': regionName,
@@ -441,6 +445,20 @@ class _SignUpScreenState extends State<SignUpScreen> {
             const SizedBox(height: 8),
             _buildNameValidationError('Last name cannot contain numbers'),
           ],
+          
+          SizedBox(height: ResponsiveSpacing.getResponsiveSpacing(context, xs: 16, sm: 18, md: 20)),
+          
+          // Suffix field (optional)
+          CustomTextField(
+            controller: _suffixController,
+            label: 'Suffix (optional)',
+            hint: 'Jr., Sr., III, etc.',
+            prefixIcon: Icons.text_fields,
+            validator: (value) {
+              // Optional field, no validation required
+              return null;
+            },
+          ),
           
           const SizedBox(height: 20),
           

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 
@@ -10,7 +11,7 @@ class SQLiteService {
 
   static Database? _database;
   static const String _databaseName = 'tulong_offline.db';
-  static const int _databaseVersion = 6;
+  static const int _databaseVersion = 8;
 
   // Table names
   static const String _usersTable = 'users';
@@ -43,9 +44,11 @@ class SQLiteService {
     await db.execute('''
       CREATE TABLE $_usersTable (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uid TEXT UNIQUE NOT NULL,
         firebase_uid TEXT UNIQUE,
         first_name TEXT NOT NULL,
         last_name TEXT NOT NULL,
+        suffix TEXT,
         username TEXT NOT NULL UNIQUE,
         street TEXT,
         region TEXT,
@@ -194,11 +197,53 @@ class SQLiteService {
         )
       ''');
     }
+    if (oldVersion < 7) {
+      // Add suffix column to users table
+      try {
+        await db.execute('ALTER TABLE $_usersTable ADD COLUMN suffix TEXT');
+      } catch (e) {
+        // Column might already exist, ignore
+        print('Note: suffix column may already exist: $e');
+      }
+    }
+    if (oldVersion < 8) {
+      // Add uid column and generate UIDs for existing users
+      try {
+        await db.execute('ALTER TABLE $_usersTable ADD COLUMN uid TEXT');
+        // Generate UIDs for existing users that don't have one
+        final existingUsers = await db.query(_usersTable, where: 'uid IS NULL OR uid = ""');
+        for (final user in existingUsers) {
+          final uid = _generateRandomUID();
+          await db.update(
+            _usersTable,
+            {'uid': uid},
+            where: 'id = ?',
+            whereArgs: [user['id']],
+          );
+        }
+      } catch (e) {
+        // Column might already exist, ignore
+        print('Note: uid column may already exist: $e');
+      }
+    }
+  }
+
+  // Generate random UID for accounts
+  static String _generateRandomUID() {
+    final random = Random();
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    final randomPart = List.generate(16, (_) => chars[random.nextInt(chars.length)]).join();
+    return 'UID_${timestamp}_$randomPart';
   }
 
   // User operations
   Future<int> insertUser(Map<String, dynamic> userData) async {
     final db = await database;
+    // Generate UID if not provided
+    if (!userData.containsKey('uid') || userData['uid'] == null || userData['uid'].toString().isEmpty) {
+      userData['uid'] = _generateRandomUID();
+    }
     return await db.insert(_usersTable, userData);
   }
 

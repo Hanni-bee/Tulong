@@ -9,6 +9,7 @@ import '../../services/sqlite_service.dart';
 import '../../services/firebase_service.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io';
 
 /// Biometric verification screen shown after registration form submission
@@ -173,9 +174,11 @@ class _BiometricVerificationScreenState extends State<BiometricVerificationScree
           barangay.isNotEmpty;
 
       // Prepare user data for SQLite (primary, offline-first)
+      final suffix = data['suffix']?.toString();
       final userData = {
         'first_name': data['firstName'].toString(),
         'last_name': data['lastName'].toString(),
+        'suffix': suffix != null && suffix.isNotEmpty ? suffix : null,
         'username': data['username'].toString(),
         'street': address,
         'region': region,
@@ -210,6 +213,7 @@ class _BiometricVerificationScreenState extends State<BiometricVerificationScree
           final firebaseData = {
             'FirstName': data['firstName'],
             'LastName': data['lastName'],
+            'Suffix': suffix != null && suffix.isNotEmpty ? suffix : null,
             'Username': data['username'],
             'Address': address,
             'Region': region,
@@ -243,11 +247,24 @@ class _BiometricVerificationScreenState extends State<BiometricVerificationScree
         // Continue - user is saved in SQLite
       }
 
+      // Get the saved user to retrieve UID
+      final savedUser = await sqliteService.getUserByUsername(data['username'].toString());
+      
+      // Save UID to SharedPreferences immediately after account creation
+      if (savedUser != null && savedUser['uid'] != null) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('session_uid', savedUser['uid'].toString());
+        print('✅ UID saved to SharedPreferences: ${savedUser['uid']}');
+      }
+
       // Set authenticated state
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final fullName = suffix != null && suffix.isNotEmpty
+          ? '${data['firstName']} ${data['lastName']} $suffix'
+          : '${data['firstName']} ${data['lastName']}';
       await authProvider.setAuthenticated(
         email: data['username'], // Parameter name is 'email' for compatibility, but it's actually username
-        name: '${data['firstName']} ${data['lastName']}',
+        name: fullName.trim(),
       );
 
       print('✅ User data saved and authenticated');

@@ -1032,19 +1032,25 @@ class ChatProvider with ChangeNotifier {
         return;
       }
       
-      // Build full name from first_name and last_name
+      // Build full name from first_name, last_name, and suffix
       final firstName = userData['first_name']?.toString() ?? '';
       final lastName = userData['last_name']?.toString() ?? '';
-      final fullName = '$firstName $lastName'.trim();
+      final suffix = userData['suffix']?.toString() ?? '';
+      final fullName = [firstName, lastName, suffix].where((s) => s.isNotEmpty).join(' ').trim();
       final finalName = fullName.isNotEmpty 
           ? fullName 
           : (prefs.getString('session_name') ?? username);
+      
+      // Get UID from SharedPreferences
+      final uid = prefs.getString('session_uid') ?? userData['uid']?.toString() ?? "";
       
       // Build profile JSON (flat structure as expected by ESP32)
       final profileJson = jsonEncode({
         "command": "sync_profile",
         "name": finalName,
         "username": username,
+        "uid": uid,
+        "suffix": suffix,
         "street": userData['street']?.toString() ?? "",
         "province": userData['province']?.toString() ?? "",
         "city": userData['city']?.toString() ?? "",
@@ -1153,21 +1159,25 @@ class ChatProvider with ChangeNotifier {
       if (userData == null) {
         print('BT_SYNC: Cannot sync profile: User not found in database');
       } else {
-        // Build full name from first_name and last_name
+        // Build full name from first_name, last_name, and suffix
         final firstName = userData['first_name']?.toString() ?? '';
         final lastName = userData['last_name']?.toString() ?? '';
-        final fullName = '$firstName $lastName'.trim();
-        if (fullName.isEmpty) {
-          // Fallback to session_name if available
-          final sessionName = prefs.getString('session_name') ?? '';
-          final finalName = sessionName.isNotEmpty ? sessionName : username;
-        }
+        final suffix = userData['suffix']?.toString() ?? '';
+        final fullName = [firstName, lastName, suffix].where((s) => s.isNotEmpty).join(' ').trim();
+        final finalName = fullName.isNotEmpty 
+            ? fullName 
+            : (prefs.getString('session_name') ?? username);
+        
+        // Get UID from SharedPreferences
+        final uid = prefs.getString('session_uid') ?? userData['uid']?.toString() ?? "";
         
         // Build profile JSON (flat structure as expected by ESP32)
         final profileJson = jsonEncode({
           "command": "sync_profile",
-          "name": fullName.isNotEmpty ? fullName : (prefs.getString('session_name') ?? username),
+          "name": finalName,
           "username": username,
+          "uid": uid,
+          "suffix": suffix,
           "street": userData['street']?.toString() ?? "",
           "province": userData['province']?.toString() ?? "",
           "city": userData['city']?.toString() ?? "",

@@ -93,10 +93,11 @@ class AuthProvider extends ChangeNotifier {
       if (sqliteUser != null) {
         print('Found user in SQLite: ${sqliteUser.toString()}');
         
-        // Combine first and last name
+        // Combine first, last name, and suffix
         final firstName = sqliteUser['first_name']?.toString() ?? '';
         final lastName = sqliteUser['last_name']?.toString() ?? '';
-        final fullName = '$firstName $lastName'.trim();
+        final suffix = sqliteUser['suffix']?.toString() ?? '';
+        final fullName = [firstName, lastName, suffix].where((s) => s.isNotEmpty).join(' ').trim();
         
         // Handle legacy data where province might be stored in city field
         final province = sqliteUser['province']?.toString() ?? '';
@@ -126,6 +127,14 @@ class AuthProvider extends ChangeNotifier {
             (sqliteUser['emergency_message']?.toString().isNotEmpty ?? false)) {
           _emergencyMessage = sqliteUser['emergency_message'].toString();
         }
+        
+        // Save UID to SharedPreferences if available
+        if (sqliteUser.containsKey('uid') && sqliteUser['uid'] != null) {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('session_uid', sqliteUser['uid'].toString());
+          print('UID saved to SharedPreferences: ${sqliteUser['uid']}');
+        }
+        
         print('UserModel created from SQLite data: ${userModel.toString()}');
         notifyListeners();
         return;
@@ -290,8 +299,9 @@ class AuthProvider extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     final username = prefs.getString('session_username') ?? prefs.getString('session_email'); // Support migration
     final name = prefs.getString('session_name');
+    final uid = prefs.getString('session_uid'); // Load UID from SharedPreferences
     
-    print('Loading session - Username: $username, Name: $name');
+    print('Loading session - Username: $username, Name: $name, UID: $uid');
     
     // Check if this is a fresh app start (no session data)
     if (username == null || username.isEmpty) {
@@ -306,7 +316,7 @@ class AuthProvider extends ChangeNotifier {
       _userUsername = username; // Replaced _userEmail with _userUsername
       _userName = name ?? username;
       
-      print('Using cached session data - Name: $_userName, Username: $_userUsername');
+      print('Using cached session data - Name: $_userName, Username: $_userUsername, UID: $uid');
       
       // Load emergency message(s) scoped to this user
       try {
@@ -330,7 +340,7 @@ class AuthProvider extends ChangeNotifier {
 
       notifyListeners();
       
-      // Load UserModel after setting basic session data
+      // Load UserModel after setting basic session data (this will also save UID if not in SharedPreferences)
       await loadUserModel();
     } else {
       print('No valid session found - user needs to sign in');
@@ -482,6 +492,7 @@ class AuthProvider extends ChangeNotifier {
     print('Session saved - Name: $_userName, Username: $_userUsername');
     
     // Load user model immediately after authentication to ensure profile data is available
+    // This will also save UID to SharedPreferences
     await loadUserModel();
     
     notifyListeners();
@@ -564,6 +575,7 @@ class AuthProvider extends ChangeNotifier {
     await prefs.remove('session_username');
     await prefs.remove('session_email'); // Keep for migration cleanup
     await prefs.remove('session_name');
+    await prefs.remove('session_uid'); // Clear UID from SharedPreferences
     await prefs.remove('current_user');
     await prefs.remove('address_setup_completed');
     
@@ -728,6 +740,17 @@ class AuthProvider extends ChangeNotifier {
     await prefs.setString('session_username', username); // New key
     await prefs.setString('session_email', username); // Keep for migration
     await prefs.setString('session_name', name);
+    
+    // Get and save UID from SQLite if available
+    try {
+      final sqliteUser = await _sqliteService.getUserByUsername(username);
+      if (sqliteUser != null && sqliteUser['uid'] != null) {
+        await prefs.setString('session_uid', sqliteUser['uid'].toString());
+        print('UID saved to SharedPreferences: ${sqliteUser['uid']}');
+      }
+    } catch (e) {
+      print('Error loading UID for session: $e');
+    }
     
     // Check if this is a new user (first time signing in)
     final existingUserCreatedAt = prefs.getString('user_created_at_$username');

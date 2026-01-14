@@ -8,9 +8,11 @@ import '../models/user_model.dart';
 import '../providers/auth_provider.dart';
 import '../services/location_service.dart';
 import '../services/unified_data_service.dart';
+import '../services/sqlite_service.dart';
 import '../widgets/custom_button.dart';
 import '../widgets/custom_text_field.dart';
 import '../widgets/enhanced_micro_interactions.dart' as micro;
+import '../utils/input_validator.dart';
 
 class UpdateProfileScreen extends StatefulWidget {
   const UpdateProfileScreen({super.key});
@@ -21,7 +23,9 @@ class UpdateProfileScreen extends StatefulWidget {
 
 class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _fullNameController = TextEditingController();
+  final _firstNameController = TextEditingController();
+  final _lastNameController = TextEditingController();
+  final _suffixController = TextEditingController();
   final _usernameController = TextEditingController();
   final _addressController = TextEditingController();
   
@@ -65,17 +69,36 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
         print('  - Province: ${user.province}');
         print('  - Barangay: ${user.barangay}');
         
-        // Pre-fill full name (concatenated, read-only)
-        _fullNameController.text = user.name.isNotEmpty ? user.name : '';
+        // Get user data from SQLite to access first_name, last_name, suffix
+        final sqliteService = SQLiteService();
+        final sqliteUser = await sqliteService.getUserByUsername(user.username);
         
-        // Pre-fill username (read-only)
+        if (sqliteUser != null) {
+          // Pre-fill first name, last name, and suffix
+          _firstNameController.text = sqliteUser['first_name']?.toString() ?? '';
+          _lastNameController.text = sqliteUser['last_name']?.toString() ?? '';
+          _suffixController.text = sqliteUser['suffix']?.toString() ?? '';
+        } else {
+          // Fallback: try to parse from full name
+          final nameParts = user.name.trim().split(' ');
+          if (nameParts.isNotEmpty) {
+            _firstNameController.text = nameParts.first;
+            if (nameParts.length > 1) {
+              _lastNameController.text = nameParts.sublist(1).join(' ');
+            }
+          }
+        }
+        
+        // Pre-fill username (editable)
         _usernameController.text = user.username.isNotEmpty ? user.username : '';
         
         // Pre-fill address info - ALWAYS set the text, even if empty
         _addressController.text = user.street.isNotEmpty ? user.street : '';
         
         print('✅ Controllers set:');
-        print('  - Full Name Controller: "${_fullNameController.text}"');
+        print('  - First Name Controller: "${_firstNameController.text}"');
+        print('  - Last Name Controller: "${_lastNameController.text}"');
+        print('  - Suffix Controller: "${_suffixController.text}"');
         print('  - Username Controller: "${_usernameController.text}"');
         print('  - Address Controller: "${_addressController.text}"');
       
@@ -203,7 +226,9 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
 
   @override
   void dispose() {
-    _fullNameController.dispose();
+    _firstNameController.dispose();
+    _lastNameController.dispose();
+    _suffixController.dispose();
     _usernameController.dispose();
     _addressController.dispose();
     super.dispose();
@@ -252,7 +277,83 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
     }
   }
 
+  Future<void> _showConfirmationDialog() async {
+    // Show confirmation modal - NO validation or update logic here
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: Colors.black.withOpacity(0.7),
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.info_outline,
+                color: AppColors.primary,
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Text(
+                'Are you sure on changes?',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: const Text(
+          'Do you want to proceed with updating your profile?',
+          style: TextStyle(
+            color: AppColors.textSecondary,
+            fontSize: 16,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text(
+              'NO',
+              style: TextStyle(
+                color: AppColors.textSecondary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text(
+              'YES',
+              style: TextStyle(
+                color: AppColors.primary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    
+    // Only proceed with update if YES was clicked
+    if (result == true) {
+      await _updateProfile();
+    }
+  }
+
   Future<void> _updateProfile() async {
+    // All validation and update logic is here - only called from YES button
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
@@ -282,11 +383,15 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
       )['brgy_name'] ?? _selectedBarangay ?? '';
       
       // Use unified data service for profile update
-      // Note: Name and username are read-only, so we only update address fields
+      // Now updating first_name, last_name, suffix, and username
       final unifiedDataService = UnifiedDataService();
       await unifiedDataService.updateUserProfileWithMap(
         authProvider.userUsername!,
         {
+          'first_name': _firstNameController.text.trim(),
+          'last_name': _lastNameController.text.trim(),
+          'suffix': _suffixController.text.trim().isEmpty ? null : _suffixController.text.trim(),
+          'username': _usernameController.text.trim(),
           'street': _addressController.text.trim(),
           'region': regionName,
           'province': provinceName,
@@ -298,9 +403,17 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
       // Reload user model to ensure all saved data is loaded from database
       await authProvider.loadUserModel();
       
-      // Update local user model with latest data (keep existing name and username)
+      // Update local user model with latest data
       if (authProvider.currentUserModel != null) {
+        // Construct full name from first, last, and suffix
+        final firstName = _firstNameController.text.trim();
+        final lastName = _lastNameController.text.trim();
+        final suffix = _suffixController.text.trim();
+        final fullName = [firstName, lastName, suffix].where((s) => s.isNotEmpty).join(' ');
+        
         final updatedUser = authProvider.currentUserModel!.copyWith(
+          name: fullName,
+          username: _usernameController.text.trim(),
           street: _addressController.text.trim(),
           barangay: barangayName,
           city: cityName,
@@ -572,31 +685,54 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
                 ),
                 const SizedBox(height: 16),
 
-                // Full Name (read-only, concatenated)
+                // First Name (editable, required)
                 CustomTextField(
-                  controller: _fullNameController,
-                  label: 'Full Name',
-                  hint: 'Your full name',
+                  controller: _firstNameController,
+                  label: 'First Name',
+                  hint: 'Enter your first name',
                   prefixIcon: Icons.person_outline,
-                  enabled: false, // Disabled for editing
                   validator: (value) {
-                    // No validation needed since it's read-only
+                    return InputValidator.validateName(value, 'First Name');
+                  },
+                ),
+
+                const SizedBox(height: 16),
+
+                // Last Name (editable, required)
+                CustomTextField(
+                  controller: _lastNameController,
+                  label: 'Last Name',
+                  hint: 'Enter your last name',
+                  prefixIcon: Icons.badge_outlined,
+                  validator: (value) {
+                    return InputValidator.validateName(value, 'Last Name');
+                  },
+                ),
+
+                const SizedBox(height: 16),
+
+                // Suffix (editable, optional)
+                CustomTextField(
+                  controller: _suffixController,
+                  label: 'Suffix (optional)',
+                  hint: 'Jr., Sr., III, etc.',
+                  prefixIcon: Icons.text_fields,
+                  validator: (value) {
+                    // Optional field, no validation required
                     return null;
                   },
                 ),
 
                 const SizedBox(height: 16),
 
-                // Username (read-only)
+                // Username (editable)
                 CustomTextField(
                   controller: _usernameController,
                   label: 'Username',
-                  hint: 'Your username',
+                  hint: 'Enter your username',
                   prefixIcon: Icons.alternate_email,
-                  enabled: false, // Disabled for editing
                   validator: (value) {
-                    // No validation needed since it's read-only
-                    return null;
+                    return InputValidator.validateUsername(value);
                   },
                 ),
 
@@ -740,10 +876,10 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
 
                 const SizedBox(height: 32),
 
-                // Update button
+                // Update button - only triggers confirmation modal
                 CustomButton(
                   text: _isLoading ? 'Updating...' : 'Update Profile',
-                  onPressed: _isLoading ? null : _updateProfile,
+                  onPressed: _isLoading ? null : _showConfirmationDialog,
                   isLoading: _isLoading,
                 ),
               ],

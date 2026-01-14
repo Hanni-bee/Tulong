@@ -6,6 +6,7 @@ import '../constants/soft_ui_design.dart';
 import '../providers/network_provider.dart';
 import '../providers/notification_provider.dart';
 import '../providers/chat_provider.dart';
+import '../providers/auth_provider.dart';
 import '../utils/prototype_animations.dart';
 import '../widgets/solid_badge.dart';
 import '../utils/icon_system.dart';
@@ -15,6 +16,8 @@ import 'emergency_detection_screen.dart';
 // Hardware screen removed - using pure Bluetooth only
 import 'modern_profile_screen.dart';
 import '../models/notification_model.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../services/sqlite_service.dart';
 
 class MainNavigation extends StatefulWidget {
   const MainNavigation({super.key});
@@ -48,6 +51,9 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
   // Badge counts - connected to NotificationProvider
   int _messagesUnreadCount = 0;
   int _callsActiveCount = 0;
+  
+  // UID watermark
+  String? _userUID;
   
   final List<Widget> _screens = [
     const ModernHomeScreen(),
@@ -86,6 +92,7 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
   @override
   void initState() {
     super.initState();
+    _loadUserUID();
     _animationController = AnimationController(
       duration: const Duration(milliseconds: 400),
       vsync: this,
@@ -303,30 +310,75 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
     }
   }
 
+  // Load user UID from SharedPreferences
+  Future<void> _loadUserUID() async {
+    if (!mounted) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final uid = prefs.getString('session_uid');
+      if (mounted && uid != null && uid.isNotEmpty) {
+        setState(() {
+          _userUID = uid;
+        });
+      }
+    } catch (e) {
+      print('Error loading user UID from SharedPreferences: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    // Load UID if not loaded yet
+    if (_userUID == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _loadUserUID();
+      });
+    }
+    
     return Scaffold(
       extendBody: true, // allow body to render under the floating nav pill
       backgroundColor: AppColors.neumorphicBase,
-      body: ScrollConfiguration(
-        behavior: const _NoScrollbarsBehavior(),
-        child: RepaintBoundary(
-          child: FadeTransition(
-            opacity: _pageEntranceFade,
-            child: SlideTransition(
-              position: _pageEntranceSlide,
-              child: IndexedStack(
-                index: _currentIndex,
-                children: List.generate(_screens.length, (i) {
-                  return TickerMode(
-                    enabled: i == _currentIndex,
-                    child: RepaintBoundary(child: _screens[i]),
-                  );
-                }),
+      body: Stack(
+        children: [
+          ScrollConfiguration(
+            behavior: const _NoScrollbarsBehavior(),
+            child: RepaintBoundary(
+              child: FadeTransition(
+                opacity: _pageEntranceFade,
+                child: SlideTransition(
+                  position: _pageEntranceSlide,
+                  child: IndexedStack(
+                    index: _currentIndex,
+                    children: List.generate(_screens.length, (i) {
+                      return TickerMode(
+                        enabled: i == _currentIndex,
+                        child: RepaintBoundary(child: _screens[i]),
+                      );
+                    }),
+                  ),
+                ),
               ),
             ),
           ),
-        ),
+          // UID Watermark at the bottom
+          if (_userUID != null)
+            Positioned(
+              bottom: 8,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: Text(
+                  'UID: $_userUID',
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: Colors.grey.withOpacity(0.4),
+                    fontWeight: FontWeight.w300,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
       bottomNavigationBar: FadeTransition(
         opacity: _floatingNavFade,
