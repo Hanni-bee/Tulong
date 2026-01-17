@@ -10,6 +10,7 @@ class ImagePreprocessingService {
   
   /// Preprocess image for ML model
   /// Returns normalized Float32List ready for TensorFlow Lite
+  /// Format: [1, 224, 224, 3] - batch dimension included
   Future<Float32List?> preprocessImage(String imagePath) async {
     try {
       // Read image file
@@ -31,14 +32,48 @@ class ImagePreprocessingService {
       // Resize to target size (maintain aspect ratio, then crop center)
       final img.Image resized = _resizeAndCrop(image, targetSize);
       
-      // Normalize pixel values to [0, 1] range
-      // Camera images are typically RGB, but we handle RGBA if present
-      final Float32List normalized = _normalizePixels(resized);
+      // Ensure RGB format (convert if needed)
+      img.Image rgbImage = resized;
+      if (resized.numChannels == 4) {
+        // Convert RGBA to RGB
+        rgbImage = img.Image(width: resized.width, height: resized.height);
+        for (int y = 0; y < resized.height; y++) {
+          for (int x = 0; x < resized.width; x++) {
+            final pixel = resized.getPixel(x, y);
+            rgbImage.setPixel(x, y, img.ColorRgb8(
+              pixel.r.toInt().clamp(0, 255),
+              pixel.g.toInt().clamp(0, 255),
+              pixel.b.toInt().clamp(0, 255),
+            ));
+          }
+        }
+      }
       
-      debugPrint('Image preprocessed: ${resized.width}x${resized.height} -> ${targetSize}x$targetSize');
+      // Normalize pixel values to [0, 1] range
+      // Format: [1, 224, 224, 3] - batch dimension included
+      final Float32List normalized = _normalizePixels(rgbImage);
+      
+      // Validate preprocessing - ensure data is varied
+      final minVal = normalized.reduce((a, b) => a < b ? a : b);
+      final maxVal = normalized.reduce((a, b) => a > b ? a : b);
+      final meanVal = normalized.reduce((a, b) => a + b) / normalized.length;
+      
+      debugPrint('✅ Image preprocessed: ${resized.width}x${resized.height} -> ${targetSize}x$targetSize');
+      debugPrint('   Output shape: [1, $targetSize, $targetSize, 3]');
+      debugPrint('   Total values: ${normalized.length}');
+      debugPrint('   Normalized range: [$minVal, $maxVal], mean: ${meanVal.toStringAsFixed(4)}');
+      
+      // Validation check
+      if ((maxVal - minVal).abs() < 0.0001) {
+        debugPrint('⚠️⚠️⚠️ WARNING: Preprocessed data is constant - all pixels are the same! ⚠️⚠️⚠️');
+      }
+      if (meanVal < 0.001 || meanVal > 0.999) {
+        debugPrint('⚠️ Preprocessed mean value is extreme: $meanVal (expected ~0.4-0.6 for typical images)');
+      }
+      
       return normalized;
     } catch (e) {
-      debugPrint('Error preprocessing image: $e');
+      debugPrint('❌ Error preprocessing image: $e');
       return null;
     }
   }
@@ -65,20 +100,24 @@ class ImagePreprocessingService {
   
   /// Normalize pixel values to [0, 1] range
   /// ImageNet normalization: (pixel / 255.0)
-  /// Handles both RGB and RGBA images
+  /// Returns format: [1, height, width, 3] - batch dimension included
   Float32List _normalizePixels(img.Image image) {
     final int width = image.width;
     final int height = image.height;
     final int channels = 3; // RGB output
+    final int batchSize = 1; // Single image
     
-    final Float32List normalized = Float32List(width * height * channels);
+    // Total size: batch * height * width * channels = 1 * 224 * 224 * 3
+    final Float32List normalized = Float32List(batchSize * height * width * channels);
     int index = 0;
     
+    // Flatten to [batch, height, width, channels] format
     for (int y = 0; y < height; y++) {
       for (int x = 0; x < width; x++) {
         final img.Pixel pixel = image.getPixel(x, y);
         
-        // Extract RGB values and normalize (ignore alpha if present)
+        // Extract RGB values and normalize to [0, 1]
+        // Format: [batch=1, height, width, channels=3]
         normalized[index++] = pixel.r / 255.0; // R
         normalized[index++] = pixel.g / 255.0;  // G
         normalized[index++] = pixel.b / 255.0;  // B

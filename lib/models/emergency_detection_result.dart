@@ -9,6 +9,7 @@ class EmergencyDetectionResult {
   final double? confidenceUpperBound; // Upper bound of confidence interval
   final DateTime timestamp;
   final String? imagePath; // Path to captured image (stays on device)
+  Map<String, dynamic>? aiAssessment; // AI damage severity assessment from TFLite model
   
   EmergencyDetectionResult({
     required this.type,
@@ -18,6 +19,7 @@ class EmergencyDetectionResult {
     this.confidenceUpperBound,
     required this.timestamp,
     this.imagePath,
+    this.aiAssessment,
   });
   
   /// Get confidence as formatted string with interval if available

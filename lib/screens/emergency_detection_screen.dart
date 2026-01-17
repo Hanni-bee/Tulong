@@ -16,6 +16,8 @@ import '../services/image_preprocessing_service.dart';
 import '../services/emergency_detection_service.dart';
 import '../services/simple_bluetooth_service.dart';
 import '../services/ml_model_service.dart';
+import '../services/damage_severity_service.dart' show DamageSeverityService;
+import '../services/sqlite_service.dart';
 
 /// Emergency Detection Screen - Replaces Calls Screen
 /// Allows users to capture photos and detect emergency types using AI/ML
@@ -31,6 +33,7 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
   final CameraService _cameraService = CameraService();
   final ImagePreprocessingService _preprocessingService = ImagePreprocessingService();
   final EmergencyDetectionService _detectionService = EmergencyDetectionService();
+  final DamageSeverityService _damageSeverityService = DamageSeverityService.instance;
   
   bool _isCameraInitialized = false;
   bool _isProcessing = false;
@@ -73,13 +76,13 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
     
     _processingController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1500),
+      duration: const Duration(milliseconds: 1200),
     )..repeat();
     
     _processingAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
         parent: _processingController,
-        curve: Curves.easeInOut,
+        curve: Curves.linear, // Smooth continuous rotation
       ),
     );
     
@@ -106,6 +109,9 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
     // Try to load ML model if available (optional, won't fail if not present)
     _tryLoadMLModel();
     
+    // Load damage severity model
+    _loadDamageSeverityModel();
+    
     _initializeCamera();
   }
   
@@ -124,6 +130,77 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
     } catch (e) {
       // Model not found or other error - this is fine, rule-based will work
       debugPrint('ℹ️ ML Model not available: $e (rule-based detection will be used)');
+    }
+  }
+  
+  /// Load damage severity model for AI assessment
+  Future<void> _loadDamageSeverityModel() async {
+    try {
+      debugPrint('🔄 Loading Damage Severity Model...');
+      
+      // Retry mechanism - try loading up to 3 times
+      bool loaded = false;
+      for (int attempt = 1; attempt <= 3; attempt++) {
+        debugPrint('   Attempt $attempt/3...');
+        loaded = await _damageSeverityService.loadModel();
+        
+        if (loaded) {
+          // Verify it's actually loaded
+          if (_damageSeverityService.isModelLoaded && MLModelService.instance.isLoaded) {
+            debugPrint('✅ Model verified loaded on attempt $attempt');
+            break;
+          } else {
+            debugPrint('⚠️ loadModel returned true but model not actually loaded');
+            loaded = false;
+          }
+        }
+        
+        if (attempt < 3) {
+          debugPrint('   Waiting 1 second before retry...');
+          await Future.delayed(const Duration(seconds: 1));
+        }
+      }
+      
+      if (mounted) {
+        setState(() {
+          // Trigger rebuild to update UI status
+        });
+      }
+      
+      if (loaded && _damageSeverityService.isModelLoaded) {
+        debugPrint('✅✅✅ Damage Severity Model loaded and verified successfully');
+        debugPrint('   Input shape: ${MLModelService.instance.inputShape}');
+        debugPrint('   Output shape: ${MLModelService.instance.outputShape}');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('✅ AI Model loaded successfully'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      } else {
+        debugPrint('❌❌❌ Damage Severity Model FAILED to load after 3 attempts');
+        debugPrint('   Model will NOT be used for detection');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('⚠️ AI Model failed to load. Using rule-based detection only.'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 4),
+            ),
+          );
+        }
+      }
+    } catch (e, stackTrace) {
+      debugPrint('❌❌❌ Damage Severity Model error: $e');
+      debugPrint('   Stack trace: $stackTrace');
+      if (mounted) {
+        setState(() {
+          // Trigger rebuild even on error
+        });
+      }
     }
   }
 
@@ -285,10 +362,6 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
     await _saveLastCaptureTime();
     _updateCooldownState();
 
-    setState(() {
-      _isProcessing = true;
-    });
-
     try {
       // Flash animation with enhanced effect
       setState(() {
@@ -304,8 +377,15 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
         });
       });
       
-      // Capture photo
+      // CAPTURE FIRST - no processing yet
       final imagePath = await _cameraService.takePicture();
+      
+      // NOW SET PROCESSING - after capture is done
+      if (mounted) {
+        setState(() {
+          _isProcessing = true;
+        });
+      }
       
       if (imagePath == null) {
         if (mounted) {
@@ -340,15 +420,72 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
         return;
       }
       
+      // Perform AI damage severity assessment
+      // STRICT CHECK: Only run if model is properly loaded
+      Map<String, dynamic>? aiAssessment;
+      if (_damageSeverityService.isModelLoaded) {
+        debugPrint('✅ Model is loaded - running AI assessment');
+        try {
+          aiAssessment = await _damageSeverityService.assessDamageSeverity(imagePath);
+          if (aiAssessment != null) {
+            debugPrint('✅ AI Assessment: ${aiAssessment['className']} (${(aiAssessment['confidence'] * 100).toStringAsFixed(1)}%)');
+          } else {
+            debugPrint('⚠️ AI assessment returned null - model may not have run');
+          }
+        } catch (e, stackTrace) {
+          debugPrint('❌ AI assessment failed: $e');
+          debugPrint('   Stack trace: $stackTrace');
+        }
+      } else {
+        debugPrint('⚠️ Model not loaded - skipping AI assessment');
+        debugPrint('   Emergency detection will use rule-based classification only');
+      }
+      
       // Perform emergency detection using rule-based classification
       final result = await _detectionService.detectEmergency(
         preprocessed,
         imagePath,
       );
+      
+      // Enhance result with AI assessment if available
+      if (aiAssessment != null) {
+        // Update result with AI assessment data
+        result.aiAssessment = aiAssessment;
+        debugPrint('✅ Enhanced result with AI assessment');
+        
+        // Save severity status (ONLY THE STATUS) to SQLite
+        try {
+          final sqliteService = SQLiteService();
+          final severityStatus = aiAssessment['className'] as String? ?? 'Unknown';
+          final detectedDate = DateTime.now();
+          final confidence = aiAssessment['confidence'] as double?;
+          final classIndex = aiAssessment['classIndex'] as int?;
+          
+          await sqliteService.insertSeverityStatus(
+            severityStatus: severityStatus,
+            detectedDate: detectedDate,
+            confidence: confidence,
+            classIndex: classIndex,
+          );
+          debugPrint('✅ Severity status saved to SQLite: $severityStatus (Date: $detectedDate)');
+        } catch (e) {
+          debugPrint('⚠️ Failed to save severity status to SQLite: $e');
+        }
+      }
 
       if (mounted) {
+        // Disable flashlight after detection
+        try {
+          if (_cameraService.isReady && _cameraService.controller != null) {
+            await _cameraService.controller!.setFlashMode(FlashMode.off);
+          }
+        } catch (e) {
+          debugPrint('⚠️ Failed to disable flash: $e');
+        }
+        
         setState(() {
           _isProcessing = false;
+          _showFlash = false; // Ensure flash UI is off
           _recentDetections.insert(0, result);
           // Keep only last 10 detections
           if (_recentDetections.length > 10) {
@@ -407,18 +544,21 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
           borderRadius: BorderRadius.circular(20),
         ),
         child: Container(
-          constraints: const BoxConstraints(maxWidth: 400),
+          constraints: BoxConstraints(
+            maxWidth: 380,
+            maxHeight: MediaQuery.of(context).size.height * 0.80,
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Header with gradient
+              // Header with RED gradient - Emergency theme
               Container(
-                padding: const EdgeInsets.all(20),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [
-                      severityColor,
-                      severityColor.withOpacity(0.8),
+                      AppColors.primaryRed,
+                      AppColors.error.withOpacity(0.9),
                     ],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
@@ -432,9 +572,9 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                   children: [
                     Text(
                       result.type.emoji,
-                      style: const TextStyle(fontSize: 40),
+                      style: const TextStyle(fontSize: 32),
                     ),
-                    const SizedBox(width: 16),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -442,17 +582,18 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                           Text(
                             '${result.type.label.toUpperCase()}',
                             style: const TextStyle(
-                              fontSize: 20,
+                              fontSize: 17,
                               fontWeight: FontWeight.bold,
                               color: Colors.white,
+                              letterSpacing: 0.3,
                             ),
                           ),
-                          const SizedBox(height: 4),
+                          const SizedBox(height: 2),
                           Text(
                             'DETECTED',
                             style: TextStyle(
-                              fontSize: 14,
-                              color: Colors.white.withOpacity(0.9),
+                              fontSize: 12,
+                              color: Colors.white.withOpacity(0.85),
                               fontWeight: FontWeight.w500,
                             ),
                           ),
@@ -463,193 +604,523 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                 ),
               ),
               
-              // Content
-              Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Captured image preview
-                    if (result.imagePath != null)
-                      Container(
-                        height: 200,
-                        width: double.infinity,
-                        margin: const EdgeInsets.only(bottom: 20),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: AppColors.lightGray,
-                            width: 2,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.1),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
+              // Content - Scrollable to prevent overlap
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Captured image preview - More compact
+                      if (result.imagePath != null)
+                        Container(
+                          height: 160,
+                          width: double.infinity,
+                          margin: const EdgeInsets.only(bottom: 14),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: AppColors.lightGray.withOpacity(0.5),
+                              width: 1.5,
                             ),
-                          ],
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.08),
+                                blurRadius: 6,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(11),
+                            child: Image.file(
+                              File(result.imagePath!),
+                              fit: BoxFit.cover,
+                            ),
+                          ),
                         ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(10),
-                          child: Image.file(
-                            File(result.imagePath!),
-                            fit: BoxFit.cover,
+                      
+                      // AI Assessment Display (if available) - Enhanced & Cleaner UI
+                    if (result.aiAssessment != null)
+                      TweenAnimationBuilder<double>(
+                        tween: Tween(begin: 0.0, end: 1.0),
+                        duration: const Duration(milliseconds: 600),
+                        curve: Curves.easeOut,
+                        builder: (context, value, child) {
+                          return Opacity(
+                            opacity: value,
+                            child: Transform.translate(
+                              offset: Offset(0, 20 * (1 - value)),
+                              child: child,
+                            ),
+                          );
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.all(14),
+                          margin: const EdgeInsets.only(bottom: 14),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [
+                                AppColors.primaryRed.withOpacity(0.15),
+                                AppColors.error.withOpacity(0.08),
+                              ],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: AppColors.primaryRed.withOpacity(0.4),
+                              width: 1.5,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppColors.primaryRed.withOpacity(0.15),
+                                blurRadius: 10,
+                                spreadRadius: 0,
+                                offset: const Offset(0, 3),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Header - More compact design
+                              Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(10),
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        colors: [
+                                          AppColors.primaryRed,
+                                          AppColors.error,
+                                        ],
+                                      ),
+                                      borderRadius: BorderRadius.circular(12),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: AppColors.primaryRed.withOpacity(0.4),
+                                          blurRadius: 8,
+                                          spreadRadius: 0,
+                                        ),
+                                      ],
+                                    ),
+                                    child: const Icon(
+                                      Icons.auto_awesome_rounded,
+                                      size: 22,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'AI Damage Assessment',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w600,
+                                            color: AppColors.mediumGray,
+                                            letterSpacing: 0.3,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          result.aiAssessment!['className'] as String,
+                                          style: TextStyle(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.bold,
+                                            color: AppColors.primaryRed,
+                                            letterSpacing: 0.2,
+                                            height: 1.2,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        colors: [
+                                          Color(_damageSeverityService.getSeverityColor(result.aiAssessment!['classIndex'] as int)),
+                                          Color(_damageSeverityService.getSeverityColor(result.aiAssessment!['classIndex'] as int)).withOpacity(0.8),
+                                        ],
+                                      ),
+                                      borderRadius: BorderRadius.circular(28),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Color(_damageSeverityService.getSeverityColor(result.aiAssessment!['classIndex'] as int)).withOpacity(0.3),
+                                          blurRadius: 8,
+                                          spreadRadius: 0,
+                                        ),
+                                      ],
+                                    ),
+                                    child: Text(
+                                      '${((result.aiAssessment!['confidence'] as double) * 100).toStringAsFixed(0)}%',
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
+                                        letterSpacing: 0.3,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 14),
+                              // Detected Date & Time - REQUIRED DISPLAY
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.calendar_today,
+                                    size: 14,
+                                    color: AppColors.mediumGray,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    'Detected: ${_formatDateTime(result.timestamp)}',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: AppColors.mediumGray,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 14),
+                              // Confidence progress bar - More compact
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        'Confidence Level',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
+                                          color: AppColors.mediumGray,
+                                        ),
+                                      ),
+                                      Text(
+                                        '${((result.aiAssessment!['confidence'] as double) * 100).toStringAsFixed(1)}%',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                          color: Color(_damageSeverityService.getSeverityColor(result.aiAssessment!['classIndex'] as int)),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(10),
+                                    child: TweenAnimationBuilder<double>(
+                                      tween: Tween(begin: 0.0, end: result.aiAssessment!['confidence'] as double),
+                                      duration: const Duration(milliseconds: 1000),
+                                      curve: Curves.easeOut,
+                                      builder: (context, value, child) {
+                                        return Container(
+                                          height: 8,
+                                          decoration: BoxDecoration(
+                                            color: AppColors.lightGray.withOpacity(0.25),
+                                            borderRadius: BorderRadius.circular(8),
+                                          ),
+                                          child: Stack(
+                                            children: [
+                                              FractionallySizedBox(
+                                                widthFactor: value,
+                                                child: Container(
+                                                  decoration: BoxDecoration(
+                                                    gradient: LinearGradient(
+                                                      colors: [
+                                                        Color(_damageSeverityService.getSeverityColor(result.aiAssessment!['classIndex'] as int)),
+                                                        Color(_damageSeverityService.getSeverityColor(result.aiAssessment!['classIndex'] as int)).withOpacity(0.7),
+                                                      ],
+                                                    ),
+                                                    borderRadius: BorderRadius.circular(10),
+                                                    boxShadow: [
+                                                      BoxShadow(
+                                                        color: Color(_damageSeverityService.getSeverityColor(result.aiAssessment!['classIndex'] as int)).withOpacity(0.4),
+                                                        blurRadius: 6,
+                                                        spreadRadius: 0,
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 14),
+                              // Probability breakdown - More compact design
+                              if (result.aiAssessment!['probabilities'] != null)
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Probability Breakdown',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppColors.mediumGray,
+                                        letterSpacing: 0.2,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    // Model Status Indicator
+                                    if (result.aiAssessment!['isModelStatic'] != null)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                        margin: const EdgeInsets.only(bottom: 12),
+                                        decoration: BoxDecoration(
+                                          color: (result.aiAssessment!['isModelStatic'] as bool)
+                                              ? Colors.orange.withOpacity(0.15)
+                                              : Colors.green.withOpacity(0.15),
+                                          borderRadius: BorderRadius.circular(8),
+                                          border: Border.all(
+                                            color: (result.aiAssessment!['isModelStatic'] as bool)
+                                                ? Colors.orange
+                                                : Colors.green,
+                                            width: 1,
+                                          ),
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            Icon(
+                                              (result.aiAssessment!['isModelStatic'] as bool)
+                                                  ? Icons.warning_rounded
+                                                  : Icons.check_circle_rounded,
+                                              size: 16,
+                                              color: (result.aiAssessment!['isModelStatic'] as bool)
+                                                  ? Colors.orange
+                                                  : Colors.green,
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Expanded(
+                                              child: Text(
+                                                result.aiAssessment!['modelStatusMessage'] as String? ?? 'Model status unknown',
+                                                style: TextStyle(
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: (result.aiAssessment!['isModelStatic'] as bool)
+                                                      ? Colors.orange.shade800
+                                                      : Colors.green.shade800,
+                                                ),
+                                              ),
+                                            ),
+                                            if (result.aiAssessment!['inferenceCount'] != null)
+                                              Text(
+                                                '#${result.aiAssessment!['inferenceCount']}',
+                                                style: TextStyle(
+                                                  fontSize: 9,
+                                                  color: AppColors.mediumGray,
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                      ),
+                                    ...((result.aiAssessment!['probabilities'] as List<double>).asMap().entries.map((entry) {
+                                      final index = entry.key;
+                                      final prob = entry.value;
+                                      final classNames = ["Little/No damage", "Mild damage", "Severe damage"];
+                                      final className = classNames[index];
+                                      final isSelected = index == result.aiAssessment!['classIndex'];
+                                      final classColor = Color(_damageSeverityService.getSeverityColor(index));
+                                      
+                                      return TweenAnimationBuilder<double>(
+                                        tween: Tween(begin: 0.0, end: prob),
+                                        duration: Duration(milliseconds: 700 + (index * 100)),
+                                        curve: Curves.easeOut,
+                                        builder: (context, animValue, child) {
+                                          return Container(
+                                            margin: const EdgeInsets.only(bottom: 8),
+                                            padding: const EdgeInsets.all(10),
+                                            decoration: BoxDecoration(
+                                              color: isSelected
+                                                  ? classColor.withOpacity(0.1)
+                                                  : AppColors.lightGray.withOpacity(0.15),
+                                              borderRadius: BorderRadius.circular(10),
+                                              border: Border.all(
+                                                color: isSelected
+                                                    ? classColor.withOpacity(0.4)
+                                                    : AppColors.lightGray.withOpacity(0.3),
+                                                width: isSelected ? 2 : 1,
+                                              ),
+                                            ),
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Row(
+                                                  children: [
+                                                    Container(
+                                                      width: 10,
+                                                      height: 10,
+                                                      decoration: BoxDecoration(
+                                                        color: isSelected ? classColor : AppColors.mediumGray,
+                                                        shape: BoxShape.circle,
+                                                        boxShadow: isSelected
+                                                            ? [
+                                                                BoxShadow(
+                                                                  color: classColor.withOpacity(0.4),
+                                                                  blurRadius: 4,
+                                                                  spreadRadius: 0,
+                                                                ),
+                                                              ]
+                                                            : null,
+                                                      ),
+                                                    ),
+                                                    const SizedBox(width: 10),
+                                                    Expanded(
+                                                      child: Text(
+                                                        className,
+                                                        style: TextStyle(
+                                                          fontSize: 13,
+                                                          color: isSelected ? AppColors.textPrimary : AppColors.mediumGray,
+                                                          fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    Text(
+                                                      '${(animValue * 100).toStringAsFixed(1)}%',
+                                                      style: TextStyle(
+                                                        fontSize: 13,
+                                                        color: isSelected ? classColor : AppColors.mediumGray,
+                                                        fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                                const SizedBox(height: 8),
+                                                ClipRRect(
+                                                  borderRadius: BorderRadius.circular(5),
+                                                  child: Container(
+                                                    height: 6,
+                                                    decoration: BoxDecoration(
+                                                      color: AppColors.lightGray.withOpacity(0.2),
+                                                    ),
+                                                    child: FractionallySizedBox(
+                                                      widthFactor: animValue,
+                                                      alignment: Alignment.centerLeft,
+                                                      child: Container(
+                                                        decoration: BoxDecoration(
+                                                          gradient: LinearGradient(
+                                                            colors: [
+                                                              classColor,
+                                                              classColor.withOpacity(0.7),
+                                                            ],
+                                                          ),
+                                                          borderRadius: BorderRadius.circular(6),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          );
+                                        },
+                                      );
+                                    }).toList()),
+                                  ],
+                                ),
+                            ],
                           ),
                         ),
                       ),
                     
-                    // Severity indicator
+                    // Detection Summary - RED THEME for Emergency
                     Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
-                      ),
+                      padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: severityColor.withOpacity(0.1),
+                        color: AppColors.error.withOpacity(0.08),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: severityColor.withOpacity(0.3),
+                          color: AppColors.error.withOpacity(0.3),
                           width: 1.5,
                         ),
                       ),
-                      child: Row(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Container(
-                            width: 12,
-                            height: 12,
-                            decoration: BoxDecoration(
-                              color: severityColor,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Text(
-                            'Severity: ${result.severity.label}',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: severityColor,
-                            ),
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(7),
+                                decoration: BoxDecoration(
+                                  color: AppColors.error.withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Icon(
+                                  Icons.warning_rounded,
+                                  size: 18,
+                                  color: AppColors.error,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Severity Status: ${result.severity.label}',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.bold,
+                                        color: AppColors.error,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                decoration: BoxDecoration(
+                                  color: AppColors.error.withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.bar_chart_rounded,
+                                      size: 14,
+                                      color: AppColors.error,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      '${(result.confidence * 100).toStringAsFixed(1)}%',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                        color: AppColors.error,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
                     ),
                     
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 12),
                     
-                    // Confidence indicator with progress bar
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            const Icon(
-                              Icons.analytics,
-                              size: 20,
-                              color: AppColors.darkGray,
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              'Confidence: ${result.getConfidenceString()}',
-                              style: const TextStyle(
-                                fontSize: 14,
-                                color: AppColors.darkGray,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: Container(
-                            height: 8,
-                            decoration: BoxDecoration(
-                              color: AppColors.lightGray.withOpacity(0.3),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Stack(
-                              children: [
-                                // Background
-                                Container(width: double.infinity),
-                                // Progress
-                                FractionallySizedBox(
-                                  widthFactor: result.confidence,
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      gradient: LinearGradient(
-                                        colors: [
-                                          severityColor,
-                                          severityColor.withOpacity(0.7),
-                                        ],
-                                      ),
-                                      borderRadius: BorderRadius.circular(8),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: severityColor.withOpacity(0.3),
-                                          blurRadius: 4,
-                                          spreadRadius: 0,
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    
-                    const SizedBox(height: 20),
-                    
-                    // Quick actions
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: () {
-                              Navigator.pop(context);
-                              _showAnalysisDetails(result);
-                            },
-                            icon: const Icon(Icons.insights, size: 18),
-                            label: const Text('Details'),
-                            style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: () {
-                              Navigator.pop(context);
-                              _reportFalsePositive(result);
-                            },
-                            icon: const Icon(Icons.close, size: 18),
-                            label: const Text('Incorrect'),
-                            style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    
-                    const SizedBox(height: 16),
-                    
-                    // Info note
+                    // Info note - More compact
                     Container(
-                      padding: const EdgeInsets.all(12),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                       decoration: BoxDecoration(
-                        color: AppColors.lightGray.withOpacity(0.5),
+                        color: AppColors.lightGray.withOpacity(0.3),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Row(
@@ -657,17 +1128,17 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                         children: [
                           const Icon(
                             Icons.info_outline,
-                            size: 16,
+                            size: 14,
                             color: AppColors.mediumGray,
                           ),
-                          const SizedBox(width: 8),
+                          const SizedBox(width: 6),
                           Expanded(
                             child: Text(
                               'Image stays on device. Only detection result will be sent via ESP32/radio.',
                               style: TextStyle(
-                                fontSize: 11,
+                                fontSize: 10,
                                 color: AppColors.darkGray.withOpacity(0.7),
-                                height: 1.4,
+                                height: 1.3,
                               ),
                             ),
                           ),
@@ -676,96 +1147,113 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                     ),
                   ],
                 ),
+                ),
               ),
               
-              // Actions
+              // Actions - More compact layout
               Container(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
                   color: AppColors.backgroundLight,
                   borderRadius: const BorderRadius.only(
                     bottomLeft: Radius.circular(20),
                     bottomRight: Radius.circular(20),
                   ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      blurRadius: 4,
+                      offset: const Offset(0, -2),
+                    ),
+                  ],
                 ),
                 child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    // User feedback buttons
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextButton.icon(
-                            onPressed: () {
-                              Navigator.pop(context);
-                              _reportFalsePositive(result);
-                            },
-                            icon: const Icon(Icons.close, size: 18),
-                            label: const Text('Not an Emergency'),
-                            style: TextButton.styleFrom(
-                              foregroundColor: AppColors.mediumGray,
-                              padding: const EdgeInsets.symmetric(vertical: 10),
-                            ),
+                    // Main action button - Send to Chat (as abang, not dynamic)
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: () {
+                          Navigator.pop(context);
+                          _sendToChat(result);
+                        },
+                        icon: const Icon(Icons.send, size: 18),
+                        label: const Text(
+                          'Send to Chat',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: TextButton.icon(
-                            onPressed: () {
-                              Navigator.pop(context);
-                              _showAnalysisDetails(result);
-                            },
-                            icon: const Icon(Icons.info_outline, size: 18),
-                            label: const Text('View Analysis'),
-                            style: TextButton.styleFrom(
-                              foregroundColor: AppColors.info,
-                              padding: const EdgeInsets.symmetric(vertical: 10),
-                            ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primaryRed,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
                           ),
+                          elevation: 2,
                         ),
-                      ],
+                      ),
                     ),
-                    const SizedBox(height: 8),
-                    // Main action buttons
+                    const SizedBox(height: 10),
+                    // AI Assessment Log Button (only if AI assessment exists)
+                    if (result.aiAssessment != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: () {
+                              _showAssessmentLogs(result);
+                            },
+                            icon: const Icon(Icons.description, size: 16),
+                            label: const Text('View Assessment Logs', style: TextStyle(fontSize: 13)),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: AppColors.primaryRed,
+                              side: BorderSide(color: AppColors.primaryRed, width: 1.5),
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    // Secondary actions
                     Row(
                       children: [
                         Expanded(
                           child: OutlinedButton.icon(
                             onPressed: () {
                               Navigator.pop(context);
+                              _showAnalysisDetails(result);
                             },
-                            icon: const Icon(Icons.refresh, size: 18),
-                            label: const Text('Retake'),
+                            icon: const Icon(Icons.insights, size: 16),
+                            label: const Text('Details', style: TextStyle(fontSize: 13)),
                             style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              padding: const EdgeInsets.symmetric(vertical: 10),
                               shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
+                                borderRadius: BorderRadius.circular(8),
                               ),
                             ),
                           ),
                         ),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: 8),
                         Expanded(
-                          flex: 2,
-                          child: ElevatedButton.icon(
+                          child: OutlinedButton.icon(
                             onPressed: () {
                               Navigator.pop(context);
-                              _sendToChat(result);
+                              _reportFalsePositive(result);
                             },
-                            icon: const Icon(Icons.send, size: 18),
-                            label: const Text(
-                              'Send to Chat',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.primaryRed,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 14),
+                            icon: const Icon(Icons.close, size: 16),
+                            label: const Text('Incorrect', style: TextStyle(fontSize: 13)),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 10),
                               shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
+                                borderRadius: BorderRadius.circular(8),
                               ),
-                              elevation: 2,
                             ),
                           ),
                         ),
@@ -881,6 +1369,7 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
       appBar: AppBar(
         backgroundColor: AppColors.white,
         elevation: 0,
+        automaticallyImplyLeading: false, // Remove back button to prevent logout
         title: Row(
           children: [
             Container(
@@ -918,6 +1407,17 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
               HapticFeedback.lightImpact();
             },
           ),
+          // Debug Model Status Button
+          IconButton(
+            icon: Icon(
+              _damageSeverityService.isModelStatic ? Icons.warning_rounded : Icons.bug_report_rounded,
+              color: _damageSeverityService.isModelStatic ? Colors.orange : AppColors.textPrimary,
+            ),
+            tooltip: 'Model Status Debug',
+            onPressed: () {
+              _showModelStatusDialog();
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.info_outline_rounded),
             color: AppColors.textPrimary,
@@ -949,8 +1449,12 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                       borderRadius: BorderRadius.circular(SoftUIDesign.cardBorderRadius - 2),
                       child: _isCameraInitialized && _cameraService.isReady
                           ? Stack(
+                              fit: StackFit.expand,
                               children: [
-                                CameraPreview(_cameraService.controller!),
+                                // Camera preview - fill properly without black screen
+                                SizedBox.expand(
+                                  child: CameraPreview(_cameraService.controller!),
+                                ),
                                 // Grid lines overlay for composition
                                 if (_showGrid && !_isProcessing)
                                   _buildCameraGrid(),
@@ -1127,7 +1631,7 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                // Animated processing indicator with glow
+                                // Animated processing indicator - Better animation
                                 AnimatedBuilder(
                                   animation: _processingAnimation,
                                   builder: (context, child) {
@@ -1137,24 +1641,27 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                                         shape: BoxShape.circle,
                                         gradient: RadialGradient(
                                           colors: [
-                                            AppColors.primaryRed.withOpacity(0.2 * _processingAnimation.value),
+                                            AppColors.primaryRed.withOpacity(0.25),
                                             AppColors.primaryRed.withOpacity(0.05),
                                           ],
                                         ),
                                         boxShadow: [
                                           BoxShadow(
-                                            color: AppColors.primaryRed.withOpacity(0.3 * _processingAnimation.value),
-                                            blurRadius: 20 + (10 * _processingAnimation.value),
+                                            color: AppColors.primaryRed.withOpacity(0.4),
+                                            blurRadius: 25,
                                             spreadRadius: 5,
                                           ),
                                         ],
                                       ),
-                                      child: CircularProgressIndicator(
-                                        valueColor: AlwaysStoppedAnimation<Color>(
-                                          AppColors.primaryRed,
+                                      child: Transform.rotate(
+                                        angle: _processingAnimation.value * 2.0 * 3.14159, // Smooth rotation
+                                        child: CircularProgressIndicator(
+                                          valueColor: AlwaysStoppedAnimation<Color>(
+                                            AppColors.primaryRed,
+                                          ),
+                                          strokeWidth: 4,
+                                          value: null, // Indeterminate for smooth spin
                                         ),
-                                        strokeWidth: 4,
-                                        value: _processingAnimation.value,
                                       ),
                                     );
                                   },
@@ -1505,19 +2012,25 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                                       ),
                                     );
                                   },
-                                  child: Container(
-                                    margin: const EdgeInsets.only(bottom: 12),
-                                    padding: const EdgeInsets.all(14),
-                                    decoration: BoxDecoration(
-                                      color: severityColor.withOpacity(0.05),
-                                      borderRadius: BorderRadius.circular(12),
-                                      border: Border.all(
-                                        color: severityColor.withOpacity(0.2),
-                                        width: 1.5,
+                                  child: InkWell(
+                                    onTap: () {
+                                      // Make recent detection clickable to view details
+                                      _showDetectionResult(detection);
+                                    },
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: Container(
+                                      margin: const EdgeInsets.only(bottom: 12),
+                                      padding: const EdgeInsets.all(14),
+                                      decoration: BoxDecoration(
+                                        color: severityColor.withOpacity(0.05),
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(
+                                          color: severityColor.withOpacity(0.2),
+                                          width: 1.5,
+                                        ),
                                       ),
-                                    ),
-                                    child: Row(
-                                      children: [
+                                      child: Row(
+                                        children: [
                                         Container(
                                           padding: const EdgeInsets.all(10),
                                           decoration: BoxDecoration(
@@ -1598,7 +2111,8 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                                       ],
                                     ),
                                   ),
-                                );
+                                ),
+                              );
                               },
                             ),
                     ),
@@ -1626,6 +2140,22 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
     } else {
       return '${difference.inDays} days ago';
     }
+  }
+
+  /// Format date and time for display - Simple format
+  String _formatDateTime(DateTime dateTime) {
+    final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    final month = months[dateTime.month - 1];
+    final day = dateTime.day;
+    final year = dateTime.year;
+    
+    int hour = dateTime.hour;
+    final minute = dateTime.minute.toString().padLeft(2, '0');
+    final period = hour >= 12 ? 'PM' : 'AM';
+    if (hour > 12) hour -= 12;
+    if (hour == 0) hour = 12;
+    
+    return '$month $day, $year at $hour:$minute $period';
   }
 
   /// Report false positive - helps improve system
@@ -1660,6 +2190,259 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
         d.type == result.type
       );
     });
+  }
+
+  /// Show AI assessment logs - detailed information about model execution
+  void _showAssessmentLogs(EmergencyDetectionResult result) {
+    if (result.aiAssessment == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No AI assessment available'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+    
+    final assessment = result.aiAssessment!;
+    final isStatic = assessment['isModelStatic'] as bool? ?? false;
+    final statusMessage = assessment['modelStatusMessage'] as String? ?? 'Unknown status';
+    final inferenceCount = assessment['inferenceCount'] as int? ?? 0;
+    final classIndex = assessment['classIndex'] as int? ?? 0;
+    final className = assessment['className'] as String? ?? 'Unknown';
+    final confidence = assessment['confidence'] as double? ?? 0.0;
+    final probabilities = assessment['probabilities'] as List<double>? ?? [];
+    final detectedAt = assessment['detectedAt'] as int?;
+    
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Container(
+          constraints: BoxConstraints(
+            maxWidth: 400,
+            maxHeight: MediaQuery.of(context).size.height * 0.85,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      AppColors.primaryRed,
+                      AppColors.error.withOpacity(0.9),
+                    ],
+                  ),
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(20),
+                    topRight: Radius.circular(20),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.description, color: Colors.white, size: 24),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'AI Assessment Logs',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close, color: Colors.white),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
+              ),
+              
+              // Scrollable content
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Model Status
+                      _buildLogSection(
+                        'Model Status',
+                        [
+                          _buildLogRow('Model Loaded', _damageSeverityService.isModelLoaded ? 'Yes ✅' : 'No ❌'),
+                          _buildLogRow('ML Service Ready', MLModelService.instance.isLoaded ? 'Yes ✅' : 'No ❌'),
+                          _buildLogRow('Detection Type', isStatic ? 'STATIC ⚠️' : 'DYNAMIC ✅'),
+                          _buildLogRow('Status Message', statusMessage),
+                          _buildLogRow('Inference Count', '$inferenceCount'),
+                        ],
+                      ),
+                      
+                      const SizedBox(height: 16),
+                      
+                      // Assessment Result
+                      _buildLogSection(
+                        'Assessment Result',
+                        [
+                          _buildLogRow('Class Index', '$classIndex'),
+                          _buildLogRow('Class Name', className),
+                          _buildLogRow('Confidence', '${(confidence * 100).toStringAsFixed(2)}%'),
+                          if (detectedAt != null)
+                            _buildLogRow('Detected At', _formatDateTime(DateTime.fromMillisecondsSinceEpoch(detectedAt))),
+                        ],
+                      ),
+                      
+                      const SizedBox(height: 16),
+                      
+                      // Probabilities
+                      if (probabilities.isNotEmpty)
+                        _buildLogSection(
+                          'Class Probabilities',
+                          probabilities.asMap().entries.map((entry) {
+                            final index = entry.key;
+                            final prob = entry.value;
+                            final classNames = ["Little/No damage", "Mild damage", "Severe damage"];
+                            final isSelected = index == classIndex;
+                            return _buildLogRow(
+                              classNames[index],
+                              '${(prob * 100).toStringAsFixed(2)}%${isSelected ? " ⭐ (Selected)" : ""}',
+                            );
+                          }).toList(),
+                        ),
+                      
+                      const SizedBox(height: 16),
+                      
+                      // Model Information
+                      _buildLogSection(
+                        'Model Information',
+                        [
+                          _buildLogRow('Model Name', 'medic_damage_severity_model.keras.tflite'),
+                          _buildLogRow('Input Shape', MLModelService.instance.inputShape?.toString() ?? 'Unknown'),
+                          _buildLogRow('Output Shape', MLModelService.instance.outputShape?.toString() ?? 'Unknown'),
+                        ],
+                      ),
+                      
+                      const SizedBox(height: 16),
+                      
+                      // Image Information
+                      if (result.imagePath != null)
+                        _buildLogSection(
+                          'Image Information',
+                          [
+                            _buildLogRow('Image Path', result.imagePath!.split('/').last),
+                            _buildLogRow('Timestamp', _formatDateTime(result.timestamp)),
+                          ],
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              
+              // Close Button
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppColors.backgroundLight,
+                  borderRadius: const BorderRadius.only(
+                    bottomLeft: Radius.circular(20),
+                    bottomRight: Radius.circular(20),
+                  ),
+                ),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primaryRed,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text(
+                      'Close',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+  
+  /// Build log section
+  Widget _buildLogSection(String title, List<Widget> children) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.bold,
+            color: AppColors.primaryRed,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: AppColors.lightGray.withOpacity(0.3),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: AppColors.mediumGray.withOpacity(0.2),
+            ),
+          ),
+          child: Column(children: children),
+        ),
+      ],
+    );
+  }
+  
+  /// Build log row
+  Widget _buildLogRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 130,
+            child: Text(
+              '$label:',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: AppColors.mediumGray,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: TextStyle(
+                fontSize: 12,
+                color: AppColors.textPrimary,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   /// Show analysis details - transparency
@@ -1786,18 +2569,21 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
           borderRadius: BorderRadius.circular(20),
         ),
         child: Container(
-          constraints: const BoxConstraints(maxWidth: 400),
+          constraints: BoxConstraints(
+            maxWidth: 380,
+            maxHeight: MediaQuery.of(context).size.height * 0.80,
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Positive header with green gradient
+              // Header with RED gradient - Emergency theme (even for no emergency)
               Container(
-                padding: const EdgeInsets.all(24),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [
-                      AppColors.success,
-                      AppColors.success.withOpacity(0.8),
+                      AppColors.primaryRed,
+                      AppColors.error.withOpacity(0.9),
                     ],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
@@ -1807,197 +2593,632 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                     topRight: Radius.circular(20),
                   ),
                 ),
-                child: Column(
+                child: Row(
                   children: [
                     const Icon(
                       Icons.check_circle,
-                      size: 64,
+                      size: 32,
                       color: Colors.white,
                     ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'NO EMERGENCY DETECTED',
-                      style: AppTypography.titleLarge.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'NO EMERGENCY DETECTED',
+                            style: const TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                              letterSpacing: 0.3,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Your surroundings appear safe',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.white.withOpacity(0.85),
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
                       ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Your surroundings appear safe',
-                      style: AppTypography.bodyMedium.copyWith(
-                        color: Colors.white.withOpacity(0.95),
-                      ),
-                      textAlign: TextAlign.center,
                     ),
                   ],
                 ),
               ),
               
-              // Content
-              Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Captured image preview
-                    if (result.imagePath != null)
-                      Container(
-                        height: 200,
-                        width: double.infinity,
-                        margin: const EdgeInsets.only(bottom: 20),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: AppColors.success.withOpacity(0.3),
-                            width: 2,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: AppColors.success.withOpacity(0.1),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
+              // Content - Scrollable
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Captured image preview - Compact
+                      if (result.imagePath != null)
+                        Container(
+                          height: 160,
+                          width: double.infinity,
+                          margin: const EdgeInsets.only(bottom: 14),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: AppColors.primaryRed.withOpacity(0.3),
+                              width: 1.5,
                             ),
-                          ],
-                        ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(10),
-                          child: Image.file(
-                            File(result.imagePath!),
-                            fit: BoxFit.cover,
-                          ),
-                        ),
-                      ),
-                    
-                    // Reassuring message
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: AppColors.success.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: AppColors.success.withOpacity(0.3),
-                          width: 1,
-                        ),
-                      ),
-                      child: Column(
-                        children: [
-                          Row(
-                            children: [
-                              Icon(
-                                Icons.verified,
-                                color: AppColors.success,
-                                size: 24,
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Text(
-                                  'Good News!',
-                                  style: AppTypography.titleSmall.copyWith(
-                                    fontWeight: FontWeight.bold,
-                                    color: AppColors.success,
-                                  ),
-                                ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppColors.primaryRed.withOpacity(0.1),
+                                blurRadius: 6,
+                                offset: const Offset(0, 2),
                               ),
                             ],
                           ),
-                          const SizedBox(height: 12),
-                          Text(
-                            'The AI analysis shows no signs of emergency situations. Your area appears safe and normal. Continue to stay alert and report any concerns if needed.',
-                            style: AppTypography.bodySmall.copyWith(
-                              color: AppColors.textPrimary,
-                              height: 1.5,
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(11),
+                            child: Image.file(
+                              File(result.imagePath!),
+                              fit: BoxFit.cover,
                             ),
-                            textAlign: TextAlign.left,
-                          ),
-                        ],
-                      ),
-                    ),
-                    
-                    const SizedBox(height: 16),
-                    
-                    // Confidence indicator
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.analytics,
-                          size: 18,
-                          color: AppColors.mediumGray,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Confidence: ${(result.confidence * 100).toStringAsFixed(1)}%',
-                          style: AppTypography.bodySmall.copyWith(
-                            color: AppColors.mediumGray,
                           ),
                         ),
-                      ],
-                    ),
                     
-                    const SizedBox(height: 20),
-                    
-                    // Info message
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: AppColors.lightGray.withOpacity(0.3),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.info_outline,
-                            size: 18,
-                            color: AppColors.info,
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              'Image stays on device. No emergency alert will be sent.',
-                              style: AppTypography.bodySmall.copyWith(
-                                color: AppColors.mediumGray,
+                      // AI Assessment Display (if available)
+                      if (result.aiAssessment != null)
+                        TweenAnimationBuilder<double>(
+                          tween: Tween(begin: 0.0, end: 1.0),
+                          duration: const Duration(milliseconds: 600),
+                          curve: Curves.easeOut,
+                          builder: (context, value, child) {
+                            return Opacity(
+                              opacity: value,
+                              child: Transform.translate(
+                                offset: Offset(0, 20 * (1 - value)),
+                                child: child,
+                              ),
+                            );
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.all(14),
+                            margin: const EdgeInsets.only(bottom: 14),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  AppColors.primaryRed.withOpacity(0.15),
+                                  AppColors.primaryRed.withOpacity(0.08),
+                                ],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: AppColors.primaryRed.withOpacity(0.4),
+                                width: 1.5,
                               ),
                             ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(10),
+                                      decoration: BoxDecoration(
+                                        gradient: LinearGradient(
+                                        colors: [
+                                          AppColors.primaryRed,
+                                          AppColors.error,
+                                        ],
+                                      ),
+                                      borderRadius: BorderRadius.circular(12),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: AppColors.primaryRed.withOpacity(0.4),
+                                          blurRadius: 8,
+                                          spreadRadius: 0,
+                                        ),
+                                      ],
+                                    ),
+                                    child: const Icon(
+                                      Icons.auto_awesome_rounded,
+                                      size: 22,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'AI Damage Assessment',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w600,
+                                            color: AppColors.mediumGray,
+                                            letterSpacing: 0.3,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          result.aiAssessment!['className'] as String,
+                                          style: TextStyle(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.bold,
+                                            color: AppColors.primaryRed,
+                                              letterSpacing: 0.2,
+                                              height: 1.2,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                      decoration: BoxDecoration(
+                                        gradient: LinearGradient(
+                                          colors: [
+                                            AppColors.primaryRed,
+                                            AppColors.error,
+                                          ],
+                                        ),
+                                        borderRadius: BorderRadius.circular(28),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: AppColors.primaryRed.withOpacity(0.4),
+                                            blurRadius: 8,
+                                            spreadRadius: 0,
+                                          ),
+                                        ],
+                                      ),
+                                      child: Text(
+                                        '${((result.aiAssessment!['confidence'] as double) * 100).toStringAsFixed(0)}%',
+                                        style: const TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.white,
+                                          letterSpacing: 0.3,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
                           ),
-                        ],
+                        ),
+                      
+                      // Severity Status - Most Important (from AI) - RED THEME
+                      if (result.aiAssessment != null)
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: AppColors.primaryRed.withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: AppColors.primaryRed.withOpacity(0.4),
+                              width: 1.5,
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.auto_awesome_rounded,
+                                    color: AppColors.primaryRed,
+                                    size: 18,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Severity Status',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                      color: AppColors.primaryRed,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                result.aiAssessment!['className'] as String,
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppColors.primaryRed,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Detected: ${_formatDateTime(result.timestamp)}',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: AppColors.mediumGray,
+                                ),
+                              ),
+                              // Model Status Indicator for No Emergency
+                              if (result.aiAssessment!['isModelStatic'] != null) ...[
+                                const SizedBox(height: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: (result.aiAssessment!['isModelStatic'] as bool)
+                                        ? Colors.orange.withOpacity(0.15)
+                                        : Colors.green.withOpacity(0.15),
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border.all(
+                                      color: (result.aiAssessment!['isModelStatic'] as bool)
+                                          ? Colors.orange
+                                          : Colors.green,
+                                      width: 1,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        (result.aiAssessment!['isModelStatic'] as bool)
+                                            ? Icons.warning_rounded
+                                            : Icons.check_circle_rounded,
+                                        size: 14,
+                                        color: (result.aiAssessment!['isModelStatic'] as bool)
+                                            ? Colors.orange
+                                            : Colors.green,
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Flexible(
+                                        child: Text(
+                                          result.aiAssessment!['modelStatusMessage'] as String? ?? 'Model status unknown',
+                                          style: TextStyle(
+                                            fontSize: 9,
+                                            fontWeight: FontWeight.w600,
+                                            color: (result.aiAssessment!['isModelStatic'] as bool)
+                                                ? Colors.orange.shade800
+                                                : Colors.green.shade800,
+                                          ),
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      
+                      const SizedBox(height: 12),
+                      
+                      // Detected Date & Time - REQUIRED DISPLAY
+                      if (result.aiAssessment != null)
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.calendar_today,
+                              size: 14,
+                              color: AppColors.primaryRed,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Detected: ${_formatDateTime(result.timestamp)}',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: AppColors.primaryRed,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      if (result.aiAssessment != null) const SizedBox(height: 10),
+                      
+                      // Confidence indicator - Compact - RED THEME
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: AppColors.primaryRed.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.bar_chart_rounded,
+                              size: 14,
+                              color: AppColors.primaryRed,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Confidence: ${(result.confidence * 100).toStringAsFixed(1)}%',
+                              style: TextStyle(
+                                color: AppColors.primaryRed,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
+                      
+                      const SizedBox(height: 12),
+                      
+                      // Info message - Compact
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: AppColors.lightGray.withOpacity(0.3),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(
+                              Icons.info_outline,
+                              size: 14,
+                              color: AppColors.mediumGray,
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                'Image stays on device. No emergency alert will be sent.',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: AppColors.darkGray.withOpacity(0.7),
+                                  height: 1.3,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
               
-              // Actions
+              // Actions - Same as emergency modal (Send to Chat, Incorrect)
               Container(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
                   color: AppColors.backgroundLight,
                   borderRadius: const BorderRadius.only(
                     bottomLeft: Radius.circular(20),
                     bottomRight: Radius.circular(20),
                   ),
-                ),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () {
-                      Navigator.pop(context);
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.success,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      elevation: 2,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      blurRadius: 4,
+                      offset: const Offset(0, -2),
                     ),
-                    child: const Text(
-                      'Understood',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Main action button - Send to Chat (abang)
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: () {
+                          Navigator.pop(context);
+                          _sendToChat(result);
+                        },
+                        icon: const Icon(Icons.send, size: 18),
+                        label: const Text(
+                          'Send to Chat',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
+                          ),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primaryRed,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          elevation: 2,
+                        ),
                       ),
+                    ),
+                    const SizedBox(height: 10),
+                    // AI Assessment Log Button (only if AI assessment exists)
+                    if (result.aiAssessment != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: () {
+                              _showAssessmentLogs(result);
+                            },
+                            icon: const Icon(Icons.description, size: 16),
+                            label: const Text('View Assessment Logs', style: TextStyle(fontSize: 13)),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: AppColors.primaryRed,
+                              side: BorderSide(color: AppColors.primaryRed, width: 1.5),
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    // Secondary actions - Incorrect (delete)
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () {
+                              Navigator.pop(context);
+                              _reportFalsePositive(result);
+                            },
+                            icon: const Icon(Icons.close, size: 16),
+                            label: const Text('Incorrect', style: TextStyle(fontSize: 13)),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              side: BorderSide(
+                                color: AppColors.mediumGray.withOpacity(0.3),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Show info dialog about emergency detection
+  /// Show model status debug dialog
+  void _showModelStatusDialog() {
+    // Refresh status by checking current state
+    final isStatic = _damageSeverityService.isModelStatic;
+    final statusMessage = _damageSeverityService.modelStatusMessage ?? 
+        (_damageSeverityService.isModelLoaded ? 'Model is loaded and ready' : 'Model not loaded');
+    final isLoaded = _damageSeverityService.isModelLoaded;
+    
+    // Also check MLModelService directly
+    final mlServiceLoaded = MLModelService.instance.isLoaded;
+    
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 400),
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: isStatic ? Colors.orange.withOpacity(0.1) : Colors.green.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      isStatic ? Icons.warning_rounded : Icons.check_circle_rounded,
+                      color: isStatic ? Colors.orange : Colors.green,
+                      size: 24,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Text(
+                      'Model Status Debug',
+                      style: AppTypography.titleMedium.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              // Model Loaded Status - Check both services
+              _buildStatusRow(
+                'Model Loaded',
+                (isLoaded && mlServiceLoaded) ? 'Yes' : 'No',
+                (isLoaded && mlServiceLoaded) ? Colors.green : Colors.red,
+              ),
+              const SizedBox(height: 12),
+              // ML Service Status
+              _buildStatusRow(
+                'ML Service Status',
+                mlServiceLoaded ? 'Ready' : 'Not Ready',
+                mlServiceLoaded ? Colors.green : Colors.red,
+              ),
+              const SizedBox(height: 12),
+              // Damage Service Status
+              _buildStatusRow(
+                'Damage Service Status',
+                isLoaded ? 'Ready' : 'Not Ready',
+                isLoaded ? Colors.green : Colors.red,
+              ),
+              const SizedBox(height: 12),
+              // Static/Dynamic Status
+              _buildStatusRow(
+                'Detection Type',
+                isStatic ? 'STATIC (Not Working)' : 'DYNAMIC (Working)',
+                isStatic ? Colors.orange : Colors.green,
+              ),
+              const SizedBox(height: 12),
+              // Status Message
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: isStatic ? Colors.orange.withOpacity(0.1) : Colors.green.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: isStatic ? Colors.orange : Colors.green,
+                    width: 1,
+                  ),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      isStatic ? Icons.warning_rounded : Icons.info_rounded,
+                      size: 18,
+                      color: isStatic ? Colors.orange : Colors.green,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        statusMessage,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: AppColors.textPrimary,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+              // Close Button
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primaryRed,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Text(
+                    'Close',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
                     ),
                   ),
                 ),
@@ -2009,7 +3230,39 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
     );
   }
   
-  /// Show info dialog about emergency detection
+  /// Build status row for debug dialog
+  Widget _buildStatusRow(String label, String value, Color valueColor) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 14,
+            color: AppColors.mediumGray,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: valueColor.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: valueColor, width: 1),
+          ),
+          child: Text(
+            value,
+            style: TextStyle(
+              fontSize: 13,
+              color: valueColor,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   void _showInfoDialog() {
     showDialog(
       context: context,

@@ -11,7 +11,7 @@ class SQLiteService {
 
   static Database? _database;
   static const String _databaseName = 'tulong_offline.db';
-  static const int _databaseVersion = 8;
+  static const int _databaseVersion = 9;
 
   // Table names
   static const String _usersTable = 'users';
@@ -19,6 +19,7 @@ class SQLiteService {
   static const String _emergencyAlertsTable = 'emergency_alerts';
   static const String _syncQueueTable = 'sync_queue';
   static const String _updateCountsTable = 'update_counts';
+  static const String _severityStatusTable = 'severity_status';
 
   // Get database instance
   Future<Database> get database async {
@@ -128,6 +129,18 @@ class SQLiteService {
         updated_at INTEGER NOT NULL
       )
     ''');
+
+    // Severity status table - stores AI damage severity assessment results
+    await db.execute('''
+      CREATE TABLE $_severityStatusTable (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        severity_status TEXT NOT NULL,
+        detected_date INTEGER NOT NULL,
+        confidence REAL,
+        class_index INTEGER,
+        created_at INTEGER NOT NULL
+      )
+    ''');
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
@@ -225,6 +238,19 @@ class SQLiteService {
         // Column might already exist, ignore
         print('Note: uid column may already exist: $e');
       }
+    }
+    if (oldVersion < 9) {
+      // Create severity_status table
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS $_severityStatusTable (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          severity_status TEXT NOT NULL,
+          detected_date INTEGER NOT NULL,
+          confidence REAL,
+          class_index INTEGER,
+          created_at INTEGER NOT NULL
+        )
+      ''');
     }
   }
 
@@ -565,6 +591,76 @@ class SQLiteService {
     return results.isNotEmpty ? results.first : null;
   }
 
+  // Severity status operations
+  /// Save severity status (ONLY THE STATUS) to database
+  Future<int> insertSeverityStatus({
+    required String severityStatus,
+    required DateTime detectedDate,
+    double? confidence,
+    int? classIndex,
+  }) async {
+    final db = await database;
+    return await db.insert(_severityStatusTable, {
+      'severity_status': severityStatus,
+      'detected_date': detectedDate.millisecondsSinceEpoch,
+      'confidence': confidence,
+      'class_index': classIndex,
+      'created_at': DateTime.now().millisecondsSinceEpoch,
+    });
+  }
+
+  /// Get all severity status records, ordered by detection date (newest first)
+  Future<List<Map<String, dynamic>>> getAllSeverityStatus() async {
+    final db = await database;
+    return await db.query(
+      _severityStatusTable,
+      orderBy: 'detected_date DESC',
+    );
+  }
+
+  /// Get severity status records within a date range
+  Future<List<Map<String, dynamic>>> getSeverityStatusByDateRange({
+    required DateTime startDate,
+    required DateTime endDate,
+  }) async {
+    final db = await database;
+    return await db.query(
+      _severityStatusTable,
+      where: 'detected_date >= ? AND detected_date <= ?',
+      whereArgs: [
+        startDate.millisecondsSinceEpoch,
+        endDate.millisecondsSinceEpoch,
+      ],
+      orderBy: 'detected_date DESC',
+    );
+  }
+
+  /// Get recent severity status records (last N records)
+  Future<List<Map<String, dynamic>>> getRecentSeverityStatus({int limit = 10}) async {
+    final db = await database;
+    return await db.query(
+      _severityStatusTable,
+      orderBy: 'detected_date DESC',
+      limit: limit,
+    );
+  }
+
+  /// Delete a severity status record by ID
+  Future<int> deleteSeverityStatus(int id) async {
+    final db = await database;
+    return await db.delete(
+      _severityStatusTable,
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  /// Clear all severity status records
+  Future<int> clearAllSeverityStatus() async {
+    final db = await database;
+    return await db.delete(_severityStatusTable);
+  }
+
   // Clear all data (for testing)
   Future<void> clearAllData() async {
     final db = await database;
@@ -573,6 +669,7 @@ class SQLiteService {
     await db.delete(_emergencyAlertsTable);
     await db.delete(_syncQueueTable);
     await db.delete(_updateCountsTable);
+    await db.delete(_severityStatusTable);
   }
 
   // Close database

@@ -54,10 +54,10 @@ class CameraService {
         );
       }
       
-      // Create controller
+      // Create controller with high resolution for better AI processing
       _controller = CameraController(
         selectedCamera,
-        ResolutionPreset.medium, // Medium resolution for faster processing
+        ResolutionPreset.high, // High resolution for better AI accuracy
         enableAudio: false, // No audio needed for emergency detection
         imageFormatGroup: ImageFormatGroup.jpeg,
       );
