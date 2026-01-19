@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 
@@ -11,14 +10,13 @@ class SQLiteService {
 
   static Database? _database;
   static const String _databaseName = 'tulong_offline.db';
-  static const int _databaseVersion = 8;
+  static const int _databaseVersion = 6;
 
   // Table names
   static const String _usersTable = 'users';
   static const String _messagesTable = 'messages';
   static const String _emergencyAlertsTable = 'emergency_alerts';
   static const String _syncQueueTable = 'sync_queue';
-  static const String _updateCountsTable = 'update_counts';
 
   // Get database instance
   Future<Database> get database async {
@@ -44,11 +42,9 @@ class SQLiteService {
     await db.execute('''
       CREATE TABLE $_usersTable (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        uid TEXT UNIQUE NOT NULL,
         firebase_uid TEXT UNIQUE,
         first_name TEXT NOT NULL,
         last_name TEXT NOT NULL,
-        suffix TEXT,
         username TEXT NOT NULL UNIQUE,
         street TEXT,
         region TEXT,
@@ -65,7 +61,9 @@ class SQLiteService {
         is_synced INTEGER DEFAULT 0,
         sync_timestamp INTEGER,
         address_setup_completed INTEGER DEFAULT 0,
-        is_verified INTEGER DEFAULT 0
+        is_verified INTEGER DEFAULT 0,
+        profile_update_count INTEGER DEFAULT 0,
+        sos_message_update_count INTEGER DEFAULT 0
       )
     ''');
 
@@ -112,20 +110,6 @@ class SQLiteService {
         created_at INTEGER NOT NULL,
         retry_count INTEGER DEFAULT 0,
         last_attempt INTEGER
-      )
-    ''');
-
-    // Update counts table - tracks profile and SOS message update counts per user
-    await db.execute('''
-      CREATE TABLE $_updateCountsTable (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT NOT NULL UNIQUE,
-        profile_update_count INTEGER DEFAULT 0,
-        sos_message_update_count INTEGER DEFAULT 0,
-        last_profile_update INTEGER,
-        last_sos_message_update INTEGER,
-        created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL
       )
     ''');
   }
@@ -183,67 +167,18 @@ class SQLiteService {
       // We'll ignore this column going forward
     }
     if (oldVersion < 6) {
-      // Create update_counts table to track profile and SOS message update counts
-      await db.execute('''
-        CREATE TABLE IF NOT EXISTS $_updateCountsTable (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          username TEXT NOT NULL UNIQUE,
-          profile_update_count INTEGER DEFAULT 0,
-          sos_message_update_count INTEGER DEFAULT 0,
-          last_profile_update INTEGER,
-          last_sos_message_update INTEGER,
-          created_at INTEGER NOT NULL,
-          updated_at INTEGER NOT NULL
-        )
-      ''');
+      // Add update count columns
+      await db.execute('ALTER TABLE $_usersTable ADD COLUMN profile_update_count INTEGER DEFAULT 0');
+      await db.execute('ALTER TABLE $_usersTable ADD COLUMN sos_message_update_count INTEGER DEFAULT 0');
+      // Initialize existing records to 0
+      await db.execute('UPDATE $_usersTable SET profile_update_count = 0 WHERE profile_update_count IS NULL');
+      await db.execute('UPDATE $_usersTable SET sos_message_update_count = 0 WHERE sos_message_update_count IS NULL');
     }
-    if (oldVersion < 7) {
-      // Add suffix column to users table
-      try {
-        await db.execute('ALTER TABLE $_usersTable ADD COLUMN suffix TEXT');
-      } catch (e) {
-        // Column might already exist, ignore
-        print('Note: suffix column may already exist: $e');
-      }
-    }
-    if (oldVersion < 8) {
-      // Add uid column and generate UIDs for existing users
-      try {
-        await db.execute('ALTER TABLE $_usersTable ADD COLUMN uid TEXT');
-        // Generate UIDs for existing users that don't have one
-        final existingUsers = await db.query(_usersTable, where: 'uid IS NULL OR uid = ""');
-        for (final user in existingUsers) {
-          final uid = _generateRandomUID();
-          await db.update(
-            _usersTable,
-            {'uid': uid},
-            where: 'id = ?',
-            whereArgs: [user['id']],
-          );
-        }
-      } catch (e) {
-        // Column might already exist, ignore
-        print('Note: uid column may already exist: $e');
-      }
-    }
-  }
-
-  // Generate random UID for accounts
-  static String _generateRandomUID() {
-    final random = Random();
-    final timestamp = DateTime.now().millisecondsSinceEpoch;
-    final chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    final randomPart = List.generate(16, (_) => chars[random.nextInt(chars.length)]).join();
-    return 'UID_${timestamp}_$randomPart';
   }
 
   // User operations
   Future<int> insertUser(Map<String, dynamic> userData) async {
     final db = await database;
-    // Generate UID if not provided
-    if (!userData.containsKey('uid') || userData['uid'] == null || userData['uid'].toString().isEmpty) {
-      userData['uid'] = _generateRandomUID();
-    }
     return await db.insert(_usersTable, userData);
   }
 
@@ -477,94 +412,6 @@ class SQLiteService {
     );
   }
 
-  // Update counts operations
-  /// Increment profile update count for a user
-  Future<void> incrementProfileUpdateCount(String username) async {
-    final db = await database;
-    final now = DateTime.now().millisecondsSinceEpoch;
-    
-    // Check if record exists
-    final existing = await db.query(
-      _updateCountsTable,
-      where: 'username = ?',
-      whereArgs: [username],
-    );
-    
-    if (existing.isNotEmpty) {
-      // Update existing record
-      await db.update(
-        _updateCountsTable,
-        {
-          'profile_update_count': (existing.first['profile_update_count'] as int? ?? 0) + 1,
-          'last_profile_update': now,
-          'updated_at': now,
-        },
-        where: 'username = ?',
-        whereArgs: [username],
-      );
-    } else {
-      // Create new record
-      await db.insert(_updateCountsTable, {
-        'username': username,
-        'profile_update_count': 1,
-        'sos_message_update_count': 0,
-        'last_profile_update': now,
-        'last_sos_message_update': null,
-        'created_at': now,
-        'updated_at': now,
-      });
-    }
-  }
-
-  /// Increment SOS message update count for a user
-  Future<void> incrementSosMessageUpdateCount(String username) async {
-    final db = await database;
-    final now = DateTime.now().millisecondsSinceEpoch;
-    
-    // Check if record exists
-    final existing = await db.query(
-      _updateCountsTable,
-      where: 'username = ?',
-      whereArgs: [username],
-    );
-    
-    if (existing.isNotEmpty) {
-      // Update existing record
-      await db.update(
-        _updateCountsTable,
-        {
-          'sos_message_update_count': (existing.first['sos_message_update_count'] as int? ?? 0) + 1,
-          'last_sos_message_update': now,
-          'updated_at': now,
-        },
-        where: 'username = ?',
-        whereArgs: [username],
-      );
-    } else {
-      // Create new record
-      await db.insert(_updateCountsTable, {
-        'username': username,
-        'profile_update_count': 0,
-        'sos_message_update_count': 1,
-        'last_profile_update': null,
-        'last_sos_message_update': now,
-        'created_at': now,
-        'updated_at': now,
-      });
-    }
-  }
-
-  /// Get update counts for a user
-  Future<Map<String, dynamic>?> getUpdateCounts(String username) async {
-    final db = await database;
-    final results = await db.query(
-      _updateCountsTable,
-      where: 'username = ?',
-      whereArgs: [username],
-    );
-    return results.isNotEmpty ? results.first : null;
-  }
-
   // Clear all data (for testing)
   Future<void> clearAllData() async {
     final db = await database;
@@ -572,7 +419,46 @@ class SQLiteService {
     await db.delete(_messagesTable);
     await db.delete(_emergencyAlertsTable);
     await db.delete(_syncQueueTable);
-    await db.delete(_updateCountsTable);
+  }
+
+  // Update count operations
+  Future<void> incrementProfileUpdateCount(String username) async {
+    final db = await database;
+    final user = await getUserByUsername(username);
+    if (user != null) {
+      final currentCount = (user['profile_update_count'] as int?) ?? 0;
+      await db.update(
+        _usersTable,
+        {'profile_update_count': currentCount + 1},
+        where: 'username = ?',
+        whereArgs: [username],
+      );
+    }
+  }
+
+  Future<void> incrementSosMessageUpdateCount(String username) async {
+    final db = await database;
+    final user = await getUserByUsername(username);
+    if (user != null) {
+      final currentCount = (user['sos_message_update_count'] as int?) ?? 0;
+      await db.update(
+        _usersTable,
+        {'sos_message_update_count': currentCount + 1},
+        where: 'username = ?',
+        whereArgs: [username],
+      );
+    }
+  }
+
+  Future<Map<String, int>?> getUpdateCounts(String username) async {
+    final user = await getUserByUsername(username);
+    if (user != null) {
+      return {
+        'profile_update_count': (user['profile_update_count'] as int?) ?? 0,
+        'sos_message_update_count': (user['sos_message_update_count'] as int?) ?? 0,
+      };
+    }
+    return null;
   }
 
   // Close database

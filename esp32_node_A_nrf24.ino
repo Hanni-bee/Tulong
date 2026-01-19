@@ -1,6 +1,7 @@
 /*
  * ESP32 nRF24L01 + Bluetooth SPP Voice Bridge (Node A)
- * Mirror of your Node B code, with reversed pipes and BT name.
+ * (Your "first code" version) + FIXED CRC + safe buffer init
+ * UPDATED: Added UID and suffix support for profile sync
  *
  * Phone (Flutter)   <—SPP—>   ESP32 Node A (this file)   <—nRF24—>   ESP32 Node B   <—SPP—>   Phone
  *
@@ -9,9 +10,13 @@
  *   <base64 lines (any length; ESP splits to ≤28 chars per RF pkt)>\n
  *   <VOICE_END>\n
  *
- * RF payload (max 32B): 3B header + 1B CRC + up to 28 ASCII chars
+ * RF payload (max 32B): 4B header (type, seq[2], crc8) + up to 28 ASCII chars
  *   struct VoiceHdr { uint8_t type; uint16_t seq; uint8_t crc8; } // little-endian seq
  *   type: 0xD0 = START, 0xD1 = DATA, 0xD2 = END
+ *
+ * ✅ FIX: CRC is computed with crc8 field forced to 0 and includes full header+payload.
+ * ✅ FIX: TX buffers are zero-initialized so crc8 byte isn't random garbage during CRC compute.
+ * ✅ UPDATE: Added UID and suffix fields to profile sync and flash storage
  */
 
  #include <SPI.h>
@@ -360,161 +365,84 @@
    return "";
  }
 
- // ----------------- Flash Storage Functions -----------------
- void saveProfileToFlash(String name, String username, String street, String province, String city, String barangay) {
-   logEvent("FLASH", "📥 RECEIVED PROFILE DATA FROM PHONE");
-   logEvent("FLASH", "   Name: " + name);
-   logEvent("FLASH", "   Username: " + username);
-   logEvent("FLASH", "   Street: " + street);
-   logEvent("FLASH", "   Province: " + province);
-   logEvent("FLASH", "   City: " + city);
-   logEvent("FLASH", "   Barangay: " + barangay);
-   
-   logEvent("FLASH", "💾 Saving profile data to flash memory...");
-   flashStorage.begin("tulong", false);
-   
-   Serial.println("🔵 [FLASH] Writing profile fields to flash...");
-   Serial.flush();
-   
-   bool savedName = flashStorage.putString("profile_name", name);
-   bool savedUsername = flashStorage.putString("profile_username", username);
-   bool savedStreet = flashStorage.putString("profile_street", street);
-   bool savedProvince = flashStorage.putString("profile_province", province);
-   bool savedCity = flashStorage.putString("profile_city", city);
-   bool savedBarangay = flashStorage.putString("profile_barangay", barangay);
-   
-   Serial.println("🔵 [FLASH] Save results:");
-   Serial.println("   Name: " + String(savedName ? "OK ✅" : "FAIL ❌"));
-   Serial.println("   Username: " + String(savedUsername ? "OK ✅" : "FAIL ❌"));
-   Serial.println("   Street: " + String(savedStreet ? "OK ✅" : "FAIL ❌"));
-   Serial.println("   Province: " + String(savedProvince ? "OK ✅" : "FAIL ❌"));
-   Serial.println("   City: " + String(savedCity ? "OK ✅" : "FAIL ❌"));
-   Serial.println("   Barangay: " + String(savedBarangay ? "OK ✅" : "FAIL ❌"));
-   Serial.flush();
-   
-   logEvent("FLASH", "   Save results - Name: " + String(savedName ? "OK" : "FAIL") + 
-                     ", Username: " + String(savedUsername ? "OK" : "FAIL") +
-                     ", Street: " + String(savedStreet ? "OK" : "FAIL") +
-                     ", Province: " + String(savedProvince ? "OK" : "FAIL") +
-                     ", City: " + String(savedCity ? "OK" : "FAIL") +
-                     ", Barangay: " + String(savedBarangay ? "OK" : "FAIL"));
-   
-   if (savedName && savedUsername && savedStreet && savedProvince && savedCity && savedBarangay) {
-     int count = flashStorage.getInt("profile_saved_count", 0) + 1;
-     bool savedCount = flashStorage.putInt("profile_saved_count", count);
-     flashStorage.end();
-     
-     if (savedCount) {
-       Serial.println("🔵 [FLASH] ✅ Profile saved! Count: " + String(count));
-       Serial.flush();
-       logEvent("FLASH", "✅ Profile data saved to flash memory successfully");
-       logEvent("FLASH", "   Save count: " + String(count));
-       
-       // Reply with count
-       String reply = "{\"profile_saved_count\":" + String(count) + "}";
-       Serial.println("🔵 [FLASH] 📤 Sending reply to phone: " + reply);
-       Serial.flush();
-       SerialBT.println(reply);
-       logEvent("FLASH", "📤 Sent reply to phone: " + reply);
-       Serial.println("🔵 [FLASH] ✅ Reply sent!");
-       Serial.flush();
-       
-       // Verify by reading back
-       verifyStoredData();
-     } else {
-       logEvent("FLASH_ERR", "❌ Failed to save profile count");
-       flashStorage.end();
-     }
-   } else {
-     logEvent("FLASH_ERR", "❌ Failed to save profile data - one or more fields failed");
-     flashStorage.end();
-   }
- }
+// ✅ UPDATED: Added uid and suffix parameters
+void saveProfileToFlash(String name, String username, String street, String province, String city, String barangay, String uid, String suffix) {
+  flashStorage.begin("tulong", false);
 
- void saveSosToFlash(String message) {
-   Serial.println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-   Serial.println("🔵 [FLASH] ===== saveSosToFlash() CALLED =====");
-   Serial.println("🔵 [FLASH] 📥 RECEIVED SOS MESSAGE FROM PHONE");
-   Serial.println("🔵 [FLASH] Message: \"" + message + "\"");
-   Serial.println("🔵 [FLASH] Message length: " + String(message.length()) + " characters");
-   Serial.flush();
-   
-   logEvent("FLASH", "📥 RECEIVED SOS MESSAGE FROM PHONE");
-   logEvent("FLASH", "   Message: \"" + message + "\"");
-   logEvent("FLASH", "   Message length: " + String(message.length()) + " characters");
-   
-   Serial.println("🔵 [FLASH] 💾 Opening flash storage...");
-   Serial.flush();
-   logEvent("FLASH", "💾 Saving SOS message to flash memory...");
-   flashStorage.begin("tulong", false);
-   
-   Serial.println("🔵 [FLASH] Writing SOS message to flash...");
-   Serial.flush();
-   
-   bool savedMessage = flashStorage.putString("sos_message", message);
-   
-   Serial.println("🔵 [FLASH] Save result: " + String(savedMessage ? "OK ✅" : "FAIL ❌"));
-   Serial.flush();
-   
-   logEvent("FLASH", "   Save result - Message: " + String(savedMessage ? "OK" : "FAIL"));
-   
-   if (savedMessage) {
-     int count = flashStorage.getInt("sos_saved_count", 0) + 1;
-     bool savedCount = flashStorage.putInt("sos_saved_count", count);
-     flashStorage.end();
-     
-     if (savedCount) {
-       Serial.println("🔵 [FLASH] ✅ SOS saved! Count: " + String(count));
-       Serial.flush();
-       logEvent("FLASH", "✅ SOS message saved to flash memory successfully");
-       logEvent("FLASH", "   Save count: " + String(count));
-       
-       // Reply with count
-       String reply = "{\"sos_saved_count\":" + String(count) + "}";
-       Serial.println("🔵 [FLASH] 📤 Sending reply to phone: " + reply);
-       Serial.flush();
-       SerialBT.println(reply);
-       logEvent("FLASH", "📤 Sent reply to phone: " + reply);
-       Serial.println("🔵 [FLASH] ✅ Reply sent!");
-       Serial.flush();
-       
-       // Verify by reading back
-       verifyStoredData();
-     } else {
-       logEvent("FLASH_ERR", "❌ Failed to save SOS count");
-       flashStorage.end();
-     }
-   } else {
-     logEvent("FLASH_ERR", "❌ Failed to save SOS message");
-     flashStorage.end();
-   }
- }
+  bool savedName     = flashStorage.putString("profile_name", name);
+  bool savedUsername = flashStorage.putString("p_user", username);
+  bool savedStreet   = flashStorage.putString("profile_street", street);
+  bool savedProvince = flashStorage.putString("p_prov", province);
+  bool savedCity     = flashStorage.putString("profile_city", city);
+  bool savedBarangay = flashStorage.putString("p_brgy", barangay);
+  bool savedUid      = flashStorage.putString("profile_uid", uid);
+  bool savedSuffix   = flashStorage.putString("profile_suffix", suffix);
 
- // ----------------- Verify Stored Data -----------------
- void verifyStoredData() {
-   logEvent("FLASH", "🔍 VERIFYING STORED DATA IN FLASH MEMORY");
-   flashStorage.begin("tulong", true); // Read-only mode
-   
-   String profileName = flashStorage.getString("profile_name", "(not set)");
-   String profileUsername = flashStorage.getString("profile_username", "(not set)");
-   String profileStreet = flashStorage.getString("profile_street", "(not set)");
-   String profileProvince = flashStorage.getString("profile_province", "(not set)");
-   String profileCity = flashStorage.getString("profile_city", "(not set)");
-   String profileBarangay = flashStorage.getString("profile_barangay", "(not set)");
-   String sosMessage = flashStorage.getString("sos_message", "(not set)");
-   int profileCount = flashStorage.getInt("profile_saved_count", 0);
-   int sosCount = flashStorage.getInt("sos_saved_count", 0);
-   
-   flashStorage.end();
-   
-   logEvent("FLASH", "   Profile - Name: " + profileName + ", Username: " + profileUsername);
-   logEvent("FLASH", "   Profile - Street: " + profileStreet + ", Province: " + profileProvince);
-   logEvent("FLASH", "   Profile - City: " + profileCity + ", Barangay: " + profileBarangay);
-   logEvent("FLASH", "   Profile save count: " + String(profileCount));
-   logEvent("FLASH", "   SOS message: \"" + sosMessage + "\"");
-   logEvent("FLASH", "   SOS save count: " + String(sosCount));
-   logEvent("FLASH", "✅ Verification complete");
- }
+  bool okAll = savedName && savedUsername && savedStreet && savedProvince && savedCity && savedBarangay && savedUid && savedSuffix;
+
+  if (okAll) {
+    int count = flashStorage.getInt("p_cnt", 0) + 1;
+    flashStorage.putInt("p_cnt", count);
+    flashStorage.end();
+
+    Serial.println("Profile details saved successfully.");
+    SerialBT.println("Profile details saved successfully.");
+    SerialBT.println(String("{\"profile_saved_count\":") + count + "}");
+  } else {
+    flashStorage.end();
+    Serial.println("Profile save FAILED.");
+    SerialBT.println("Profile save FAILED.");
+    SerialBT.println("{\"profile_saved_count\":0}");
+  }
+}
+
+void saveSosToFlash(String message) {
+  flashStorage.begin("tulong", false);
+
+  bool savedMessage = flashStorage.putString("sos_msg", message);
+
+  if (savedMessage) {
+    int count = flashStorage.getInt("s_cnt", 0) + 1;
+    flashStorage.putInt("s_cnt", count);
+    flashStorage.end();
+
+    Serial.println("SOS message: " + message);
+    SerialBT.println("SOS message: " + message);
+    SerialBT.println(String("{\"sos_saved_count\":") + count + "}");
+  } else {
+    flashStorage.end();
+    Serial.println("SOS save FAILED.");
+    SerialBT.println("SOS save FAILED.");
+    SerialBT.println("{\"sos_saved_count\":0}");
+  }
+}
+
+// ✅ UPDATED: Added uid and suffix to verification
+void verifyStoredData() {
+  flashStorage.begin("tulong", true);
+
+  String profileName     = flashStorage.getString("profile_name", "(not set)");
+  String profileUsername = flashStorage.getString("p_user", "(not set)");
+  String profileStreet   = flashStorage.getString("profile_street", "(not set)");
+  String profileProvince = flashStorage.getString("p_prov", "(not set)");
+  String profileCity     = flashStorage.getString("profile_city", "(not set)");
+  String profileBarangay = flashStorage.getString("p_brgy", "(not set)");
+  String profileUid      = flashStorage.getString("profile_uid", "(not set)");
+  String profileSuffix   = flashStorage.getString("profile_suffix", "(not set)");
+  String sosMessage      = flashStorage.getString("sos_msg", "(not set)");
+
+  int profileCount       = flashStorage.getInt("p_cnt", 0);
+  int sosCount           = flashStorage.getInt("s_cnt", 0);
+
+  flashStorage.end();
+
+  Serial.println("VERIFY profile: " + profileName + " / " + profileUsername);
+  Serial.println("VERIFY UID: " + profileUid);
+  Serial.println("VERIFY suffix: " + profileSuffix);
+  Serial.println("VERIFY address: " + profileStreet + ", " + profileBarangay + ", " + profileCity + ", " + profileProvince);
+  Serial.println("VERIFY sos: " + sosMessage);
+  Serial.println("VERIFY counts p=" + String(profileCount) + " s=" + String(sosCount));
+}
 
  // ----------------- Sync Command Handler -----------------
  void handleSyncCommand(String msg) {
@@ -534,46 +462,33 @@
    Serial.flush();
    logEvent("FLASH", "   Extracted command: \"" + command + "\"");
    
-   if (command == "sync_profile") {
-     Serial.println("🔵 [SYNC] ✅ Command is 'sync_profile'");
-     Serial.flush();
-     logEvent("FLASH", "🔄 Processing profile sync command...");
-     // Extract nested data object fields directly from main JSON
-     String name = extractJsonValue(msg, "name");
-     String username = extractJsonValue(msg, "username");
-     String street = extractJsonValue(msg, "street");
-     String province = extractJsonValue(msg, "province");
-     String city = extractJsonValue(msg, "city");
-     String barangay = extractJsonValue(msg, "barangay");
-     
-     Serial.println("🔵 [SYNC] Extracted profile values:");
-     Serial.println("   name: \"" + name + "\"");
-     Serial.println("   username: \"" + username + "\"");
-     Serial.println("   street: \"" + street + "\"");
-     Serial.println("   province: \"" + province + "\"");
-     Serial.println("   city: \"" + city + "\"");
-     Serial.println("   barangay: \"" + barangay + "\"");
-     Serial.flush();
-     
-     logEvent("FLASH", "   Extracted values:");
-     logEvent("FLASH", "     name: \"" + name + "\"");
-     logEvent("FLASH", "     username: \"" + username + "\"");
-     logEvent("FLASH", "     street: \"" + street + "\"");
-     logEvent("FLASH", "     province: \"" + province + "\"");
-     logEvent("FLASH", "     city: \"" + city + "\"");
-     logEvent("FLASH", "     barangay: \"" + barangay + "\"");
-     
-     if (name.length() > 0 || username.length() > 0) {
-       Serial.println("🔵 [SYNC] ✅ Valid profile data - calling saveProfileToFlash()");
-       Serial.flush();
-       logEvent("FLASH", "   ✅ Valid profile data - proceeding to save");
-       saveProfileToFlash(name, username, street, province, city, barangay);
-     } else {
-       Serial.println("❌ [SYNC] Invalid profile data - missing name/username");
-       Serial.flush();
-       logEvent("FLASH_ERR", "❌ Invalid profile data - missing name/username");
-       logEvent("FLASH_ERR", "   name.length()=" + String(name.length()) + ", username.length()=" + String(username.length()));
-     }
+  if (command == "sync_profile") {
+    Serial.println("🔵 [SYNC] ✅ Command is 'sync_profile'");
+    Serial.flush();
+    logEvent("FLASH", "🔄 Processing profile sync command...");
+
+    String name = extractJsonValue(msg, "name");
+    String username = extractJsonValue(msg, "username");
+    String street = extractJsonValue(msg, "street");
+    String province = extractJsonValue(msg, "province");
+    String city = extractJsonValue(msg, "city");
+    String barangay = extractJsonValue(msg, "barangay");
+    // ✅ UPDATED: Extract uid and suffix from JSON
+    String uid = extractJsonValue(msg, "uid");
+    String suffix = extractJsonValue(msg, "suffix");
+
+    if (name.length() > 0 || username.length() > 0) {
+      Serial.println("🔵 [SYNC] ✅ Valid profile data - calling saveProfileToFlash()");
+      Serial.flush();
+      logEvent("FLASH", "   ✅ Valid profile data - proceeding to save");
+      // ✅ UPDATED: Pass uid and suffix to saveProfileToFlash()
+      saveProfileToFlash(name, username, street, province, city, barangay, uid, suffix);
+    } else {
+      Serial.println("❌ [SYNC] Invalid profile data - missing name/username");
+      Serial.flush();
+      logEvent("FLASH_ERR", "❌ Invalid profile data - missing name/username");
+      logEvent("FLASH_ERR", "   name.length()=" + String(name.length()) + ", username.length()=" + String(username.length()));
+    }
    } else if (command == "sync_sos") {
      Serial.println("🔵 [SYNC] ✅ Command is 'sync_sos'");
      Serial.flush();
@@ -613,17 +528,17 @@
    logEvent("BOOT", "=== ESP32 Voice Bridge (Node A: nRF24 + SPP) ===");
    logEvent("BT", "Bluetooth Ready: " + String(BT_DEVICE_NAME));
    
-   // Initialize flash storage and verify
-   logEvent("FLASH", "🔧 Initializing flash storage...");
-   flashStorage.begin("tulong", true); // Read-only to check
-   int initProfileCount = flashStorage.getInt("profile_saved_count", 0);
-   int initSosCount = flashStorage.getInt("sos_saved_count", 0);
-   flashStorage.end();
-   logEvent("FLASH", "   Existing profile count: " + String(initProfileCount));
-   logEvent("FLASH", "   Existing SOS count: " + String(initSosCount));
-   if (initProfileCount > 0 || initSosCount > 0) {
-     verifyStoredData();
-   }
+  // Initialize flash storage and verify (NOTE: your saved counters are p_cnt/s_cnt)
+  logEvent("FLASH", "🔧 Initializing flash storage...");
+  flashStorage.begin("tulong", true);
+  int initProfileCount = flashStorage.getInt("p_cnt", 0);
+  int initSosCount = flashStorage.getInt("s_cnt", 0);
+  flashStorage.end();
+  logEvent("FLASH", "   Existing profile count: " + String(initProfileCount));
+  logEvent("FLASH", "   Existing SOS count: " + String(initSosCount));
+  if (initProfileCount > 0 || initSosCount > 0) {
+    verifyStoredData();
+  }
 
    if (!radio.begin()) {
      logEvent("RF", "❌ nRF24L01 init failed! Check wiring/power.");

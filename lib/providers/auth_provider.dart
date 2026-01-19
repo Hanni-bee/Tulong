@@ -128,12 +128,20 @@ class AuthProvider extends ChangeNotifier {
           _emergencyMessage = sqliteUser['emergency_message'].toString();
         }
         
-        // Save UID to SharedPreferences if available
+        // Save all profile data to SharedPreferences for ESP32 sync
+        final prefs = await SharedPreferences.getInstance();
         if (sqliteUser.containsKey('uid') && sqliteUser['uid'] != null) {
-          final prefs = await SharedPreferences.getInstance();
           await prefs.setString('session_uid', sqliteUser['uid'].toString());
-          print('UID saved to SharedPreferences: ${sqliteUser['uid']}');
         }
+        // Save profile details for ESP32 forwarding
+        await prefs.setString('profile_name', fullName.isNotEmpty ? fullName : (_userName ?? 'User'));
+        await prefs.setString('profile_username', sqliteUser['username']?.toString() ?? _userUsername!);
+        await prefs.setString('profile_street', sqliteUser['street']?.toString() ?? '');
+        await prefs.setString('profile_province', finalProvince);
+        await prefs.setString('profile_city', finalCity);
+        await prefs.setString('profile_barangay', sqliteUser['barangay']?.toString() ?? '');
+        await prefs.setString('profile_suffix', suffix);
+        print('✅ Profile data saved to SharedPreferences for ESP32 sync');
         
         print('UserModel created from SQLite data: ${userModel.toString()}');
         notifyListeners();
@@ -160,17 +168,28 @@ class AuthProvider extends ChangeNotifier {
         // Combine first and last name for Firebase (handle both PascalCase and camelCase)
         final firstName = userEntry['FirstName']?.toString() ?? userEntry['firstName']?.toString() ?? '';
         final lastName = userEntry['LastName']?.toString() ?? userEntry['lastName']?.toString() ?? '';
-        final fullName = '$firstName $lastName'.trim();
+        final suffix = userEntry['Suffix']?.toString() ?? userEntry['suffix']?.toString() ?? '';
+        final fullName = [firstName, lastName, suffix].where((s) => s.isNotEmpty).join(' ').trim();
+        
+        final finalName = fullName.isNotEmpty 
+            ? fullName 
+            : (userEntry['Name']?.toString() ?? userEntry['name']?.toString() ?? userEntry['DisplayName']?.toString() ?? _userName ?? 'User');
+        
+        final finalUsername = userEntry['Username']?.toString() ?? userEntry['username']?.toString() ?? userEntry['Email']?.toString() ?? _userUsername!;
+        final finalStreet = userEntry['Street']?.toString() ?? userEntry['street']?.toString() ?? userEntry['Address']?.toString() ?? userEntry['address']?.toString() ?? '';
+        final finalProvince = userEntry['Province']?.toString() ?? userEntry['province']?.toString() ?? '';
+        final finalCity = userEntry['City']?.toString() ?? userEntry['city']?.toString() ?? '';
+        final finalBarangay = userEntry['Barangay']?.toString() ?? userEntry['barangay']?.toString() ?? '';
         
         final userModel = UserModel(
           id: userEntry['ID']?.toString() ?? userEntry['id']?.toString() ?? _userUsername!,
-          name: fullName.isNotEmpty ? fullName : (userEntry['Name']?.toString() ?? userEntry['name']?.toString() ?? userEntry['DisplayName']?.toString() ?? _userName ?? 'User'),
-          username: userEntry['Username']?.toString() ?? userEntry['username']?.toString() ?? userEntry['Email']?.toString() ?? _userUsername!, // Support migration
-          street: userEntry['Street']?.toString() ?? userEntry['street']?.toString() ?? userEntry['Address']?.toString() ?? userEntry['address']?.toString() ?? '',
+          name: finalName,
+          username: finalUsername,
+          street: finalStreet,
           region: userEntry['Region']?.toString() ?? userEntry['region']?.toString() ?? '',
-          barangay: userEntry['Barangay']?.toString() ?? userEntry['barangay']?.toString() ?? '',
-          city: userEntry['City']?.toString() ?? userEntry['city']?.toString() ?? '',
-          province: userEntry['Province']?.toString() ?? userEntry['province']?.toString() ?? '',
+          barangay: finalBarangay,
+          city: finalCity,
+          province: finalProvince,
           phoneNumber: userEntry['PhoneNumber']?.toString() ?? userEntry['phoneNumber']?.toString() ?? userEntry['phone']?.toString(),
           addressSetupCompleted: userEntry['AddressSetupCompleted'] == true || userEntry['addressSetupCompleted'] == true,
           isOnline: userEntry['IsOnline'] == true || userEntry['isOnline'] == true,
@@ -178,6 +197,22 @@ class AuthProvider extends ChangeNotifier {
         );
         
         _currentUserModel = userModel;
+        
+        // Save all profile data to SharedPreferences for ESP32 sync
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('profile_name', finalName);
+        await prefs.setString('profile_username', finalUsername);
+        await prefs.setString('profile_street', finalStreet);
+        await prefs.setString('profile_province', finalProvince);
+        await prefs.setString('profile_city', finalCity);
+        await prefs.setString('profile_barangay', finalBarangay);
+        await prefs.setString('profile_suffix', suffix);
+        // UID from Firebase if available
+        if (userEntry.containsKey('UID') || userEntry.containsKey('uid')) {
+          await prefs.setString('session_uid', userEntry['UID']?.toString() ?? userEntry['uid']?.toString() ?? '');
+        }
+        print('✅ Profile data saved to SharedPreferences for ESP32 sync (from Firebase)');
+        
         print('UserModel created from Firebase data: ${userModel.toString()}');
         notifyListeners();
         return;

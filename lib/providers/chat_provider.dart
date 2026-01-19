@@ -41,6 +41,11 @@ class ChatProvider with ChangeNotifier {
   // Track if local chat screen is currently visible
   bool _isLocalChatScreenVisible = false;
   
+  // Message buffering with start/end markers
+  String _incomingMessageBuffer = '';
+  String? _bufferedMessageSenderUid;
+  bool _isBufferingMessage = false;
+  
   // Auto-reconnect settings
   bool _isAutoReconnectEnabled = true;
   Timer? _reconnectTimer;
@@ -618,8 +623,32 @@ class ChatProvider with ChangeNotifier {
       } else if (message.startsWith('<VOICE_START>') || message.startsWith('<VOICE_END>')) {
         // Voice markers, handled by voice extension
         continue;
+      } else if (message.startsWith('<MSG_START:')) {
+        // New message started - flush previous if any
+        _flushBufferedMessage();
+        
+        // Extract UID from start marker: <MSG_START:UID>
+        final uidMatch = RegExp(r'<MSG_START:(.+?)>').firstMatch(message);
+        if (uidMatch != null) {
+          final uid = uidMatch.group(1);
+          _bufferedMessageSenderUid = uid;
+          _incomingMessageBuffer = '';
+          _isBufferingMessage = true;
+          print('BT_RX: Message start from UID: $uid');
+          addStructuredDebug({
+            'source': 'CHAT',
+            'event': 'Message buffering started',
+            'metrics': {'uid': uid}
+          });
+        }
+      } else if (message == '<MSG_END>') {
+        // Message complete - flush buffer
+        _flushBufferedMessage();
+      } else if (_isBufferingMessage) {
+        // Continuation fragment - append to buffer
+        _incomingMessageBuffer += message;
       } else if (message.startsWith('From A:') || message.startsWith('From B:')) {
-        // Extract sender info from ESP32 messages
+        // Extract sender info from ESP32 messages (legacy format)
         final parts = message.split(':');
         if (parts.length >= 2) {
           final sender = parts[0].replaceAll('From', '').trim();
@@ -635,6 +664,42 @@ class ChatProvider with ChangeNotifier {
         _addMessage(message, false, senderName: extractedSender);
       }
     }
+  }
+  
+  /// Flush buffered message and display it
+  void _flushBufferedMessage() {
+    if (!_isBufferingMessage || _incomingMessageBuffer.isEmpty) {
+      _isBufferingMessage = false;
+      _incomingMessageBuffer = '';
+      _bufferedMessageSenderUid = null;
+      return;
+    }
+    
+    final completeMessage = _incomingMessageBuffer;
+    final senderUid = _bufferedMessageSenderUid;
+    
+    // Clear buffer
+    _incomingMessageBuffer = '';
+    _bufferedMessageSenderUid = null;
+    _isBufferingMessage = false;
+    
+    // Try to get sender name from UID (you might want to map UID to name)
+    // For now, use UID as sender name or extract from connected users
+    String? senderName = senderUid;
+    if (senderUid != null && senderUid != 'UNKNOWN') {
+      // You can add logic here to map UID to actual name if needed
+      _addConnectedUser(senderUid);
+    }
+    
+    // Display the complete message
+    _addMessage(completeMessage, false, senderName: senderName ?? 'ESP');
+    
+    print('BT_RX: Complete message displayed (${completeMessage.length} chars) from UID: $senderUid');
+    addStructuredDebug({
+      'source': 'CHAT',
+      'event': 'Complete message displayed',
+      'metrics': {'length': completeMessage.length, 'uid': senderUid}
+    });
   }
   
   /// Extract and track user from message, returns sender name if found
@@ -1023,38 +1088,38 @@ class ChatProvider with ChangeNotifier {
       
       print('BT_SYNC: Syncing profile for user: $username');
       
-      // Get user profile data from SQLite database
-      final sqliteService = SQLiteService();
-      final userData = await sqliteService.getUserByUsername(username);
+      // Get all profile data from SharedPreferences (matching ESP32 variable names)
+      final name = prefs.getString('profile_name') ?? prefs.getString('session_name') ?? username;
+      final profileUsername = prefs.getString('profile_username') ?? username;
+      final street = prefs.getString('profile_street') ?? "";
+      final province = prefs.getString('profile_province') ?? "";
+      final city = prefs.getString('profile_city') ?? "";
+      final barangay = prefs.getString('profile_barangay') ?? "";
+      final uid = prefs.getString('session_uid') ?? "";
+      final suffix = prefs.getString('profile_suffix') ?? "";
       
-      if (userData == null) {
-        print('BT_SYNC: Cannot sync profile: User not found in database');
-        return;
-      }
-      
-      // Build full name from first_name, last_name, and suffix
-      final firstName = userData['first_name']?.toString() ?? '';
-      final lastName = userData['last_name']?.toString() ?? '';
-      final suffix = userData['suffix']?.toString() ?? '';
-      final fullName = [firstName, lastName, suffix].where((s) => s.isNotEmpty).join(' ').trim();
-      final finalName = fullName.isNotEmpty 
-          ? fullName 
-          : (prefs.getString('session_name') ?? username);
-      
-      // Get UID from SharedPreferences
-      final uid = prefs.getString('session_uid') ?? userData['uid']?.toString() ?? "";
+      print('BT_SYNC: Profile data from SharedPreferences:');
+      print('  name: $name');
+      print('  username: $profileUsername');
+      print('  street: $street');
+      print('  province: $province');
+      print('  city: $city');
+      print('  barangay: $barangay');
+      print('  uid: $uid');
+      print('  suffix: $suffix');
       
       // Build profile JSON (flat structure as expected by ESP32)
+      // Variable names must match ESP32 extractJsonValue() calls exactly
       final profileJson = jsonEncode({
         "command": "sync_profile",
-        "name": finalName,
-        "username": username,
+        "name": name,
+        "username": profileUsername,
         "uid": uid,
         "suffix": suffix,
-        "street": userData['street']?.toString() ?? "",
-        "province": userData['province']?.toString() ?? "",
-        "city": userData['city']?.toString() ?? "",
-        "barangay": userData['barangay']?.toString() ?? "",
+        "street": street,
+        "province": province,
+        "city": city,
+        "barangay": barangay,
       });
       
       print('BT_SYNC: Sending profile data: $profileJson');
@@ -1152,42 +1217,43 @@ class ChatProvider with ChangeNotifier {
       
       print('BT_SYNC: Starting sync for user: $username');
       
-      // Get user profile data from SQLite database
-      final sqliteService = SQLiteService();
-      final userData = await sqliteService.getUserByUsername(username);
+      // Get all profile data from SharedPreferences (matching ESP32 variable names)
+      final name = prefs.getString('profile_name') ?? prefs.getString('session_name') ?? username;
+      final profileUsername = prefs.getString('profile_username') ?? username;
+      final street = prefs.getString('profile_street') ?? "";
+      final province = prefs.getString('profile_province') ?? "";
+      final city = prefs.getString('profile_city') ?? "";
+      final barangay = prefs.getString('profile_barangay') ?? "";
+      final uid = prefs.getString('session_uid') ?? "";
+      final suffix = prefs.getString('profile_suffix') ?? "";
       
-      if (userData == null) {
-        print('BT_SYNC: Cannot sync profile: User not found in database');
-      } else {
-        // Build full name from first_name, last_name, and suffix
-        final firstName = userData['first_name']?.toString() ?? '';
-        final lastName = userData['last_name']?.toString() ?? '';
-        final suffix = userData['suffix']?.toString() ?? '';
-        final fullName = [firstName, lastName, suffix].where((s) => s.isNotEmpty).join(' ').trim();
-        final finalName = fullName.isNotEmpty 
-            ? fullName 
-            : (prefs.getString('session_name') ?? username);
-        
-        // Get UID from SharedPreferences
-        final uid = prefs.getString('session_uid') ?? userData['uid']?.toString() ?? "";
-        
-        // Build profile JSON (flat structure as expected by ESP32)
-        final profileJson = jsonEncode({
-          "command": "sync_profile",
-          "name": finalName,
-          "username": username,
-          "uid": uid,
-          "suffix": suffix,
-          "street": userData['street']?.toString() ?? "",
-          "province": userData['province']?.toString() ?? "",
-          "city": userData['city']?.toString() ?? "",
-          "barangay": userData['barangay']?.toString() ?? "",
-        });
-        
-        print('BT_SYNC: Sending profile data: $profileJson');
-        await _bluetoothService.sendMessage(profileJson);
-        print('BT_SYNC: Profile data sent successfully');
-      }
+      print('BT_SYNC: Profile data from SharedPreferences:');
+      print('  name: $name');
+      print('  username: $profileUsername');
+      print('  street: $street');
+      print('  province: $province');
+      print('  city: $city');
+      print('  barangay: $barangay');
+      print('  uid: $uid');
+      print('  suffix: $suffix');
+      
+      // Build profile JSON (flat structure as expected by ESP32)
+      // Variable names must match ESP32 extractJsonValue() calls exactly
+      final profileJson = jsonEncode({
+        "command": "sync_profile",
+        "name": name,
+        "username": profileUsername,
+        "uid": uid,
+        "suffix": suffix,
+        "street": street,
+        "province": province,
+        "city": city,
+        "barangay": barangay,
+      });
+      
+      print('BT_SYNC: Sending profile data: $profileJson');
+      await _bluetoothService.sendMessage(profileJson);
+      print('BT_SYNC: Profile data sent successfully');
       
       // Get SOS message from SharedPreferences
       final sosMessage = prefs.getString('emergency_message_$username') ?? 

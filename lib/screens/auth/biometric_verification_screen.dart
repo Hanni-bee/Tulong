@@ -250,18 +250,30 @@ class _BiometricVerificationScreenState extends State<BiometricVerificationScree
       // Get the saved user to retrieve UID
       final savedUser = await sqliteService.getUserByUsername(data['username'].toString());
       
-      // Save UID to SharedPreferences immediately after account creation
-      if (savedUser != null && savedUser['uid'] != null) {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('session_uid', savedUser['uid'].toString());
-        print('✅ UID saved to SharedPreferences: ${savedUser['uid']}');
-      }
-
-      // Set authenticated state
-      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      // Build full name
       final fullName = suffix != null && suffix.isNotEmpty
           ? '${data['firstName']} ${data['lastName']} $suffix'
           : '${data['firstName']} ${data['lastName']}';
+      
+      // Save all profile data to SharedPreferences for ESP32 sync
+      final prefs = await SharedPreferences.getInstance();
+      if (savedUser != null && savedUser['uid'] != null) {
+        await prefs.setString('session_uid', savedUser['uid'].toString());
+        print('✅ UID saved to SharedPreferences: ${savedUser['uid']}');
+      }
+      
+      // Save all profile details to SharedPreferences (matching ESP32 variable names)
+      await prefs.setString('profile_name', fullName.trim());
+      await prefs.setString('profile_username', data['username'].toString());
+      await prefs.setString('profile_street', address);
+      await prefs.setString('profile_province', province);
+      await prefs.setString('profile_city', city);
+      await prefs.setString('profile_barangay', barangay);
+      await prefs.setString('profile_suffix', suffix ?? '');
+      print('✅ Profile data saved to SharedPreferences for ESP32 sync (new account)');
+
+      // Set authenticated state
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
       await authProvider.setAuthenticated(
         email: data['username'], // Parameter name is 'email' for compatibility, but it's actually username
         name: fullName.trim(),

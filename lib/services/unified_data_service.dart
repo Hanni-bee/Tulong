@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:crypto/crypto.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'sqlite_service.dart';
 import 'firebase_service.dart';
 import '../providers/chat_provider.dart';
@@ -526,8 +527,38 @@ class UnifiedDataService {
         print('⚠️ Failed to increment profile update count: $e');
       }
 
+      // Save updated profile data to SharedPreferences for ESP32 sync
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final updatedUser = {...currentUser, ...updateData};
+        
+        // Build full name
+        final firstName = updatedUser['first_name']?.toString() ?? '';
+        final lastName = updatedUser['last_name']?.toString() ?? '';
+        final suffix = updatedUser['suffix']?.toString() ?? '';
+        final fullName = [firstName, lastName, suffix].where((s) => s.isNotEmpty).join(' ').trim();
+        
+        // Save all profile data to SharedPreferences (matching ESP32 variable names)
+        await prefs.setString('profile_name', fullName.isNotEmpty ? fullName : (updatedUser['username']?.toString() ?? username));
+        await prefs.setString('profile_username', updatedUser['username']?.toString() ?? username);
+        await prefs.setString('profile_street', updatedUser['street']?.toString() ?? '');
+        await prefs.setString('profile_province', updatedUser['province']?.toString() ?? '');
+        await prefs.setString('profile_city', updatedUser['city']?.toString() ?? '');
+        await prefs.setString('profile_barangay', updatedUser['barangay']?.toString() ?? '');
+        await prefs.setString('profile_suffix', suffix);
+        
+        // UID should already be in SharedPreferences, but update if changed
+        if (updatedUser.containsKey('uid') && updatedUser['uid'] != null) {
+          await prefs.setString('session_uid', updatedUser['uid'].toString());
+        }
+        
+        print('✅ Profile data saved to SharedPreferences for ESP32 sync');
+      } catch (e) {
+        print('⚠️ Failed to save profile to SharedPreferences: $e');
+      }
+
       // Sync profile to ESP32 if connected (only if profile fields were updated)
-      final profileFields = ['street', 'province', 'city', 'barangay', 'region', 'first_name', 'last_name'];
+      final profileFields = ['street', 'province', 'city', 'barangay', 'region', 'first_name', 'last_name', 'suffix', 'username'];
       final hasProfileUpdate = updates.keys.any((key) => profileFields.contains(key));
       if (hasProfileUpdate) {
         try {
