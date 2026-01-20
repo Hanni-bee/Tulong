@@ -76,6 +76,7 @@ flutter:
   uses-material-design: true
   
   assets:
+    - assets/disaster.tflite
     - assets/images/
     - assets/icons/
     - assets/animations/

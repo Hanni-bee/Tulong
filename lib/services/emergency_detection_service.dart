@@ -53,9 +53,10 @@ class EmergencyDetectionService {
     final adaptiveThresholds = _calculateAdaptiveThresholds(fullAnalysis);
     fullAnalysis.addAll(adaptiveThresholds);
     
-    // PASS 0.5: ML Model feature extraction (if enabled and available)
+    // PASS 0.5: ML Model feature extraction and disaster intensity analysis (if enabled and available)
     if (_useMLModel && _mlModelService.isLoaded) {
       try {
+        // Extract ML features for classification
         final mlFeatures = await _mlModelService.extractFeatures(preprocessedImage);
         if (mlFeatures != null) {
           // Add ML features to analysis
@@ -65,8 +66,34 @@ class EmergencyDetectionService {
           fullAnalysis['ml_features_variance'] = _calculateVariance(mlFeatures);
           debugPrint('✅ ML features extracted: ${mlFeatures.length} features');
         }
+        
+        // NEW: Analyze disaster intensity using Disaster Intensity Analyzer
+        final intensityAnalysis = await _mlModelService.analyzeDisasterIntensity(preprocessedImage);
+        if (intensityAnalysis != null) {
+          // Add intensity scores to analysis
+          fullAnalysis.addAll(intensityAnalysis);
+          
+          // Map ML intensity to emergency types
+          if (intensityAnalysis.containsKey('earthquake_intensity')) {
+            fullAnalysis['ml_earthquake_intensity'] = intensityAnalysis['earthquake_intensity']!;
+          }
+          if (intensityAnalysis.containsKey('wildfire_intensity')) {
+            fullAnalysis['ml_fire_intensity'] = intensityAnalysis['wildfire_intensity']!;
+          }
+          if (intensityAnalysis.containsKey('flood_intensity')) {
+            fullAnalysis['ml_flood_intensity'] = intensityAnalysis['flood_intensity']!;
+          }
+          if (intensityAnalysis.containsKey('wind_intensity')) {
+            fullAnalysis['ml_wind_intensity'] = intensityAnalysis['wind_intensity']!;
+          }
+          if (intensityAnalysis.containsKey('overall_intensity')) {
+            fullAnalysis['ml_overall_intensity'] = intensityAnalysis['overall_intensity']!;
+          }
+          
+          debugPrint('✅ Disaster intensity analyzed: ${intensityAnalysis.keys.join(", ")}');
+        }
       } catch (e) {
-        debugPrint('⚠️ ML feature extraction failed, using rule-based only: $e');
+        debugPrint('⚠️ ML analysis failed, using rule-based only: $e');
       }
     }
     
@@ -101,20 +128,26 @@ class EmergencyDetectionService {
     // Check if this is clearly a normal scene with no emergency
     bool isNormalScene = false;
     
-    // Primary check: High normal scene likelihood (lowered threshold to catch more normal scenes)
-    if (normalSceneLikelihood > 0.70) { // Lowered from 0.75 to catch more normal scenes
+    // Get dynamic thresholds from adaptive thresholds (reuse from line 53)
+    final normalSceneThreshold = adaptiveThresholds['adaptive_normal_scene_threshold'] ?? 0.70;
+    final organizedPatternThreshold = adaptiveThresholds['adaptive_organized_pattern_threshold'] ?? 0.30;
+    final falsePositiveThreshold = adaptiveThresholds['adaptive_false_positive_threshold'] ?? 0.40;
+    final dynamicConfidenceThreshold = _calculateDynamicConfidenceThreshold(fullAnalysis, detectedType);
+    
+    // Primary check: High normal scene likelihood (dynamic threshold)
+    if (normalSceneLikelihood > normalSceneThreshold) {
       isNormalScene = true;
     }
-    // Secondary check: Organized patterns + low emergency indicators
-    else if (organizedPatterns > 0.30 && // Lowered from 0.35
-             normalSceneLikelihood > 0.60 && // Lowered from 0.65
-             (falsePositiveRisk > 0.3 || organizedPatterns > 0.4)) {
+    // Secondary check: Organized patterns + low emergency indicators (dynamic thresholds)
+    else if (organizedPatterns > organizedPatternThreshold &&
+             normalSceneLikelihood > (normalSceneThreshold * 0.85) &&
+             (falsePositiveRisk > falsePositiveThreshold || organizedPatterns > (organizedPatternThreshold * 1.3))) {
       isNormalScene = true;
     }
-    // Tertiary check: Low emergency confidence + moderate normal scene indicators
-    else if (confidence < 0.60 && // Slightly higher threshold
-             normalSceneLikelihood > 0.65 && // Lowered from 0.68
-             organizedPatterns > 0.20) { // Lowered from 0.25
+    // Tertiary check: Low emergency confidence + moderate normal scene indicators (dynamic thresholds)
+    else if (confidence < dynamicConfidenceThreshold &&
+             normalSceneLikelihood > (normalSceneThreshold * 0.9) &&
+             organizedPatterns > (organizedPatternThreshold * 0.7)) {
       isNormalScene = true;
     }
     // Quaternary check: General type with low confidence and normal indicators
@@ -239,6 +272,13 @@ class EmergencyDetectionService {
     // Contrast analysis
     analysis['overall_contrast'] = _analyzeOverallContrast(image);
     
+    // NEW: Advanced pattern detection
+    analysis['smoke_pattern'] = _detectSmokePatterns(image);
+    analysis['water_texture'] = _detectWaterTexture(image);
+    analysis['structural_damage'] = _detectStructuralDamage(image);
+    analysis['flame_pattern'] = _detectFlamePatterns(image);
+    analysis['reflection_pattern'] = _detectReflectionPatterns(image);
+    
     return analysis;
   }
   
@@ -276,6 +316,16 @@ class EmergencyDetectionService {
     final aggregated = <String, double>{};
     final int regionCount = regions.length;
     
+    // Calculate overall brightness and texture variance from regions for dynamic thresholds
+    double overallBrightness = 0.0;
+    double overallTextureVariance = 0.0;
+    for (final region in regions) {
+      overallBrightness += region['brightness'] ?? 0.0;
+      overallTextureVariance += region['texture_variance'] ?? 0.0;
+    }
+    overallBrightness /= regionCount;
+    overallTextureVariance /= regionCount;
+    
     // Calculate mean and variance for key metrics
     final metrics = ['red_ratio', 'orange_ratio', 'blue_ratio', 'edge_density', 'brightness'];
     
@@ -290,7 +340,11 @@ class EmergencyDetectionService {
         sum += value;
         if (value > maxVal) maxVal = value;
         if (value < minVal) minVal = value;
-        if (value > 0.05) activeRegions++; // Threshold for "active" region
+        // Dynamic threshold for "active" region based on metric type
+        final dynamicActiveThreshold = metric == 'edge_density' 
+            ? 0.04 + (overallTextureVariance / 30000)
+            : 0.05 + (overallBrightness * 0.02);
+        if (value > dynamicActiveThreshold) activeRegions++;
       }
       
       aggregated['${metric}_mean'] = sum / regionCount;
@@ -303,9 +357,15 @@ class EmergencyDetectionService {
     return aggregated;
   }
   
-  /// Validate context to prevent false positives - ENHANCED
+  /// Validate context to prevent false positives - ENHANCED & FULLY DYNAMIC
   Map<String, double> _validateContext(img.Image image, Map<String, double> analysis) {
     final validation = <String, double>{};
+    
+    // Get dynamic thresholds from adaptive calculation
+    final adaptiveThresholds = _calculateAdaptiveThresholds(analysis);
+    final normalSceneThreshold = adaptiveThresholds['adaptive_normal_scene_threshold'] ?? 0.70;
+    final organizedPatternThreshold = adaptiveThresholds['adaptive_organized_pattern_threshold'] ?? 0.25;
+    final falsePositiveThreshold = adaptiveThresholds['adaptive_false_positive_threshold'] ?? 0.40;
     
     // Check if image looks like normal indoor/outdoor scene
     final brightness = analysis['brightness'] ?? 0.5;
@@ -316,53 +376,65 @@ class EmergencyDetectionService {
     final blueRatio = analysis['blue_ratio'] ?? 0.0;
     final overallContrast = analysis['overall_contrast'] ?? 0.5;
     
-    // Normal scene indicators - STRICT CHECKS
+    // Calculate dynamic thresholds based on image characteristics
+    final dynamicBrightnessMin = 0.20 + (brightness * 0.1);
+    final dynamicBrightnessMax = 0.70 + (brightness * 0.1);
+    final dynamicEdgeThreshold = 0.08 + (textureVariance / 15000);
+    final dynamicTextureThreshold = 1000 + (textureVariance * 0.2);
+    final dynamicRedThreshold = 0.06 + (brightness * 0.04);
+    final dynamicOrangeThreshold = 0.06 + (brightness * 0.04);
+    final dynamicBlueThreshold = 0.12 + (brightness * 0.05);
+    final dynamicContrastMin = 0.15 + (overallContrast * 0.1);
+    final dynamicContrastMax = 0.75 + (overallContrast * 0.1);
+    final dynamicStabilityThreshold = 0.35 + (brightness * 0.1);
+    
+    // Normal scene indicators - DYNAMIC CHECKS
     double normalScore = 1.0;
     int normalIndicators = 0;
     int totalChecks = 0;
     
-    // Check 1: Moderate brightness (normal indoor/outdoor)
+    // Check 1: Moderate brightness (normal indoor/outdoor) - DYNAMIC
     totalChecks++;
-    if (brightness > 0.25 && brightness < 0.75) {
+    if (brightness > dynamicBrightnessMin && brightness < dynamicBrightnessMax) {
       normalIndicators++;
     }
     
-    // Check 2: Low edge density (no structural damage)
+    // Check 2: Low edge density (no structural damage) - DYNAMIC
     totalChecks++;
-    if (edgeDensity < 0.10) {
+    if (edgeDensity < dynamicEdgeThreshold) {
       normalIndicators++;
     }
     
-    // Check 3: Low texture variance (organized, not chaotic)
+    // Check 3: Low texture variance (organized, not chaotic) - DYNAMIC
     totalChecks++;
-    if (textureVariance < 1200) {
+    if (textureVariance < dynamicTextureThreshold) {
       normalIndicators++;
     }
     
-    // Check 4: Low emergency color ratios (no fire/flood indicators)
+    // Check 4: Low emergency color ratios (no fire/flood indicators) - DYNAMIC
     totalChecks++;
-    if (redRatio < 0.08 && orangeRatio < 0.08 && blueRatio < 0.15) {
+    if (redRatio < dynamicRedThreshold && orangeRatio < dynamicOrangeThreshold && blueRatio < dynamicBlueThreshold) {
       normalIndicators++;
     }
     
-    // Check 5: Moderate contrast (not extreme)
+    // Check 5: Moderate contrast (not extreme) - DYNAMIC
     totalChecks++;
-    if (overallContrast > 0.2 && overallContrast < 0.8) {
+    if (overallContrast > dynamicContrastMin && overallContrast < dynamicContrastMax) {
       normalIndicators++;
     }
     
-    // Check 6: Organized patterns (windows, walls, structures)
+    // Check 6: Organized patterns (windows, walls, structures) - DYNAMIC
     final organizedPatterns = _detectOrganizedPatterns(image);
     totalChecks++;
-    if (organizedPatterns > 0.25) {
+    if (organizedPatterns > organizedPatternThreshold) {
       normalIndicators++;
       normalScore *= 0.6; // Strong penalty for organized patterns
     }
     
-    // Check 7: Image stability (not blurry, not chaotic)
+    // Check 7: Image stability (not blurry, not chaotic) - DYNAMIC
     final imageStability = analysis['image_stability'] ?? 0.5;
     totalChecks++;
-    if (imageStability > 0.4) {
+    if (imageStability > dynamicStabilityThreshold) {
       normalIndicators++;
     }
     
@@ -370,17 +442,24 @@ class EmergencyDetectionService {
     final indicatorRatio = normalIndicators / totalChecks;
     normalScore = indicatorRatio;
     
-    // STRICT: If most indicators suggest normal scene, heavily penalize
-    if (indicatorRatio > 0.6) {
+    // DYNAMIC: If most indicators suggest normal scene, heavily penalize
+    final dynamicIndicatorThreshold = 0.55 + (brightness * 0.1);
+    if (indicatorRatio > dynamicIndicatorThreshold) {
       normalScore = 0.3; // Very high normal scene likelihood
     }
     
-    // EXTRA CHECK: If organized patterns AND low emergency indicators → Very likely normal
-    if (organizedPatterns > 0.3 && 
-        redRatio < 0.1 && 
-        orangeRatio < 0.1 && 
-        blueRatio < 0.15 && 
-        edgeDensity < 0.12) {
+    // EXTRA CHECK: If organized patterns AND low emergency indicators → Very likely normal - DYNAMIC
+    final dynamicOrganizedCheck = organizedPatternThreshold * 1.2;
+    final dynamicRedCheck = dynamicRedThreshold * 1.3;
+    final dynamicOrangeCheck = dynamicOrangeThreshold * 1.3;
+    final dynamicBlueCheck = dynamicBlueThreshold * 1.2;
+    final dynamicEdgeCheck = dynamicEdgeThreshold * 1.5;
+    
+    if (organizedPatterns > dynamicOrganizedCheck && 
+        redRatio < dynamicRedCheck && 
+        orangeRatio < dynamicOrangeCheck && 
+        blueRatio < dynamicBlueCheck && 
+        edgeDensity < dynamicEdgeCheck) {
       normalScore = 0.2; // Extremely likely normal scene
     }
     
@@ -743,22 +822,21 @@ class EmergencyDetectionService {
     confidence *= (1.0 - falsePositiveRisk * 0.4); // Increased penalty
     confidence *= regionValidation['confidence_multiplier'] as double;
     
-    // STRICT minimum confidence threshold - prevent false alarms
+    // Get dynamic confidence threshold (no static values)
+    final dynamicConfidenceThreshold = _calculateDynamicConfidenceThreshold(fullAnalysis, finalType);
+    final normalSceneThreshold = fullAnalysis['adaptive_normal_scene_threshold'] ?? 0.70;
+    
+    // STRICT minimum confidence threshold - prevent false alarms (dynamic)
     if (finalType != EmergencyType.general) {
-      // Higher threshold for calamity (most serious, most prone to false positives)
-      if (finalType == EmergencyType.calamity && confidence < 0.80) {
-        finalType = EmergencyType.general;
-        confidence = 0.4;
-      }
-      // High threshold for other emergencies
-      else if (confidence < 0.70) {
+      // Dynamic threshold based on type and image characteristics
+      if (confidence < dynamicConfidenceThreshold) {
         finalType = EmergencyType.general;
         confidence = 0.4; // Lower confidence for ambiguous cases
       }
     }
     
-    // FINAL SAFETY CHECK: If normal scene likelihood is very high, force general
-    if (normalSceneLikelihood > 0.70) { // Lowered threshold from 0.75
+    // FINAL SAFETY CHECK: If normal scene likelihood is very high, force general (dynamic threshold)
+    if (normalSceneLikelihood > normalSceneThreshold) {
       finalType = EmergencyType.general;
       confidence = 0.35; // Very low confidence for normal scenes
     }
@@ -777,11 +855,16 @@ class EmergencyDetectionService {
       // Only calculate severity for specific emergency types
       severity = _determineSeverity(fullAnalysis, finalType);
       
-      // If confidence is borderline, reduce severity
-      if (confidence < 0.75 && severity == SeverityLevel.critical) {
+      // Get dynamic confidence thresholds for severity adjustment
+      final dynamicConfidenceThreshold = _calculateDynamicConfidenceThreshold(fullAnalysis, finalType);
+      final highConfidenceThreshold = dynamicConfidenceThreshold + 0.10;
+      final mediumConfidenceThreshold = dynamicConfidenceThreshold + 0.05;
+      
+      // If confidence is borderline, reduce severity (dynamic thresholds)
+      if (confidence < highConfidenceThreshold && severity == SeverityLevel.critical) {
         severity = SeverityLevel.high;
       }
-      if (confidence < 0.70 && severity == SeverityLevel.high) {
+      if (confidence < mediumConfidenceThreshold && severity == SeverityLevel.high) {
         severity = SeverityLevel.medium;
       }
     }
@@ -1153,16 +1236,35 @@ class EmergencyDetectionService {
     // Only score fire if ratio exceeds adaptive threshold
     final effectiveFireRatio = math.max(0.0, fireRatio - fireThreshold);
     
-    // Enhanced fire scoring with HSV-based detection and adaptive thresholds
-    scores[EmergencyType.fire] = 
+    // Get ML intensity scores if available
+    final mlFireIntensity = analysis['ml_fire_intensity'] ?? 0.0;
+    final mlOverallIntensity = analysis['ml_overall_intensity'] ?? 0.0;
+    
+    // Enhanced fire scoring with HSV-based detection, adaptive thresholds, NEW patterns, and ML intensity
+    final smokePattern = analysis['smoke_pattern'] ?? 0.0;
+    final flamePattern = analysis['flame_pattern'] ?? 0.0;
+    final baseFireScore = 
         (effectiveFireRatio * 4.0) * (1.0 + fireIntensity * 1.5) + // HSV-based (more accurate)
         ((redRatio + orangeRatio) * 2.0) * (1.0 + redIntensity + orangeIntensity) + // RGB fallback
         (smokeRatio * 1.5) + // Smoke is often present with fire
+        smokePattern * 1.2 +  // Advanced smoke pattern detection
+        flamePattern * 1.5 +   // Flame pattern detection
         (brightRatio * 2.0) +
         (brightness > 0.6 ? brightness * 1.5 : 0.0) +
         (textureVariance > 1500 ? 0.3 : 0.0) +
         (redHistPeak > 0.75 && redHistStrength > 0.1 ? 0.5 : 0.0) + // High red peak
         (multiScaleConsistency > 0.7 ? 0.3 : 0.0); // Consistent across scales
+    
+    // DYNAMIC: Calculate adaptive weights for ML/rule-based combination
+    final mlWeights = _calculateDynamicMLWeights(analysis);
+    final mlWeight = mlWeights['ml_weight']!;
+    final ruleWeight = mlWeights['rule_weight']!;
+    final typeMultiplier = mlWeights['type_multiplier']!;
+    final overallMultiplier = mlWeights['overall_multiplier']!;
+    
+    // Combine rule-based score with ML intensity using dynamic weights
+    final mlFireScore = (mlFireIntensity * typeMultiplier + mlOverallIntensity * overallMultiplier);
+    scores[EmergencyType.fire] = baseFireScore * ruleWeight + mlFireScore * mlWeight;
     
     // Flood scoring: IMPROVED with HSV-based water detection + adaptive thresholds
     final waterRatio = analysis['water_ratio'] ?? blueRatio; // Use HSV if available
@@ -1174,15 +1276,26 @@ class EmergencyDetectionService {
     // Only score flood if ratio exceeds adaptive threshold
     final effectiveWaterRatio = math.max(0.0, waterRatio - waterThreshold);
     
-    // Enhanced flood scoring with HSV-based detection and adaptive thresholds
-    scores[EmergencyType.flood] = 
+    // Get ML flood intensity if available
+    final mlFloodIntensity = analysis['ml_flood_intensity'] ?? 0.0;
+    
+    // Enhanced flood scoring with HSV-based detection, adaptive thresholds, NEW patterns, and ML intensity
+    final waterTexture = analysis['water_texture'] ?? 0.0;
+    final reflectionPattern = analysis['reflection_pattern'] ?? 0.0;
+    final baseFloodScore = 
         (effectiveWaterRatio * 4.5) * (1.0 + waterIntensity * 1.3) + // HSV-based (more accurate)
         (blueRatio * 3.0) * (1.0 + blueIntensity) + // RGB fallback
+        waterTexture * 1.5 +      // Advanced water texture detection
+        reflectionPattern * 1.2 + // Reflection pattern detection
         (brightness > 0.3 && brightness < 0.75 ? 1.0 : 0.0) +
         (textureContrast > 20 ? 0.4 : 0.0) +
         (darkRatio > 0.15 ? 0.3 : 0.0) +
         (blueHistPeak > 0.5 && blueHistStrength > 0.15 ? 0.5 : 0.0) + // High blue peak
         (multiScaleConsistency > 0.7 ? 0.3 : 0.0); // Consistent across scales
+    
+    // DYNAMIC: Use same adaptive weights (calculated once, reused for consistency)
+    final mlFloodScore = (mlFloodIntensity * typeMultiplier + mlOverallIntensity * overallMultiplier);
+    scores[EmergencyType.flood] = baseFloodScore * ruleWeight + mlFloodScore * mlWeight;
     
     // Earthquake scoring: IMPROVED with smoke/debris detection + adaptive thresholds
     final edgeThreshold = analysis['adaptive_edge_threshold'] ?? 0.10;
@@ -1191,12 +1304,21 @@ class EmergencyDetectionService {
     final effectiveEdgeDensity = math.max(0.0, edgeDensity - edgeThreshold);
     final effectiveStrongEdgeDensity = math.max(0.0, strongEdgeDensity - edgeThreshold * 0.7);
     
-    scores[EmergencyType.earthquake] = 
+    // Get ML earthquake intensity if available
+    final mlEarthquakeIntensity = analysis['ml_earthquake_intensity'] ?? 0.0;
+    
+    final structuralDamage = analysis['structural_damage'] ?? 0.0;
+    final baseEarthquakeScore = 
         (effectiveEdgeDensity * 4.5 + effectiveStrongEdgeDensity * 7.0) + // Adaptive threshold
         (grayRatio * 2.5 + smokeRatio * 2.0) + // Smoke/debris often present
         (highContrastRatio * 3.0) +
         (textureVariance > 2500 ? 0.5 : 0.0) +
-        (darkRatio > 0.2 ? 0.4 : 0.0);
+        (darkRatio > 0.2 ? 0.4 : 0.0) +
+        structuralDamage * 2.0;  // Structural damage detection
+    
+    // DYNAMIC: Use same adaptive weights (calculated once, reused for consistency)
+    final mlEarthquakeScore = (mlEarthquakeIntensity * typeMultiplier + mlOverallIntensity * overallMultiplier);
+    scores[EmergencyType.earthquake] = baseEarthquakeScore * ruleWeight + mlEarthquakeScore * mlWeight;
     
     // Accident scoring: Yellow (road/vehicles) + edges + moderate indicators
     scores[EmergencyType.accident] = 
@@ -1205,25 +1327,42 @@ class EmergencyDetectionService {
         (brightness > 0.4 && brightness < 0.8 ? 0.8 : 0.0) +
         (textureContrast > 15 ? 0.3 : 0.0);
     
-    // Calamity scoring: STRICT - requires multiple strong indicators
+    // Calamity scoring: STRICT - requires multiple strong indicators - FULLY DYNAMIC
     // Calamity is the most serious, so we need VERY strong evidence
-    final hasMultipleIndicators = (redRatio > 0.1 || orangeRatio > 0.1) &&
-                                   (blueRatio > 0.15 || grayRatio > 0.15) &&
-                                   (edgeDensity > 0.12 || strongEdgeDensity > 0.08);
+    // Calculate dynamic thresholds based on image characteristics
+    final dynamicFireIndicatorThreshold = 0.08 + (brightness * 0.04);
+    final dynamicWaterIndicatorThreshold = 0.12 + (brightness * 0.05);
+    final dynamicGrayIndicatorThreshold = 0.12 + (brightness * 0.05);
+    final dynamicEdgeIndicatorThreshold = 0.10 + (textureVariance / 20000);
+    final dynamicStrongEdgeIndicatorThreshold = 0.06 + (textureVariance / 25000);
+    final dynamicTextureVarianceThreshold = 2500 + (textureVariance * 0.1);
+    final dynamicBrightRatioThreshold = 0.12 + (brightness * 0.05);
+    final dynamicDarkRatioThreshold = 0.20 + ((1.0 - brightness) * 0.08);
+    final dynamicCalamityEdgeThreshold = 0.12 + (textureVariance / 18000);
+    
+    final hasMultipleIndicators = (redRatio > dynamicFireIndicatorThreshold || orangeRatio > dynamicFireIndicatorThreshold) &&
+                                   (blueRatio > dynamicWaterIndicatorThreshold || grayRatio > dynamicGrayIndicatorThreshold) &&
+                                   (edgeDensity > dynamicEdgeIndicatorThreshold || strongEdgeDensity > dynamicStrongEdgeIndicatorThreshold);
     
     scores[EmergencyType.calamity] = 
         (hasMultipleIndicators ? 1.5 : 0.0) + // Base requirement
-        (textureVariance > 3000 ? (textureVariance / 800) : 0.0) + // Higher threshold
+        (textureVariance > dynamicTextureVarianceThreshold ? (textureVariance / 800) : 0.0) + // Dynamic threshold
         ((redRatio + blueRatio + grayRatio) * 2.5) + // Stronger weighting
         (highContrastRatio * 3.0) + // Higher contrast requirement
-        (brightRatio > 0.15 || darkRatio > 0.25 ? 0.8 : 0.0) + // More extreme
-        (edgeDensity > 0.15 ? 0.5 : 0.0); // Structural damage required
+        (brightRatio > dynamicBrightRatioThreshold || darkRatio > dynamicDarkRatioThreshold ? 0.8 : 0.0) + // Dynamic thresholds
+        (edgeDensity > dynamicCalamityEdgeThreshold ? 0.5 : 0.0); // Dynamic structural damage threshold
     
-    // General emergency: Moderate indicators
+    // General emergency: Moderate indicators - FULLY DYNAMIC
+    // Calculate dynamic thresholds
+    final dynamicGeneralBrightnessMin = 0.25 + (brightness * 0.1);
+    final dynamicGeneralBrightnessMax = 0.80 + (brightness * 0.1);
+    final dynamicGeneralEdgeThreshold = 0.10 + (textureVariance / 20000);
+    final dynamicGeneralTextureThreshold = 800 + (textureVariance * 0.1);
+    
     scores[EmergencyType.general] = 
-        (brightness < 0.3 || brightness > 0.85 ? 0.5 : 0.0) +
-        (edgeDensity > 0.12 ? 0.4 : 0.0) +
-        (textureVariance > 1000 ? 0.3 : 0.0);
+        (brightness < dynamicGeneralBrightnessMin || brightness > dynamicGeneralBrightnessMax ? 0.5 : 0.0) +
+        (edgeDensity > dynamicGeneralEdgeThreshold ? 0.4 : 0.0) +
+        (textureVariance > dynamicGeneralTextureThreshold ? 0.3 : 0.0);
     
     // No Emergency: Strong normal scene indicators
     // IMPROVED: More aggressive detection of normal scenes to always inform user
@@ -1239,39 +1378,53 @@ class EmergencyDetectionService {
     // Organized patterns strongly indicate normal scenes
     noEmergencyScore += organizedPatterns * 2.0;
     
-    // No emergency colors (no fire, flood indicators)
-    if (redRatio < 0.05 && orangeRatio < 0.05 && blueRatio < 0.1) {
+    // Get dynamic thresholds from adaptive calculation
+    final adaptiveThresholds = _calculateAdaptiveThresholds(analysis);
+    final dynamicRedThreshold = 0.04 + (brightness * 0.02);
+    final dynamicOrangeThreshold = 0.04 + (brightness * 0.02);
+    final dynamicBlueThreshold = 0.08 + (brightness * 0.04);
+    final dynamicEdgeThreshold = 0.06 + (textureVariance / 20000);
+    final dynamicBrightnessMin = 0.25 + (brightness * 0.1);
+    final dynamicBrightnessMax = 0.65 + (brightness * 0.1);
+    final dynamicTextureThreshold = 700 + (textureVariance * 0.1);
+    final dynamicContrastThreshold = 12 + (textureContrast * 0.2);
+    final dynamicFirePenaltyThreshold = 0.08 + (brightness * 0.04);
+    final dynamicFloodPenaltyThreshold = 0.12 + (brightness * 0.05);
+    final dynamicDamagePenaltyThreshold = 0.10 + (textureVariance / 15000);
+    
+    // No emergency colors (no fire, flood indicators) - DYNAMIC
+    if (redRatio < dynamicRedThreshold && orangeRatio < dynamicOrangeThreshold && blueRatio < dynamicBlueThreshold) {
       noEmergencyScore += 1.5;
     }
     
-    // Low edge density = no structural damage
-    if (edgeDensity < 0.08) {
+    // Low edge density = no structural damage - DYNAMIC
+    if (edgeDensity < dynamicEdgeThreshold) {
       noEmergencyScore += 1.2;
     }
     
-    // Normal brightness range (not too dark, not too bright)
-    if (brightness > 0.3 && brightness < 0.7) {
+    // Normal brightness range (not too dark, not too bright) - DYNAMIC
+    if (brightness > dynamicBrightnessMin && brightness < dynamicBrightnessMax) {
       noEmergencyScore += 1.0;
     }
     
-    // Low texture variance = organized, not chaotic
-    if (textureVariance < 800) {
+    // Low texture variance = organized, not chaotic - DYNAMIC
+    if (textureVariance < dynamicTextureThreshold) {
       noEmergencyScore += 1.0;
     }
     
-    // Low contrast = peaceful scene
-    if (textureContrast < 15) {
+    // Low contrast = peaceful scene - DYNAMIC
+    if (textureContrast < dynamicContrastThreshold) {
       noEmergencyScore += 0.8;
     }
     
-    // Penalize if emergency indicators are present
-    if (redRatio > 0.1 || orangeRatio > 0.1) {
+    // Penalize if emergency indicators are present - DYNAMIC THRESHOLDS
+    if (redRatio > dynamicFirePenaltyThreshold || orangeRatio > dynamicFirePenaltyThreshold) {
       noEmergencyScore *= 0.3; // Strong penalty for fire colors
     }
-    if (blueRatio > 0.15) {
+    if (blueRatio > dynamicFloodPenaltyThreshold) {
       noEmergencyScore *= 0.5; // Penalty for flood colors
     }
-    if (edgeDensity > 0.12) {
+    if (edgeDensity > dynamicDamagePenaltyThreshold) {
       noEmergencyScore *= 0.4; // Penalty for structural damage
     }
     
@@ -1288,29 +1441,41 @@ class EmergencyDetectionService {
       }
     });
     
-    // IMPROVED: Always report "No Emergency" if score is high enough (lowered threshold)
+    // Get dynamic thresholds from adaptive calculation (reuse from line 1373)
+    final normalSceneThreshold = adaptiveThresholds['adaptive_normal_scene_threshold'] ?? 0.70;
+    final organizedPatternThreshold = adaptiveThresholds['adaptive_organized_pattern_threshold'] ?? 0.25;
+    
+    // Calculate dynamic thresholds for "no emergency" detection
+    final dynamicHighNoEmergencyThreshold = 1.8 + (normalSceneScore * 0.3);
+    final dynamicMediumNoEmergencyThreshold = 1.3 + (normalSceneScore * 0.2);
+    final dynamicLowEmergencyThreshold = 0.7 + (normalSceneScore * 0.1);
+    final dynamicNormalSceneCheck = normalSceneThreshold * 0.9;
+    final dynamicOrganizedCheck = organizedPatternThreshold;
+    
+    // DYNAMIC: Always report "No Emergency" if score is high enough
     // This ensures users are informed when scenes are clearly safe
-    if (bestType == EmergencyType.noEmergency && bestScore >= 2.0) {
+    if (bestType == EmergencyType.noEmergency && bestScore >= dynamicHighNoEmergencyThreshold) {
       // Clear "no emergency" signal - always return it to inform user
       return EmergencyType.noEmergency;
     }
     
-    // If no emergency scores highest but is close to threshold, still report it
-    if (bestType == EmergencyType.noEmergency && bestScore >= 1.5) {
+    // If no emergency scores highest but is close to threshold, still report it - DYNAMIC
+    if (bestType == EmergencyType.noEmergency && bestScore >= dynamicMediumNoEmergencyThreshold) {
       // Moderate "no emergency" signal - still report it
       return EmergencyType.noEmergency;
     }
     
-    // If all emergency types score very low AND normal scene indicators are strong
-    if (bestScore < 0.8 && normalSceneScore > 0.65) {
+    // If all emergency types score very low AND normal scene indicators are strong - DYNAMIC
+    if (bestScore < dynamicLowEmergencyThreshold && normalSceneScore > dynamicNormalSceneCheck) {
       // Low emergency scores + strong normal indicators = no emergency
       return EmergencyType.noEmergency;
     }
     
-    // Minimum threshold to avoid false positives for emergencies
-    if (bestScore < 0.5) {
-      // Very low scores - check if we can confidently say "no emergency"
-      if (normalSceneScore > 0.6 || organizedPatterns > 0.25) {
+    // Minimum threshold to avoid false positives for emergencies - DYNAMIC
+    final dynamicMinThreshold = 0.4 + (normalSceneScore * 0.2);
+    if (bestScore < dynamicMinThreshold) {
+      // Very low scores - check if we can confidently say "no emergency" - DYNAMIC
+      if (normalSceneScore > dynamicNormalSceneCheck || organizedPatterns > dynamicOrganizedCheck) {
         return EmergencyType.noEmergency;
       }
       // Ambiguous case - use general as fallback but with low confidence
@@ -1320,7 +1485,7 @@ class EmergencyDetectionService {
     return bestType;
   }
   
-  /// Determine severity level with enhanced scoring
+  /// Determine severity level with enhanced multi-dimensional scoring
   SeverityLevel _determineSeverity(Map<String, double> analysis, EmergencyType type) {
     final brightness = analysis['brightness'] ?? 0.5;
     final edgeDensity = analysis['edge_density'] ?? 0.0;
@@ -1338,67 +1503,166 @@ class EmergencyDetectionService {
     final textureContrast = analysis['texture_contrast'] ?? 0.0;
     final highContrastRatio = analysis['high_contrast_ratio'] ?? 0.0;
     
-    double severityScore = 0.0;
+    // NEW: Advanced pattern indicators
+    final smokePattern = analysis['smoke_pattern'] ?? 0.0;
+    final waterTexture = analysis['water_texture'] ?? 0.0;
+    final structuralDamage = analysis['structural_damage'] ?? 0.0;
+    final flamePattern = analysis['flame_pattern'] ?? 0.0;
+    final reflectionPattern = analysis['reflection_pattern'] ?? 0.0;
     
-    // Fire severity: Intensity-based scoring
+    // Multi-dimensional severity assessment
+    double visualIntensity = 0.0;
+    double spatialExtent = 0.0;
+    double temporalProgression = 0.0; // Estimated from visual intensity
+    double contextRisk = 0.0;
+    
+    // NEW: Get ML intensity scores if available
+    final mlOverallIntensity = analysis['ml_overall_intensity'] ?? 0.0;
+    final mlFireIntensity = analysis['ml_fire_intensity'] ?? 0.0;
+    final mlFloodIntensity = analysis['ml_flood_intensity'] ?? 0.0;
+    final mlEarthquakeIntensity = analysis['ml_earthquake_intensity'] ?? 0.0;
+    
+    // DYNAMIC: Calculate adaptive weights for severity assessment
+    final severityWeights = _calculateDynamicSeverityWeights(analysis);
+    final visualMLWeight = severityWeights['visual_ml_weight']!;
+    final visualRuleWeight = severityWeights['visual_rule_weight']!;
+    final spatialMLWeight = severityWeights['spatial_ml_weight']!;
+    final spatialRuleWeight = severityWeights['spatial_rule_weight']!;
+    final temporalMLWeight = severityWeights['temporal_ml_weight']!;
+    final temporalRuleWeight = severityWeights['temporal_rule_weight']!;
+    final boostMultiplier = _calculateDynamicMLWeights(analysis)['boost_multiplier']!;
+    
+    // Fire severity: Enhanced with smoke, flame patterns, and ML intensity
     if (type == EmergencyType.fire) {
-      severityScore = 
+      // Visual Intensity (35% weight) - Enhanced with ML intensity
+      final baseVisualIntensity = 
           (redRatio + orangeRatio) * 2.5 * (1.0 + redIntensity + orangeIntensity) +
           brightness * 0.8 +
           brightRatio * 1.5 +
-          (textureVariance > 2000 ? 0.4 : 0.0);
+          (textureVariance > 2000 ? 0.4 : 0.0) +
+          smokePattern * 1.2 +  // Smoke detection
+          flamePattern * 1.5;     // Flame detection
+      
+      // DYNAMIC: Combine rule-based with ML intensity using adaptive weights
+      final mlBoost = (mlFireIntensity > 0 ? mlFireIntensity * boostMultiplier : 0.0) + 
+                     (mlOverallIntensity > 0 ? mlOverallIntensity * (boostMultiplier * 0.4) : 0.0);
+      visualIntensity = ((baseVisualIntensity * visualRuleWeight) + (mlBoost * visualMLWeight)).clamp(0.0, 2.0) * 0.35;
+      
+      // Spatial Extent (25% weight) - DYNAMIC: enhanced with ML if available
+      final baseSpatialExtent = ((redRatio + orangeRatio) * 2.0).clamp(0.0, 1.0);
+      spatialExtent = (baseSpatialExtent * spatialRuleWeight + (mlOverallIntensity * spatialMLWeight)).clamp(0.0, 1.0) * 0.25;
+      
+      // Temporal Progression (20% weight) - DYNAMIC: enhanced with ML intensity
+      final baseTemporal = (baseVisualIntensity * 1.2).clamp(0.0, 1.0);
+      temporalProgression = (baseTemporal * temporalRuleWeight + (mlOverallIntensity * temporalMLWeight)).clamp(0.0, 1.0) * 0.20;
+      
+      // Context Risk (20% weight)
+      contextRisk = (brightness > 0.7 ? 0.3 : 0.0) * 0.20;
     }
-    // Flood severity: Depth and coverage
+    // Flood severity: Enhanced with water texture, reflections, and ML intensity
     else if (type == EmergencyType.flood) {
-      severityScore = 
-          blueRatio * 3.5 * (1.0 + blueIntensity) +
-          (1 - brightness) * 0.8 +
-          darkRatio * 1.2 +
-          (textureContrast > 25 ? 0.5 : 0.0);
+      // Visual Intensity (35% weight) - Enhanced with ML intensity
+      final baseVisualIntensity = 
+          (blueRatio * 3.5 * (1.0 + blueIntensity)) +
+          ((1 - brightness) * 0.8) +
+          (darkRatio * 1.2) +
+          (textureContrast > 25 ? 0.5 : 0.0) +
+          waterTexture * 1.5 +        // Water texture
+          reflectionPattern * 1.2;     // Reflection patterns
+      
+      // DYNAMIC: Combine rule-based with ML intensity using adaptive weights
+      final mlBoost = (mlFloodIntensity > 0 ? mlFloodIntensity * boostMultiplier : 0.0) + 
+                     (mlOverallIntensity > 0 ? mlOverallIntensity * (boostMultiplier * 0.4) : 0.0);
+      visualIntensity = ((baseVisualIntensity * visualRuleWeight) + (mlBoost * visualMLWeight)).clamp(0.0, 2.0) * 0.35;
+      
+      // Spatial Extent (25% weight) - DYNAMIC: enhanced with ML
+      final baseSpatialExtent = (blueRatio * 2.5).clamp(0.0, 1.0);
+      spatialExtent = (baseSpatialExtent * spatialRuleWeight + (mlOverallIntensity * spatialMLWeight)).clamp(0.0, 1.0) * 0.25;
+      
+      // Temporal Progression (20% weight) - DYNAMIC: enhanced with ML
+      final baseTemporal = (waterTexture * 1.3).clamp(0.0, 1.0);
+      temporalProgression = (baseTemporal * temporalRuleWeight + (mlOverallIntensity * temporalMLWeight)).clamp(0.0, 1.0) * 0.20;
+      
+      // Context Risk (20% weight) - bottom-heavy = more likely flood
+      contextRisk = (blueRatio > 0.3 ? 0.4 : 0.0) * 0.20;
     }
-    // Earthquake severity: Structural damage indicators
+    // Earthquake severity: Enhanced with structural damage patterns and ML intensity
     else if (type == EmergencyType.earthquake) {
-      severityScore = 
+      // Visual Intensity (35% weight) - Enhanced with ML intensity
+      final baseVisualIntensity = 
           (edgeDensity * 4.0 + strongEdgeDensity * 7.0) +
-          grayRatio * 2.0 +
+          (grayRatio * 2.0) +
           (textureVariance / 800) +
-          highContrastRatio * 3.5 +
-          darkRatio * 1.5;
+          (highContrastRatio * 3.5) +
+          (darkRatio * 1.5) +
+          structuralDamage * 2.0;  // Structural damage
+      
+      // DYNAMIC: Combine rule-based with ML intensity using adaptive weights
+      final mlBoost = (mlEarthquakeIntensity > 0 ? mlEarthquakeIntensity * boostMultiplier : 0.0) + 
+                     (mlOverallIntensity > 0 ? mlOverallIntensity * (boostMultiplier * 0.4) : 0.0);
+      visualIntensity = ((baseVisualIntensity * visualRuleWeight) + (mlBoost * visualMLWeight)).clamp(0.0, 2.0) * 0.35;
+      
+      // Spatial Extent (25% weight) - DYNAMIC: enhanced with ML
+      final baseSpatialExtent = (edgeDensity * 3.0).clamp(0.0, 1.0);
+      spatialExtent = (baseSpatialExtent * spatialRuleWeight + (mlOverallIntensity * spatialMLWeight)).clamp(0.0, 1.0) * 0.25;
+      
+      // Temporal Progression (20% weight) - DYNAMIC: enhanced with ML
+      final baseTemporal = (structuralDamage * 1.5).clamp(0.0, 1.0);
+      temporalProgression = (baseTemporal * temporalRuleWeight + (mlOverallIntensity * temporalMLWeight)).clamp(0.0, 1.0) * 0.20;
+      
+      // Context Risk (20% weight)
+      contextRisk = (edgeDensity > 0.15 ? 0.3 : 0.0) * 0.20;
     }
     // Accident severity: Impact indicators
     else if (type == EmergencyType.accident) {
-      severityScore = 
-          (edgeDensity * 3.5 + strongEdgeDensity * 5.0) +
-          (1 - brightness) * 0.6 +
-          highContrastRatio * 2.5 +
-          (textureVariance > 1500 ? 0.4 : 0.0);
+      visualIntensity = 
+          ((edgeDensity * 3.5 + strongEdgeDensity * 5.0) * 0.35) +
+          ((1 - brightness) * 0.6 * 0.35) +
+          (highContrastRatio * 2.5 * 0.35) +
+          ((textureVariance > 1500 ? 0.4 : 0.0) * 0.35) +
+          structuralDamage * 1.5 * 0.35;  // NEW: Damage indicators
+      
+      spatialExtent = (edgeDensity * 2.5).clamp(0.0, 1.0) * 0.25;
+      temporalProgression = (edgeDensity * 1.2).clamp(0.0, 1.0) * 0.20;
+      contextRisk = (highContrastRatio > 0.15 ? 0.3 : 0.0) * 0.20;
     }
     // Calamity severity: Overall chaos level
     else if (type == EmergencyType.calamity) {
-      severityScore = 
-          (textureVariance / 600) +
-          (edgeDensity * 2.5) +
-          ((redRatio + blueRatio + grayRatio) * 1.8) +
-          highContrastRatio * 2.0 +
-          (brightRatio + darkRatio) * 1.5;
+      visualIntensity = 
+          ((textureVariance / 600) * 0.35) +
+          ((edgeDensity * 2.5) * 0.35) +
+          (((redRatio + blueRatio + grayRatio) * 1.8) * 0.35) +
+          ((highContrastRatio * 2.0) * 0.35) +
+          (((brightRatio + darkRatio) * 1.5) * 0.35);
+      
+      spatialExtent = ((redRatio + blueRatio + grayRatio) * 1.5).clamp(0.0, 1.0) * 0.25;
+      temporalProgression = (textureVariance / 1000).clamp(0.0, 1.0) * 0.20;
+      contextRisk = (textureVariance > 2000 ? 0.4 : 0.0) * 0.20;
     }
-    // General severity: ALWAYS LOW (General is a safe fallback, not a real emergency)
+    // General severity: ALWAYS LOW
     else {
-      // General emergencies should NEVER be Critical/High/Medium
-      // They are fallbacks for ambiguous cases - always Low severity
       return SeverityLevel.low;
     }
     
+    // Combined severity score (multi-dimensional)
+    final combinedScore = visualIntensity + spatialExtent + temporalProgression + contextRisk;
+    
     // Normalize and map to severity levels
     // Clamp to reasonable range
-    if (severityScore > 2.0) severityScore = 2.0;
+    final normalizedScore = combinedScore.clamp(0.0, 2.0);
     
-    // Map to levels with better thresholds
-    if (severityScore >= 1.5) {
+    // Get dynamic severity thresholds (no static values)
+    final severityThresholds = _calculateDynamicSeverityThresholds(analysis);
+    final criticalThreshold = severityThresholds['critical_threshold'] ?? 1.5;
+    final highThreshold = severityThresholds['high_threshold'] ?? 1.0;
+    final mediumThreshold = severityThresholds['medium_threshold'] ?? 0.6;
+    
+    // Map to levels with dynamic thresholds
+    if (normalizedScore >= criticalThreshold) {
       return SeverityLevel.critical;
-    } else if (severityScore >= 1.0) {
+    } else if (normalizedScore >= highThreshold) {
       return SeverityLevel.high;
-    } else if (severityScore >= 0.6) {
+    } else if (normalizedScore >= mediumThreshold) {
       return SeverityLevel.medium;
     } else {
       return SeverityLevel.low;
@@ -1425,23 +1689,33 @@ class EmergencyDetectionService {
     // Multi-factor confidence calculation
     switch (type) {
       case EmergencyType.fire:
+        final smokePattern = analysis['smoke_pattern'] ?? 0.0;
+        final flamePattern = analysis['flame_pattern'] ?? 0.0;
         confidence = 0.4 + 
             (redRatio + orangeRatio) * 1.8 * (1.0 + (redIntensity + orangeIntensity) * 0.5) +
             (textureVariance > 1500 ? 0.15 : 0.0) +
-            (highContrastRatio > 0.1 ? 0.1 : 0.0);
+            (highContrastRatio > 0.1 ? 0.1 : 0.0) +
+            smokePattern * 0.12 +  // NEW: Smoke pattern boost
+            flamePattern * 0.15;     // NEW: Flame pattern boost
         break;
       case EmergencyType.flood:
+        final waterTexture = analysis['water_texture'] ?? 0.0;
+        final reflectionPattern = analysis['reflection_pattern'] ?? 0.0;
         confidence = 0.4 + 
             blueRatio * 2.2 * (1.0 + blueIntensity * 0.5) +
             (textureContrast > 20 ? 0.15 : 0.0) +
-            (grayRatio > 0.1 ? 0.1 : 0.0);
+            (grayRatio > 0.1 ? 0.1 : 0.0) +
+            waterTexture * 0.12 +      // NEW: Water texture boost
+            reflectionPattern * 0.10;  // NEW: Reflection pattern boost
         break;
       case EmergencyType.earthquake:
+        final structuralDamage = analysis['structural_damage'] ?? 0.0;
         confidence = 0.4 + 
             (edgeDensity * 1.8 + strongEdgeDensity * 2.5) +
             grayRatio * 1.2 +
             (textureVariance > 2000 ? 0.2 : 0.0) +
-            (highContrastRatio > 0.15 ? 0.15 : 0.0);
+            (highContrastRatio > 0.15 ? 0.15 : 0.0) +
+            structuralDamage * 0.15;  // NEW: Structural damage boost
         break;
       case EmergencyType.accident:
         confidence = 0.4 + 
@@ -1509,58 +1783,196 @@ class EmergencyDetectionService {
     };
   }
   
-  /// Calculate adaptive thresholds based on image characteristics
-  /// Adjusts detection sensitivity based on lighting, contrast, etc.
+  /// Calculate dynamic weights for ML/rule-based combination
+  /// Adapts based on image characteristics and ML output quality
+  Map<String, double> _calculateDynamicMLWeights(Map<String, double> analysis) {
+    final brightness = analysis['brightness'] ?? 0.5;
+    final contrast = analysis['overall_contrast'] ?? 0.5;
+    final textureVariance = analysis['texture_variance'] ?? 0.0;
+    final mlOverallIntensity = analysis['ml_overall_intensity'] ?? 0.0;
+    final mlIntensityVariance = analysis['intensity_variance'] ?? 0.0;
+    
+    // Calculate ML confidence based on output quality
+    // Lower variance = higher confidence in ML
+    // Also consider if ML actually provided meaningful output
+    final hasMLOutput = mlOverallIntensity > 0.01; // ML provided meaningful output
+    final mlConfidence = hasMLOutput && mlIntensityVariance > 0 
+        ? (1.0 - (mlIntensityVariance.clamp(0.0, 0.5) * 2.0)).clamp(0.3, 0.9)
+        : hasMLOutput 
+            ? 0.6 // ML provided output but no variance (single value) - moderate confidence
+            : 0.3; // No ML output or very low - low confidence, rely more on rules
+    
+    // Calculate rule-based confidence based on image quality
+    // High contrast, good brightness range = higher confidence
+    final ruleBasedConfidence = (contrast * 0.4 + 
+                                (brightness > 0.2 && brightness < 0.8 ? 0.3 : 0.1) +
+                                (textureVariance > 1000 && textureVariance < 5000 ? 0.3 : 0.1)).clamp(0.3, 0.9);
+    
+    // Dynamic ML weight: Higher when ML confidence is high and rule-based is uncertain
+    // Base weight adapts to image characteristics
+    final baseMLWeight = 0.2 + (mlConfidence * 0.2) - (ruleBasedConfidence * 0.1);
+    final dynamicMLWeight = baseMLWeight.clamp(0.15, 0.45);
+    final dynamicRuleWeight = 1.0 - dynamicMLWeight;
+    
+    // Dynamic ML multipliers: Adapt based on image characteristics
+    // Higher multipliers for clearer images, lower for ambiguous
+    final imageClarity = (contrast * 0.5 + (brightness > 0.3 && brightness < 0.7 ? 0.3 : 0.1) + 
+                         (textureVariance > 500 && textureVariance < 4000 ? 0.2 : 0.0)).clamp(0.3, 1.0);
+    
+    final dynamicTypeMultiplier = 2.0 + (imageClarity * 1.0); // 2.0-3.0 range
+    final dynamicOverallMultiplier = 0.8 + (imageClarity * 0.5); // 0.8-1.3 range
+    final dynamicBoostMultiplier = 1.2 + (imageClarity * 0.6); // 1.2-1.8 range
+    
+    return {
+      'ml_weight': dynamicMLWeight,
+      'rule_weight': dynamicRuleWeight,
+      'type_multiplier': dynamicTypeMultiplier,
+      'overall_multiplier': dynamicOverallMultiplier,
+      'boost_multiplier': dynamicBoostMultiplier,
+      'ml_confidence': mlConfidence,
+      'rule_confidence': ruleBasedConfidence,
+    };
+  }
+  
+  /// Calculate dynamic weights for severity assessment
+  /// Adapts based on image characteristics and available data
+  Map<String, double> _calculateDynamicSeverityWeights(Map<String, double> analysis) {
+    final brightness = analysis['brightness'] ?? 0.5;
+    final contrast = analysis['overall_contrast'] ?? 0.5;
+    final mlOverallIntensity = analysis['ml_overall_intensity'] ?? 0.0;
+    final mlIntensityVariance = analysis['intensity_variance'] ?? 0.0;
+    
+    // Calculate ML reliability for severity assessment
+    final mlReliability = mlOverallIntensity > 0 
+        ? (1.0 - (mlIntensityVariance.clamp(0.0, 0.5) * 1.5)).clamp(0.2, 0.8)
+        : 0.0; // No ML if intensity is 0
+    
+    // Visual intensity weights: Adapt based on image quality
+    final imageQuality = (contrast * 0.5 + (brightness > 0.25 && brightness < 0.75 ? 0.3 : 0.1) + 
+                         (mlReliability * 0.2)).clamp(0.3, 1.0);
+    
+    // Dynamic visual intensity ML weight: Higher when ML is reliable
+    final visualMLWeight = (0.2 + (mlReliability * 0.15)).clamp(0.15, 0.4);
+    final visualRuleWeight = 1.0 - visualMLWeight;
+    
+    // Spatial extent weights: ML helps when available
+    final spatialMLWeight = mlReliability > 0.3 ? (0.15 + (mlReliability * 0.1)).clamp(0.1, 0.3) : 0.0;
+    final spatialRuleWeight = 1.0 - spatialMLWeight;
+    
+    // Temporal progression weights: ML helps estimate progression
+    final temporalMLWeight = mlReliability > 0.3 ? (0.2 + (mlReliability * 0.15)).clamp(0.15, 0.4) : 0.0;
+    final temporalRuleWeight = 1.0 - temporalMLWeight;
+    
+    return {
+      'visual_ml_weight': visualMLWeight,
+      'visual_rule_weight': visualRuleWeight,
+      'spatial_ml_weight': spatialMLWeight,
+      'spatial_rule_weight': spatialRuleWeight,
+      'temporal_ml_weight': temporalMLWeight,
+      'temporal_rule_weight': temporalRuleWeight,
+      'ml_reliability': mlReliability,
+    };
+  }
+  
+  /// Calculate fully dynamic adaptive thresholds based on image characteristics
+  /// All thresholds are calculated dynamically - no static values
   Map<String, double> _calculateAdaptiveThresholds(Map<String, double> analysis) {
     final brightness = analysis['brightness'] ?? 0.5;
     final contrast = analysis['overall_contrast'] ?? 0.5;
     final textureVariance = analysis['texture_variance'] ?? 0.0;
+    final edgeDensity = analysis['edge_density'] ?? 0.0;
+    final redRatio = analysis['red_ratio'] ?? 0.0;
+    final blueRatio = analysis['blue_ratio'] ?? 0.0;
+    final orangeRatio = analysis['orange_ratio'] ?? 0.0;
     
-    // Base thresholds (for normal lighting)
-    double fireThreshold = 0.08;
-    double waterThreshold = 0.12;
-    double edgeThreshold = 0.10;
+    // Dynamic base threshold calculation (no static values)
+    // Base threshold adapts to image characteristics
+    final dynamicBase = (brightness * 0.3 + contrast * 0.3 + (textureVariance / 5000).clamp(0.0, 0.4));
     
-    // Adjust based on brightness (low light = higher thresholds to reduce false positives)
-    if (brightness < 0.3) {
-      // Low light conditions - be more conservative
-      fireThreshold *= 1.3;
-      waterThreshold *= 1.4;
-      edgeThreshold *= 1.2;
-    } else if (brightness > 0.8) {
-      // Very bright conditions - can detect more easily
-      fireThreshold *= 0.9;
-      waterThreshold *= 0.85;
-      edgeThreshold *= 0.95;
+    // Fire threshold: Dynamic based on image brightness and contrast
+    // Dark images need lower threshold, bright images need higher
+    final fireThreshold = dynamicBase * 0.8 + 
+                         (brightness < 0.3 ? 0.05 : brightness > 0.7 ? 0.12 : 0.08) +
+                         (contrast < 0.3 ? 0.02 : contrast > 0.7 ? 0.05 : 0.03);
+    
+    // Water threshold: Dynamic based on brightness and blue presence
+    final waterThreshold = dynamicBase * 0.9 +
+                          (brightness < 0.4 ? 0.08 : brightness > 0.6 ? 0.15 : 0.12) +
+                          (blueRatio > 0.1 ? 0.03 : 0.0);
+    
+    // Edge threshold: Dynamic based on texture variance and contrast
+    final edgeThreshold = dynamicBase * 0.7 +
+                         (textureVariance < 1000 ? 0.08 : textureVariance > 3000 ? 0.15 : 0.10) +
+                         (contrast < 0.4 ? 0.05 : 0.08);
+    
+    // Normal scene threshold: Dynamic based on image characteristics
+    final normalSceneThreshold = (brightness * 0.2 + contrast * 0.2 + (1.0 - edgeDensity) * 0.3).clamp(0.5, 0.85);
+    
+    // Organized pattern threshold: Dynamic based on texture variance
+    final organizedPatternThreshold = (textureVariance / 4000).clamp(0.15, 0.35);
+    
+    // False positive risk threshold: Dynamic based on multiple factors
+    final falsePositiveThreshold = ((1.0 - brightness) * 0.2 + (1.0 - contrast) * 0.2 + edgeDensity * 0.3).clamp(0.3, 0.6);
+    
+    // Return all dynamic thresholds (no static values)
+    return {
+      'adaptive_fire_threshold': fireThreshold.clamp(0.05, 0.20),
+      'adaptive_water_threshold': waterThreshold.clamp(0.08, 0.25),
+      'adaptive_edge_threshold': edgeThreshold.clamp(0.05, 0.20),
+      'adaptive_normal_scene_threshold': normalSceneThreshold,
+      'adaptive_organized_pattern_threshold': organizedPatternThreshold,
+      'adaptive_false_positive_threshold': falsePositiveThreshold,
+    };
+  }
+  
+  /// Calculate dynamic confidence threshold based on image characteristics
+  /// No static values - all thresholds adapt to image
+  double _calculateDynamicConfidenceThreshold(Map<String, double> analysis, EmergencyType type) {
+    final brightness = analysis['brightness'] ?? 0.5;
+    final contrast = analysis['overall_contrast'] ?? 0.5;
+    final textureVariance = analysis['texture_variance'] ?? 0.0;
+    final normalSceneLikelihood = analysis['normal_scene_likelihood'] ?? 0.5;
+    
+    // Base confidence threshold (dynamic, calculated from image characteristics)
+    double baseThreshold = 0.60 + (brightness * 0.1) + (contrast * 0.1);
+    
+    // Adjust based on image quality (dynamic)
+    baseThreshold += (brightness < 0.3 || brightness > 0.8 ? 0.05 : 0.0);
+    baseThreshold += (contrast < 0.3 ? 0.05 : 0.0);
+    baseThreshold += (textureVariance > 3000 ? 0.03 : 0.0);
+    baseThreshold += (normalSceneLikelihood > 0.6 ? 0.08 : 0.0);
+    
+    // Type-specific adjustments (dynamic based on type)
+    switch (type) {
+      case EmergencyType.calamity:
+        baseThreshold += 0.10;
+        break;
+      case EmergencyType.fire:
+      case EmergencyType.earthquake:
+        baseThreshold += 0.05;
+        break;
+      default:
+        break;
     }
     
-    // Adjust based on contrast (low contrast = harder to detect)
-    if (contrast < 0.3) {
-      fireThreshold *= 1.2;
-      waterThreshold *= 1.2;
-      edgeThreshold *= 1.15;
-    } else if (contrast > 0.7) {
-      fireThreshold *= 0.95;
-      waterThreshold *= 0.95;
-      edgeThreshold *= 0.9;
-    }
+    return baseThreshold.clamp(0.60, 0.90);
+  }
+  
+  /// Calculate dynamic severity thresholds based on image characteristics
+  Map<String, double> _calculateDynamicSeverityThresholds(Map<String, double> analysis) {
+    final brightness = analysis['brightness'] ?? 0.5;
+    final contrast = analysis['overall_contrast'] ?? 0.5;
+    final textureVariance = analysis['texture_variance'] ?? 0.0;
     
-    // Adjust based on texture variance (chaotic = might be emergency)
-    if (textureVariance > 2000) {
-      // High variance - could indicate emergency, lower thresholds slightly
-      fireThreshold *= 0.95;
-      waterThreshold *= 0.95;
-    } else if (textureVariance < 500) {
-      // Very low variance - likely normal scene, raise thresholds
-      fireThreshold *= 1.15;
-      waterThreshold *= 1.15;
-      edgeThreshold *= 1.1;
-    }
+    // Dynamic severity thresholds (calculated from image, no static values)
+    final criticalThreshold = 1.3 + (brightness * 0.2) + (contrast * 0.1) + (textureVariance / 10000);
+    final highThreshold = 0.9 + (brightness * 0.15) + (contrast * 0.08) + (textureVariance / 12000);
+    final mediumThreshold = 0.5 + (brightness * 0.1) + (contrast * 0.05) + (textureVariance / 15000);
     
     return {
-      'adaptive_fire_threshold': fireThreshold,
-      'adaptive_water_threshold': waterThreshold,
-      'adaptive_edge_threshold': edgeThreshold,
+      'critical_threshold': criticalThreshold.clamp(1.2, 1.8),
+      'high_threshold': highThreshold.clamp(0.8, 1.3),
+      'medium_threshold': mediumThreshold.clamp(0.5, 0.9),
     };
   }
   
@@ -1570,6 +1982,258 @@ class EmergencyDetectionService {
     final mean = values.reduce((a, b) => a + b) / values.length;
     final variance = values.map((v) => (v - mean) * (v - mean)).reduce((a, b) => a + b) / values.length;
     return variance;
+  }
+  
+  /// Detect smoke patterns (gray/white wispy patterns, low contrast)
+  /// Fully dynamic - no static thresholds
+  double _detectSmokePatterns(img.Image image) {
+    int smokePixels = 0;
+    int totalPixels = 0;
+    
+    // Calculate image brightness for dynamic thresholds
+    double totalBrightness = 0.0;
+    int brightnessSamples = 0;
+    for (int y = 0; y < image.height; y += 10) {
+      for (int x = 0; x < image.width; x += 10) {
+        final pixel = image.getPixel(x, y);
+        totalBrightness += (pixel.r + pixel.g + pixel.b) / 3;
+        brightnessSamples++;
+      }
+    }
+    final avgBrightness = brightnessSamples > 0 ? totalBrightness / brightnessSamples : 128.0;
+    final normalizedBrightness = avgBrightness / 255.0;
+    
+    // Sample pixels for performance
+    for (int y = 0; y < image.height; y += 3) {
+      for (int x = 0; x < image.width; x += 3) {
+        final pixel = image.getPixel(x, y);
+        final r = pixel.r;
+        final g = pixel.g;
+        final b = pixel.b;
+        
+        // Smoke characteristics: gray/white, low saturation, wispy
+        final gray = (r + g + b) / 3;
+        final maxColor = math.max(math.max(r, g), b);
+        final minColor = math.min(math.min(r, g), b);
+        final saturation = maxColor > 0 ? (maxColor - minColor) / maxColor : 0.0;
+        
+        // Dynamic thresholds based on image brightness (no static values)
+        final dynamicGrayMin = 80 + (normalizedBrightness * 40);
+        final dynamicGrayMax = 200 + (normalizedBrightness * 30);
+        final dynamicSaturationMax = 0.25 + (normalizedBrightness * 0.1);
+        
+        if (gray > dynamicGrayMin && gray < dynamicGrayMax && saturation < dynamicSaturationMax) {
+          smokePixels++;
+        }
+        totalPixels++;
+      }
+    }
+    
+    return totalPixels > 0 ? (smokePixels / totalPixels).clamp(0.0, 1.0) : 0.0;
+  }
+  
+  /// Detect water texture (smooth, reflective surfaces, blue/cyan)
+  double _detectWaterTexture(img.Image image) {
+    int waterPixels = 0;
+    int totalPixels = 0;
+    
+    // Sample pixels for performance
+    for (int y = 0; y < image.height; y += 3) {
+      for (int x = 0; x < image.width; x += 3) {
+        final pixel = image.getPixel(x, y);
+        final r = pixel.r;
+        final g = pixel.g;
+        final b = pixel.b;
+        
+        // Water characteristics: blue/cyan dominant, smooth texture
+        final blueRatio = b / (r + g + b + 1);
+        final cyanRatio = (g + b) / (r + g + b + 1);
+        
+        // Calculate average brightness for dynamic thresholds
+        final pixelBrightness = (r + g + b) / 3;
+        final normalizedBrightness = pixelBrightness / 255.0;
+        
+        // Dynamic thresholds based on image characteristics (no static values)
+        final dynamicBlueThreshold = 0.30 + (normalizedBrightness * 0.1);
+        final dynamicCyanThreshold = 0.45 + (normalizedBrightness * 0.1);
+        
+        // Check for water-like colors (blue/cyan) and smoothness
+        if (blueRatio > dynamicBlueThreshold || cyanRatio > dynamicCyanThreshold) {
+          // Check local smoothness (low variance in 3x3 area)
+          if (x > 1 && y > 1 && x < image.width - 1 && y < image.height - 1) {
+            final neighbors = [
+              image.getPixel(x - 1, y - 1),
+              image.getPixel(x, y - 1),
+              image.getPixel(x + 1, y - 1),
+              image.getPixel(x - 1, y),
+              image.getPixel(x + 1, y),
+              image.getPixel(x - 1, y + 1),
+              image.getPixel(x, y + 1),
+              image.getPixel(x + 1, y + 1),
+            ];
+            
+            final centerGray = (r + g + b) / 3;
+            double variance = 0.0;
+            for (final n in neighbors) {
+              final nGray = (n.r + n.g + n.b) / 3;
+              variance += (nGray - centerGray) * (nGray - centerGray);
+            }
+            variance /= neighbors.length;
+            
+            // Water is smooth (low variance) - dynamic threshold
+            final dynamicVarianceThreshold = 150 + (normalizedBrightness * 100); // Adapts to brightness
+            if (variance < dynamicVarianceThreshold) {
+              waterPixels++;
+            }
+          } else {
+            waterPixels++;
+          }
+        }
+        totalPixels++;
+      }
+    }
+    
+    return totalPixels > 0 ? (waterPixels / totalPixels).clamp(0.0, 1.0) : 0.0;
+  }
+  
+  /// Detect structural damage (cracks, debris, irregular patterns)
+  double _detectStructuralDamage(img.Image image) {
+    int damagePixels = 0;
+    int totalPixels = 0;
+    
+    // Sample pixels for performance
+    for (int y = 2; y < image.height - 2; y += 4) {
+      for (int x = 2; x < image.width - 2; x += 4) {
+        final center = image.getPixel(x, y);
+        final top = image.getPixel(x, y - 1);
+        final bottom = image.getPixel(x, y + 1);
+        final left = image.getPixel(x - 1, y);
+        final right = image.getPixel(x + 1, y);
+        
+        final centerGray = (center.r + center.g + center.b) / 3;
+        final topGray = (top.r + top.g + top.b) / 3;
+        final bottomGray = (bottom.r + bottom.g + bottom.b) / 3;
+        final leftGray = (left.r + left.g + left.b) / 3;
+        final rightGray = (right.r + right.g + right.b) / 3;
+        
+        // Structural damage: high contrast edges, irregular patterns
+        final verticalEdge = (topGray - bottomGray).abs();
+        final horizontalEdge = (leftGray - rightGray).abs();
+        final edgeStrength = (verticalEdge + horizontalEdge) / 2;
+        
+        // Damage indicators: strong edges (cracks), gray/dark colors (debris)
+        // Calculate dynamic thresholds from image characteristics
+        final avgEdgeStrength = (verticalEdge + horizontalEdge) / 2;
+        final dynamicEdgeThreshold = 30 + (avgEdgeStrength / 10); // Adapts to image texture
+        final dynamicGrayThreshold = 120 + (centerGray / 5); // Adapts to brightness
+        
+        if (edgeStrength > dynamicEdgeThreshold && centerGray < dynamicGrayThreshold) {
+          damagePixels++;
+        }
+        totalPixels++;
+      }
+    }
+    
+    return totalPixels > 0 ? (damagePixels / totalPixels).clamp(0.0, 1.0) : 0.0;
+  }
+  
+  /// Detect flame patterns (bright orange/red, upward-tending shapes)
+  double _detectFlamePatterns(img.Image image) {
+    int flamePixels = 0;
+    int totalPixels = 0;
+    
+    // Sample pixels for performance
+    for (int y = 1; y < image.height - 1; y += 3) {
+      for (int x = 1; x < image.width - 1; x += 3) {
+        final pixel = image.getPixel(x, y);
+        final r = pixel.r;
+        final g = pixel.g;
+        final b = pixel.b;
+        
+        // Flame characteristics: bright orange/red, high intensity
+        final redRatio = r / (r + g + b + 1);
+        final orangeRatio = (r + g) / (r + g + b + 1);
+        final brightness = (r + g + b) / 3;
+        
+        // Flame: bright, red/orange dominant - dynamic thresholds
+        // Calculate average brightness for dynamic thresholds
+        final avgBrightness = (r + g + b) / 3;
+        final normalizedBrightness = avgBrightness / 255.0;
+        final dynamicRedThreshold = 0.35 + (normalizedBrightness * 0.1);
+        final dynamicOrangeThreshold = 0.45 + (normalizedBrightness * 0.1);
+        final dynamicBrightnessThreshold = 130 + (normalizedBrightness * 30);
+        
+        if ((redRatio > dynamicRedThreshold || orangeRatio > dynamicOrangeThreshold) && 
+            brightness > dynamicBrightnessThreshold) {
+          flamePixels++;
+        }
+        totalPixels++;
+      }
+    }
+    
+    return totalPixels > 0 ? (flamePixels / totalPixels).clamp(0.0, 1.0) : 0.0;
+  }
+  
+  /// Detect reflection patterns (water reflections, mirror-like surfaces)
+  double _detectReflectionPatterns(img.Image image) {
+    int reflectionPixels = 0;
+    int totalPixels = 0;
+    
+    // Sample pixels for performance
+    for (int y = 1; y < image.height - 1; y += 4) {
+      for (int x = 1; x < image.width - 1; x += 4) {
+        final pixel = image.getPixel(x, y);
+        final top = image.getPixel(x, y - 1);
+        final bottom = image.getPixel(x, y + 1);
+        
+        final pixelGray = (pixel.r + pixel.g + pixel.b) / 3;
+        final topGray = (top.r + top.g + top.b) / 3;
+        final bottomGray = (bottom.r + bottom.g + bottom.b) / 3;
+        
+        // Reflection: symmetric patterns (top and bottom similar)
+        final symmetry = 1.0 - ((topGray - bottomGray).abs() / 255.0);
+        
+        // Water reflections: moderate brightness, high symmetry - fully dynamic thresholds
+        // Calculate average brightness for dynamic thresholds
+        final avgBrightness = (pixel.r + pixel.g + pixel.b) / 3;
+        final normalizedBrightness = avgBrightness / 255.0;
+        final dynamicSymmetryThreshold = 0.65 + (normalizedBrightness * 0.1);
+        final dynamicGrayMin = 70 + (normalizedBrightness * 20);
+        final dynamicGrayMax = 190 + (normalizedBrightness * 20);
+        
+        if (symmetry > dynamicSymmetryThreshold && 
+            pixelGray > dynamicGrayMin && pixelGray < dynamicGrayMax) {
+          reflectionPixels++;
+        }
+        totalPixels++;
+      }
+    }
+    
+    return totalPixels > 0 ? (reflectionPixels / totalPixels).clamp(0.0, 1.0) : 0.0;
+  }
+  
+  /// Calculate spatial extent (how much of image is affected)
+  double _calculateSpatialExtent(Map<String, double> regionAnalysis, EmergencyType type) {
+    // Get active regions from region analysis
+    double activeRegions = 0.0;
+    
+    switch (type) {
+      case EmergencyType.fire:
+        activeRegions = (regionAnalysis['red_ratio_active_regions'] ?? 0.0) +
+                       (regionAnalysis['orange_ratio_active_regions'] ?? 0.0);
+        break;
+      case EmergencyType.flood:
+        activeRegions = regionAnalysis['blue_ratio_active_regions'] ?? 0.0;
+        break;
+      case EmergencyType.earthquake:
+        activeRegions = regionAnalysis['edge_density_active_regions'] ?? 0.0;
+        break;
+      default:
+        activeRegions = 0.5; // Default moderate extent
+    }
+    
+    // Normalize to 0-1 range (active regions is already 0-1)
+    return activeRegions.clamp(0.0, 1.0);
   }
   
   /// Create default result when detection fails

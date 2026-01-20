@@ -13,7 +13,6 @@ const { Server } = require('socket.io');
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
 const messageRoutes = require('./routes/messages');
-const emergencyRoutes = require('./routes/emergency');
 const locationRoutes = require('./routes/location');
 const adminRoutes = require('./routes/admin');
 const analyticsRoutes = require('./routes/analytics');
@@ -74,7 +73,6 @@ app.get('/health', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/users', authMiddleware, userRoutes);
 app.use('/api/messages', authMiddleware, messageRoutes);
-app.use('/api/emergency', authMiddleware, emergencyRoutes);
 app.use('/api/location', locationRoutes);
 app.use('/api/admin', authMiddleware, adminRoutes);
 app.use('/api/analytics', authMiddleware, analyticsRoutes);

@@ -112,18 +112,30 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
   /// Try to load ML model (optional enhancement)
   Future<void> _tryLoadMLModel() async {
     try {
-      // Try to load model - will fail silently if model not found
-      final loaded = await MLModelService.instance.loadModel('models/emergency_detector.tflite');
+      debugPrint('🔄 Attempting to load Disaster Intensity Analyzer model...');
+      // Try to load Disaster Intensity Analyzer model
+      final loaded = await MLModelService.instance.loadModel('disaster.tflite');
       if (loaded) {
-        // Enable ML model usage in detection service
-        _detectionService.setUseMLModel(true);
-        debugPrint('✅ ML Model enabled for emergency detection');
+        // Verify model is actually functional
+        if (MLModelService.instance.isLoaded) {
+          // Enable ML model usage in detection service
+          _detectionService.setUseMLModel(true);
+          debugPrint('✅ Disaster Intensity Analyzer model loaded, validated, and enabled');
+          debugPrint('   Model input shape: ${MLModelService.instance.inputShape}');
+          debugPrint('   Model output shape: ${MLModelService.instance.outputShape}');
+          debugPrint('   ML-enhanced detection is ACTIVE');
+        } else {
+          debugPrint('⚠️ Model loaded but not functional - using rule-based detection only');
+        }
       } else {
-        debugPrint('ℹ️ ML Model not available, using rule-based detection');
+        debugPrint('ℹ️ Disaster Intensity Analyzer model not available or validation failed');
+        debugPrint('   Using rule-based detection (still fully functional)');
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       // Model not found or other error - this is fine, rule-based will work
-      debugPrint('ℹ️ ML Model not available: $e (rule-based detection will be used)');
+      debugPrint('ℹ️ Disaster Intensity Analyzer model not available: $e');
+      debugPrint('   Stack trace: $stackTrace');
+      debugPrint('   Using rule-based detection (still fully functional)');
     }
   }
 
@@ -2164,70 +2176,82 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
       ignoring: true,
       child: Center(
         child: Container(
-          width: 80,
-          height: 80,
+          width: 100,
+          height: 100,
           decoration: BoxDecoration(
             border: Border.all(
-              color: Colors.white.withOpacity(0.6),
-              width: 2,
+              color: Colors.white.withOpacity(0.3),
+              width: 1.5,
             ),
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(8),
           ),
           child: Stack(
             children: [
-              // Corner indicators
+              // Corner indicators - more subtle and properly sized
               Positioned(
-                top: 4,
-                left: 4,
+                top: 2,
+                left: 2,
                 child: Container(
-                  width: 12,
-                  height: 12,
+                  width: 20,
+                  height: 20,
                   decoration: BoxDecoration(
                     border: Border(
-                      top: BorderSide(color: Colors.white.withOpacity(0.8), width: 2),
-                      left: BorderSide(color: Colors.white.withOpacity(0.8), width: 2),
+                      top: BorderSide(color: Colors.white.withOpacity(0.7), width: 3),
+                      left: BorderSide(color: Colors.white.withOpacity(0.7), width: 3),
+                    ),
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(2),
                     ),
                   ),
                 ),
               ),
               Positioned(
-                top: 4,
-                right: 4,
+                top: 2,
+                right: 2,
                 child: Container(
-                  width: 12,
-                  height: 12,
+                  width: 20,
+                  height: 20,
                   decoration: BoxDecoration(
                     border: Border(
-                      top: BorderSide(color: Colors.white.withOpacity(0.8), width: 2),
-                      right: BorderSide(color: Colors.white.withOpacity(0.8), width: 2),
+                      top: BorderSide(color: Colors.white.withOpacity(0.7), width: 3),
+                      right: BorderSide(color: Colors.white.withOpacity(0.7), width: 3),
+                    ),
+                    borderRadius: const BorderRadius.only(
+                      topRight: Radius.circular(2),
                     ),
                   ),
                 ),
               ),
               Positioned(
-                bottom: 4,
-                left: 4,
+                bottom: 2,
+                left: 2,
                 child: Container(
-                  width: 12,
-                  height: 12,
+                  width: 20,
+                  height: 20,
                   decoration: BoxDecoration(
                     border: Border(
-                      bottom: BorderSide(color: Colors.white.withOpacity(0.8), width: 2),
-                      left: BorderSide(color: Colors.white.withOpacity(0.8), width: 2),
+                      bottom: BorderSide(color: Colors.white.withOpacity(0.7), width: 3),
+                      left: BorderSide(color: Colors.white.withOpacity(0.7), width: 3),
+                    ),
+                    borderRadius: const BorderRadius.only(
+                      bottomLeft: Radius.circular(2),
                     ),
                   ),
                 ),
               ),
               Positioned(
-                bottom: 4,
-                right: 4,
+                bottom: 2,
+                right: 2,
                 child: Container(
-                  width: 12,
-                  height: 12,
+                  width: 20,
+                  height: 20,
                   decoration: BoxDecoration(
                     border: Border(
-                      bottom: BorderSide(color: Colors.white.withOpacity(0.8), width: 2),
-                      right: BorderSide(color: Colors.white.withOpacity(0.8), width: 2),
+                      bottom: BorderSide(color: Colors.white.withOpacity(0.7), width: 3),
+                      right: BorderSide(color: Colors.white.withOpacity(0.7), width: 3),
+                    ),
+                    borderRadius: const BorderRadius.only(
+                      bottomRight: Radius.circular(2),
                     ),
                   ),
                 ),
