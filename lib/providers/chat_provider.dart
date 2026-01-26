@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/bluetooth_service.dart';
 import '../services/voice_chat_extension.dart' as voice;
 import '../services/sqlite_service.dart';
+import '../services/firebase_service.dart';
 import '../providers/auth_provider.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import '../utils/enhanced_error_handler.dart';
@@ -171,8 +172,10 @@ class ChatProvider with ChangeNotifier {
       } catch (e) {
         // Not JSON, process as regular string message
       }
-      // Process as regular string message
-      _processIncomingMessage(message);
+      // Process as regular string message (async, but don't await in stream)
+      _processIncomingMessage(message).catchError((error) {
+        print('Error processing incoming message: $error');
+      });
     });
 
     _connectionSubscription = _bluetoothService.connectionStream.listen((connected) async {
@@ -573,7 +576,7 @@ class ChatProvider with ChangeNotifier {
   }
 
   /// Process incoming message and handle voice messages
-  void _processIncomingMessage(String data) {
+  Future<void> _processIncomingMessage(String data) async {
     addStructuredDebug({
       'source': 'CHAT',
       'event': 'Processing incoming data',
@@ -625,16 +628,27 @@ class ChatProvider with ChangeNotifier {
         continue;
       } else if (message.startsWith('<MSG_START:')) {
         // New message started - flush previous if any
-        _flushBufferedMessage();
+        await _flushBufferedMessage();
         
         // Extract UID from start marker: <MSG_START:UID>
         final uidMatch = RegExp(r'<MSG_START:(.+?)>').firstMatch(message);
         if (uidMatch != null) {
           final uid = uidMatch.group(1);
-          _bufferedMessageSenderUid = uid;
-          _incomingMessageBuffer = '';
-          _isBufferingMessage = true;
-          print('BT_RX: Message start from UID: $uid');
+          if (uid != null && uid.isNotEmpty) {
+            _bufferedMessageSenderUid = uid;
+            _incomingMessageBuffer = '';
+            _isBufferingMessage = true;
+            print('BT_RX: Message start from UID: $uid');
+            
+            // Check if UID is known, if not request profile
+            _isUidKnown(uid).then((isKnown) {
+              if (!isKnown) {
+                print('BT_PROFILE: Unknown UID detected: $uid - Requesting profile');
+                _requestProfileFromESP32(uid);
+              }
+            });
+          }
+          
           addStructuredDebug({
             'source': 'CHAT',
             'event': 'Message buffering started',
@@ -643,7 +657,7 @@ class ChatProvider with ChangeNotifier {
         }
       } else if (message == '<MSG_END>') {
         // Message complete - flush buffer
-        _flushBufferedMessage();
+        await _flushBufferedMessage();
       } else if (_isBufferingMessage) {
         // Continuation fragment - append to buffer
         _incomingMessageBuffer += message;
@@ -659,6 +673,23 @@ class ChatProvider with ChangeNotifier {
           _addMessage(message, false);
         }
       } else {
+        // Try to parse as JSON (for profile responses and other commands)
+        try {
+          final jsonData = json.decode(message);
+          if (jsonData is Map<String, dynamic>) {
+            // Check if it's a profile response (matches ESP32 format)
+            if (jsonData.containsKey('command') && jsonData['command'] == 'profile_response') {
+              final profileData = jsonData['data'] as Map<String, dynamic>?;
+              if (profileData != null) {
+                _saveProfileFromESP32(profileData);
+                return; // Don't add as message
+              }
+            }
+          }
+        } catch (e) {
+          // Not JSON, continue normal processing
+        }
+        
         // Regular text message - try to extract user info
         String? extractedSender = _extractUserFromMessage(message);
         _addMessage(message, false, senderName: extractedSender);
@@ -666,8 +697,171 @@ class ChatProvider with ChangeNotifier {
     }
   }
   
+  /// Check if UID is known (cached or in SQLite)
+  Future<bool> _isUidKnown(String uid) async {
+    if (uid.isEmpty || uid == 'UNKNOWN') return false;
+    
+    final prefs = await SharedPreferences.getInstance();
+    // Check cache first
+    final knownUid = prefs.getString('known_uid_$uid');
+    if (knownUid != null && knownUid == 'true') {
+      return true;
+    }
+    
+    // Check SQLite
+    try {
+      final sqliteService = SQLiteService();
+      final users = await sqliteService.getAllUsers();
+      final hasUid = users.any((user) => user['uid']?.toString() == uid);
+      if (hasUid) {
+        // Cache it
+        await prefs.setString('known_uid_$uid', 'true');
+        return true;
+      }
+    } catch (e) {
+      print('Error checking UID in SQLite: $e');
+    }
+    
+    return false;
+  }
+
+  /// Request profile from ESP32
+  Future<void> _requestProfileFromESP32(String uid) async {
+    if (!_bluetoothService.isConnected) {
+      print('BT_PROFILE: Cannot request profile: Not connected');
+      return;
+    }
+    
+    try {
+      // Send request command (matches ESP32 format)
+      final requestJson = jsonEncode({
+        "command": "get_profile",
+        "uid": uid,
+      });
+      
+      print('BT_PROFILE: Requesting profile for UID: $uid');
+      await _bluetoothService.sendMessage(requestJson);
+      addStructuredDebug({
+        'source': 'CHAT',
+        'event': 'Profile request sent',
+        'metrics': {'uid': uid}
+      });
+    } catch (e) {
+      print('BT_PROFILE: Error requesting profile: $e');
+    }
+  }
+
+  /// Save profile data from ESP32 response
+  Future<void> _saveProfileFromESP32(Map<String, dynamic> profileData) async {
+    try {
+      final uid = profileData['uid']?.toString() ?? '';
+      if (uid.isEmpty) {
+        print('BT_PROFILE: Cannot save profile: No UID');
+        return;
+      }
+      
+      // Mark UID as known in cache
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('known_uid_$uid', 'true');
+      
+      // Extract profile fields (matches ESP32 format)
+      final name = profileData['name']?.toString() ?? '';
+      final username = profileData['username']?.toString() ?? '';
+      final street = profileData['street']?.toString() ?? '';
+      final province = profileData['province']?.toString() ?? '';
+      final city = profileData['city']?.toString() ?? '';
+      final barangay = profileData['barangay']?.toString() ?? '';
+      final suffix = profileData['suffix']?.toString() ?? '';
+      
+      // Parse name into first_name, last_name
+      String firstName = '';
+      String lastName = '';
+      if (name.isNotEmpty) {
+        final nameParts = name.trim().split(' ');
+        if (nameParts.length >= 2) {
+          firstName = nameParts[0];
+          // Check if last part is suffix
+          if (suffix.isNotEmpty && nameParts.last.toLowerCase() == suffix.toLowerCase()) {
+            lastName = nameParts.sublist(1, nameParts.length - 1).join(' ');
+          } else {
+            lastName = nameParts.sublist(1).join(' ');
+          }
+        } else {
+          firstName = name;
+        }
+      }
+      
+      // Save to SharedPreferences (per UID for multi-user support)
+      await prefs.setString('profile_name_$uid', name);
+      await prefs.setString('profile_username_$uid', username);
+      await prefs.setString('profile_street_$uid', street);
+      await prefs.setString('profile_province_$uid', province);
+      await prefs.setString('profile_city_$uid', city);
+      await prefs.setString('profile_barangay_$uid', barangay);
+      await prefs.setString('profile_suffix_$uid', suffix);
+      
+      // Save to SQLite
+      try {
+        final sqliteService = SQLiteService();
+        
+        // Check if user exists by UID
+        final users = await sqliteService.getAllUsers();
+        final existingUser = users.firstWhere(
+          (user) => user['uid']?.toString() == uid,
+          orElse: () => {},
+        );
+        
+        if (existingUser.isNotEmpty) {
+          // Update existing user
+          await sqliteService.updateUser(existingUser['id'], {
+            'first_name': firstName,
+            'last_name': lastName,
+            'username': username,
+            'street': street,
+            'province': province,
+            'city': city,
+            'barangay': barangay,
+            'suffix': suffix,
+            'uid': uid,
+          });
+          print('BT_PROFILE: Updated user in SQLite for UID: $uid');
+        } else {
+          // Create new user (if username is available)
+          if (username.isNotEmpty) {
+            await sqliteService.insertUser({
+              'uid': uid,
+              'first_name': firstName,
+              'last_name': lastName,
+              'username': username,
+              'street': street,
+              'province': province,
+              'city': city,
+              'barangay': barangay,
+              'suffix': suffix,
+              'created_at': DateTime.now().millisecondsSinceEpoch,
+              'is_synced': 0,
+              'address_setup_completed': 1,
+            });
+            print('BT_PROFILE: Created new user in SQLite for UID: $uid');
+          }
+        }
+      } catch (e) {
+        print('BT_PROFILE: Error saving to SQLite: $e');
+      }
+      
+      print('BT_PROFILE: Profile saved for UID: $uid');
+      addStructuredDebug({
+        'source': 'CHAT',
+        'event': 'Profile saved from ESP32',
+        'metrics': {'uid': uid, 'name': name}
+      });
+    } catch (e) {
+      print('BT_PROFILE: Error saving profile: $e');
+    }
+  }
+
   /// Flush buffered message and display it
-  void _flushBufferedMessage() {
+  Future<void> _flushBufferedMessage() async {
     if (!_isBufferingMessage || _incomingMessageBuffer.isEmpty) {
       _isBufferingMessage = false;
       _incomingMessageBuffer = '';
@@ -683,22 +877,61 @@ class ChatProvider with ChangeNotifier {
     _bufferedMessageSenderUid = null;
     _isBufferingMessage = false;
     
-    // Try to get sender name from UID (you might want to map UID to name)
-    // For now, use UID as sender name or extract from connected users
-    String? senderName = senderUid;
+    // Get cached name from UID
+    String? senderName;
     if (senderUid != null && senderUid != 'UNKNOWN') {
-      // You can add logic here to map UID to actual name if needed
-      _addConnectedUser(senderUid);
+      // Get cached name (synchronous lookup from SharedPreferences)
+      final prefs = await SharedPreferences.getInstance();
+      final cachedName = prefs.getString('profile_name_$senderUid');
+      
+      if (cachedName != null && cachedName.isNotEmpty) {
+        senderName = cachedName;
+      } else {
+        // Fallback: try SQLite
+        try {
+          final sqliteService = SQLiteService();
+          final users = await sqliteService.getAllUsers();
+          final user = users.firstWhere(
+            (user) => user['uid']?.toString() == senderUid,
+            orElse: () => {},
+          );
+          
+          if (user.isNotEmpty) {
+            final firstName = user['first_name']?.toString() ?? '';
+            final lastName = user['last_name']?.toString() ?? '';
+            final suffix = user['suffix']?.toString() ?? '';
+            
+            senderName = [firstName, lastName, suffix]
+                .where((s) => s.isNotEmpty)
+                .join(' ')
+                .trim();
+            
+            if (senderName!.isNotEmpty) {
+              // Cache it for future use
+              await prefs.setString('profile_name_$senderUid', senderName);
+            } else {
+              senderName = senderUid; // Fallback to UID
+            }
+          } else {
+            senderName = senderUid; // Fallback to UID
+          }
+        } catch (e) {
+          print('Error getting cached name from UID: $e');
+          senderName = senderUid; // Fallback to UID
+        }
+      }
+      
+      _addConnectedUser(senderName!);
     }
     
     // Display the complete message
     _addMessage(completeMessage, false, senderName: senderName ?? 'ESP');
     
-    print('BT_RX: Complete message displayed (${completeMessage.length} chars) from UID: $senderUid');
+    print('BT_RX: Complete message displayed (${completeMessage.length} chars) from UID: $senderUid, Name: $senderName');
     addStructuredDebug({
       'source': 'CHAT',
       'event': 'Complete message displayed',
-      'metrics': {'length': completeMessage.length, 'uid': senderUid}
+      'metrics': {'length': completeMessage.length, 'uid': senderUid, 'name': senderName}
     });
   }
   
@@ -1088,6 +1321,53 @@ class ChatProvider with ChangeNotifier {
       
       print('BT_SYNC: Syncing profile for user: $username');
       
+      // Get UID - fetch from SQLite/Firebase if not in SharedPreferences
+      String uid = prefs.getString('session_uid') ?? "";
+      
+      if (uid.isEmpty) {
+        print('BT_SYNC: UID not in SharedPreferences, fetching from database...');
+        
+        // Try SQLite first
+        try {
+          final sqliteService = SQLiteService();
+          final sqliteUser = await sqliteService.getUserByUsername(username);
+          if (sqliteUser != null && sqliteUser.containsKey('uid') && sqliteUser['uid'] != null) {
+            uid = sqliteUser['uid'].toString();
+            await prefs.setString('session_uid', uid);
+            print('BT_SYNC: UID fetched from SQLite: $uid');
+          }
+        } catch (e) {
+          print('BT_SYNC: Error fetching UID from SQLite: $e');
+        }
+        
+        // If still empty, try Firebase
+        if (uid.isEmpty) {
+          try {
+            final firebaseService = FirebaseService();
+            final userSnapshot = await firebaseService.database.ref('users/$username').get();
+            if (userSnapshot.exists) {
+              final userEntry = userSnapshot.value as Map<dynamic, dynamic>;
+              if (userEntry.containsKey('UID') || userEntry.containsKey('uid')) {
+                uid = userEntry['UID']?.toString() ?? userEntry['uid']?.toString() ?? '';
+                if (uid.isNotEmpty) {
+                  await prefs.setString('session_uid', uid);
+                  print('BT_SYNC: UID fetched from Firebase: $uid');
+                }
+              }
+            }
+          } catch (e) {
+            print('BT_SYNC: Error fetching UID from Firebase: $e');
+          }
+        }
+        
+        // If still empty, cannot sync
+        if (uid.isEmpty) {
+          print('BT_SYNC_ERR: Cannot sync profile: UID not found in database');
+          print('BT_SYNC_ERR: Please ensure user has UID in database before syncing');
+          return;
+        }
+      }
+      
       // Get all profile data from SharedPreferences (matching ESP32 variable names)
       final name = prefs.getString('profile_name') ?? prefs.getString('session_name') ?? username;
       final profileUsername = prefs.getString('profile_username') ?? username;
@@ -1095,7 +1375,6 @@ class ChatProvider with ChangeNotifier {
       final province = prefs.getString('profile_province') ?? "";
       final city = prefs.getString('profile_city') ?? "";
       final barangay = prefs.getString('profile_barangay') ?? "";
-      final uid = prefs.getString('session_uid') ?? "";
       final suffix = prefs.getString('profile_suffix') ?? "";
       
       print('BT_SYNC: Profile data from SharedPreferences:');

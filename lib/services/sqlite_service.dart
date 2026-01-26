@@ -10,7 +10,7 @@ class SQLiteService {
 
   static Database? _database;
   static const String _databaseName = 'tulong_offline.db';
-  static const int _databaseVersion = 6;
+  static const int _databaseVersion = 8;
 
   // Table names
   static const String _usersTable = 'users';
@@ -38,10 +38,11 @@ class SQLiteService {
 
   // Create tables
   Future<void> _onCreate(Database db, int version) async {
-    // Users table - Updated for offline-first with username (no email/phone)
+    // Users table - UID as PRIMARY KEY (offline-first, no Firebase)
     await db.execute('''
       CREATE TABLE $_usersTable (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uid TEXT PRIMARY KEY,
+        id INTEGER,
         firebase_uid TEXT UNIQUE,
         first_name TEXT NOT NULL,
         last_name TEXT NOT NULL,
@@ -52,7 +53,6 @@ class SQLiteService {
         city TEXT,
         barangay TEXT,
         emergency_message TEXT,
-        
         password TEXT,
         is_online INTEGER DEFAULT 0,
         account_status TEXT DEFAULT 'active',
@@ -63,7 +63,8 @@ class SQLiteService {
         address_setup_completed INTEGER DEFAULT 0,
         is_verified INTEGER DEFAULT 0,
         profile_update_count INTEGER DEFAULT 0,
-        sos_message_update_count INTEGER DEFAULT 0
+        sos_message_update_count INTEGER DEFAULT 0,
+        suffix TEXT
       )
     ''');
 
@@ -99,12 +100,12 @@ class SQLiteService {
       )
     ''');
 
-    // Sync queue table
+    // Sync queue table - record_id is TEXT to support both int (id) and String (UID)
     await db.execute('''
       CREATE TABLE $_syncQueueTable (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         table_name TEXT NOT NULL,
-        record_id INTEGER NOT NULL,
+        record_id TEXT NOT NULL,
         operation TEXT NOT NULL,
         data TEXT NOT NULL,
         created_at INTEGER NOT NULL,
@@ -174,6 +175,101 @@ class SQLiteService {
       await db.execute('UPDATE $_usersTable SET profile_update_count = 0 WHERE profile_update_count IS NULL');
       await db.execute('UPDATE $_usersTable SET sos_message_update_count = 0 WHERE sos_message_update_count IS NULL');
     }
+    if (oldVersion < 7) {
+      // Add uid and suffix columns for profile sync
+      await db.execute('ALTER TABLE $_usersTable ADD COLUMN uid TEXT');
+      await db.execute('ALTER TABLE $_usersTable ADD COLUMN suffix TEXT');
+    }
+    if (oldVersion < 8) {
+      // Migrate to UID as primary key
+      // Step 1: Generate UIDs for existing users without UID
+      final usersWithoutUid = await db.query(
+        _usersTable,
+        where: 'uid IS NULL OR uid = ""',
+      );
+      
+      for (var user in usersWithoutUid) {
+        // Generate UID for existing users
+        final timestamp = DateTime.now().millisecondsSinceEpoch;
+        final random = DateTime.now().microsecondsSinceEpoch % 100000;
+        final uid = 'UID_${timestamp}_$random';
+        await db.update(
+          _usersTable,
+          {'uid': uid},
+          where: 'id = ?',
+          whereArgs: [user['id']],
+        );
+      }
+      
+      // Step 2: Create new table with UID as primary key
+      await db.execute('''
+        CREATE TABLE ${_usersTable}_new (
+          uid TEXT PRIMARY KEY,
+          id INTEGER,
+          firebase_uid TEXT UNIQUE,
+          first_name TEXT NOT NULL,
+          last_name TEXT NOT NULL,
+          username TEXT NOT NULL UNIQUE,
+          street TEXT,
+          region TEXT,
+          province TEXT,
+          city TEXT,
+          barangay TEXT,
+          emergency_message TEXT,
+          password TEXT,
+          is_online INTEGER DEFAULT 0,
+          account_status TEXT DEFAULT 'active',
+          created_at INTEGER NOT NULL,
+          last_seen INTEGER,
+          is_synced INTEGER DEFAULT 0,
+          sync_timestamp INTEGER,
+          address_setup_completed INTEGER DEFAULT 0,
+          is_verified INTEGER DEFAULT 0,
+          profile_update_count INTEGER DEFAULT 0,
+          sos_message_update_count INTEGER DEFAULT 0,
+          suffix TEXT
+        )
+      ''');
+      
+      // Step 3: Copy data from old table to new table
+      await db.execute('''
+        INSERT INTO ${_usersTable}_new 
+        SELECT uid, id, firebase_uid, first_name, last_name, username, street, region, 
+               province, city, barangay, emergency_message, password, is_online, 
+               account_status, created_at, last_seen, is_synced, sync_timestamp, 
+               address_setup_completed, is_verified, profile_update_count, 
+               sos_message_update_count, suffix
+        FROM $_usersTable
+      ''');
+      
+      // Step 4: Drop old table and rename new table
+      await db.execute('DROP TABLE $_usersTable');
+      await db.execute('ALTER TABLE ${_usersTable}_new RENAME TO $_usersTable');
+      
+      // Step 5: Update sync_queue table to support TEXT record_id (for UID support)
+      await db.execute('''
+        CREATE TABLE ${_syncQueueTable}_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          table_name TEXT NOT NULL,
+          record_id TEXT NOT NULL,
+          operation TEXT NOT NULL,
+          data TEXT NOT NULL,
+          created_at INTEGER NOT NULL,
+          retry_count INTEGER DEFAULT 0,
+          last_attempt INTEGER
+        )
+      ''');
+      
+      // Copy existing sync queue data (convert record_id to string)
+      await db.execute('''
+        INSERT INTO ${_syncQueueTable}_new 
+        SELECT id, table_name, CAST(record_id AS TEXT), operation, data, created_at, retry_count, last_attempt
+        FROM $_syncQueueTable
+      ''');
+      
+      await db.execute('DROP TABLE $_syncQueueTable');
+      await db.execute('ALTER TABLE ${_syncQueueTable}_new RENAME TO $_syncQueueTable');
+    }
   }
 
   // User operations
@@ -229,13 +325,39 @@ class SQLiteService {
     return results.isNotEmpty ? results.first : null;
   }
 
-  Future<int> updateUser(int id, Map<String, dynamic> userData) async {
+  // Update user by ID (for backward compatibility)
+  Future<int> updateUser(int? id, Map<String, dynamic> userData) async {
+    final db = await database;
+    if (id != null) {
+      return await db.update(
+        _usersTable,
+        userData,
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+    }
+    throw Exception('Cannot update user: id is null');
+  }
+
+  // Update user by UID (primary key)
+  Future<int> updateUserByUid(String uid, Map<String, dynamic> userData) async {
     final db = await database;
     return await db.update(
       _usersTable,
       userData,
-      where: 'id = ?',
-      whereArgs: [id],
+      where: 'uid = ?',
+      whereArgs: [uid],
+    );
+  }
+
+  // Update user by username (convenience method)
+  Future<int> updateUserByUsername(String username, Map<String, dynamic> userData) async {
+    final db = await database;
+    return await db.update(
+      _usersTable,
+      userData,
+      where: 'username = ?',
+      whereArgs: [username],
     );
   }
 
@@ -301,16 +423,19 @@ class SQLiteService {
   // Sync queue operations
   Future<int> addToSyncQueue({
     required String tableName,
-    required int recordId,
+    required dynamic recordId, // Can be int or String (UID)
     required String operation,
     required Map<String, dynamic> data,
   }) async {
     final db = await database;
+    // Convert recordId to String for comparison (works for both int and String)
+    final recordIdStr = recordId.toString();
+    
     // Check if queue item already exists for this record
     final existing = await db.query(
       _syncQueueTable,
       where: 'table_name = ? AND record_id = ?',
-      whereArgs: [tableName, recordId],
+      whereArgs: [tableName, recordIdStr],
     );
     
     // If exists, update it; otherwise insert new
@@ -325,13 +450,13 @@ class SQLiteService {
           'last_attempt': null,
         },
         where: 'table_name = ? AND record_id = ?',
-        whereArgs: [tableName, recordId],
+        whereArgs: [tableName, recordIdStr],
       );
       return existing.first['id'] as int;
     } else {
       return await db.insert(_syncQueueTable, {
         'table_name': tableName,
-        'record_id': recordId,
+        'record_id': recordIdStr, // Store as string (works for both int and String UID)
         'operation': operation,
         'data': jsonEncode(data), // Store as JSON string
         'created_at': DateTime.now().millisecondsSinceEpoch,

@@ -36,6 +36,7 @@ class _BiometricVerificationScreenState extends State<BiometricVerificationScree
   bool _isDeviceSupported = false;
   bool _hasEnrolledBiometrics = false;
   List<BiometricType> _availableBiometrics = [];
+  String? _generatedUid; // Store generated UID for display
 
   @override
   void initState() {
@@ -138,6 +139,15 @@ class _BiometricVerificationScreenState extends State<BiometricVerificationScree
     }
   }
 
+  /// Generate unique UID for new user
+  String _generateUid() {
+    const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final micros = DateTime.now().microsecondsSinceEpoch;
+    final randomStr = List.generate(12, (i) => chars[(timestamp + micros + i) % chars.length]).join();
+    return randomStr;
+  }
+
   /// Save user data immediately after successful biometric verification
   /// This happens automatically - no button press needed
   Future<void> _saveUserData() async {
@@ -173,9 +183,13 @@ class _BiometricVerificationScreenState extends State<BiometricVerificationScree
           city.isNotEmpty &&
           barangay.isNotEmpty;
 
+      // Generate unique UID for new user (PRIMARY KEY)
+      _generatedUid = _generateUid();
+
       // Prepare user data for SQLite (primary, offline-first)
       final suffix = data['suffix']?.toString();
       final userData = {
+        'uid': _generatedUid, // PRIMARY KEY
         'first_name': data['firstName'].toString(),
         'last_name': data['lastName'].toString(),
         'suffix': suffix != null && suffix.isNotEmpty ? suffix : null,
@@ -186,66 +200,21 @@ class _BiometricVerificationScreenState extends State<BiometricVerificationScree
         'city': city,
         'barangay': barangay,
         'password': data['hashedPassword'].toString(),
-        'is_online': 0, // Will be updated when online
+        'is_online': 0,
         'account_status': 'active',
         'created_at': now,
         'last_seen': now,
-        'is_synced': 0, // Will sync to Firebase when online
-        'address_setup_completed': isAddressComplete ? 1 : 0, // Set to 1 if all address fields are filled
+        'is_synced': 0,
+        'address_setup_completed': isAddressComplete ? 1 : 0,
         'is_verified': 1, // Biometric verification completed
       };
 
-      print('💾 Saving user data to SQLite: ${userData['username']}');
+      print('💾 Saving user data to SQLite: ${userData['username']} with UID: $_generatedUid');
 
-      // Save to SQLite first (primary database)
+      // Save to SQLite (primary database, pure offline)
       final sqliteService = SQLiteService();
       final userId = await sqliteService.insertUser(userData);
-      print('✅ User saved to SQLite (ID: $userId)');
-
-      // Try to sync to Firebase if online (optional, deferred if offline)
-      try {
-        final firebaseService = FirebaseService();
-        final isOnline = await _checkConnectivity();
-        
-        if (isOnline) {
-          // Generate a unique ID for Firebase (use username as key for simplicity)
-          // In production, you might want to use Firebase Auth UID
-          final firebaseData = {
-            'FirstName': data['firstName'],
-            'LastName': data['lastName'],
-            'Suffix': suffix != null && suffix.isNotEmpty ? suffix : null,
-            'Username': data['username'],
-            'Address': address,
-            'Region': region,
-            'Province': province,
-            'City': city,
-            'Barangay': barangay,
-            'Password': data['hashedPassword'],
-            'isOnline': false,
-            'isVerified': true,
-            'addressSetupCompleted': isAddressComplete,
-            'createdAt': now,
-            'lastSeen': now,
-          };
-
-          // Save to Firebase Realtime Database
-          await firebaseService.database.ref('users/${data['username']}').set(firebaseData);
-          
-          // Update SQLite with Firebase UID
-          await sqliteService.updateUser(userId, {
-            'firebase_uid': data['username'],
-            'is_synced': 1,
-            'sync_timestamp': now,
-          });
-          
-          print('✅ User synced to Firebase');
-        } else {
-          print('📴 Offline mode - user saved locally, will sync when online');
-        }
-      } catch (firebaseError) {
-        print('⚠️ Firebase sync failed (non-critical): $firebaseError');
-        // Continue - user is saved in SQLite
-      }
+      print('✅ User saved to SQLite (UID: $_generatedUid)');
 
       // Get the saved user to retrieve UID
       final savedUser = await sqliteService.getUserByUsername(data['username'].toString());
@@ -282,6 +251,7 @@ class _BiometricVerificationScreenState extends State<BiometricVerificationScree
       print('✅ User data saved and authenticated');
     } catch (e) {
       print('❌ Error saving user data: $e');
+      _generatedUid = null; // Clear UID on error
       if (mounted) {
         setState(() {
           _hasError = true;
@@ -378,6 +348,21 @@ class _BiometricVerificationScreenState extends State<BiometricVerificationScree
               )
                   .animate()
                   .fadeIn(duration: 400.ms, delay: 300.ms),
+
+              // Show UID after successful verification
+              if (_isVerified && _generatedUid != null) ...[
+                const SizedBox(height: 16),
+                Text(
+                  'UID: $_generatedUid',
+                  style: UnifiedTypography.bodySmall.copyWith(
+                    color: Colors.grey[500],
+                    fontSize: 12,
+                  ),
+                  textAlign: TextAlign.center,
+                )
+                    .animate()
+                    .fadeIn(duration: 400.ms, delay: 400.ms),
+              ],
 
               const SizedBox(height: 40),
 

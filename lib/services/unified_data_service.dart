@@ -285,7 +285,16 @@ class UnifiedDataService {
   
   // ========== USER OPERATIONS ==========
   
-  /// Create a new user (SQLite first, then sync to Firebase)
+  /// Generate unique UID for new user
+  String _generateUid() {
+    const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final micros = DateTime.now().microsecondsSinceEpoch;
+    final randomStr = List.generate(12, (i) => chars[(timestamp + micros + i) % chars.length]).join();
+    return randomStr;
+  }
+  
+  /// Create a new user (SQLite only - pure offline)
   Future<Map<String, dynamic>?> createUser({
     required String username, // Replaced email with username
     required String password,
@@ -315,9 +324,13 @@ class UnifiedDataService {
       final hashedPassword = password.isNotEmpty ? _hashPassword(password) : '';
       final now = DateTime.now().millisecondsSinceEpoch;
       
-      // Create user in SQLite (primary) - ALL FIELDS INCLUDED
+      // Generate unique UID for new user (PRIMARY KEY)
+      final uid = _generateUid();
+      
+      // Create user in SQLite (primary) - UID as PRIMARY KEY
       final userData = {
-        'username': username, // Replaced email with username
+        'uid': uid, // PRIMARY KEY
+        'username': username,
         'first_name': firstName,
         'last_name': lastName,
         'street': street ?? '',
@@ -330,7 +343,7 @@ class UnifiedDataService {
         'account_status': 'active',
         'created_at': now,
         'last_seen': now,
-        'is_synced': 0, // Will sync when online
+        'is_synced': 0,
         'address_setup_completed': 0,
         'is_verified': 1, // Biometric verification completed
       };
@@ -338,27 +351,7 @@ class UnifiedDataService {
       final userId = await _sqliteService.insertUser(userData);
       userData['id'] = userId;
       
-      // Try to sync to Firebase if online
-      if (_isOnline) {
-        try {
-          final firebaseData = _convertUserToFirebaseFormat(userData);
-          await _firebaseService.database.ref('users/$username').set(firebaseData);
-          
-          // Mark as synced
-          await _sqliteService.updateUser(userId, {
-            'firebase_uid': username,
-            'is_synced': 1,
-            'sync_timestamp': now,
-          });
-          userData['is_synced'] = 1;
-          userData['firebase_uid'] = username;
-        } catch (e) {
-          print('Firebase sync failed for new user: $e');
-          // User is still created in SQLite, will sync later
-        }
-      }
-      
-      print('✅ User created: $username');
+      print('✅ User created: $username with UID: $uid');
       return userData;
     } catch (e) {
       print('❌ Failed to create user: $e');
@@ -441,7 +434,12 @@ class UnifiedDataService {
         'is_synced': 0, // Mark as unsynced - will be updated after Firebase sync
       };
       
-      await _sqliteService.updateUser(currentUser['id'], updateData);
+      // Use UID if available (primary key), otherwise use username
+      if (currentUser['uid'] != null && currentUser['uid'].toString().isNotEmpty) {
+        await _sqliteService.updateUserByUid(currentUser['uid'].toString(), updateData);
+      } else {
+        await _sqliteService.updateUserByUsername(username, updateData);
+      }
       print('✅ Profile updated in SQLite: $username');
       
       // STEP 2: Sync to Firebase if online
@@ -458,19 +456,28 @@ class UnifiedDataService {
           await _firebaseService.database.ref('users/$firebaseUid').update(firebaseData);
           
           // Mark as synced in SQLite
-          await _sqliteService.updateUser(currentUser['id'], {
-            'firebase_uid': firebaseUid,
-            'is_synced': 1,
-            'sync_timestamp': DateTime.now().millisecondsSinceEpoch,
-          });
+          if (currentUser['uid'] != null && currentUser['uid'].toString().isNotEmpty) {
+            await _sqliteService.updateUserByUid(currentUser['uid'].toString(), {
+              'firebase_uid': firebaseUid,
+              'is_synced': 1,
+              'sync_timestamp': DateTime.now().millisecondsSinceEpoch,
+            });
+          } else {
+            await _sqliteService.updateUserByUsername(username, {
+              'firebase_uid': firebaseUid,
+              'is_synced': 1,
+              'sync_timestamp': DateTime.now().millisecondsSinceEpoch,
+            });
+          }
           print('✅ Profile synced to Firebase: $username (UID: $firebaseUid)');
         } catch (e) {
           print('⚠️ Firebase sync failed for profile update: $e');
           print('   Profile is saved locally and will sync when online');
           // Add to sync queue for retry
+          final recordId = currentUser['uid'] ?? currentUser['id'] ?? username;
           await _sqliteService.addToSyncQueue(
             tableName: 'users',
-            recordId: currentUser['id'],
+            recordId: recordId,
             operation: 'update',
             data: updateData,
           );
@@ -478,9 +485,10 @@ class UnifiedDataService {
       } else if (!_isOnline) {
         // STEP 3: If offline, add to sync queue for later
         print('📴 Offline mode - profile update queued for sync');
+        final recordId = currentUser['uid'] ?? currentUser['id'] ?? username;
         await _sqliteService.addToSyncQueue(
           tableName: 'users',
-          recordId: currentUser['id'],
+          recordId: recordId,
           operation: 'update',
           data: updateData,
         );
@@ -517,7 +525,13 @@ class UnifiedDataService {
       updateData['is_synced'] = 0; // Mark as unsynced
       updateData['last_seen'] = DateTime.now().millisecondsSinceEpoch;
 
-      await _sqliteService.updateUser(currentUser['id'], updateData);
+      // Use UID if available (primary key), otherwise use username
+      if (currentUser['uid'] != null && currentUser['uid'].toString().isNotEmpty) {
+        await _sqliteService.updateUserByUid(currentUser['uid'].toString(), updateData);
+      } else {
+        // Fallback to username if UID not available
+        await _sqliteService.updateUserByUsername(username, updateData);
+      }
       print('✅ Profile updated in SQLite: $username');
 
       // Increment profile update count in database
@@ -580,18 +594,27 @@ class UnifiedDataService {
             ...updateData,
           });
           await _firebaseService.database.ref('users/$firebaseUid').update(firebaseUpdates);
-          await _sqliteService.updateUser(currentUser['id'], {
-            'firebase_uid': firebaseUid,
-            'is_synced': 1,
-            'sync_timestamp': DateTime.now().millisecondsSinceEpoch,
-          });
+          if (currentUser['uid'] != null && currentUser['uid'].toString().isNotEmpty) {
+            await _sqliteService.updateUserByUid(currentUser['uid'].toString(), {
+              'firebase_uid': firebaseUid,
+              'is_synced': 1,
+              'sync_timestamp': DateTime.now().millisecondsSinceEpoch,
+            });
+          } else {
+            await _sqliteService.updateUserByUsername(username, {
+              'firebase_uid': firebaseUid,
+              'is_synced': 1,
+              'sync_timestamp': DateTime.now().millisecondsSinceEpoch,
+            });
+          }
           print('✅ Profile synced to Firebase: $username (UID: $firebaseUid)');
         } catch (e) {
           print('⚠️ Firebase sync failed: $e');
           // Add to sync queue for retry
+          final recordId = currentUser['uid'] ?? currentUser['id'] ?? username;
           await _sqliteService.addToSyncQueue(
             tableName: 'users',
-            recordId: currentUser['id'],
+            recordId: recordId,
             operation: 'update',
             data: updateData,
           );
@@ -599,9 +622,10 @@ class UnifiedDataService {
       } else if (!_isOnline) {
         // STEP 3: If offline, queue for later sync
         print('📴 Offline mode - profile update queued for sync');
+        final recordId = currentUser['uid'] ?? currentUser['id'] ?? username;
         await _sqliteService.addToSyncQueue(
           tableName: 'users',
-          recordId: currentUser['id'],
+          recordId: recordId,
           operation: 'update',
           data: updateData,
         );
@@ -670,11 +694,19 @@ class UnifiedDataService {
       }
       
       // Update SQLite first
-      await _sqliteService.updateUser(currentUser['id'], {
-        'password': hashedPassword,
-        'last_seen': DateTime.now().millisecondsSinceEpoch,
-        'is_synced': 0,
-      });
+      if (currentUser['uid'] != null && currentUser['uid'].toString().isNotEmpty) {
+        await _sqliteService.updateUserByUid(currentUser['uid'].toString(), {
+          'password': hashedPassword,
+          'last_seen': DateTime.now().millisecondsSinceEpoch,
+          'is_synced': 0,
+        });
+      } else {
+        await _sqliteService.updateUserByUsername(username, {
+          'password': hashedPassword,
+          'last_seen': DateTime.now().millisecondsSinceEpoch,
+          'is_synced': 0,
+        });
+      }
       
       // Try to sync to Firebase if online
       if (_isOnline) {
@@ -684,11 +716,19 @@ class UnifiedDataService {
             'lastSeen': DateTime.now().millisecondsSinceEpoch,
           });
           
-          await _sqliteService.updateUser(currentUser['id'], {
-            'firebase_uid': username,
-            'is_synced': 1,
-            'sync_timestamp': DateTime.now().millisecondsSinceEpoch,
-          });
+          if (currentUser['uid'] != null && currentUser['uid'].toString().isNotEmpty) {
+            await _sqliteService.updateUserByUid(currentUser['uid'].toString(), {
+              'firebase_uid': username,
+              'is_synced': 1,
+              'sync_timestamp': DateTime.now().millisecondsSinceEpoch,
+            });
+          } else {
+            await _sqliteService.updateUserByUsername(username, {
+              'firebase_uid': username,
+              'is_synced': 1,
+              'sync_timestamp': DateTime.now().millisecondsSinceEpoch,
+            });
+          }
         } catch (e) {
           print('Firebase password sync failed: $e');
         }
@@ -711,11 +751,19 @@ class UnifiedDataService {
       }
       
       // Update SQLite first
-      await _sqliteService.updateUser(currentUser['id'], {
-        'address_setup_completed': 1,
-        'last_seen': DateTime.now().millisecondsSinceEpoch,
-        'is_synced': 0,
-      });
+      if (currentUser['uid'] != null && currentUser['uid'].toString().isNotEmpty) {
+        await _sqliteService.updateUserByUid(currentUser['uid'].toString(), {
+          'address_setup_completed': 1,
+          'last_seen': DateTime.now().millisecondsSinceEpoch,
+          'is_synced': 0,
+        });
+      } else {
+        await _sqliteService.updateUserByUsername(username, {
+          'address_setup_completed': 1,
+          'last_seen': DateTime.now().millisecondsSinceEpoch,
+          'is_synced': 0,
+        });
+      }
       
       // Try to sync to Firebase if online
       if (_isOnline) {
@@ -725,11 +773,19 @@ class UnifiedDataService {
             'lastSeen': DateTime.now().millisecondsSinceEpoch,
           });
           
-          await _sqliteService.updateUser(currentUser['id'], {
-            'firebase_uid': username,
-            'is_synced': 1,
-            'sync_timestamp': DateTime.now().millisecondsSinceEpoch,
-          });
+          if (currentUser['uid'] != null && currentUser['uid'].toString().isNotEmpty) {
+            await _sqliteService.updateUserByUid(currentUser['uid'].toString(), {
+              'firebase_uid': username,
+              'is_synced': 1,
+              'sync_timestamp': DateTime.now().millisecondsSinceEpoch,
+            });
+          } else {
+            await _sqliteService.updateUserByUsername(username, {
+              'firebase_uid': username,
+              'is_synced': 1,
+              'sync_timestamp': DateTime.now().millisecondsSinceEpoch,
+            });
+          }
         } catch (e) {
           print('Firebase address setup sync failed: $e');
         }
@@ -749,10 +805,17 @@ class UnifiedDataService {
       // Update last seen in SQLite
       final currentUser = await _sqliteService.getUserByUsername(username);
       if (currentUser != null) {
-        await _sqliteService.updateUser(currentUser['id'], {
-          'is_online': 0,
-          'last_seen': DateTime.now().millisecondsSinceEpoch,
-        });
+        if (currentUser['uid'] != null && currentUser['uid'].toString().isNotEmpty) {
+          await _sqliteService.updateUserByUid(currentUser['uid'].toString(), {
+            'is_online': 0,
+            'last_seen': DateTime.now().millisecondsSinceEpoch,
+          });
+        } else {
+          await _sqliteService.updateUserByUsername(username, {
+            'is_online': 0,
+            'last_seen': DateTime.now().millisecondsSinceEpoch,
+          });
+        }
       }
       
       // Try to update Firebase if online
