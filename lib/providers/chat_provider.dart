@@ -9,14 +9,14 @@ import '../services/sqlite_service.dart';
 class ChatProvider with ChangeNotifier {
   final BluetoothService _bluetoothService = BluetoothService();
   final voice.VoiceChatExtension _voiceExtension = voice.VoiceChatExtension();
-  
+
   List<BluetoothDevice> _pairedDevices = [];
   BluetoothDevice? _selectedDevice;
   bool _isConnected = false;
   final List<ChatMessage> _messages = [];
   final List<String> _debugLogs = [];
   bool _isConnecting = false;
-  
+
   // Connected users on the channel (extracted from messages)
   final Set<String> _connectedUsers = {};
   String? _currentUserName;
@@ -27,7 +27,7 @@ class ChatProvider with ChangeNotifier {
   List<ChatMessage> get messages => _messages;
   List<String> get debugLogs => _debugLogs;
   bool get isConnecting => _isConnecting;
-  
+
   // Get connected users including current user
   List<String> get connectedUsers {
     final allUsers = <String>{..._connectedUsers};
@@ -36,7 +36,7 @@ class ChatProvider with ChangeNotifier {
     }
     return allUsers.toList()..sort();
   }
-  
+
   // Count includes current user
   int get connectedUsersCount {
     int count = _connectedUsers.length;
@@ -45,20 +45,20 @@ class ChatProvider with ChangeNotifier {
     }
     return count;
   }
-  
+
   // Check if a user is the current user
   bool isCurrentUser(String user) {
     return _currentUserName != null && user == _currentUserName;
   }
-  
+
   // Get current user name
   String? get currentUserName => _currentUserName;
-  
+
   // Get unread message count
   int get unreadMessageCount {
     return _messages.where((msg) => !msg.isMe && msg.status != voice.MessageStatus.received).length;
   }
-  
+
   // Voice extension getters
   voice.VoiceChatExtension get voiceExtension => _voiceExtension;
   bool get isRecording => _voiceExtension.isRecording;
@@ -122,7 +122,7 @@ class ChatProvider with ChangeNotifier {
       notifyListeners();
     }
   }
-  
+
   /// Update current user name from database/storage (signup information)
   Future<void> _updateCurrentUserNameFromDatabase() async {
     try {
@@ -130,41 +130,42 @@ class ChatProvider with ChangeNotifier {
       // Since we don't have direct access to AuthProvider here,
       // we'll rely on setCurrentUserName() being called from UI
       // But we can try to get from SQLite if we have the email
-      
+
       // For now, the UI will call setCurrentUserName() with the correct name
       // from the database, so this method is mainly for future use
     } catch (e) {
       // Ignore if database not available
+      // ignore: avoid_print
       print('Error updating user name from database: $e');
     }
   }
-  
+
   /// Set current user name (called from UI)
   void setCurrentUserName(String? userName) {
     _currentUserName = userName;
     notifyListeners();
   }
-  
+
   // Chat screen visibility tracking
   bool _isLocalChatScreenVisible = false;
   bool get isLocalChatScreenVisible => _isLocalChatScreenVisible;
-  
+
   void setLocalChatScreenVisible(bool visible) {
     _isLocalChatScreenVisible = visible;
     notifyListeners();
   }
-  
+
   // Message loading and refresh states
   bool _isLoadingMessages = false;
   bool _isRefreshingMessages = false;
   bool _isTyping = false;
   bool _hasCachedMessages = false;
-  
+
   bool get isLoadingMessages => _isLoadingMessages;
   bool get isRefreshingMessages => _isRefreshingMessages;
   bool get isTyping => _isTyping;
   bool get hasCachedMessages => _hasCachedMessages;
-  
+
   // Load messages
   Future<void> loadMessages() async {
     _isLoadingMessages = true;
@@ -173,7 +174,7 @@ class ChatProvider with ChangeNotifier {
     _isLoadingMessages = false;
     notifyListeners();
   }
-  
+
   // Mark all messages as read
   void markAllMessagesAsRead() {
     for (var message in _messages) {
@@ -183,7 +184,7 @@ class ChatProvider with ChangeNotifier {
     }
     notifyListeners();
   }
-  
+
   // Smart refresh
   Future<void> smartRefresh() async {
     _isRefreshingMessages = true;
@@ -216,13 +217,13 @@ class ChatProvider with ChangeNotifier {
 
     _addMessage(message.text, true, message: message);
     bool success = await _bluetoothService.sendMessage(text);
-    
+
     if (success) {
       message.status = voice.MessageStatus.sent;
     } else {
       message.status = voice.MessageStatus.failed;
     }
-    
+
     notifyListeners();
     return success;
   }
@@ -234,20 +235,23 @@ class ChatProvider with ChangeNotifier {
       'event': 'Processing incoming data',
       'metrics': {'dataLength': data.length}
     });
-    
+
     final messages = _voiceExtension.processIncomingData(data);
-    
+
     addStructuredDebug({
       'source': 'CHAT',
       'event': 'Processed messages',
       'metrics': {'messageCount': messages.length}
     });
-    
+
     for (final message in messages) {
       if (message.startsWith('VOICE_MESSAGE:')) {
         // Extract the Base64 data from the voice message marker
-        final base64Audio = message.substring(14); // Remove 'VOICE_MESSAGE:' prefix
-        
+        final base64AudioRaw = message.substring(14); // Remove 'VOICE_MESSAGE:' prefix
+
+        // Clean Base64: remove whitespace/newlines just in case
+        final base64Audio = base64AudioRaw.replaceAll(RegExp(r'\s+'), '');
+
         // Validate Base64 data
         if (base64Audio.isEmpty) {
           addStructuredDebug({
@@ -257,6 +261,7 @@ class ChatProvider with ChangeNotifier {
           });
           continue;
         }
+
         if (!_isValidBase64(base64Audio)) {
           addStructuredDebug({
             'source': 'CHAT',
@@ -265,12 +270,13 @@ class ChatProvider with ChangeNotifier {
           });
           continue;
         }
-        
+
         addStructuredDebug({
           'source': 'CHAT',
           'event': 'Creating voice message',
           'metrics': {'base64Length': base64Audio.length}
         });
+
         // Try to extract sender name from previous messages or connected users
         String? senderName;
         // For now, we'll extract from message context if available
@@ -296,7 +302,7 @@ class ChatProvider with ChangeNotifier {
       }
     }
   }
-  
+
   /// Extract and track user from message, returns sender name if found
   String? _extractUserFromMessage(String message) {
     // Try to parse JSON messages that might contain sender info
@@ -318,7 +324,7 @@ class ChatProvider with ChangeNotifier {
     }
     return null;
   }
-  
+
   /// Add connected user to the list
   void _addConnectedUser(String user) {
     if (user.isNotEmpty && user != 'Me' && user != 'ESP') {
@@ -326,18 +332,18 @@ class ChatProvider with ChangeNotifier {
       notifyListeners();
     }
   }
-  
+
   /// Manually add a connected user (for testing or ESP32 sync)
   void addConnectedUser(String user) {
     _addConnectedUser(user);
   }
-  
+
   /// Remove a connected user
   void removeConnectedUser(String user) {
     _connectedUsers.remove(user);
     notifyListeners();
   }
-  
+
   /// Clear all connected users
   void clearConnectedUsers() {
     _connectedUsers.clear();
@@ -351,7 +357,7 @@ class ChatProvider with ChangeNotifier {
       'event': 'Adding voice message',
       'metrics': {'base64Length': base64Audio.length, 'isMe': isMe}
     });
-    
+
     // Calculate duration for voice messages
     Duration? messageDuration;
     if (isMe) {
@@ -368,7 +374,7 @@ class ChatProvider with ChangeNotifier {
         messageDuration = null;
       }
     }
-    
+
     final voiceMessage = voice.VoiceMessage.fromBase64(
       base64Audio: base64Audio,
       isMe: isMe,
@@ -444,7 +450,7 @@ class ChatProvider with ChangeNotifier {
 
     // Calculate recording duration
     final recordingDuration = _voiceExtension.getRecordingDuration();
-    
+
     // Create voice message
     final voiceMessage = voice.VoiceMessage.fromBase64(
       base64Audio: base64Audio,
@@ -529,7 +535,7 @@ class ChatProvider with ChangeNotifier {
         senderName: senderName,
       );
     }
-    
+
     _messages.add(message);
     notifyListeners();
   }
@@ -554,30 +560,41 @@ class ChatProvider with ChangeNotifier {
       'metrics': payload['metrics'] ?? {},
       ...payload,
     };
-    
+
     final logString = '[${logEntry['source']}] ${logEntry['event']}';
     if (logEntry['metrics'].isNotEmpty) {
       final metrics = logEntry['metrics'] as Map<String, dynamic>;
-      final metricsStr = metrics.entries
-          .map((e) => '${e.key}=${e.value}')
-          .join(', ');
+      final metricsStr = metrics.entries.map((e) => '${e.key}=${e.value}').join(', ');
       _debugLogs.add('$logString ($metricsStr)');
     } else {
       _debugLogs.add(logString);
     }
-    
+
     if (_debugLogs.length > 100) {
       _debugLogs.removeAt(0);
     }
     notifyListeners();
   }
 
-  /// Validate Base64 string format
+  /// Validate Base64 string format (whitespace-safe + decode check)
   bool _isValidBase64(String str) {
     if (str.isEmpty) return false;
-    // Check if string contains only valid Base64 characters
+
+    // remove whitespace/newlines safely
+    final cleaned = str.replaceAll(RegExp(r'\s+'), '');
+    if (cleaned.isEmpty) return false;
+
+    // strict base64 charset (padding allowed)
     final base64Pattern = RegExp(r'^[A-Za-z0-9+/]*={0,2}$');
-    return base64Pattern.hasMatch(str);
+    if (!base64Pattern.hasMatch(cleaned)) return false;
+
+    // strong validation: try decode
+    try {
+      base64Decode(cleaned);
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   @override
@@ -611,11 +628,9 @@ class ChatMessage {
     this.senderName,
     this.isEmergency = false,
   });
-  
+
   // Check if message is read
   bool get isRead => status == voice.MessageStatus.received;
 }
 
 // voice.MessageStatus is defined in voice_chat_extension.dart
-
-
