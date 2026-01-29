@@ -25,7 +25,6 @@ import 'providers/notification_provider.dart';
 import 'services/simple_bluetooth_service.dart';
 import 'services/hardware_service.dart';
 import 'utils/performance_optimizer.dart';
-import 'services/firebase_service.dart';
 import 'services/offline_auth_service.dart';
 import 'services/notification_service.dart';
 import 'services/offline_sync_service.dart';
@@ -38,10 +37,7 @@ void main() async {
   // Optimize app performance
   WidgetsFlutterBinding.ensureInitialized();
   
-  // Initialize Firebase
-  await FirebaseService.initialize();
-  
-  // Initialize unified data service (SQLite + Firebase sync)
+  // Initialize unified data service (SQLite only - offline)
   await AppInitializationService().initialize();
   
   // Initialize Offline Services

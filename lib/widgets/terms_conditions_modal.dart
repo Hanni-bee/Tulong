@@ -86,45 +86,64 @@ class _TermsConditionsModalState extends State<TermsConditionsModal> {
             
             const SizedBox(height: 20),
             
-            // Scroll indicator
+            // Scroll indicator - Fixed position to prevent overlap
             if (!_hasScrolledToBottom)
               Container(
-                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                margin: const EdgeInsets.only(bottom: 16),
                 decoration: BoxDecoration(
-                  color: AppColors.warning.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: AppColors.warning.withOpacity(0.3),
-                    width: 1,
+                  gradient: LinearGradient(
+                    colors: [
+                      AppColors.warning.withOpacity(0.15),
+                      AppColors.warning.withOpacity(0.08),
+                    ],
                   ),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: AppColors.warning.withOpacity(0.4),
+                    width: 1.5,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.warning.withOpacity(0.1),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
                 ),
                 child: Row(
-                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Icon(
-                      Icons.arrow_downward,
-                      size: 16,
+                      Icons.arrow_downward_rounded,
+                      size: 18,
                       color: AppColors.warning,
                     ),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Please scroll to the bottom to continue',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: AppColors.warning,
-                        fontWeight: FontWeight.w600,
+                    const SizedBox(width: 10),
+                    Flexible(
+                      child: Text(
+                        'Please scroll to the bottom to continue',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: AppColors.warning,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.2,
+                        ),
+                        textAlign: TextAlign.center,
                       ),
                     ),
                   ],
                 ),
               ),
             
-            if (!_hasScrolledToBottom) const SizedBox(height: 12),
-            
-            // Content
+            // Content with proper padding to prevent overlap
             Expanded(
               child: SingleChildScrollView(
                 controller: _scrollController,
+                padding: EdgeInsets.only(
+                  bottom: _hasScrolledToBottom ? 0 : 8,
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -189,16 +208,43 @@ class _TermsConditionsModalState extends State<TermsConditionsModal> {
                       'We reserve the right to modify these terms at any time. Continued use of the application after changes constitutes acceptance of the new terms.',
                     ),
                     
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 24),
                     
-                    const Text(
-                      'By using T.U.L.O.N.G, you acknowledge that you have read, understood, and agree to be bound by these Terms and Conditions.',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        color: AppColors.textPrimary,
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryRed.withOpacity(0.05),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: AppColors.primaryRed.withOpacity(0.2),
+                          width: 1.5,
+                        ),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            Icons.info_outline_rounded,
+                            color: AppColors.primaryRed,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'By using T.U.L.O.N.G, you acknowledge that you have read, understood, and agree to be bound by these Terms and Conditions.',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.textPrimary,
+                                height: 1.5,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
+                    
+                    const SizedBox(height: 8),
                   ],
                 ),
               ),

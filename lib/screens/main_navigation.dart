@@ -6,7 +6,6 @@ import '../constants/soft_ui_design.dart';
 import '../providers/network_provider.dart';
 import '../providers/notification_provider.dart';
 import '../providers/chat_provider.dart';
-import '../providers/auth_provider.dart';
 import '../utils/prototype_animations.dart';
 import '../widgets/solid_badge.dart';
 import '../utils/icon_system.dart';
@@ -17,7 +16,6 @@ import 'emergency_detection_screen.dart';
 import 'modern_profile_screen.dart';
 import '../models/notification_model.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../services/sqlite_service.dart';
 
 class MainNavigation extends StatefulWidget {
   const MainNavigation({super.key});
@@ -56,9 +54,9 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
   String? _userUID;
   
   final List<Widget> _screens = [
-    const ModernHomeScreen(),
+    const ModernHomeScreen(), // Home has its own custom header card (not UnifiedTopBar)
     const LocalChatScreen(),
-    const EmergencyDetectionScreen(), // Replaces WalkieTalkieScreen
+    const EmergencyDetectionScreen(),
     const ModernProfileScreen(),
   ];
 
@@ -284,6 +282,12 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
     if (_currentIndex != index) {
       HapticFeedback.lightImpact();
       
+      // If switching to Local Chat (index 1), ensure badge updates
+      if (index == 1) {
+        // Update badge counts immediately when switching to chat
+        _updateBadgeCounts();
+      }
+      
       // Start icon wobble animation (from prototype)
       if (_iconWobbleControllers.containsKey(index)) {
         _iconWobbleControllers[index]!.forward(from: 0);
@@ -305,6 +309,8 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
         _iconAnimationController.reverse();
         if (mounted) {
           _pageEntranceController.value = 1.0;
+          // Update badge counts after navigation completes
+          _updateBadgeCounts();
         }
       });
     }
@@ -510,7 +516,6 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
     return 0;
   }
 }
-
 class NavigationItem {
   final IconData icon;
   final IconData activeIcon;

@@ -3,7 +3,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:crypto/crypto.dart';
 import 'dart:convert';
 import 'dart:io';
-import '../services/firebase_service.dart';
 import '../services/sqlite_service.dart';
 import '../services/unified_data_service.dart';
 import '../services/two_factor_auth_service.dart';
@@ -42,12 +41,69 @@ class AuthProvider extends ChangeNotifier {
 
   // Method to update current user model
   void updateUser(UserModel user) {
+    final previousUsername = _userUsername;
     _currentUserModel = user;
     _currentUser = user.id;
     _userUsername = user.username; // Replaced email with username
     _userName = user.name;
+
+    // If username changed, migrate tutorial/onboarding flags so walkthrough won't retrigger.
+    if (previousUsername != null &&
+        _userUsername != null &&
+        previousUsername.isNotEmpty &&
+        _userUsername!.isNotEmpty &&
+        previousUsername != _userUsername) {
+      _migrateWalkthroughFlags(previousUsername: previousUsername, newUsername: _userUsername!);
+    }
     
     notifyListeners();
+  }
+
+  Future<String?> _getStableUserKeySuffix() async {
+    // Prefer UID (stable even if username changes), then numeric user id, then username.
+    final prefs = await SharedPreferences.getInstance();
+    final uid = prefs.getString('session_uid');
+    if (uid != null && uid.isNotEmpty) return uid;
+    final userId = prefs.getInt('session_user_id');
+    if (userId != null) return userId.toString();
+    return _userUsername;
+  }
+
+  Future<void> _migrateWalkthroughFlags({
+    required String previousUsername,
+    required String newUsername,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      // If tutorial was completed under old username, carry it forward.
+      final oldTutorial = prefs.getBool('tutorial_completed_$previousUsername');
+      if (oldTutorial == true) {
+        // Preserve legacy (new username)
+        if (prefs.getBool('tutorial_completed_$newUsername') != true) {
+          await prefs.setBool('tutorial_completed_$newUsername', true);
+        }
+        // Preserve stable key (uid/id) so future username changes won't matter
+        final stableKey = await _getStableUserKeySuffix();
+        if (stableKey != null && stableKey.isNotEmpty) {
+          await prefs.setBool('tutorial_completed_$stableKey', true);
+        }
+      }
+
+      // If user creation timestamp exists under old username, migrate it too (prevents "new user" recompute).
+      final oldCreatedAt = prefs.getString('user_created_at_$previousUsername');
+      if (oldCreatedAt != null && oldCreatedAt.isNotEmpty) {
+        if (prefs.getString('user_created_at_$newUsername') == null) {
+          await prefs.setString('user_created_at_$newUsername', oldCreatedAt);
+        }
+        final stableKey = await _getStableUserKeySuffix();
+        if (stableKey != null && stableKey.isNotEmpty && prefs.getString('user_created_at_$stableKey') == null) {
+          await prefs.setString('user_created_at_$stableKey', oldCreatedAt);
+        }
+      }
+    } catch (e) {
+      print('⚠️ Failed to migrate walkthrough flags: $e');
+    }
   }
 
   // Helper method to parse timestamp from various formats
@@ -148,21 +204,9 @@ class AuthProvider extends ChangeNotifier {
         return;
       }
       
-      // If not found in SQLite, try Firebase
-      final firebaseService = FirebaseService();
-      
-      // Try to get user by username
-      Map<dynamic, dynamic>? userEntry;
-      
-      try {
-        final userSnapshot = await firebaseService.database.ref('users/$_userUsername').get();
-        if (userSnapshot.exists) {
-          print('Found user in Firebase by Username');
-          userEntry = userSnapshot.value as Map<dynamic, dynamic>;
-        }
-      } catch (e) {
-        print('Error getting user by Username: $e');
-      }
+      // User not found in SQLite (offline-only mode)
+      // Firebase fallback removed - app is now offline-only
+      Map<dynamic, dynamic>? userEntry = null;
       
       if (userEntry != null) {
         // Combine first and last name for Firebase (handle both PascalCase and camelCase)
@@ -257,16 +301,33 @@ class AuthProvider extends ChangeNotifier {
   Future<bool> isTutorialRequired() async {
     if (_userUsername == null) return false;
     final prefs = await SharedPreferences.getInstance();
-    final hasCompletedTutorial = prefs.getBool('tutorial_completed_$_userUsername') ?? false;
-    return !hasCompletedTutorial;
+    final stableKey = await _getStableUserKeySuffix();
+    if (stableKey != null && stableKey.isNotEmpty) {
+      // New stable key (preferred)
+      final completedStable = prefs.getBool('tutorial_completed_$stableKey');
+      if (completedStable != null) return !completedStable;
+    }
+
+    // Back-compat: legacy username key
+    final completedLegacy = prefs.getBool('tutorial_completed_$_userUsername') ?? false;
+    // If legacy says completed, migrate to stable so username updates won't retrigger.
+    if (completedLegacy && stableKey != null && stableKey.isNotEmpty) {
+      await prefs.setBool('tutorial_completed_$stableKey', true);
+    }
+    return !completedLegacy;
   }
 
   // Mark tutorial as completed
   Future<void> markTutorialCompleted() async {
     if (_userUsername == null) return;
     final prefs = await SharedPreferences.getInstance();
+    final stableKey = await _getStableUserKeySuffix();
+    if (stableKey != null && stableKey.isNotEmpty) {
+      await prefs.setBool('tutorial_completed_$stableKey', true);
+    }
+    // Also keep legacy username key for compatibility with any older checks.
     await prefs.setBool('tutorial_completed_$_userUsername', true);
-    print('Tutorial marked as completed for: $_userUsername');
+    print('Tutorial marked as completed for: $_userUsername (stableKey: $stableKey)');
   }
 
   // Mark address setup as completed using UnifiedDataService
@@ -588,14 +649,10 @@ class AuthProvider extends ChangeNotifier {
         await _unifiedDataService.logoutUser(_userUsername!);
       }
       
-      // Sign out from Firebase/Google if authenticated
-      if (_isAuthenticated) {
-        final firebaseService = FirebaseService();
-        await firebaseService.signOut();
-      }
+      // Firebase sign out removed (offline-only mode)
     } catch (e) {
-      // Continue with local sign out even if Firebase sign out fails
-      print('Firebase sign out error: $e');
+      // Continue with local sign out
+      print('Sign out error: $e');
     }
     
     // Clear local authentication state
@@ -638,20 +695,7 @@ class AuthProvider extends ChangeNotifier {
         return true;
       }
       
-      // If not found in SQLite, check Firebase (online)
-      final firebaseService = FirebaseService();
-      final userSnapshot = await firebaseService.database.ref('users/$_userUsername').get();
-      
-      if (userSnapshot.exists) {
-        final user = userSnapshot.value as Map;
-        if (user['Password'] == hashedPassword) {
-          print('Password verified from Firebase (online)');
-          // Update SQLite with the verified password for offline access
-          await _updateSQLiteUserPassword(_userUsername!, hashedPassword);
-          return true;
-        }
-      }
-      
+      // Firebase password verification removed (offline-only mode)
       return false;
     } catch (e) {
       print('Error verifying password: $e');
@@ -776,24 +820,39 @@ class AuthProvider extends ChangeNotifier {
     await prefs.setString('session_email', username); // Keep for migration
     await prefs.setString('session_name', name);
     
-    // Get and save UID from SQLite if available
+    // Get and save UID and ID from SQLite if available
     try {
       final sqliteUser = await _sqliteService.getUserByUsername(username);
-      if (sqliteUser != null && sqliteUser['uid'] != null) {
-        await prefs.setString('session_uid', sqliteUser['uid'].toString());
-        print('UID saved to SharedPreferences: ${sqliteUser['uid']}');
+      if (sqliteUser != null) {
+        if (sqliteUser['uid'] != null) {
+          await prefs.setString('session_uid', sqliteUser['uid'].toString());
+          print('UID saved to SharedPreferences: ${sqliteUser['uid']}');
+        }
+        if (sqliteUser['id'] != null) {
+          await prefs.setInt('session_user_id', sqliteUser['id'] as int);
+          print('User ID saved to SharedPreferences: ${sqliteUser['id']}');
+        }
       }
     } catch (e) {
-      print('Error loading UID for session: $e');
+      print('Error loading UID/ID for session: $e');
     }
     
     // Check if this is a new user (first time signing in)
-    final existingUserCreatedAt = prefs.getString('user_created_at_$username');
+    // IMPORTANT: Use stable key so changing username doesn't create a "new user" state.
+    final stableKey = await _getStableUserKeySuffix();
+    final createdAtKey = (stableKey != null && stableKey.isNotEmpty) ? stableKey : username;
+
+    final existingUserCreatedAt = prefs.getString('user_created_at_$createdAtKey');
     if (existingUserCreatedAt == null) {
-      await prefs.setString('user_created_at_$username', DateTime.now().millisecondsSinceEpoch.toString());
-      print('New user detected: $username');
+      final now = DateTime.now().millisecondsSinceEpoch.toString();
+      await prefs.setString('user_created_at_$createdAtKey', now);
+      // Also write legacy key for back-compat readers
+      if (prefs.getString('user_created_at_$username') == null) {
+        await prefs.setString('user_created_at_$username', now);
+      }
+      print('New user detected: $username (createdAtKey: $createdAtKey)');
     } else {
-      print('Existing user: $username');
+      print('Existing user: $username (createdAtKey: $createdAtKey)');
     }
     
     print('Session saved: $username');
@@ -820,7 +879,10 @@ class AuthProvider extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       
       // Check if user has completed tutorial
-      final tutorialCompleted = prefs.getBool('tutorial_completed_$_userUsername') ?? false;
+      final stableKey = await _getStableUserKeySuffix();
+      final tutorialCompleted =
+          (stableKey != null && stableKey.isNotEmpty ? prefs.getBool('tutorial_completed_$stableKey') : null) ??
+          (prefs.getBool('tutorial_completed_$_userUsername') ?? false);
       print('🔍 Tutorial completed: $tutorialCompleted');
       
       // If tutorial is completed, user is not new
@@ -830,7 +892,9 @@ class AuthProvider extends ChangeNotifier {
       }
       
       // Check if user has a creation timestamp
-      final userCreatedAtStr = prefs.getString('user_created_at_$_userUsername');
+      final createdAtKey = (stableKey != null && stableKey.isNotEmpty) ? stableKey : _userUsername!;
+      final userCreatedAtStr = prefs.getString('user_created_at_$createdAtKey') ??
+          prefs.getString('user_created_at_$_userUsername');
       print('🔍 User creation timestamp: $userCreatedAtStr');
       
       if (userCreatedAtStr == null) {
@@ -919,36 +983,11 @@ class AuthProvider extends ChangeNotifier {
       final unsyncedUsers = await _sqliteService.getUnsyncedUsers();
       print('Found ${unsyncedUsers.length} unsynced users');
       
+      // Firebase sync removed (offline-only mode)
+      // Users remain in SQLite only
       for (final user in unsyncedUsers) {
-        try {
-          // Update user data in Firebase (no password verification needed)
-          final firebaseService = FirebaseService();
-          final username = user['username'] ?? user['email']; // Support migration
-          await firebaseService.database.ref('users/$username').update({
-            'FirstName': user['first_name'],
-            'LastName': user['last_name'],
-            'Username': username,
-            'Address': user['street'] ?? user['address'],
-            'Region': user['region'],
-            'Province': user['province'] ?? '',
-            'City': user['city'],
-            'Barangay': user['barangay'],
-            'lastSeen': DateTime.now().millisecondsSinceEpoch,
-          });
-          
-          // Mark as synced
-          await _sqliteService.updateUser(user['id'], {
-            'firebase_uid': username,
-            'is_synced': 1,
-            'sync_timestamp': DateTime.now().millisecondsSinceEpoch,
-            'last_seen': DateTime.now().millisecondsSinceEpoch,
-          });
-          print('Synced user: $username');
-        } catch (e) {
-          final username = user['username'] ?? user['email'];
-          print('Failed to sync user $username: $e');
-          // Continue with next user
-        }
+        final username = user['username'] ?? user['email'];
+        print('User $username remains in SQLite (offline-only mode)');
       }
     } catch (e) {
       print('Error during background sync: $e');

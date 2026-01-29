@@ -85,9 +85,12 @@ class SoftUIDesign {
     double elevation = 4.0,
     Color? borderColor,
     bool showBorder = false,
+    bool isGlass = false,
   }) {
     return BoxDecoration(
-      color: backgroundColor ?? AppColors.white,
+      color: isGlass 
+          ? (backgroundColor ?? Colors.white).withOpacity(0.8) 
+          : (backgroundColor ?? AppColors.white),
       borderRadius: BorderRadius.circular(borderRadius ?? cardBorderRadius),
       border: showBorder ? getCardBorder(color: borderColor) : null,
       boxShadow: getCardShadow(elevation: elevation),

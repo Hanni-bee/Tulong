@@ -28,6 +28,7 @@ class EnhancedTextField extends StatefulWidget {
   final bool enableClear;
   final FocusNode? focusNode;
   final TextInputAction? textInputAction;
+  final ValueChanged<String>? onFieldSubmitted;
   final List<TextInputFormatter>? inputFormatters;
   final AutovalidateMode autovalidateMode;
   final bool showPasswordStrength;
@@ -61,6 +62,7 @@ class EnhancedTextField extends StatefulWidget {
     this.enableClear = false,
     this.focusNode,
     this.textInputAction,
+    this.onFieldSubmitted,
     this.inputFormatters,
     this.autovalidateMode = AutovalidateMode.onUserInteraction,
     this.showPasswordStrength = false,
@@ -197,8 +199,6 @@ class _EnhancedTextFieldState extends State<EnhancedTextField> with TickerProvid
   }
   @override
   Widget build(BuildContext context) {
-    final inputStyle = _getInputStyle();
-
     return AnimatedBuilder(
       animation: Listenable.merge([_animationController, _shakeController]),
       builder: (context, child) {
@@ -225,6 +225,7 @@ class _EnhancedTextFieldState extends State<EnhancedTextField> with TickerProvid
                     obscureText: widget.obscureText && !_showPassword,
                     keyboardType: widget.keyboardType,
                     validator: widget.validator,
+                    onFieldSubmitted: widget.onFieldSubmitted,
                     onChanged: (value) {
                       _onTextChanged();
                       if (widget.validator != null) {
@@ -287,7 +288,7 @@ class _EnhancedTextFieldState extends State<EnhancedTextField> with TickerProvid
       case InputVariant.filled:
         return BoxDecoration(
           color: _hasError
-            ? AppColors.error.withOpacity(0.05)
+            ? AppColors.error.withAlpha((0.05 * 255).round())
             : AppColors.white,
           borderRadius: BorderRadius.circular(_getBorderRadius()),
           border: Border.all(
@@ -300,7 +301,7 @@ class _EnhancedTextFieldState extends State<EnhancedTextField> with TickerProvid
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.05),
+              color: Colors.black.withAlpha((0.05 * 255).round()),
               blurRadius: 8,
               offset: const Offset(0, 2),
             ),
@@ -346,18 +347,18 @@ class _EnhancedTextFieldState extends State<EnhancedTextField> with TickerProvid
       case InputVariant.neumorphic:
         return BoxDecoration(
           color: _hasError
-            ? AppColors.error.withOpacity(0.05)
+            ? AppColors.error.withAlpha((0.05 * 255).round())
             : AppColors.white,
           borderRadius: BorderRadius.circular(_getBorderRadius()),
           border: null,
           boxShadow: [
             BoxShadow(
-              color: AppColors.neumorphicShadow,
+              color: AppColors.neumorphicDark.withAlpha((0.35 * 255).round()),
               blurRadius: 15,
               offset: const Offset(0, 8),
             ),
             BoxShadow(
-              color: AppColors.neumorphicHighlight,
+              color: AppColors.neumorphicLight.withAlpha((0.9 * 255).round()),
               blurRadius: 15,
               offset: const Offset(0, -8),
             ),
@@ -367,7 +368,7 @@ class _EnhancedTextFieldState extends State<EnhancedTextField> with TickerProvid
       case InputVariant.emergency:
         return BoxDecoration(
           color: _hasError
-            ? AppColors.error.withOpacity(0.1)
+            ? AppColors.error.withAlpha((0.1 * 255).round())
             : AppColors.criticalBackground,
           borderRadius: BorderRadius.circular(_getBorderRadius()),
           border: Border.all(
@@ -375,12 +376,12 @@ class _EnhancedTextFieldState extends State<EnhancedTextField> with TickerProvid
               ? AppColors.error
               : _isFocused
                 ? AppColors.emergencyRed
-                : AppColors.emergencyRed.withOpacity(0.5),
+                : AppColors.emergencyRed.withAlpha((0.5 * 255).round()),
             width: _isFocused ? 2.5 : 2.0,
           ),
           boxShadow: [
             BoxShadow(
-              color: AppColors.emergencyRed.withOpacity(0.3),
+              color: AppColors.emergencyRed.withAlpha((0.3 * 255).round()),
               blurRadius: 12,
               offset: const Offset(0, 6),
             ),
@@ -657,44 +658,4 @@ class _EnhancedTextFieldState extends State<EnhancedTextField> with TickerProvid
         return 20;
     }
   }
-
-  _InputStyle _getInputStyle() {
-    switch (widget.variant) {
-      case InputVariant.filled:
-        return _InputStyle(
-          backgroundColor: _hasError ? AppColors.error.withOpacity(0.05) : AppColors.white,
-        );
-      case InputVariant.outlined:
-        return _InputStyle(
-          backgroundColor: Colors.transparent,
-        );
-      case InputVariant.underlined:
-        return _InputStyle(
-          backgroundColor: Colors.transparent,
-        );
-      case InputVariant.ghost:
-        return _InputStyle(
-          backgroundColor: Colors.transparent,
-        );
-      case InputVariant.neumorphic:
-        return _InputStyle(
-          backgroundColor: _hasError ? AppColors.error.withOpacity(0.05) : AppColors.white,
-        );
-
-      case InputVariant.emergency:
-        return _InputStyle(
-          backgroundColor: _hasError ? AppColors.error.withOpacity(0.1) : AppColors.criticalBackground,
-        );
-    }
-  }
-}
-
-enum InputState { normal, focused, error, disabled, loading }
-
-class _InputStyle {
-  final Color? backgroundColor;
-
-  _InputStyle({
-    this.backgroundColor,
-  });
 }

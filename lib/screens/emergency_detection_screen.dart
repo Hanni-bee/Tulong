@@ -16,6 +16,7 @@ import '../services/image_preprocessing_service.dart';
 import '../services/emergency_detection_service.dart';
 import '../services/simple_bluetooth_service.dart';
 import '../services/ml_model_service.dart';
+import '../widgets/unified_top_bar.dart';
 
 /// Emergency Detection Screen - Replaces Calls Screen
 /// Allows users to capture photos and detect emergency types using AI/ML
@@ -878,59 +879,35 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.backgroundLight,
-      appBar: AppBar(
-        backgroundColor: AppColors.white,
-        elevation: 0,
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: AppColors.primaryRed.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Icon(
-                Icons.camera_alt_rounded,
-                color: AppColors.primaryRed,
-                size: 20,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Text(
-              'Emergency Detection',
-              style: AppTypography.titleLarge.copyWith(
-                color: AppColors.textPrimary,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          // Grid toggle
-          IconButton(
-            icon: Icon(_showGrid ? Icons.grid_on_rounded : Icons.grid_off_rounded),
-            color: AppColors.textPrimary,
-            tooltip: _showGrid ? 'Hide grid' : 'Show grid',
-            onPressed: () {
-              setState(() {
-                _showGrid = !_showGrid;
-              });
-              HapticFeedback.lightImpact();
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.info_outline_rounded),
-            color: AppColors.textPrimary,
-            tooltip: 'About Emergency Detection',
-            onPressed: () {
-              _showInfoDialog();
-            },
-          ),
-        ],
-      ),
       body: SafeArea(
         child: Column(
           children: [
+            UnifiedTopBar(
+              title: 'Emergency',
+              subtitle: 'Emergency Detection',
+              icon: Icons.camera_alt_rounded,
+              iconColor: AppColors.primaryRed,
+              actions: [
+                _topBarAction(
+                  icon: _showGrid ? Icons.grid_on_rounded : Icons.grid_off_rounded,
+                  tooltip: _showGrid ? 'Hide grid' : 'Show grid',
+                  onPressed: () {
+                    setState(() {
+                      _showGrid = !_showGrid;
+                    });
+                    HapticFeedback.lightImpact();
+                  },
+                ),
+                const SizedBox(width: 12),
+                _topBarAction(
+                  icon: Icons.info_outline_rounded,
+                  tooltip: 'About Emergency Detection',
+                  onPressed: _showInfoDialog,
+                ),
+              ],
+              compact: true,
+            ),
+
             // Camera preview area with improved layout
             Expanded(
               flex: 3,
@@ -1607,6 +1584,40 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  static Widget _topBarAction({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback onPressed,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(12),
+        child: Tooltip(
+          message: tooltip,
+          child: Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: AppColors.primaryRed.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: AppColors.primaryRed.withOpacity(0.2),
+                width: 1.5,
+              ),
+            ),
+            child: Icon(
+              icon,
+              color: AppColors.primaryRed,
+              size: 22,
+            ),
+          ),
         ),
       ),
     );

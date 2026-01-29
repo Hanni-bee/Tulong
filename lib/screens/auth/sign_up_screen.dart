@@ -11,16 +11,16 @@ import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 // import removed
 import '../../widgets/terms_conditions_modal.dart';
-import '../../services/firebase_service.dart';
 import '../../services/sqlite_service.dart';
 import 'dart:io';
 import '../../services/location_service.dart';
 import '../../utils/input_validator.dart';
 import '../../utils/responsive_spacing.dart';
 import 'biometric_verification_screen.dart';
-import '../../services/firebase_service.dart';
 import '../../widgets/accessible_text.dart';
 import 'dart:math';
+import 'package:crypto/crypto.dart';
+import 'dart:convert';
 
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({super.key});
@@ -204,9 +204,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
         provinceName = provinceData['name'] ?? _selectedProvince!;
       }
 
-      // Hash password
-      final firebaseService = FirebaseService();
-      final hashedPassword = firebaseService.hashPassword(pwd);
+      // Hash password using crypto (offline-only)
+      final bytes = utf8.encode(pwd);
+      final digest = sha256.convert(bytes);
+      final hashedPassword = digest.toString();
 
       // Prepare registration data to pass to biometric screen
       final registrationData = {

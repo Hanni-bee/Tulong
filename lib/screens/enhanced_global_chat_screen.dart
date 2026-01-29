@@ -5,8 +5,6 @@ import '../widgets/modern_message_bubble.dart';
 import '../widgets/interactive_gestures.dart';
 import '../widgets/modern_shimmer_loading.dart';
 import '../utils/neumorphic_utils.dart';
-import '../config/page_transition_config.dart';
-import 'walkie_talkie_screen.dart';
 
 class EnhancedGlobalChatScreen extends StatefulWidget {
   const EnhancedGlobalChatScreen({super.key});
@@ -303,32 +301,8 @@ class _EnhancedGlobalChatScreenState extends State<EnhancedGlobalChatScreen>
           ),
         ],
       ),
-      actions: [
-        IconButton(
-          icon: Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [AppColors.primaryRed, AppColors.primaryRedDark],
-              ),
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.primaryRed.withOpacity(0.3),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: const Icon(Icons.mic, color: Colors.white, size: 20),
-          ),
-          onPressed: () {
-            HapticFeedback.mediumImpact();
-            context.pushPage(const WalkieTalkieScreen());
-          },
-          tooltip: 'Walkie Talkie',
-        ),
-        const SizedBox(width: 8),
+      actions: const [
+        SizedBox(width: 8),
       ],
     );
   }

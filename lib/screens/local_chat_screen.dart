@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import '../constants/app_colors.dart';
 import '../constants/app_typography.dart';
 import '../constants/soft_ui_design.dart';
@@ -34,10 +35,32 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
   
   bool _isDebugConsoleVisible = false;
   bool _isRecording = false;
+  
+  // Pinned banner timer management (30 seconds display duration)
+  static const Duration _pinnedRetention = Duration(days: 1); // For history (24 hours)
+  static const Duration _pinnedBannerDuration = Duration(seconds: 30); // For banner display
+  Timer? _pinnedBannerCheckTimer; // Periodic timer to check every second
+  Timer? _pinnedBannerHideTimer; // One-time timer for 30-second hide
+  Timer? _pinnedRefreshTimer;
+  DateTime? _pinnedBannerStartTime;
+  bool _isPinnedBannerAnimatingOut = false;
 
   @override
   void initState() {
     super.initState();
+    
+    // Keep pinned banner/history time-window accurate while the screen stays open
+    _pinnedRefreshTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (!mounted) return;
+      setState(() {});
+    });
+    
+    // Check for pinned banner timer every second
+    _pinnedBannerCheckTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      _checkPinnedBannerTimer();
+    });
+    
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final chatProvider = context.read<ChatProvider>();
       
@@ -89,6 +112,50 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
         });
       }
     });
+  }
+  
+  void _startPinnedBannerTimer(DateTime messageTimestamp) {
+    _pinnedBannerStartTime = messageTimestamp;
+    _isPinnedBannerAnimatingOut = false;
+    
+    // Clear existing hide timer
+    _pinnedBannerHideTimer?.cancel();
+    
+    // Start 30-second timer to hide banner
+    _pinnedBannerHideTimer = Timer(_pinnedBannerDuration, () {
+      if (!mounted) return;
+      setState(() {
+        _isPinnedBannerAnimatingOut = true;
+      });
+      
+      // After outro animation completes, hide banner
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (!mounted) return;
+        setState(() {
+          _isPinnedBannerAnimatingOut = false;
+        });
+      });
+    });
+  }
+  
+  void _checkPinnedBannerTimer() {
+    if (_pinnedBannerStartTime == null) return;
+    
+    final now = DateTime.now();
+    final elapsed = now.difference(_pinnedBannerStartTime!);
+    
+    if (elapsed >= _pinnedBannerDuration && !_isPinnedBannerAnimatingOut) {
+      setState(() {
+        _isPinnedBannerAnimatingOut = true;
+      });
+      
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (!mounted) return;
+        setState(() {
+          _isPinnedBannerAnimatingOut = false;
+        });
+      });
+    }
   }
 
   void _sendMessage() async {
@@ -166,6 +233,236 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
     );
   }
 
+  // UI-only: Check if message is SOS emergency
+  bool _isSosEmergencyMessage(ChatMessage message) {
+    if (!message.isEmergency) return false;
+    // Check source from rawData first (matches UI branch)
+    final source = message.rawData?['source']?.toString();
+    if (source == 'sos') return true;
+    // Fallback heuristic for older/legacy SOS payloads
+    return message.isMe && message.text.contains('🚨');
+  }
+
+  // UI-only: Get SOS emergency history (last 24 hours)
+  List<ChatMessage> _getSosEmergencyHistory(List<ChatMessage> messages) {
+    final now = DateTime.now();
+    final list = messages
+        .where((m) => _isSosEmergencyMessage(m) && now.difference(m.timestamp) < _pinnedRetention)
+        .toList();
+    list.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+    return list;
+  }
+
+  // UI-only: Build pinned history button for top bar
+  Widget _buildPinnedHistoryButton() {
+    final provider = context.watch<ChatProvider>();
+    final pinnedCount = _getSosEmergencyHistory(provider.messages).length;
+    
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: _showPinnedHistoryModal,
+        borderRadius: BorderRadius.circular(12),
+        child: Tooltip(
+          message: 'Pinned SOS history',
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: AppColors.error.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: AppColors.error.withOpacity(0.2),
+                    width: 1.5,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.error.withOpacity(0.06),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
+                      spreadRadius: 0,
+                    ),
+                  ],
+                ),
+                child: Icon(
+                  Icons.push_pin_rounded,
+                  color: AppColors.error,
+                  size: 22,
+                ),
+              ),
+              if (pinnedCount > 0)
+                Positioned(
+                  right: -2,
+                  top: -2,
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: AppColors.error,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 2),
+                    ),
+                    constraints: const BoxConstraints(
+                      minWidth: 18,
+                      minHeight: 18,
+                    ),
+                    child: Center(
+                      child: Text(
+                        pinnedCount > 9 ? '9+' : pinnedCount.toString(),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // UI-only: Show pinned SOS history modal
+  void _showPinnedHistoryModal() {
+    final provider = context.read<ChatProvider>();
+    final items = _getSosEmergencyHistory(provider.messages);
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return Container(
+          margin: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.18),
+                blurRadius: 22,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: AppColors.lightGray,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Pinned SOS History',
+                  style: AppTypography.titleMedium.copyWith(
+                    color: AppColors.textPrimary,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                if (items.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      children: [
+                        Icon(
+                          Icons.history,
+                          size: 48,
+                          color: AppColors.mediumGray.withOpacity(0.5),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'No SOS history',
+                          style: AppTypography.bodyMedium.copyWith(
+                            color: AppColors.mediumGray,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                else
+                  Flexible(
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: items.length,
+                      itemBuilder: (context, index) {
+                        final message = items[index];
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: AppColors.error.withOpacity(0.05),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: AppColors.error.withOpacity(0.2),
+                              width: 1,
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.emergency,
+                                    size: 16,
+                                    color: AppColors.error,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      message.senderName ?? 'Unknown',
+                                      style: AppTypography.bodyMedium.copyWith(
+                                        fontWeight: FontWeight.w700,
+                                        color: AppColors.error,
+                                      ),
+                                    ),
+                                  ),
+                                  Text(
+                                    DateFormat('MMM d, h:mm a').format(message.timestamp),
+                                    style: AppTypography.bodySmall.copyWith(
+                                      color: AppColors.mediumGray,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                message.text,
+                                style: AppTypography.bodyMedium.copyWith(
+                                  color: AppColors.textPrimary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                const SizedBox(height: 16),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -182,14 +479,19 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
                     : 'Disconnected';
                 return TopBarConfigs.localChatTopBar(
                   status: statusText,
-                  onBluetoothTap: null, // Removed - now on home screen
+                  onBluetoothTap: () {
+                    // Bluetooth tap handler - can be used for future features
+                  },
                   onConnectedTap: () {
                     if (provider.isConnected) {
                       _showConnectedUsersModal();
                     }
                     // Removed radar modal - now on home screen
                   },
-                  onRefresh: () => provider.smartRefresh(),
+                  additionalActions: [
+                    const SizedBox(width: 8),
+                    _buildPinnedHistoryButton(),
+                  ],
                 );
               },
             ),
@@ -221,103 +523,124 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
                     );
                   }
                   
+                  // Find the latest SOS emergency message (for pinned banner)
+                  final now = DateTime.now();
+                  ChatMessage? latestEmergency;
+                  for (final m in provider.messages.reversed) {
+                    if (!_isSosEmergencyMessage(m)) continue;
+                    if (now.difference(m.timestamp) >= _pinnedRetention) continue;
+                    latestEmergency = m;
+                    break;
+                  }
+                  
+                  // Check if this is a new emergency message (not the one currently showing)
+                  final hasActiveEmergency = latestEmergency != null;
+                  ChatMessage? currentEmergency = latestEmergency;
+                  final isNewEmergency = hasActiveEmergency && 
+                      (_pinnedBannerStartTime == null || 
+                       (currentEmergency != null && currentEmergency.timestamp.isAfter(_pinnedBannerStartTime!)));
+                  
+                  // Start timer for new emergency
+                  if (isNewEmergency && !_isPinnedBannerAnimatingOut && currentEmergency != null) {
+                    _startPinnedBannerTimer(currentEmergency.timestamp);
+                  }
+                  
+                  // Check if banner should be visible (within 30 seconds)
+                  final shouldShowBanner = hasActiveEmergency && 
+                      !_isPinnedBannerAnimatingOut &&
+                      (_pinnedBannerStartTime == null || 
+                       now.difference(_pinnedBannerStartTime!) < _pinnedBannerDuration);
+                  
                   // Show messages with refresh indicator overlay
-                  final pinnedEmergencies = provider.pinnedEmergencyMessages;
                   final regularMessages = provider.messages.where((msg) => !msg.isPinned).toList();
                   
-                  return Stack(
+                  return Column(
                     children: [
-                      ListView.builder(
-                        controller: _scrollController,
-                        padding: const EdgeInsets.all(16),
-                        itemCount: (pinnedEmergencies.isNotEmpty ? 1 : 0) + regularMessages.length + (provider.isTyping ? 1 : 0),
-                        itemBuilder: (context, index) {
-                          // Show pinned emergencies section first
-                          if (index == 0 && pinnedEmergencies.isNotEmpty) {
-                            return Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                _buildPinnedEmergenciesSection(pinnedEmergencies, provider),
-                                const SizedBox(height: 16),
-                                const Divider(height: 1, thickness: 1),
-                                const SizedBox(height: 16),
-                              ],
-                            );
-                          }
-                          
-                          // Adjust index for pinned section (subtract 1 if pinned section exists)
-                          final adjustedIndex = pinnedEmergencies.isNotEmpty ? index - 1 : index;
-                          
-                          // Show typing indicator at the end
-                          if (adjustedIndex == regularMessages.length && provider.isTyping) {
-                            return _buildTypingIndicator();
-                          }
-                          
-                          // Show regular messages
-                          if (adjustedIndex < regularMessages.length) {
-                            final message = regularMessages[adjustedIndex];
-                            // Auto-scroll to bottom when new messages arrive
-                            WidgetsBinding.instance.addPostFrameCallback((_) {
-                              if (_scrollController.hasClients && adjustedIndex == regularMessages.length - 1) {
-                                _scrollController.animateTo(
-                                  _scrollController.position.maxScrollExtent,
-                                  duration: const Duration(milliseconds: 300),
-                                  curve: Curves.easeOut,
-                                );
-                              }
-                            });
-                            return _buildMessageBubble(message);
-                          }
-                          
-                          return const SizedBox.shrink();
-                        },
-                      ),
-                      // Refresh indicator overlay (only show if refreshing, not when receiving real-time messages)
-                      if (provider.isRefreshingMessages && !provider.isConnected)
-                        Positioned(
-                          top: 16,
-                          left: 0,
-                          right: 0,
-                          child: Container(
-                            margin: const EdgeInsets.symmetric(horizontal: 16),
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                            decoration: BoxDecoration(
-                              color: AppColors.info.withOpacity(0.9),
-                              borderRadius: BorderRadius.circular(20),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.1),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 2),
-                                ),
-                              ],
+                      // Pinned Emergency Alert (only show for 30 seconds)
+                      if (shouldShowBanner && currentEmergency != null)
+                        _buildPinnedEmergencyAlert(currentEmergency),
+                      
+                      Expanded(
+                        child: Stack(
+                          children: [
+                            ListView.builder(
+                              controller: _scrollController,
+                              padding: const EdgeInsets.all(16),
+                              itemCount: regularMessages.length + (provider.isTyping ? 1 : 0),
+                              itemBuilder: (context, index) {
+                                // Show typing indicator at the end
+                                if (index == regularMessages.length && provider.isTyping) {
+                                  return _buildTypingIndicator();
+                                }
+                                
+                                // Show regular messages
+                                if (index < regularMessages.length) {
+                                  final message = regularMessages[index];
+                                  // Auto-scroll to bottom when new messages arrive
+                                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                                    if (_scrollController.hasClients && index == regularMessages.length - 1) {
+                                      _scrollController.animateTo(
+                                        _scrollController.position.maxScrollExtent,
+                                        duration: const Duration(milliseconds: 300),
+                                        curve: Curves.easeOut,
+                                      );
+                                    }
+                                  });
+                                  return _buildMessageBubble(message);
+                                }
+                                
+                                return const SizedBox.shrink();
+                              },
                             ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                            // Refresh indicator overlay (only show if refreshing, not when receiving real-time messages)
+                            if (provider.isRefreshingMessages && !provider.isConnected)
+                              Positioned(
+                                top: 16,
+                                left: 0,
+                                right: 0,
+                                child: Container(
+                                  margin: const EdgeInsets.symmetric(horizontal: 16),
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.info.withOpacity(0.9),
+                                    borderRadius: BorderRadius.circular(20),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withOpacity(0.1),
+                                        blurRadius: 8,
+                                        offset: const Offset(0, 2),
+                                      ),
+                                    ],
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        provider.hasCachedMessages 
+                                            ? 'Refreshing...' 
+                                            : 'Loading...',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  provider.hasCachedMessages 
-                                      ? 'Refreshing...' 
-                                      : 'Loading...',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
+                              ),
+                          ],
                         ),
+                      ),
                     ],
                   );
                 },
@@ -404,274 +727,168 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
     );
   }
 
-  /// Build pinned emergencies section
-
-  /// Build pinned emergencies section at the top
-  Widget _buildPinnedEmergenciesSection(List<ChatMessage> pinnedEmergencies, ChatProvider provider) {
-    // Group by sender to handle multiple senders
-    final Map<String, List<ChatMessage>> emergenciesBySender = {};
-    for (final msg in pinnedEmergencies) {
-      final sender = msg.senderName ?? (msg.isMe ? 'You' : 'Unknown');
-      if (!emergenciesBySender.containsKey(sender)) {
-        emergenciesBySender[sender] = [];
-      }
-      emergenciesBySender[sender]!.add(msg);
-    }
-    
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-      decoration: BoxDecoration(
-        color: AppColors.error.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: AppColors.error.withOpacity(0.3),
-          width: 2,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.error.withOpacity(0.2),
-            blurRadius: 12,
-            spreadRadius: 2,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
-              color: AppColors.error.withOpacity(0.15),
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(16),
-                topRight: Radius.circular(16),
-              ),
+  /// Build pinned emergency alert - Shows for 30 seconds only
+  /// Compact red banner design matching UI branch
+  Widget _buildPinnedEmergencyAlert(ChatMessage message) {
+    return GestureDetector(
+      onTap: () => _showPinnedEmergencyDetails(message),
+      child: Container(
+        width: double.infinity,
+        margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+        decoration: BoxDecoration(
+          color: AppColors.error,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.error.withOpacity(0.3),
+              blurRadius: 15,
+              spreadRadius: 2,
+              offset: const Offset(0, 4),
             ),
-            child: Row(
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: Stack(
+            children: [
+              // Decorative background pattern
+              Positioned(
+                right: -20,
+                top: -20,
+                child: Icon(
+                  Icons.sos_rounded,
+                  size: 100,
+                  color: Colors.white.withOpacity(0.1),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.warning_amber_rounded,
+                        color: Colors.white,
+                        size: 24,
+                      ),
+                    ).animate(onPlay: (c) => c.repeat(reverse: true))
+                     .scale(begin: const Offset(1, 1), end: const Offset(1.1, 1.1), duration: 1.seconds),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Row(
+                            children: [
+                              const Text(
+                                'PINNED EMERGENCY',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 1.5,
+                                ),
+                              ),
+                              const Spacer(),
+                              Text(
+                                _formatDateTime(message.timestamp),
+                                style: TextStyle(
+                                  color: Colors.white.withOpacity(0.7),
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            message.text,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              height: 1.2,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    )
+    .animate()
+    .fadeIn(duration: 300.ms)
+    .slideY(begin: -0.1, end: 0, duration: 300.ms, curve: Curves.easeOut);
+  }
+  
+  void _showPinnedEmergencyDetails(ChatMessage message) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return Container(
+          margin: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.18),
+                blurRadius: 22,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(
-                  Icons.push_pin,
-                  color: AppColors.error,
-                  size: 20,
-                ),
-                const SizedBox(width: 8),
                 Text(
-                  'PINNED EMERGENCIES',
-                  style: AppTypography.bodySmall.copyWith(
-                    color: AppColors.error,
+                  'Pinned Emergency',
+                  style: AppTypography.titleMedium.copyWith(
+                    color: AppColors.textPrimary,
                     fontWeight: FontWeight.w900,
-                    letterSpacing: 1.2,
-                    fontSize: 11,
                   ),
                 ),
-                const Spacer(),
+                const SizedBox(height: 16),
                 Text(
-                  '${pinnedEmergencies.length}',
-                  style: AppTypography.bodySmall.copyWith(
-                    color: AppColors.error,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12,
+                  message.text,
+                  style: AppTypography.bodyLarge.copyWith(
+                    color: AppColors.textPrimary,
                   ),
                 ),
+                const SizedBox(height: 16),
+                Text(
+                  'Sent ${_formatDateTime(message.timestamp)}',
+                  style: AppTypography.bodySmall.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: 20),
               ],
             ),
           ),
-          
-          // Emergency messages grouped by sender
-          ...emergenciesBySender.entries.map((entry) {
-            final sender = entry.key;
-            final emergencies = entry.value;
-            final latestEmergency = emergencies.first; // Already sorted newest first
-            
-            return Container(
-              margin: const EdgeInsets.all(12),
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: AppColors.error.withOpacity(0.2),
-                  width: 1.5,
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Sender info
-                  Row(
-                    children: [
-                      Container(
-                        width: 32,
-                        height: 32,
-                        decoration: BoxDecoration(
-                          color: AppColors.error.withOpacity(0.2),
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: AppColors.error,
-                            width: 2,
-                          ),
-                        ),
-                        child: Center(
-                          child: Text(
-                            sender[0].toUpperCase(),
-                            style: AppTypography.bodyMedium.copyWith(
-                              color: AppColors.error,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              sender,
-                              style: AppTypography.bodyMedium.copyWith(
-                                fontWeight: FontWeight.bold,
-                                color: AppColors.darkGray,
-                              ),
-                            ),
-                            Text(
-                              emergencies.length > 1 
-                                  ? '${emergencies.length} emergency alerts'
-                                  : '1 emergency alert',
-                              style: AppTypography.bodySmall.copyWith(
-                                color: AppColors.mediumGray,
-                                fontSize: 11,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close, size: 18),
-                        color: AppColors.mediumGray,
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
-                        onPressed: () {
-                          // Unpin all emergencies from this sender
-                          for (final msg in emergencies) {
-                            if (msg.messageId != null) {
-                              provider.unpinEmergencyMessage(msg.messageId!);
-                            }
-                          }
-                        },
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  
-                  // Latest emergency message preview
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: AppColors.error.withOpacity(0.05),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            const Icon(
-                              Icons.sos_rounded,
-                              color: AppColors.error,
-                              size: 16,
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              'EMERGENCY ALERT',
-                              style: AppTypography.bodySmall.copyWith(
-                                color: AppColors.error,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 1.0,
-                                fontSize: 10,
-                              ),
-                            ),
-                            const Spacer(),
-                            Text(
-                              _formatTime(latestEmergency.timestamp),
-                              style: AppTypography.bodySmall.copyWith(
-                                color: AppColors.mediumGray,
-                                fontSize: 10,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          latestEmergency.text,
-                          style: AppTypography.bodyMedium.copyWith(
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.darkGray,
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  ),
-                  
-                  // Show count if multiple emergencies from same sender
-                  if (emergencies.length > 1)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: TextButton.icon(
-                        onPressed: () {
-                          // Scroll to first emergency message in chat
-                          final firstEmergencyIndex = provider.messages.indexWhere(
-                            (msg) => msg.messageId == latestEmergency.messageId,
-                          );
-                          if (firstEmergencyIndex != -1 && _scrollController.hasClients) {
-                            _scrollController.animateTo(
-                              firstEmergencyIndex * 100.0, // Approximate height
-                              duration: const Duration(milliseconds: 500),
-                              curve: Curves.easeInOut,
-                            );
-                          }
-                        },
-                        icon: const Icon(Icons.arrow_downward, size: 16),
-                        label: Text(
-                          'View ${emergencies.length - 1} more',
-                          style: AppTypography.bodySmall.copyWith(
-                            color: AppColors.error,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        style: TextButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          minimumSize: Size.zero,
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            );
-          }).toList(),
-        ],
-      ),
+        );
+      },
     );
   }
   
-  String _formatTime(DateTime timestamp) {
-    final now = DateTime.now();
-    final difference = now.difference(timestamp);
-    
-    if (difference.inDays > 0) {
-      return '${difference.inDays}d ago';
-    } else if (difference.inHours > 0) {
-      return '${difference.inHours}h ago';
-    } else if (difference.inMinutes > 0) {
-      return '${difference.inMinutes}m ago';
-    } else {
-      return 'now';
-    }
-  }
 
   Widget _buildMessageBubble(ChatMessage message) {
     return TweenAnimationBuilder<double>(
@@ -1149,6 +1366,11 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
     // Mark chat screen as not visible
     final chatProvider = context.read<ChatProvider>();
     chatProvider.setLocalChatScreenVisible(false);
+    
+    // Cancel timers
+    _pinnedBannerCheckTimer?.cancel();
+    _pinnedBannerHideTimer?.cancel();
+    _pinnedRefreshTimer?.cancel();
     
     _messageController.dispose();
     _scrollController.dispose();

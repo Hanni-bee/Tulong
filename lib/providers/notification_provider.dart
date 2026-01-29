@@ -2,11 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 import 'dart:convert';
-import 'package:firebase_messaging/firebase_messaging.dart';
+// Firebase messaging removed (offline-only mode)
 import '../models/notification_model.dart';
 import '../services/notification_service.dart';
 import '../services/offline_messaging_service.dart';
-import '../services/firebase_service.dart';
 
 /// Notification Provider
 /// 
@@ -270,20 +269,9 @@ class NotificationProvider extends ChangeNotifier {
   // ============================================================================
 
   void _listenToNotifications() {
-    _notificationService.onMessage.listen((message) {
-      final notification = AppNotification(
-        id: message.messageId ?? DateTime.now().millisecondsSinceEpoch.toString(),
-        title: message.notification?.title ?? 'Notification',
-        body: message.notification?.body ?? '',
-        type: _getNotificationTypeFromMessage(message),
-        timestamp: message.sentTime ?? DateTime.now(),
-        isRead: false,
-        data: message.data,
-        channelId: message.data['channelId'] as String?,
-      );
-      addNotification(notification);
-    });
-
+    // Firebase messaging removed (offline-only mode)
+    // Notifications now handled through local notification service only
+    
     _notificationService.onNotificationTap.listen((response) {
       if (response.payload != null) {
         final data = jsonDecode(response.payload!);
@@ -295,8 +283,8 @@ class NotificationProvider extends ChangeNotifier {
     });
   }
 
-  NotificationType _getNotificationTypeFromMessage(RemoteMessage message) {
-    final type = message.data['type'] as String?;
+  NotificationType _getNotificationTypeFromMessage(Map<String, dynamic> messageData) {
+    final type = messageData['type'] as String?;
     if (type != null) {
       return NotificationType.values.firstWhere(
         (e) => e.name == type,
@@ -408,6 +396,10 @@ class NotificationProvider extends ChangeNotifier {
   // ============================================================================
   
   void _listenToGlobalChat() {
+    // Firebase global chat listener removed (offline-only mode)
+    // Global chat now uses SQLite only
+    _globalChatSubscription = null;
+    /*
     final firebaseService = FirebaseService();
     
     _globalChatSubscription = firebaseService.getMessagesStream('global').listen(
@@ -460,6 +452,7 @@ class NotificationProvider extends ChangeNotifier {
         debugPrint('Error listening to global chat: $error');
       },
     );
+    */
   }
   
   Future<void> _showGlobalChatNotification({
@@ -529,64 +522,10 @@ class NotificationProvider extends ChangeNotifier {
     // Cancel existing subscription if any
     _privateChatSubscriptions[chatId]?.cancel();
     
-    final firebaseService = FirebaseService();
-    
-    _privateChatSubscriptions[chatId] = firebaseService.getMessagesStream(chatId).listen(
-      (event) {
-        if (!event.snapshot.exists) return;
-        
-        final data = event.snapshot.value;
-        if (data == null) return;
-        
-        final messages = Map<String, dynamic>.from(data as Map);
-        
-        // Initialize message IDs set for this chat if not exists
-        if (!_previousPrivateMessageIds.containsKey(chatId)) {
-          _previousPrivateMessageIds[chatId] = {};
-        }
-        
-        // Process each new message
-        for (final entry in messages.entries) {
-          final messageId = entry.key;
-          final messageData = Map<String, dynamic>.from(entry.value);
-          
-          // Skip if we've already processed this message
-          if (_previousPrivateMessageIds[chatId]!.contains(messageId)) {
-            continue;
-          }
-          
-          // Add to processed set
-          _previousPrivateMessageIds[chatId]!.add(messageId);
-          
-          // Get sender info
-          final senderId = messageData['senderId'] as String? ?? '';
-          final senderName = messageData['senderName'] as String? ?? contactName;
-          final messageText = messageData['message'] as String? ?? '';
-          
-          // Get current user to avoid notifying for own messages
-          SharedPreferences.getInstance().then((prefs) {
-            final currentUserId = prefs.getString('user_id') ?? '';
-            final currentUserEmail = prefs.getString('user_email') ?? '';
-            
-            // Don't notify if this is the current user's message
-            if (senderId == currentUserId || senderId == currentUserEmail) {
-              return;
-            }
-            
-            // Show notification
-            _showPrivateMessageNotification(
-              senderName: senderName,
-              message: messageText,
-              messageId: messageId,
-              chatId: chatId,
-            );
-          });
-        }
-      },
-      onError: (error) {
-        debugPrint('Error listening to private chat $chatId: $error');
-      },
-    );
+    // Firebase private chat listener removed (offline-only mode)
+    // Private chat now uses SQLite only
+    // Firebase private chat listener removed (offline-only mode)
+    // Private chat notifications now handled through SQLite
   }
   
   /// Stop listening to a specific private chat

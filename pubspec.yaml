@@ -29,15 +29,6 @@ dependencies:
   fl_chart: ^0.66.2
   url_launcher: ^6.3.2
   
-  # Firebase dependencies
-  firebase_core: ^4.1.1
-  firebase_auth: ^6.1.0
-  firebase_database: ^12.0.2
-  firebase_storage: ^13.0.2
-  firebase_analytics: ^12.0.2
-  firebase_messaging: ^16.0.2
-  google_sign_in: ^6.2.1
-  
   # Notification dependencies
   flutter_local_notifications: ^19.4.2
   timezone: ^0.10.1
@@ -77,8 +68,6 @@ flutter:
   
   assets:
     - assets/images/
-    - assets/icons/
-    - assets/animations/
     - assets/lottie/
     - assets/gifs/disasters/
     - assets/philippine_provinces_cities_municipalities_and_barangays_2019v2.json

@@ -7,8 +7,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/bluetooth_service.dart';
 import '../services/voice_chat_extension.dart' as voice;
 import '../services/sqlite_service.dart';
-import '../services/firebase_service.dart';
-import '../providers/auth_provider.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import '../utils/enhanced_error_handler.dart';
 import '../services/notification_service.dart';
@@ -540,10 +538,14 @@ class ChatProvider with ChangeNotifier {
   }
 
   /// Process incoming Map message (JSON format from ESP32)
+  /// Handles messages from:
+  /// 1. Home page SOS button (sent with isEmergency: true flag)
+  /// 2. Other devices forwarding emergency messages (with is_emergency flag)
   void _processIncomingMapMessage(Map<String, dynamic> data) {
     try {
       final messageText = data['message'] ?? '';
       final senderName = data['sender_name'] ?? 'Unknown';
+      // Check for emergency flag - this includes messages from home page SOS button
       final isEmergency = data['is_emergency'] == true || data['isEmergency'] == true;
       
       if (messageText.isEmpty) return;
@@ -553,8 +555,15 @@ class ChatProvider with ChangeNotifier {
         _addConnectedUser(senderName);
       }
       
-      // Add message with emergency flag
-      _addMessage(messageText, false, senderName: senderName, isEmergency: isEmergency);
+      // Prepare rawData with source for SOS detection
+      final rawDataWithSource = Map<String, dynamic>.from(data);
+      if (isEmergency && !rawDataWithSource.containsKey('source')) {
+        rawDataWithSource['source'] = 'sos';
+      }
+      
+      // Add message with emergency flag and rawData
+      // Messages from home page SOS button (isEmergency: true) will be auto-pinned here
+      _addMessage(messageText, false, senderName: senderName, isEmergency: isEmergency, rawData: rawDataWithSource);
       
       // Trigger haptic feedback and sound for emergency messages
       if (isEmergency) {
@@ -869,7 +878,11 @@ class ChatProvider with ChangeNotifier {
       return;
     }
     
-    final completeMessage = _incomingMessageBuffer;
+    // Clean the message buffer - remove any MSG_END tags that might have been included
+    String completeMessage = _incomingMessageBuffer
+        .replaceAll('<MSG_END>', '')
+        .replaceAll('&lt;MSG_END&gt;', '')
+        .trim();
     final senderUid = _bufferedMessageSenderUid;
     
     // Clear buffer
@@ -877,12 +890,34 @@ class ChatProvider with ChangeNotifier {
     _bufferedMessageSenderUid = null;
     _isBufferingMessage = false;
     
-    // Get cached name from UID
+    // Check if this is an SOS message from hardware physical button
+    // ESP32 sends: <MSG_START:UIDSOS> + message + <MSG_END>
+    // ONLY pin based on WHERE it came from (UIDSOS), NOT based on message content
+    final isSosFromHardware = senderUid != null && 
+                               (senderUid.toUpperCase().contains('SOS') || 
+                                senderUid.toUpperCase().endsWith('SOS'));
+    
+    // Note: Home page SOS button messages are sent with isEmergency: true flag in JSON format
+    // They are handled by _processIncomingMapMessage() which already pins them
+    // This path (_flushBufferedMessage) handles hardware SOS button (UIDSOS format)
+    
+    // Get cached name from UID (extract actual UID if it's UIDSOS format)
     String? senderName;
+    String? actualUid = senderUid;
+    
+    // If UID contains SOS, extract the actual UID part (e.g., "UIDSOS" -> try to get name from cache)
+    // For SOS messages, we still want to show the sender's name if available
     if (senderUid != null && senderUid != 'UNKNOWN') {
+      // Try to extract actual UID (remove SOS suffix if present)
+      if (isSosFromHardware && senderUid.length > 3) {
+        // Try to find the actual UID (might be embedded in the SOS UID)
+        // For now, we'll use the full UID but mark as emergency
+        actualUid = senderUid;
+      }
+      
       // Get cached name (synchronous lookup from SharedPreferences)
       final prefs = await SharedPreferences.getInstance();
-      final cachedName = prefs.getString('profile_name_$senderUid');
+      final cachedName = prefs.getString('profile_name_$actualUid');
       
       if (cachedName != null && cachedName.isNotEmpty) {
         senderName = cachedName;
@@ -892,7 +927,7 @@ class ChatProvider with ChangeNotifier {
           final sqliteService = SQLiteService();
           final users = await sqliteService.getAllUsers();
           final user = users.firstWhere(
-            (user) => user['uid']?.toString() == senderUid,
+            (user) => user['uid']?.toString() == actualUid,
             orElse: () => {},
           );
           
@@ -906,26 +941,30 @@ class ChatProvider with ChangeNotifier {
                 .join(' ')
                 .trim();
             
-            if (senderName!.isNotEmpty) {
+            if (senderName.isNotEmpty) {
               // Cache it for future use
-              await prefs.setString('profile_name_$senderUid', senderName);
+              await prefs.setString('profile_name_$actualUid', senderName);
             } else {
-              senderName = senderUid; // Fallback to UID
+              senderName = actualUid; // Fallback to UID
             }
           } else {
-            senderName = senderUid; // Fallback to UID
+            senderName = actualUid; // Fallback to UID
           }
         } catch (e) {
           print('Error getting cached name from UID: $e');
-          senderName = senderUid; // Fallback to UID
+          senderName = actualUid; // Fallback to UID
         }
       }
       
-      _addConnectedUser(senderName!);
+      if (senderName != null && senderName.isNotEmpty) {
+        _addConnectedUser(senderName);
+      }
     }
     
-    // Display the complete message
-    _addMessage(completeMessage, false, senderName: senderName ?? 'ESP');
+    // Display the complete message with emergency flag ONLY if from hardware SOS button (UIDSOS)
+    // Pinning is based on WHERE it came from, NOT on message content
+    final rawDataForHardwareSos = isSosFromHardware ? {'source': 'sos'} : null;
+    _addMessage(completeMessage, false, senderName: senderName ?? 'ESP', isEmergency: isSosFromHardware, rawData: rawDataForHardwareSos);
     
     print('BT_RX: Complete message displayed (${completeMessage.length} chars) from UID: $senderUid, Name: $senderName');
     addStructuredDebug({
@@ -1149,7 +1188,7 @@ class ChatProvider with ChangeNotifier {
     await _voiceExtension.stopPlayback();
   }
 
-  void _addMessage(String text, bool isMe, {String? senderName, ChatMessage? message, bool isEmergency = false}) {
+  void _addMessage(String text, bool isMe, {String? senderName, ChatMessage? message, bool isEmergency = false, Map<String, dynamic>? rawData}) {
     if (message == null) {
       // For incoming messages (!isMe), mark as read only if chat screen is visible
       // For outgoing messages (isMe), always mark as read
@@ -1166,9 +1205,10 @@ class ChatProvider with ChangeNotifier {
         type: voice.MessageType.text,
         senderName: senderName,
         isRead: shouldMarkAsRead, // Mark as read if sent by user or if screen is visible
-        isEmergency: isEmergency, // Set emergency flag
-        isPinned: isEmergency, // Auto-pin emergency messages
+        isEmergency: isEmergency, // Set emergency flag (from hardware SOS button OR home page SOS button)
+        isPinned: isEmergency, // Auto-pin emergency messages (from hardware OR home page SOS button)
         messageId: messageId, // Unique ID for unpinning
+        rawData: rawData, // Store raw data for source detection
       );
     } else if (!isMe && senderName != null) {
       // Update sender name if provided, preserve isRead status
@@ -1185,6 +1225,9 @@ class ChatProvider with ChangeNotifier {
     
     // Add message to list (real-time from ESP32)
     _messages.add(message);
+    
+    // Notify listeners to update badge count
+    notifyListeners();
     
     // Show notification for received messages (not from current user)
     if (!isMe) {
@@ -1340,25 +1383,7 @@ class ChatProvider with ChangeNotifier {
           print('BT_SYNC: Error fetching UID from SQLite: $e');
         }
         
-        // If still empty, try Firebase
-        if (uid.isEmpty) {
-          try {
-            final firebaseService = FirebaseService();
-            final userSnapshot = await firebaseService.database.ref('users/$username').get();
-            if (userSnapshot.exists) {
-              final userEntry = userSnapshot.value as Map<dynamic, dynamic>;
-              if (userEntry.containsKey('UID') || userEntry.containsKey('uid')) {
-                uid = userEntry['UID']?.toString() ?? userEntry['uid']?.toString() ?? '';
-                if (uid.isNotEmpty) {
-                  await prefs.setString('session_uid', uid);
-                  print('BT_SYNC: UID fetched from Firebase: $uid');
-                }
-              }
-            }
-          } catch (e) {
-            print('BT_SYNC: Error fetching UID from Firebase: $e');
-          }
-        }
+        // Firebase UID fetch removed (offline-only mode)
         
         // If still empty, cannot sync
         if (uid.isEmpty) {
@@ -1578,6 +1603,7 @@ class ChatMessage {
   final bool isEmergency; // Flag to indicate emergency message from SOS ring
   bool isPinned; // Flag to indicate pinned emergency message
   final String? messageId; // Unique ID for message (for unpinning)
+  final Map<String, dynamic>? rawData; // Raw message data for source detection
 
   ChatMessage({
     required this.text,
@@ -1591,6 +1617,7 @@ class ChatMessage {
     this.isEmergency = false, // Default to false for normal messages
     this.isPinned = false, // Default to false, emergency messages auto-pin
     this.messageId,
+    this.rawData,
   });
   
   ChatMessage copyWith({
@@ -1605,6 +1632,7 @@ class ChatMessage {
     bool? isEmergency,
     bool? isPinned,
     String? messageId,
+    Map<String, dynamic>? rawData,
   }) {
     return ChatMessage(
       text: text ?? this.text,
@@ -1618,6 +1646,7 @@ class ChatMessage {
       isEmergency: isEmergency ?? this.isEmergency,
       isPinned: isPinned ?? this.isPinned,
       messageId: messageId ?? this.messageId,
+      rawData: rawData ?? this.rawData,
     );
   }
 }

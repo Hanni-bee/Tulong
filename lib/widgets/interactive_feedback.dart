@@ -2,55 +2,97 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../constants/app_colors.dart';
 
-/// Success animation overlay
+/// Success animation overlay (Improved version)
 class SuccessAnimation extends StatefulWidget {
   final VoidCallback? onComplete;
+  final double size;
+  final bool showRipple;
 
-  const SuccessAnimation({super.key, this.onComplete});
+  const SuccessAnimation({
+    super.key,
+    this.onComplete,
+    this.size = 140,
+    this.showRipple = false,
+  });
 
   @override
   State<SuccessAnimation> createState() => _SuccessAnimationState();
 }
 
 class _SuccessAnimationState extends State<SuccessAnimation>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
+    with TickerProviderStateMixin {
+  late AnimationController _mainController;
+  late AnimationController? _rippleController;
+  
   late Animation<double> _scaleAnimation;
   late Animation<double> _checkAnimation;
   late Animation<double> _fadeAnimation;
+  late Animation<double>? _rippleAnimation;
+  late Animation<double>? _rippleOpacityAnimation;
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
+    
+    // Main animation controller
+    _mainController = AnimationController(
       duration: const Duration(milliseconds: 1200),
       vsync: this,
     );
 
+    // Ripple controller (if enabled)
+    if (widget.showRipple) {
+      _rippleController = AnimationController(
+        duration: const Duration(milliseconds: 800),
+        vsync: this,
+      )..repeat();
+    }
+
+    // Enhanced scale animation with better bounce
     _scaleAnimation = TweenSequence<double>([
-      TweenSequenceItem(tween: Tween(begin: 0.0, end: 1.2), weight: 40),
-      TweenSequenceItem(tween: Tween(begin: 1.2, end: 1.0), weight: 60),
+      TweenSequenceItem(tween: Tween(begin: 0.0, end: 1.3), weight: 35),
+      TweenSequenceItem(tween: Tween(begin: 1.3, end: 0.95), weight: 15),
+      TweenSequenceItem(tween: Tween(begin: 0.95, end: 1.0), weight: 50),
     ]).animate(CurvedAnimation(
-      parent: _controller,
-      curve: const Interval(0.0, 0.6, curve: Curves.elasticOut),
+      parent: _mainController,
+      curve: const Interval(0.0, 0.7, curve: Curves.elasticOut),
     ));
 
+    // Checkmark animation
     _checkAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
-        parent: _controller,
-        curve: const Interval(0.3, 0.7, curve: Curves.easeOut),
+        parent: _mainController,
+        curve: const Interval(0.2, 0.8, curve: Curves.easeOut),
       ),
     );
 
+    // Fade out animation
     _fadeAnimation = Tween<double>(begin: 1.0, end: 0.0).animate(
       CurvedAnimation(
-        parent: _controller,
-        curve: const Interval(0.8, 1.0, curve: Curves.easeIn),
+        parent: _mainController,
+        curve: const Interval(0.75, 1.0, curve: Curves.easeIn),
       ),
     );
 
-    _controller.forward();
-    _controller.addStatusListener((status) {
+    // Ripple animation (if enabled)
+    if (widget.showRipple && _rippleController != null) {
+      _rippleAnimation = Tween<double>(begin: 0.0, end: 1.5).animate(
+        CurvedAnimation(
+          parent: _rippleController!,
+          curve: Curves.easeOut,
+        ),
+      );
+      
+      _rippleOpacityAnimation = Tween<double>(begin: 0.6, end: 0.0).animate(
+        CurvedAnimation(
+          parent: _rippleController!,
+          curve: Curves.easeOut,
+        ),
+      );
+    }
+
+    _mainController.forward();
+    _mainController.addStatusListener((status) {
       if (status == AnimationStatus.completed) {
         widget.onComplete?.call();
       }
@@ -61,46 +103,79 @@ class _SuccessAnimationState extends State<SuccessAnimation>
 
   @override
   void dispose() {
-    _controller.dispose();
+    _mainController.dispose();
+    _rippleController?.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: _controller,
+      animation: Listenable.merge([
+        _mainController,
+        if (_rippleController != null) _rippleController!,
+      ]),
       builder: (context, child) {
         return FadeTransition(
           opacity: _fadeAnimation,
           child: Center(
-            child: Transform.scale(
-              scale: _scaleAnimation.value,
-              child: Container(
-                width: 120,
-                height: 120,
-                decoration: BoxDecoration(
-                  color: AppColors.success,
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.success.withOpacity(0.3),
-                      blurRadius: 20,
-                      spreadRadius: 5,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                // Ripple effect (if enabled)
+                if (widget.showRipple && _rippleAnimation != null && _rippleOpacityAnimation != null)
+                  Container(
+                    width: widget.size * 2 * _rippleAnimation!.value,
+                    height: widget.size * 2 * _rippleAnimation!.value,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: AppColors.success.withOpacity(_rippleOpacityAnimation!.value),
+                        width: 3,
+                      ),
                     ),
-                    BoxShadow(
-                      color: Colors.white.withOpacity(0.5),
-                      blurRadius: 10,
-                      offset: const Offset(-2, -2),
+                  ),
+                
+                // Main checkmark circle
+                Transform.scale(
+                  scale: _scaleAnimation.value,
+                  child: Container(
+                    width: widget.size,
+                    height: widget.size,
+                    decoration: BoxDecoration(
+                      color: AppColors.success,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        // Enhanced shadow for depth
+                        BoxShadow(
+                          color: AppColors.success.withOpacity(0.4),
+                          blurRadius: 30,
+                          spreadRadius: 8,
+                          offset: const Offset(0, 8),
+                        ),
+                        // Inner highlight
+                        BoxShadow(
+                          color: Colors.white.withOpacity(0.3),
+                          blurRadius: 15,
+                          offset: const Offset(-3, -3),
+                        ),
+                        // Outer glow
+                        BoxShadow(
+                          color: AppColors.success.withOpacity(0.2),
+                          blurRadius: 50,
+                          spreadRadius: 15,
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-                child: CustomPaint(
-                  painter: CheckmarkPainter(
-                    progress: _checkAnimation.value,
-                    color: Colors.white,
+                    child: CustomPaint(
+                      painter: CheckmarkPainter(
+                        progress: _checkAnimation.value,
+                        color: Colors.white,
+                      ),
+                    ),
                   ),
                 ),
-              ),
+              ],
             ),
           ),
         );
@@ -328,7 +403,7 @@ class _ConfettiAnimationState extends State<ConfettiAnimation>
   }
 }
 
-/// Checkmark painter
+/// Checkmark painter (Improved with smoother stroke)
 class CheckmarkPainter extends CustomPainter {
   final double progress;
   final Color color;
@@ -339,17 +414,18 @@ class CheckmarkPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
       ..color = color
-      ..strokeWidth = 8
+      ..strokeWidth = size.width * 0.08 // Responsive stroke width
       ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round;
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
 
     final path = Path();
-    final checkWidth = size.width * 0.6;
-    final checkHeight = size.height * 0.6;
+    final checkWidth = size.width * 0.55;
+    final checkHeight = size.height * 0.55;
     final offsetX = (size.width - checkWidth) / 2;
     final offsetY = (size.height - checkHeight) / 2;
 
-    // Checkmark path
+    // Smooth checkmark path
     path.moveTo(offsetX, offsetY + checkHeight * 0.5);
     path.lineTo(offsetX + checkWidth * 0.4, offsetY + checkHeight * 0.8);
     path.lineTo(offsetX + checkWidth, offsetY + checkHeight * 0.2);

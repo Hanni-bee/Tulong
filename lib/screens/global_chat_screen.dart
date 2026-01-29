@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
 import '../utils/navigation_helper.dart';
-import 'walkie_talkie_screen.dart';
 
 class GlobalChatScreen extends StatefulWidget {
   const GlobalChatScreen({super.key});
@@ -199,12 +198,6 @@ class _GlobalChatScreenState extends State<GlobalChatScreen> {
           ],
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.radio, color: AppColors.primaryRed),
-            onPressed: () {
-              _openWalkieTalkie();
-            },
-          ),
           IconButton(
             icon: const Icon(Icons.people, color: AppColors.primaryRed),
             onPressed: () {
@@ -405,13 +398,6 @@ class _GlobalChatScreenState extends State<GlobalChatScreen> {
           ),
         ],
       ),
-    );
-  }
-
-  void _openWalkieTalkie() {
-    NavigationHelper.safePush(
-      context,
-      const WalkieTalkieScreen(),
     );
   }
 

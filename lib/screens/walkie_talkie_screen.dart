@@ -153,6 +153,10 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                 TopBarConfigs.callsTopBar(
                   status: _isTransmitting ? 'Transmitting...' : null,
                   onRefresh: _refreshConnections,
+                  onSettings: () {
+                    // UI branch uses a settings button here; keep behavior minimal for now.
+                    // If you have a specific settings screen to open, tell me and I'll wire it.
+                  },
                   badges: _isTransmitting
                       ? [
                           _buildOnAirBadge(),

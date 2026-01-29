@@ -3,7 +3,6 @@ import '../constants/app_colors.dart';
 import '../constants/app_typography.dart';
 import '../services/sqlite_service.dart';
 import '../services/unified_data_service.dart';
-import '../services/firebase_service.dart';
 
 /// Modal to display sender's basic information (Name, Contact Number, Address)
 class SenderInfoModal extends StatefulWidget {
@@ -77,51 +76,7 @@ class _SenderInfoModalState extends State<SenderInfoModal> {
         return;
       }
 
-      // If not found in SQLite, try Firebase
-      try {
-        final firebaseService = FirebaseService();
-        final snapshot = await firebaseService.database.ref('users').get();
-        
-        if (snapshot.exists) {
-          final users = snapshot.value as Map<dynamic, dynamic>;
-          Map<String, dynamic>? foundUser;
-          
-          users.forEach((key, value) {
-            final user = value as Map<dynamic, dynamic>;
-            final firstName = user['FirstName']?.toString() ?? '';
-            final lastName = user['LastName']?.toString() ?? '';
-            final fullName = '$firstName $lastName'.trim();
-            
-            // Try exact match first
-            if (fullName.toLowerCase() == widget.senderName.toLowerCase().trim()) {
-              foundUser = {
-                'name': fullName,
-                'phone': user['Phone']?.toString() ?? 'Not provided',
-                'address': _formatFirebaseAddress(user),
-              };
-            } else if (fullName.toLowerCase().contains(widget.senderName.toLowerCase().trim()) ||
-                firstName.toLowerCase().contains(widget.senderName.toLowerCase().trim()) ||
-                lastName.toLowerCase().contains(widget.senderName.toLowerCase().trim())) {
-              // Partial match
-              foundUser ??= {
-                  'name': fullName,
-                  'phone': user['Phone']?.toString() ?? 'Not provided',
-                  'address': _formatFirebaseAddress(user),
-                };
-            }
-          });
-
-          if (foundUser != null) {
-            setState(() {
-              _userInfo = foundUser;
-              _isLoading = false;
-            });
-            return;
-          }
-        }
-      } catch (e) {
-        print('Firebase search error: $e');
-      }
+      // User not found in SQLite (offline-only)
 
       // If not found, show limited info
       setState(() {
@@ -163,29 +118,6 @@ class _SenderInfoModalState extends State<SenderInfoModal> {
     return parts.isEmpty ? 'Not provided' : parts.join(', ');
   }
 
-  String _formatFirebaseAddress(Map<dynamic, dynamic> user) {
-    final parts = <String>[];
-    
-    if (user['Street']?.toString().isNotEmpty == true) {
-      parts.add(user['Street'].toString());
-    } else if (user['Address']?.toString().isNotEmpty == true) {
-      parts.add(user['Address'].toString());
-    }
-    if (user['Barangay']?.toString().isNotEmpty == true) {
-      parts.add(user['Barangay'].toString());
-    }
-    if (user['City']?.toString().isNotEmpty == true) {
-      parts.add(user['City'].toString());
-    }
-    if (user['Province']?.toString().isNotEmpty == true) {
-      parts.add(user['Province'].toString());
-    }
-    if (user['Region']?.toString().isNotEmpty == true) {
-      parts.add(user['Region'].toString());
-    }
-    
-    return parts.isEmpty ? 'Not provided' : parts.join(', ');
-  }
 
   @override
   Widget build(BuildContext context) {

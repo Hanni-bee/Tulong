@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../../constants/app_colors.dart';
-import '../../services/firebase_service.dart';
 import '../../widgets/modern_loading_indicator.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
@@ -13,7 +12,7 @@ class ForgotPasswordScreen extends StatefulWidget {
 class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
-  final _firebaseService = FirebaseService();
+  // Firebase service removed (offline-only mode)
   
   bool _isLoading = false;
   bool _emailSent = false;
@@ -31,12 +30,12 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
     try {
       final email = _emailController.text.trim();
-      await _firebaseService.sendPasswordResetEmail(email);
-      
+      // Firebase password reset removed (offline-only mode)
+      // Password reset now handled through 2FA verification code
       setState(() => _emailSent = true);
-      _showSuccessSnackBar('Password reset email sent! Check your inbox.');
+      _showSuccessSnackBar('Password reset code will be sent via 2FA verification.');
     } catch (e) {
-      _showErrorSnackBar('Failed to send password reset email: ${e.toString()}');
+      _showErrorSnackBar('Failed to send password reset: ${e.toString()}');
     } finally {
       setState(() => _isLoading = false);
     }

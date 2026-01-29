@@ -1,14 +1,12 @@
 import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
 import '../constants/soft_ui_design.dart';
-import '../utils/navigation_helper.dart';
 import '../utils/performance_optimizer.dart';
 import '../widgets/modern_message_bubble.dart';
 import '../widgets/typing_indicator.dart';
 import '../widgets/modern_floating_layout.dart';
 import '../widgets/enhanced_text_styles.dart';
 import '../widgets/enhanced_shadows.dart' as shadows;
-import 'walkie_talkie_screen.dart';
 import '../constants/unified_typography.dart';
 
 class ModernGlobalChatScreen extends StatefulWidget {
@@ -360,16 +358,6 @@ class _ModernGlobalChatScreenState extends State<ModernGlobalChatScreen> {
                   // Action buttons
                   Row(
                     children: [
-                      _buildNeumorphicActionButton(
-                        icon: Icons.radio,
-                        onPressed: () {
-                          NavigationHelper.safePush(
-                            context,
-                            const WalkieTalkieScreen(),
-                          );
-                        },
-                      ),
-                      const SizedBox(width: 12),
                       _buildNeumorphicActionButton(
                         icon: Icons.more_vert,
                         onPressed: () => _showActionMenu(context),

@@ -275,7 +275,24 @@ class SQLiteService {
   // User operations
   Future<int> insertUser(Map<String, dynamic> userData) async {
     final db = await database;
-    return await db.insert(_usersTable, userData);
+    final rowid = await db.insert(_usersTable, userData);
+
+    // Our schema uses `uid` as PRIMARY KEY and has a separate nullable `id` column.
+    // Many call sites still use `id` for updates/queries, so persist `id = rowid` after insert.
+    if (userData.containsKey('uid') && userData['uid'] != null) {
+      try {
+        await db.update(
+          _usersTable,
+          {'id': rowid},
+          where: 'uid = ? AND (id IS NULL OR id = 0)',
+          whereArgs: [userData['uid']],
+        );
+      } catch (_) {
+        // Non-fatal: app can still operate using uid-based updates.
+      }
+    }
+
+    return rowid;
   }
 
   Future<List<Map<String, dynamic>>> getAllUsers() async {
@@ -326,6 +343,7 @@ class SQLiteService {
   }
 
   // Update user by ID (for backward compatibility)
+  // If id is null, this method will throw - use updateUserByUid or updateUserByUsername instead
   Future<int> updateUser(int? id, Map<String, dynamic> userData) async {
     final db = await database;
     if (id != null) {
@@ -337,6 +355,27 @@ class SQLiteService {
       );
     }
     throw Exception('Cannot update user: id is null');
+  }
+  
+  // Update user by ID or UID (smart method that handles both)
+  Future<int> updateUserByIdOrUid(int? id, String? uid, Map<String, dynamic> userData) async {
+    final db = await database;
+    if (uid != null && uid.isNotEmpty) {
+      return await db.update(
+        _usersTable,
+        userData,
+        where: 'uid = ?',
+        whereArgs: [uid],
+      );
+    } else if (id != null) {
+      return await db.update(
+        _usersTable,
+        userData,
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+    }
+    throw Exception('Cannot update user: both id and uid are null');
   }
 
   // Update user by UID (primary key)

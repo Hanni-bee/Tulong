@@ -6,7 +6,6 @@ import '../../constants/app_colors.dart';
 import '../../providers/auth_provider.dart';
 import '../../widgets/modern_responsive_layout.dart';
 import 'sign_up_screen.dart';
-import '../../services/firebase_service.dart';
 import '../../services/offline_auth_service.dart';
 import '../../services/biometric_service.dart';
 import '../../services/sqlite_service.dart';
@@ -103,11 +102,23 @@ class _SignInScreenState extends State<SignInScreen> {
           throw Exception('User not found');
         }
 
-        // Update last seen
-        await sqliteService.updateUser(user['id'], {
-          'last_seen': DateTime.now().millisecondsSinceEpoch,
-          'is_online': 1,
-        });
+        // Update last seen - use UID if id is null
+        final userId = user['id'];
+        final userUid = user['uid']?.toString();
+        
+        if (userUid != null && userUid.isNotEmpty) {
+          await sqliteService.updateUserByUid(userUid, {
+            'last_seen': DateTime.now().millisecondsSinceEpoch,
+            'is_online': 1,
+          });
+        } else if (userId != null) {
+          await sqliteService.updateUser(userId, {
+            'last_seen': DateTime.now().millisecondsSinceEpoch,
+            'is_online': 1,
+          });
+        } else {
+          print('⚠️ Warning: User has no id or uid, cannot update last_seen');
+        }
 
         // Set authenticated state
         final authProvider = Provider.of<AuthProvider>(context, listen: false);
@@ -168,18 +179,9 @@ class _SignInScreenState extends State<SignInScreen> {
         // Small delay to ensure user model is loaded
         await Future.delayed(const Duration(milliseconds: 300));
       } catch (_) {
-        // If SQLite fails, try Firebase if online (optional sync)
-        try {
-          final firebaseUser = await FirebaseService().signInWithUsername(username: username, password: password);
-          if (firebaseUser != null) {
-            await authProvider.setAuthenticated(email: username, name: username);
-            await Future.delayed(const Duration(milliseconds: 300));
-          } else {
-            throw Exception('Invalid username or password');
-          }
-        } catch (e) {
-          throw Exception('Invalid username or password');
-        }
+        // Firebase sign-in removed (offline-only mode)
+        // Authentication now handled through SQLite only
+        throw Exception('Invalid username or password');
       }
 
       if (mounted) {
@@ -193,7 +195,7 @@ class _SignInScreenState extends State<SignInScreen> {
             content: Text(e.toString()),
             backgroundColor: AppColors.error,
           ),
-  );
+        );
       }
     } finally {
       if (mounted) {
@@ -503,8 +505,8 @@ class _SignInScreenState extends State<SignInScreen> {
               ),
             ),
           ],
-          
-        ],
+          ],
+        ),
       ),
     );
   }

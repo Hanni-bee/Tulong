@@ -1,8 +1,6 @@
 import 'dart:math';
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_database/firebase_database.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'sqlite_service.dart';
 
@@ -10,9 +8,6 @@ class TwoFactorAuthService {
   static final TwoFactorAuthService _instance = TwoFactorAuthService._internal();
   factory TwoFactorAuthService() => _instance;
   TwoFactorAuthService._internal();
-
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseDatabase _database = FirebaseDatabase.instance;
 
   // Generate a 6-digit verification code
   String _generateVerificationCode() {
@@ -103,24 +98,23 @@ class TwoFactorAuthService {
     }
   }
 
-  // Check if user has 2FA enabled
+  // Check if user has 2FA enabled (offline-only - stored in SharedPreferences)
   Future<bool> isTwoFactorEnabled(String userId) async {
     try {
-      final snapshot = await _database.ref('users/$userId/2fa_enabled').get();
-      return snapshot.exists && (snapshot.value as bool) == true;
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getBool('2fa_enabled_$userId') ?? false;
     } catch (e) {
       print('Error checking 2FA status: $e');
       return false;
     }
   }
 
-  // Enable 2FA for user
+  // Enable 2FA for user (offline-only)
   Future<bool> enableTwoFactor(String userId) async {
     try {
-      await _database.ref('users/$userId').update({
-        '2fa_enabled': true,
-        '2fa_enabled_at': ServerValue.timestamp,
-      });
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('2fa_enabled_$userId', true);
+      await prefs.setInt('2fa_enabled_at_$userId', DateTime.now().millisecondsSinceEpoch);
       return true;
     } catch (e) {
       print('Error enabling 2FA: $e');
@@ -128,13 +122,12 @@ class TwoFactorAuthService {
     }
   }
 
-  // Disable 2FA for user
+  // Disable 2FA for user (offline-only)
   Future<bool> disableTwoFactor(String userId) async {
     try {
-      await _database.ref('users/$userId').update({
-        '2fa_enabled': false,
-        '2fa_disabled_at': ServerValue.timestamp,
-      });
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('2fa_enabled_$userId', false);
+      await prefs.setInt('2fa_disabled_at_$userId', DateTime.now().millisecondsSinceEpoch);
       return true;
     } catch (e) {
       print('Error disabling 2FA: $e');
@@ -161,8 +154,8 @@ class TwoFactorAuthService {
     }
   }
 
-  // Complete 2FA verification and sign in
-  Future<UserCredential?> completeTwoFactorSignIn({
+  // Complete 2FA verification (offline-only)
+  Future<bool> completeTwoFactorSignIn({
     required String email,
     required String password,
     required String verificationCode,
@@ -175,22 +168,12 @@ class TwoFactorAuthService {
         throw Exception('Invalid verification code');
       }
 
-      // Sign in with email and password
-      final userCredential = await _auth.signInWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
+      // Store 2FA verification status (offline-only)
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('last_2fa_verification_$email', DateTime.now().millisecondsSinceEpoch);
+      await prefs.setInt('last_login_$email', DateTime.now().millisecondsSinceEpoch);
 
-      // Update user's last login and 2FA verification
-      if (userCredential.user != null) {
-        await _database.ref('users/${userCredential.user!.uid}').update({
-          'last_login': ServerValue.timestamp,
-          'last_2fa_verification': ServerValue.timestamp,
-          'isOnline': true,
-        });
-      }
-
-      return userCredential;
+      return true;
     } catch (e) {
       print('Error completing 2FA sign in: $e');
       rethrow;
@@ -257,7 +240,7 @@ class TwoFactorAuthService {
     }
   }
 
-  // Reset password after recovery verification
+  // Reset password after recovery verification (offline-only)
   Future<bool> resetPassword(String newPassword) async {
     try {
       final isVerified = await isRecoveryVerified();
@@ -274,8 +257,21 @@ class TwoFactorAuthService {
 
       final email = storedData['email'] as String;
       
-      // Send password reset email
-      await _auth.sendPasswordResetEmail(email: email);
+      // Hash the new password
+      final bytes = utf8.encode(newPassword);
+      final digest = sha256.convert(bytes);
+      final hashedPassword = digest.toString();
+
+      // Update password in SQLite (offline-only)
+      final sqliteService = SQLiteService();
+      final existingUser = await sqliteService.getUserByEmail(email);
+      
+      if (existingUser != null) {
+        await sqliteService.updateUser(existingUser['id'], {
+          'password': hashedPassword,
+        });
+        print('✅ Password updated in SQLite for: $email');
+      }
       
       // Clear recovery verification
       await clearRecoveryVerification();
@@ -287,7 +283,7 @@ class TwoFactorAuthService {
     }
   }
 
-  // Actually update password after email reset (called when user clicks reset link and sets new password)
+  // Update password after reset (offline-only)
   Future<bool> updatePasswordAfterReset({
     required String email,
     required String newPassword,
@@ -298,39 +294,16 @@ class TwoFactorAuthService {
       final digest = sha256.convert(bytes);
       final hashedPassword = digest.toString();
 
-      // Update password in Firebase Realtime Database
-      final userSnapshot = await _database.ref('users').orderByChild('Email').equalTo(email).get();
-      if (userSnapshot.exists) {
-        final users = userSnapshot.value as Map;
-        String? userUid;
-        
-        users.forEach((key, value) {
-          final user = value as Map;
-          if (user['Email'] == email) {
-            userUid = key;
-          }
+      // Update password in SQLite (offline-only)
+      final sqliteService = SQLiteService();
+      final existingUser = await sqliteService.getUserByEmail(email);
+      
+      if (existingUser != null) {
+        await sqliteService.updateUser(existingUser['id'], {
+          'password': hashedPassword,
         });
-
-        if (userUid != null) {
-          // Update password in Firebase Realtime Database
-          await _database.ref('users/$userUid').update({
-            'Password': hashedPassword,
-          });
-
-          // Update password in SQLite
-          final sqliteService = SQLiteService();
-          final existingUser = await sqliteService.getUserByEmail(email);
-          
-          if (existingUser != null) {
-            await sqliteService.updateUser(existingUser['id'], {
-              'password': hashedPassword,
-              'sync_timestamp': DateTime.now().millisecondsSinceEpoch,
-            });
-            print('✅ Password updated in both Firebase and SQLite for: $email');
-          }
-
-          return true;
-        }
+        print('✅ Password updated in SQLite for: $email');
+        return true;
       }
       
       return false;

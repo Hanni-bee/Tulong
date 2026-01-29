@@ -6,7 +6,6 @@ import '../../constants/app_colors.dart';
 import '../../constants/unified_typography.dart';
 import '../../services/biometric_service.dart';
 import '../../services/sqlite_service.dart';
-import '../../services/firebase_service.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -31,6 +30,8 @@ class _BiometricVerificationScreenState extends State<BiometricVerificationScree
   final BiometricService _biometricService = BiometricService();
   bool _isVerifying = false;
   bool _isVerified = false;
+  bool _isSaving = false;
+  bool _hasSavedUser = false;
   bool _hasError = false;
   String? _errorMessage;
   bool _isDeviceSupported = false;
@@ -87,35 +88,23 @@ class _BiometricVerificationScreenState extends State<BiometricVerificationScree
       );
 
       if (success) {
-        // Authentication successful - save user data immediately
-        try {
-          await _saveUserData();
-          
-          if (mounted) {
-            setState(() {
-              _isVerified = true;
-              _isVerifying = false;
-            });
-            
-            // Show success message
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Verification Complete!'),
-                backgroundColor: AppColors.success,
-                duration: Duration(seconds: 2),
-              ),
-            );
-          }
-        } catch (saveError) {
-          // Error saving user data
-          print('❌ Error saving user data after biometric verification: $saveError');
-          if (mounted) {
-            setState(() {
-              _isVerifying = false;
-              _hasError = true;
-              _errorMessage = 'Verification succeeded but failed to save user data. Please try again.';
-            });
-          }
+        // Authentication successful - ONLY mark verified (do not save yet)
+        if (mounted) {
+          setState(() {
+            _isVerified = true;
+            _isVerifying = false;
+            // Prepare UID to be used later when user taps Proceed
+            _generatedUid ??= _generateUid();
+          });
+
+          // Show success message
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Verification Complete!'),
+              backgroundColor: AppColors.success,
+              duration: Duration(seconds: 2),
+            ),
+          );
         }
       } else {
         // Authentication failed or cancelled
@@ -150,24 +139,26 @@ class _BiometricVerificationScreenState extends State<BiometricVerificationScree
 
   /// Save user data immediately after successful biometric verification
   /// This happens automatically - no button press needed
-  Future<void> _saveUserData() async {
-    try {
-      final data = widget.registrationData;
-      final now = DateTime.now().millisecondsSinceEpoch;
+  Future<bool> _saveUserData() async {
+    final data = widget.registrationData;
+    final now = DateTime.now().millisecondsSinceEpoch;
 
-      // Validate required fields
-      if (data['firstName'] == null || data['firstName'].toString().isEmpty) {
-        throw Exception('First name is required');
-      }
-      if (data['lastName'] == null || data['lastName'].toString().isEmpty) {
-        throw Exception('Last name is required');
-      }
-      if (data['username'] == null || data['username'].toString().isEmpty) {
-        throw Exception('Username is required');
-      }
-      if (data['hashedPassword'] == null || data['hashedPassword'].toString().isEmpty) {
-        throw Exception('Password is required');
-      }
+    // Guard: never save unless biometric verification succeeded
+    if (!_isVerified) return false;
+
+    // Validate required fields (should already be valid from sign-up form)
+    if (data['firstName'] == null || data['firstName'].toString().isEmpty) {
+      return false;
+    }
+    if (data['lastName'] == null || data['lastName'].toString().isEmpty) {
+      return false;
+    }
+    if (data['username'] == null || data['username'].toString().isEmpty) {
+      return false;
+    }
+    if (data['hashedPassword'] == null || data['hashedPassword'].toString().isEmpty) {
+      return false;
+    }
 
       // Check if all required address fields are filled
       final address = data['address']?.toString().trim() ?? '';
@@ -183,8 +174,8 @@ class _BiometricVerificationScreenState extends State<BiometricVerificationScree
           city.isNotEmpty &&
           barangay.isNotEmpty;
 
-      // Generate unique UID for new user (PRIMARY KEY)
-      _generatedUid = _generateUid();
+    // Use UID prepared at verification time; fallback if needed
+    _generatedUid ??= _generateUid();
 
       // Prepare user data for SQLite (primary, offline-first)
       final suffix = data['suffix']?.toString();
@@ -209,26 +200,48 @@ class _BiometricVerificationScreenState extends State<BiometricVerificationScree
         'is_verified': 1, // Biometric verification completed
       };
 
-      print('💾 Saving user data to SQLite: ${userData['username']} with UID: $_generatedUid');
+    print('💾 Saving user data to SQLite: ${userData['username']} with UID: $_generatedUid');
 
-      // Save to SQLite (primary database, pure offline)
-      final sqliteService = SQLiteService();
-      final userId = await sqliteService.insertUser(userData);
-      print('✅ User saved to SQLite (UID: $_generatedUid)');
+    final sqliteService = SQLiteService();
+    int? userId;
+    Map<String, dynamic>? savedUser;
 
-      // Get the saved user to retrieve UID
-      final savedUser = await sqliteService.getUserByUsername(data['username'].toString());
+    // Save to SQLite (ONLY here, after biometric success)
+    try {
+      userId = await sqliteService.insertUser(userData);
+      print('✅ User saved to SQLite (UID: $_generatedUid, id: $userId)');
+    } catch (e) {
+      // If insert failed (e.g., unique constraint because a previous attempt already inserted),
+      // treat as success if the user already exists in SQLite.
+      print('⚠️ Insert failed, checking for existing user: $e');
+      savedUser = await sqliteService.getUserByUsername(data['username'].toString());
+      if (savedUser == null) {
+        return false; // true insert failure
+      }
+    }
+
+    // Load saved user (best-effort; do not fail the flow if lookup is flaky)
+    savedUser ??= await sqliteService.getUserByUsername(data['username'].toString());
+    savedUser ??= Map<String, dynamic>.from(userData);
+    if ((savedUser['id'] == null || savedUser['id'].toString().isEmpty) && userId != null) {
+      savedUser['id'] = userId;
+    }
       
       // Build full name
       final fullName = suffix != null && suffix.isNotEmpty
           ? '${data['firstName']} ${data['lastName']} $suffix'
           : '${data['firstName']} ${data['lastName']}';
       
-      // Save all profile data to SharedPreferences for ESP32 sync
+    // Save profile/session data (non-fatal if it fails)
+    try {
       final prefs = await SharedPreferences.getInstance();
-      if (savedUser != null && savedUser['uid'] != null) {
+      if (savedUser['uid'] != null) {
         await prefs.setString('session_uid', savedUser['uid'].toString());
         print('✅ UID saved to SharedPreferences: ${savedUser['uid']}');
+      }
+      if (savedUser['id'] != null) {
+        await prefs.setInt('session_user_id', savedUser['id'] as int);
+        print('✅ User ID saved to SharedPreferences: ${savedUser['id']}');
       }
       
       // Save all profile details to SharedPreferences (matching ESP32 variable names)
@@ -240,26 +253,23 @@ class _BiometricVerificationScreenState extends State<BiometricVerificationScree
       await prefs.setString('profile_barangay', barangay);
       await prefs.setString('profile_suffix', suffix ?? '');
       print('✅ Profile data saved to SharedPreferences for ESP32 sync (new account)');
+    } catch (e) {
+      print('⚠️ Failed to save profile/session prefs (non-fatal): $e');
+    }
 
-      // Set authenticated state
+    // Set authenticated state (non-fatal if it fails; user is still saved)
+    try {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       await authProvider.setAuthenticated(
         email: data['username'], // Parameter name is 'email' for compatibility, but it's actually username
         name: fullName.trim(),
       );
-
-      print('✅ User data saved and authenticated');
     } catch (e) {
-      print('❌ Error saving user data: $e');
-      _generatedUid = null; // Clear UID on error
-      if (mounted) {
-        setState(() {
-          _hasError = true;
-          _errorMessage = 'Failed to save user data: ${e.toString()}';
-        });
-      }
-      rethrow;
+      print('⚠️ Failed to set authenticated state (non-fatal): $e');
     }
+
+    print('✅ User data saved and authenticated');
+    return true;
   }
 
   Future<bool> _checkConnectivity() async {
@@ -272,9 +282,43 @@ class _BiometricVerificationScreenState extends State<BiometricVerificationScree
   }
 
   void _proceedToTutorial() {
-    // Navigate to tutorial/onboarding screen
-    // This button is for navigation ONLY - data is already saved
-    Navigator.of(context).pushReplacementNamed('/');
+    // User must be verified before proceeding
+    if (!_isVerified) return;
+
+    // Save user exactly once when user taps Proceed
+    if (_hasSavedUser) {
+      Navigator.of(context).pushReplacementNamed('/');
+      return;
+    }
+
+    if (_isSaving) return;
+    setState(() {
+      _isSaving = true;
+      _hasError = false;
+      _errorMessage = null;
+    });
+
+    () async {
+      final didSave = await _saveUserData();
+
+      if (!mounted) return;
+
+      if (!didSave) {
+        setState(() {
+          _isSaving = false;
+          _hasError = true;
+          _errorMessage = 'Verification succeeded but failed to save user data. Please try again.';
+        });
+        return;
+      }
+
+      setState(() {
+        _isSaving = false;
+        _hasSavedUser = true;
+      });
+
+      Navigator.of(context).pushReplacementNamed('/');
+    }();
   }
 
   // Removed _getBiometricTypeName - only fingerprint is used now
@@ -455,7 +499,7 @@ class _BiometricVerificationScreenState extends State<BiometricVerificationScree
               // Proceed button (only shown after verification)
               if (_isVerified) ...[
                 ElevatedButton(
-                  onPressed: _proceedToTutorial,
+                  onPressed: _isSaving ? null : _proceedToTutorial,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primaryRed,
                     foregroundColor: Colors.white,

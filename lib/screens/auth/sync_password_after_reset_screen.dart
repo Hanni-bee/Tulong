@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../constants/app_colors.dart';
-import '../../services/firebase_service.dart';
+import '../../services/two_factor_auth_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class SyncPasswordAfterResetScreen extends StatefulWidget {
   const SyncPasswordAfterResetScreen({super.key});
@@ -29,10 +30,17 @@ class _SyncPasswordAfterResetScreenState extends State<SyncPasswordAfterResetScr
       });
 
       try {
-        final firebaseService = FirebaseService();
+        final twoFactorService = TwoFactorAuthService();
+        final prefs = await SharedPreferences.getInstance();
+        final email = prefs.getString('2fa_email');
         
-        // Update password in all systems
-        await firebaseService.updatePasswordAfterEmailReset(
+        if (email == null) {
+          throw Exception('No recovery session found. Please start password reset again.');
+        }
+        
+        // Update password using TwoFactorAuthService (offline-only)
+        await twoFactorService.updatePasswordAfterReset(
+          email: email,
           newPassword: _passwordController.text,
         );
         

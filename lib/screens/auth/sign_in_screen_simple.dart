@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../../constants/app_colors.dart';
 import '../../providers/auth_provider.dart';
-import '../../services/firebase_service.dart';
 import 'sign_up_screen.dart';
 import '../../constants/unified_typography.dart';
 
@@ -71,22 +70,9 @@ class _SignInScreenState extends State<SignInScreen> {
           // Try to sync with Firebase in background (non-blocking)
           _attemptFirebaseSync(email, password);
         } else {
-          // Try Firebase as backup (online)
-          try {
-            final firebaseUser = await FirebaseService().signInWithEmail(email: email, password: password);
-            if (firebaseUser?.user != null) {
-              await authProvider.setAuthenticated(email: email, name: email.split('@')[0]);
-              print('Online login successful for: $email');
-              
-              // Small delay to ensure user model is loaded
-              await Future.delayed(const Duration(milliseconds: 300));
-            } else {
-              throw Exception('Firebase sign-in returned no user');
-            }
-          } catch (firebaseError) {
-            print('Both offline and online login failed for: $email');
-            throw Exception('Invalid email or password');
-          }
+          // Firebase sign-in removed (offline-only mode)
+          // If offline auth failed, throw error
+          throw Exception('Invalid email or password');
         }
 
         if (mounted) {
@@ -433,56 +419,9 @@ class _SignInScreenState extends State<SignInScreen> {
 
   // Attempt Firebase sync in background (non-blocking)
   void _attemptFirebaseSync(String email, String password) async {
-    try {
-      print('Attempting Firebase sync for: $email');
-      
-      // Check if we have internet connectivity
-      final firebaseService = FirebaseService();
-      final userCredential = await firebaseService.signInWithEmail(email: email, password: password);
-      
-      if (userCredential?.user != null) {
-        // Firebase sync successful - update user data
-        final authProvider = Provider.of<AuthProvider>(context, listen: false);
-        await authProvider.setAuthenticated(email: email, name: email.split('@')[0]);
-        
-        // Mark user as synced in SQLite
-        await authProvider.markUserAsSynced(email);
-        
-        print('Firebase sync successful for: $email');
-        
-        // Show success message to user
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Account synced with server'),
-              backgroundColor: AppColors.success,
-              duration: Duration(seconds: 2),
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      // Firebase sync failed - user can still use app offline
-      print('Firebase sync failed for: $email - $e');
-      
-      // Show info message to user
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Row(
-                children: [
-                  Icon(Icons.wifi_off, color: Colors.white),
-                  SizedBox(width: 12),
-                  Expanded(
-                    child: Text('Using offline mode - will sync when online'),
-                  ),
-                ],
-              ),
-              backgroundColor: AppColors.info,
-              duration: Duration(seconds: 3),
-            ),
-          );
-        }
-    }
+    // Firebase sync removed (offline-only mode)
+    // User data is stored in SQLite only
+    // No sync needed for offline-only app
+    print('Firebase sync removed - app is offline-only');
   }
 }

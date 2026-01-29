@@ -3,7 +3,9 @@ import '../constants/app_colors.dart';
 import '../constants/app_strings.dart';
 import '../widgets/custom_text_field.dart';
 import '../widgets/custom_button.dart';
-import '../services/firebase_service.dart';
+import '../services/unified_data_service.dart';
+import 'package:provider/provider.dart';
+import '../providers/auth_provider.dart';
 
 class ChangePasswordScreen extends StatefulWidget {
   const ChangePasswordScreen({super.key});
@@ -38,13 +40,27 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
       });
 
       try {
-        final firebaseService = FirebaseService();
+        final authProvider = Provider.of<AuthProvider>(context, listen: false);
+        final unifiedDataService = UnifiedDataService();
         
-        // Use the actual Firebase service to change password
-        await firebaseService.changePassword(
-          currentPassword: _currentPasswordController.text,
-          newPassword: _newPasswordController.text,
+        // Verify current password first
+        final username = authProvider.userUsername;
+        if (username == null) {
+          throw Exception('User not logged in');
+        }
+        
+        // Verify current password
+        final isValid = await unifiedDataService.authenticateUser(
+          username,
+          _currentPasswordController.text,
         );
+        
+        if (isValid == null) {
+          throw Exception('Current password is incorrect');
+        }
+        
+        // Update password using UnifiedDataService (offline-only)
+        await unifiedDataService.updatePassword(username, _newPasswordController.text);
         
         if (mounted) {
           setState(() {

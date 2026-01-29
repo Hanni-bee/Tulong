@@ -27,7 +27,6 @@ import '../widgets/solid_modal_header.dart';
 import '../widgets/radar_scan_modal.dart';
 import '../widgets/enhanced_skeleton_loaders.dart';
 import '../widgets/enhanced_micro_interactions.dart' as micro;
-import '../widgets/accessible_text.dart';
 import '../widgets/animated_neumorphic_card.dart';
 import '../utils/icon_system.dart';
 import '../utils/enhanced_page_transitions.dart';
@@ -51,8 +50,6 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
   late Animation<Offset> _slideAnimation;
   late Animation<double> _welcomeAnimation;
   
-  late AnimationController _pulseController;
-  late Animation<double> _pulseAnimation;
   
   // Stagger animations for Quick Actions
   late StaggeredListAnimations _quickActionsStagger;
@@ -145,18 +142,6 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
       curve: Curves.elasticOut,
     ));
 
-    _pulseController = AnimationController(
-      duration: const Duration(seconds: 2),
-      vsync: this,
-    )..repeat(reverse: true);
-
-    _pulseAnimation = Tween<double>(
-      begin: 1.0,
-      end: 1.08,
-    ).animate(CurvedAnimation(
-      parent: _pulseController,
-      curve: Curves.easeInOut,
-    ));
 
     _fadeController.forward();
     _slideController.forward();
@@ -208,7 +193,6 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
     _slideController.dispose();
     _welcomeController.dispose();
     _emergencyHoldController.dispose();
-    _pulseController.dispose();
     _quickActionsStagger.dispose();
     super.dispose();
   }
@@ -447,135 +431,165 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
     );
   }
 
-  String _getGreeting() {
-    final hour = DateTime.now().hour;
-    if (hour < 12) return 'Good Morning';
-    if (hour < 17) return 'Good Afternoon';
-    return 'Good Evening';
-  }
 
   Widget _buildHeader() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Compact header card
-        Container(
-          margin: const EdgeInsets.symmetric(horizontal: 16),
-          decoration: SoftUIDesign.cardDecoration(
-            backgroundColor: AppColors.white,
-            borderRadius: SoftUIDesign.cardBorderRadius,
-            elevation: 3.0,
-            borderColor: AppColors.lightGray.withOpacity(0.3),
-            showBorder: true,
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                // App Logo - Compact size
-                Container(
-                  width: 60,
-                  height: 60,
-                  decoration: BoxDecoration(
-                    color: AppColors.primaryRed,
-                    borderRadius: BorderRadius.circular(SoftUIDesign.cardBorderRadius),
-                    boxShadow: SoftUIDesign.getButtonShadow(color: AppColors.primaryRed),
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
-                    child: Image.asset(
-                      'assets/images/app_logo (3).png',
-                      width: 60,
-                      height: 60,
-                      fit: BoxFit.contain,
-                    ),
-                  ),
-                ),
-                
-                const SizedBox(width: 16),
-                
-                // App Info - Compact layout
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          AccessibleHeading(
-                            'T.U.L.O.N.G',
-                            level: HeadingLevel.h3,
-                            color: AppColors.primaryRed,
-                            backgroundColor: AppColors.white,
-                          ),
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: AppColors.success.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 6,
-                                  height: 6,
-                                  decoration: const BoxDecoration(
-                                    color: AppColors.success,
-                                    shape: BoxShape.circle,
-                                  ),
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  'CONNECTED',
-                                  style: TextStyle(
-                                    fontSize: 8,
-                                    fontWeight: FontWeight.w900,
-                                    color: AppColors.success,
-                                    letterSpacing: 0.5,
-                                  ),
-                                ),
-                              ],
-                            ),
+    return Consumer<ChatProvider>(
+      builder: (context, chatProvider, child) {
+        final isConnected = chatProvider.isConnected;
+        
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Enhanced header card
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16),
+              decoration: SoftUIDesign.cardDecoration(
+                backgroundColor: AppColors.white,
+                borderRadius: SoftUIDesign.cardBorderRadius,
+                elevation: 4.0,
+                borderColor: AppColors.lightGray.withOpacity(0.2),
+                showBorder: true,
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(18),
+                child: Row(
+                  children: [
+                    // App Logo - Enhanced with better shadows
+                    Container(
+                      width: 64,
+                      height: 64,
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryRed,
+                        borderRadius: BorderRadius.circular(18),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppColors.primaryRed.withOpacity(0.3),
+                            blurRadius: 12,
+                            spreadRadius: 1,
+                            offset: const Offset(0, 4),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '${_getGreeting()}, Ready to Help',
-                        style: AppTypography.bodyMedium.copyWith(
-                          color: AppColors.mediumGray,
-                          fontWeight: FontWeight.w600,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(18),
+                        child: Image.asset(
+                          'assets/images/app_logo (3).png',
+                          width: 64,
+                          height: 64,
+                          fit: BoxFit.contain,
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                    
+                    const SizedBox(width: 16),
+                    
+                    // App Info - Enhanced layout
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  'T.U.L.O.N.G',
+                                  style: AppTypography.headlineSmall.copyWith(
+                                    color: AppColors.primaryRed,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: 1.2,
+                                    height: 1.2,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              // Enhanced CONNECTED badge
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    colors: isConnected
+                                        ? [
+                                            AppColors.success.withOpacity(0.15),
+                                            AppColors.success.withOpacity(0.1),
+                                          ]
+                                        : [
+                                            AppColors.error.withOpacity(0.15),
+                                            AppColors.error.withOpacity(0.1),
+                                          ],
+                                  ),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: isConnected
+                                        ? AppColors.success.withOpacity(0.3)
+                                        : AppColors.error.withOpacity(0.3),
+                                    width: 1.5,
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Container(
+                                      width: 7,
+                                      height: 7,
+                                      decoration: BoxDecoration(
+                                        color: isConnected ? AppColors.success : AppColors.error,
+                                        shape: BoxShape.circle,
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: (isConnected ? AppColors.success : AppColors.error).withOpacity(0.5),
+                                            blurRadius: 4,
+                                            spreadRadius: 1,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      isConnected ? 'CONNECTED' : 'OFFLINE',
+                                      style: TextStyle(
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.w900,
+                                        color: isConnected ? AppColors.success : AppColors.error,
+                                        letterSpacing: 0.8,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        // Gradient accent line matching Calls/Messages/Profile style
-        AnimatedContainer(
-          duration: const Duration(milliseconds: 420),
-          curve: Curves.easeInOutCubic,
-          height: 3,
-          margin: const EdgeInsets.symmetric(horizontal: 16),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(2),
-            gradient: LinearGradient(
-              begin: Alignment.centerLeft,
-              end: Alignment.centerRight,
-              colors: [
-                AppColors.primaryRed.withOpacity(0.0),
-                AppColors.primaryRed.withOpacity(0.85),
-                AppColors.primaryRed.withOpacity(0.0),
-              ],
-              stops: const [0.0, 0.5, 1.0],
+            const SizedBox(height: 12),
+            // Gradient accent line matching Calls/Messages/Profile style
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 420),
+              curve: Curves.easeInOutCubic,
+              height: 3,
+              margin: const EdgeInsets.symmetric(horizontal: 16),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(2),
+                gradient: LinearGradient(
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                  colors: [
+                    AppColors.primaryRed.withOpacity(0.0),
+                    AppColors.primaryRed.withOpacity(0.85),
+                    AppColors.primaryRed.withOpacity(0.0),
+                  ],
+                  stops: const [0.0, 0.5, 1.0],
+                ),
+              ),
             ),
-          ),
-        ),
-      ],
+          ],
+        );
+      },
     );
   }
 
@@ -911,34 +925,25 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
         HapticFeedback.lightImpact();
         onTap();
       },
-      child: AnimatedBuilder(
-        animation: _pulseAnimation,
-        builder: (context, child) {
-          return Transform.scale(
-            scale: isActive ? _pulseAnimation.value : 1.0,
-            child: Container(
-              height: 110,
-              padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(
-                  color: color.withOpacity(isActive ? 0.5 : 0.3),
-                  width: isActive ? 2.5 : 1.5,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: color.withOpacity(isActive ? 0.15 : 0.05),
-                    blurRadius: isActive ? 15 : 8,
-                    offset: const Offset(0, 4),
-                    spreadRadius: isActive ? 1 : 0,
-                  ),
-                ],
-              ),
-              child: child,
+      child: Container(
+        height: 110, // Increased height for better visibility
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: color.withOpacity(isActive ? 0.5 : 0.3),
+            width: isActive ? 2.5 : 1.5,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: color.withOpacity(isActive ? 0.15 : 0.05),
+              blurRadius: isActive ? 15 : 8,
+              offset: const Offset(0, 4),
+              spreadRadius: isActive ? 1 : 0,
             ),
-          );
-        },
+          ],
+        ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.center,
@@ -1041,38 +1046,33 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
         child: Stack(
           alignment: Alignment.center,
           children: [
-            // Constant Radar Pulse Background
-            AnimatedBuilder(
-              animation: _pulseAnimation,
-              builder: (context, _) {
-                return Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    Container(
-                      width: (btnSize + 40) * _pulseAnimation.value,
-                      height: (btnSize + 40) * _pulseAnimation.value,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: const Color(0xFFE53935).withOpacity(0.15 * (1.1 - (_pulseAnimation.value - 1.0) * 5)),
-                          width: 2,
-                        ),
-                      ),
+            // Static Radar Background (no pulse)
+            Stack(
+              alignment: Alignment.center,
+              children: [
+                Container(
+                  width: btnSize + 40,
+                  height: btnSize + 40,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: const Color(0xFFE53935).withOpacity(0.15),
+                      width: 2,
                     ),
-                    Container(
-                      width: (btnSize + 80) * (1.0 + (_pulseAnimation.value - 1.0) * 0.5),
-                      height: (btnSize + 80) * (1.0 + (_pulseAnimation.value - 1.0) * 0.5),
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: const Color(0xFFE53935).withOpacity(0.08 * (1.1 - (_pulseAnimation.value - 1.0) * 5)),
-                          width: 1,
-                        ),
-                      ),
+                  ),
+                ),
+                Container(
+                  width: btnSize + 80,
+                  height: btnSize + 80,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: const Color(0xFFE53935).withOpacity(0.08),
+                      width: 1,
                     ),
-                  ],
-                );
-              },
+                  ),
+                ),
+              ],
             ),
             // Outer glow ring (pulsing)
             AnimatedBuilder(

@@ -3,7 +3,9 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter_bluetooth_serial_plus/flutter_bluetooth_serial_plus.dart';
 import '../constants/app_colors.dart';
+import '../utils/haptic_helper.dart';
 
+/// Radar Scan Modal for device discovery with real-time Bluetooth scanning
 class RadarScanModal extends StatefulWidget {
   final VoidCallback onPairedDevicesTap;
   
@@ -151,6 +153,7 @@ class _RadarScanModalState extends State<RadarScanModal> with SingleTickerProvid
             final isESP32 = name.contains('esp32') || name.contains('esp_32');
             
             if (isESP32 && !_discoveredDevices.any((d) => d.device.address == result.device.address)) {
+              HapticHelper.light();
               _discoveredDevices.add(result);
               _updateScanStatus();
             }
@@ -175,8 +178,6 @@ class _RadarScanModalState extends State<RadarScanModal> with SingleTickerProvid
           });
         },
       );
-      
-      // Only discover ESP32 devices, don't load paired devices here
       
       // Stop discovery after 10 seconds
       Timer(const Duration(seconds: 10), () {
@@ -214,9 +215,9 @@ class _RadarScanModalState extends State<RadarScanModal> with SingleTickerProvid
 
   Future<void> _requestEnableBluetooth() async {
     try {
+      HapticHelper.medium();
       await FlutterBluetoothSerial.instance.requestEnable();
     } catch (e) {
-      // Fallback: Show a snackbar or alert if request fails
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Please enable Bluetooth in your device settings')),
@@ -285,7 +286,6 @@ class _RadarScanModalState extends State<RadarScanModal> with SingleTickerProvid
                     _buildRipple(0.33),
                     _buildRipple(0.66),
                   ] else ...[
-                    // Static rings for "Off" state
                     _buildStaticRing(1.0, AppColors.error.withOpacity(0.1)),
                     _buildStaticRing(0.7, AppColors.error.withOpacity(0.05)),
                   ],
@@ -374,7 +374,7 @@ class _RadarScanModalState extends State<RadarScanModal> with SingleTickerProvid
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     const Text(
-                      'Discovered ESP32 Devices',
+                      'Nearby ESP32 Nodes',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
@@ -413,7 +413,7 @@ class _RadarScanModalState extends State<RadarScanModal> with SingleTickerProvid
                 _searchQuery.isEmpty) ...[
               const SizedBox(height: 16),
               const Text(
-                'No ESP32 devices found nearby',
+                'No nodes found nearby',
                 style: TextStyle(
                   color: AppColors.textSecondary,
                   fontSize: 14,
@@ -423,7 +423,7 @@ class _RadarScanModalState extends State<RadarScanModal> with SingleTickerProvid
               ),
               const SizedBox(height: 8),
               const Text(
-                'Make sure ESP32 devices are powered on\nand in pairing mode',
+                'Ensure hardware is in range and\nin discovery mode.',
                 style: TextStyle(
                   color: AppColors.textSecondary,
                   fontSize: 12,
@@ -437,16 +437,23 @@ class _RadarScanModalState extends State<RadarScanModal> with SingleTickerProvid
             // View Paired Devices Button
             SizedBox(
               width: double.infinity,
-              child: TextButton.icon(
+              child: TextButton(
                 onPressed: () {
+                  HapticHelper.selection();
                   Navigator.pop(context);
                   widget.onPairedDevicesTap();
                 },
-                icon: const Icon(Icons.bluetooth_connected, size: 18),
-                label: const Text('View Paired Devices', style: TextStyle(fontWeight: FontWeight.w800)),
                 style: TextButton.styleFrom(
                   foregroundColor: AppColors.info,
                   padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text('View Paired Devices', style: TextStyle(fontWeight: FontWeight.w800)),
+                    SizedBox(width: 8),
+                    Icon(Icons.bluetooth_connected, size: 18),
+                  ],
                 ),
               ),
             ),
@@ -564,7 +571,7 @@ class _RadarScanModalState extends State<RadarScanModal> with SingleTickerProvid
               children: [
                 Text(
                   device.name ?? 'Unknown Device',
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                     color: AppColors.textPrimary,
@@ -618,4 +625,3 @@ class _RadarScanModalState extends State<RadarScanModal> with SingleTickerProvid
     );
   }
 }
-

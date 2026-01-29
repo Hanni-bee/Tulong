@@ -6,7 +6,6 @@ import '../widgets/unified_top_bar.dart';
 import '../widgets/enhanced_empty_state.dart';
 import '../widgets/accessible_text.dart';
 import 'message_detail_screen.dart';
-import 'calls_screen.dart';
 
 class MessagesScreen extends StatefulWidget {
   const MessagesScreen({super.key});
@@ -103,13 +102,6 @@ class _MessagesScreenState extends State<MessagesScreen> {
           children: [
             // Unified top bar
             TopBarConfigs.messagesTopBar(
-            onCallTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (context) => const CallsScreen(),
-                ),
-              );
-            },
             onMoreTap: () {
               _showOptionsMenu(context);
             },
