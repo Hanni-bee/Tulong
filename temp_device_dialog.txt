@@ -1,0 +1,813 @@
+﻿
+> class _DeviceSelectionDialog extends StatefulWidget {
+    @override
+    State<_DeviceSelectionDialog> createState() => _DeviceSelectionDialogState();
+  }
+  
+> class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
+    bool _showAllDevices = false;
+    final TextEditingController _searchController = TextEditingController();
+    String _searchQuery = '';
+    
+    @override
+    void initState() {
+      super.initState();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        context.read<ChatProvider>().loadPairedDevices();
+      });
+      _searchController.addListener(() {
+        if (mounted) {
+          setState(() {
+            _searchQuery = _searchController.text.toLowerCase().trim();
+          });
+        }
+      });
+    }
+  
+    @override
+    void dispose() {
+      _searchController.dispose();
+      super.dispose();
+    }
+  
+    String _formatMacAddress(String address) {
+      // Format MAC address with colons every 2 characters
+      final cleaned = address.replaceAll(':', '').replaceAll('-', '');
+      if (cleaned.length < 12) return address;
+      
+      final buffer = StringBuffer();
+      for (int i = 0; i < cleaned.length; i += 2) {
+        if (i > 0) buffer.write(':');
+        if (i + 2 <= cleaned.length) {
+          buffer.write(cleaned.substring(i, i + 2));
+        } else {
+          buffer.write(cleaned.substring(i));
+        }
+      }
+      return buffer.toString().toUpperCase();
+    }
+  
+    Widget _buildDeviceCard(
+      BuildContext context,
+      BluetoothDevice device,
+      ChatProvider provider,
+      Color primaryColor,
+      bool isESP32,
+    ) {
+      final isSelected = provider.selectedDevice?.address == device.address && provider.isConnected;
+      final deviceName = device.name ?? 'Unknown Device';
+      final formattedAddress = _formatMacAddress(device.address);
+      
+      return Container(
+        margin: const EdgeInsets.only(bottom: 14),
+        decoration: BoxDecoration(
+          gradient: isSelected
+              ? LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    AppColors.accent.withOpacity(0.08),
+                    AppColors.accent.withOpacity(0.03),
+                  ],
+                )
+              : null,
+          color: isSelected ? null : Colors.white,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(
+            color: isSelected 
+                ? AppColors.accent.withOpacity(0.4) 
+                : AppColors.lightGray.withOpacity(0.3),
+            width: isSelected ? 2 : 1.5,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: isSelected
+                  ? AppColors.accent.withOpacity(0.15)
+                  : Colors.black.withOpacity(0.04),
+              blurRadius: isSelected ? 12 : 8,
+              offset: const Offset(0, 4),
+              spreadRadius: isSelected ? 1 : 0,
+            ),
+          ],
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(22),
+            onTap: () async {
+              HapticFeedback.selectionClick();
+              if (isSelected) {
+                await provider.disconnect();
+              } else {
+                Navigator.pop(context);
+                final success = await provider.connectToDevice(device);
+                if (context.mounted) {
+                  if (success) {
+                    ModernToastManager.showSuccess(context, 'Connected to $deviceName');
+                  } else {
+                    ModernToastManager.showError(context, 'Failed to connect to $deviceName');
+                  }
+                }
+              }
+            },
+            child: Padding(
+              padding: const EdgeInsets.all(18),
+              child: Row(
+                children: [
+                  // Device Icon with Type Indicator
+                  Stack(
+                    children: [
+                      Container(
+                        width: 56,
+                        height: 56,
+                        decoration: BoxDecoration(
+                          gradient: isSelected
+                              ? LinearGradient(
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                  colors: [
+                                    AppColors.accent,
+                                    AppColors.accent.withOpacity(0.8),
+                                  ],
+                                )
+                              : null,
+                          color: isSelected ? null : AppColors.backgroundLight,
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: isSelected
+                              ? [
+                                  BoxShadow(
+                                    color: AppColors.accent.withOpacity(0.3),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 4),
+                                  ),
+                                ]
+                              : [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.05),
+                                    blurRadius: 4,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                        ),
+                        child: Icon(
+                          isSelected 
+                              ? Icons.bluetooth_connected_rounded 
+                              : (isESP32 ? Icons.memory_rounded : Icons.bluetooth_rounded),
+                          color: isSelected ? Colors.white : AppColors.textSecondary,
+                          size: 28,
+                        ),
+                      ),
+                      if (isESP32 && !isSelected)
+                        Positioned(
+                          right: -2,
+                          top: -2,
+                          child: Container(
+                            width: 18,
+                            height: 18,
+                            decoration: BoxDecoration(
+                              color: AppColors.info,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white, width: 2),
+                            ),
+                            child: const Icon(
+                              Icons.verified_rounded,
+                              size: 10,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(width: 16),
+                  // Device Info
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                deviceName,
+                                style: AppTypography.bodyLarge.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                  color: AppColors.textPrimary,
+                                  fontSize: 17,
+                                  letterSpacing: -0.3,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            if (isESP32)
+                              Container(
+                                margin: const EdgeInsets.only(left: 8),
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: AppColors.info.withOpacity(0.12),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: AppColors.info.withOpacity(0.3),
+                                    width: 1,
+                                  ),
+                                ),
+                                child: Text(
+                                  'ESP32',
+                                  style: AppTypography.bodySmall.copyWith(
+                                    color: AppColors.info,
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 10,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.fingerprint_rounded,
+                              size: 12,
+                              color: AppColors.textSecondary.withOpacity(0.7),
+                            ),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                formattedAddress,
+                                style: AppTypography.bodySmall.copyWith(
+                                  color: AppColors.textSecondary,
+                                  fontFamily: 'monospace',
+                                  fontSize: 12,
+                                  letterSpacing: 0.5,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  // Status Badge or Connect Button
+                  if (isSelected)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            AppColors.accent,
+                            AppColors.accent.withOpacity(0.8),
+                          ],
+                        ),
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppColors.accent.withOpacity(0.4),
+                            blurRadius: 8,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.check_circle_rounded, size: 16, color: Colors.white),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Active',
+                            style: AppTypography.bodySmall.copyWith(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 12,
+                              letterSpacing: 0.3,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  else
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: primaryColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: primaryColor.withOpacity(0.3),
+                          width: 1.5,
+                        ),
+                      ),
+                      child: Icon(
+                        Icons.arrow_forward_rounded,
+                        color: primaryColor,
+                        size: 20,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+  
+    @override
+    Widget build(BuildContext context) {
+      const Color primaryColor = AppColors.info;
+      
+      return Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        child: Container(
+          width: double.maxFinite,
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.85,
+            minHeight: 450,
+          ),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(28),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.2),
+                blurRadius: 30,
+                offset: const Offset(0, 15),
+              ),
+            ],
+          ),
+          child: Consumer<ChatProvider>(
+            builder: (context, provider, child) {
+              final allDevices = provider.pairedDevices;
+              final filteredDevices = _searchQuery.isEmpty
+                  ? allDevices
+                  : allDevices.where((device) {
+                      final name = (device.name ?? '').toLowerCase().trim();
+                      final address = device.address.toLowerCase().replaceAll(':', '').replaceAll('-', '');
+                      final searchTerm = _searchQuery.replaceAll(':', '').replaceAll('-', '');
+                      return name.contains(_searchQuery) || 
+                             address.contains(searchTerm) ||
+                             name.startsWith(_searchQuery) ||
+                             address.startsWith(searchTerm);
+                    }).toList();
+              
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Minimal Header
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          primaryColor,
+                          primaryColor.withOpacity(0.85),
+                        ],
+                      ),
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(28),
+                        topRight: Radius.circular(28),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.white.withOpacity(0.3), width: 1),
+                          ),
+                          child: const Icon(
+                            Icons.bluetooth_searching_rounded,
+                            color: Colors.white,
+                            size: 24,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'Bluetooth Devices',
+                            style: AppTypography.headlineSmall.copyWith(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 20,
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close_rounded, color: Colors.white, size: 22),
+                          onPressed: () => Navigator.pop(context),
+                          style: IconButton.styleFrom(
+                            backgroundColor: Colors.white.withOpacity(0.2),
+                            highlightColor: Colors.white.withOpacity(0.1),
+                            padding: const EdgeInsets.all(6),
+                            minimumSize: const Size(36, 36),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  
+                  // Search Bar - Integrated below header
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: AppColors.lightGray.withOpacity(0.3),
+                          width: 1.5,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.08),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: TextFormField(
+                        controller: _searchController,
+                        onChanged: (value) {
+                          setState(() {
+                            _searchQuery = value.toLowerCase().trim();
+                          });
+                        },
+                        style: AppTypography.bodyMedium.copyWith(
+                          color: AppColors.textPrimary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        decoration: InputDecoration(
+                          hintText: 'Search by name or address...',
+                          hintStyle: AppTypography.bodyMedium.copyWith(
+                            color: AppColors.textSecondary.withOpacity(0.6),
+                            fontWeight: FontWeight.w500,
+                          ),
+                          prefixIcon: Icon(
+                            Icons.search_rounded,
+                            color: primaryColor,
+                            size: 22,
+                          ),
+                          suffixIcon: _searchQuery.isNotEmpty
+                              ? Material(
+                                  color: Colors.transparent,
+                                  child: InkWell(
+                                    borderRadius: BorderRadius.circular(20),
+                                    onTap: () {
+                                      setState(() {
+                                        _searchController.clear();
+                                        _searchQuery = '';
+                                      });
+                                    },
+                                    child: Container(
+                                      padding: const EdgeInsets.all(8),
+                                      child: Icon(
+                                        Icons.clear_rounded,
+                                        color: AppColors.textSecondary,
+                                        size: 20,
+                                      ),
+                                    ),
+                                  ),
+                                )
+                              : null,
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                        ),
+                      ),
+                    ),
+                  ),
+                  
+                  // Status & Content
+                  Expanded(
+                    child: Column(
+                      children: [
+                        // Status Card
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 24, 20, 12),
+                          child: Container(
+                            padding: const EdgeInsets.all(20),
+                            decoration: BoxDecoration(
+                              color: provider.isConnected 
+                                  ? AppColors.accent.withOpacity(0.08) 
+                                  : AppColors.backgroundLight,
+                              borderRadius: BorderRadius.circular(24),
+                              border: Border.all(
+                                color: provider.isConnected 
+                                    ? AppColors.accent.withOpacity(0.3) 
+                                    : AppColors.lightGray.withOpacity(0.5),
+                                width: 1.5,
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(14),
+                                  decoration: BoxDecoration(
+                                    color: provider.isConnected 
+                                        ? AppColors.accent.withOpacity(0.15) 
+                                        : Colors.white,
+                                    borderRadius: BorderRadius.circular(16),
+                                    boxShadow: [
+                                      if (!provider.isConnected)
+                                        BoxShadow(
+                                          color: Colors.black.withOpacity(0.05),
+                                          blurRadius: 4,
+                                          offset: const Offset(0, 2),
+                                        ),
+                                    ],
+                                  ),
+                                  child: Icon(
+                                    provider.isConnected ? Icons.bluetooth_connected_rounded : 
+Icons.bluetooth_disabled_rounded,
+                                    color: provider.isConnected ? AppColors.accent : AppColors.textSecondary,
+                                    size: 28,
+                                  ),
+                                ),
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        provider.isConnected ? 'Connected Securely' : 'Not Connected',
+                                        style: AppTypography.bodyLarge.copyWith(
+                                          color: provider.isConnected ? AppColors.accentDark : AppColors.textPrimary,
+                                          fontWeight: FontWeight.w800,
+                                          fontSize: 17,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        provider.isConnected 
+                                            ? 'Active: ${provider.selectedDevice?.name ?? "ESP32 Device"}' 
+                                            : 'Tap a device below to connect',
+                                        style: AppTypography.bodySmall.copyWith(
+                                          color: AppColors.textSecondary,
+                                          fontWeight: FontWeight.w500,
+                                          fontSize: 13,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        
+                        // Paired Devices Header with Count
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(24, 16, 24, 12),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                    decoration: BoxDecoration(
+                                      color: primaryColor.withOpacity(0.12),
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
+                                        color: primaryColor.withOpacity(0.3),
+                                        width: 1,
+                                      ),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Icons.devices_rounded,
+                                          size: 16,
+                                          color: primaryColor,
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          '${filteredDevices.length} ${filteredDevices.length == 1 ? 'Device' : 
+'Devices'}',
+                                          style: AppTypography.bodySmall.copyWith(
+                                            color: primaryColor,
+                                            fontWeight: FontWeight.w800,
+                                            fontSize: 13,
+                                            letterSpacing: 0.3,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  if (_searchQuery.isNotEmpty) ...[
+                                    const SizedBox(width: 8),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                      decoration: BoxDecoration(
+                                        color: AppColors.backgroundLight,
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Text(
+                                        'Filtered',
+                                        style: AppTypography.bodySmall.copyWith(
+                                          color: AppColors.textSecondary,
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                              Container(
+                                decoration: BoxDecoration(
+                                  color: primaryColor.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(
+                                    color: primaryColor.withOpacity(0.25),
+                                    width: 1.5,
+                                  ),
+                                ),
+                                child: Material(
+                                  color: Colors.transparent,
+                                  child: InkWell(
+                                    borderRadius: BorderRadius.circular(14),
+                                    onTap: provider.isConnecting ? null : () {
+                                      HapticFeedback.lightImpact();
+                                      provider.loadPairedDevices();
+                                    },
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          if (provider.isConnecting)
+                                            const SizedBox(
+                                              width: 16,
+                                              height: 16,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2.5,
+                                                valueColor: AlwaysStoppedAnimation<Color>(AppColors.info),
+                                              ),
+                                            )
+                                          else
+                                            Icon(Icons.refresh_rounded, size: 18, color: primaryColor),
+                                          const SizedBox(width: 6),
+                                          Text(
+                                            provider.isConnecting ? 'Scanning...' : 'Refresh',
+                                            style: AppTypography.bodySmall.copyWith(
+                                              color: primaryColor,
+                                              fontWeight: FontWeight.w800,
+                                              fontSize: 13,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        
+                        // Device List with Grouping
+                        Expanded(
+                          child: filteredDevices.isEmpty
+                              ? SingleChildScrollView(
+                                  physics: const ClampingScrollPhysics(),
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(40),
+                                    child: Column(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Container(
+                                          width: 120,
+                                          height: 120,
+                                          decoration: BoxDecoration(
+                                            gradient: LinearGradient(
+                                              begin: Alignment.topLeft,
+                                              end: Alignment.bottomRight,
+                                              colors: [
+                                                AppColors.backgroundLight,
+                                                AppColors.backgroundLight.withOpacity(0.7),
+                                              ],
+                                            ),
+                                            shape: BoxShape.circle,
+                                            boxShadow: [
+                                              BoxShadow(
+                                                color: Colors.black.withOpacity(0.05),
+                                                blurRadius: 12,
+                                                offset: const Offset(0, 4),
+                                              ),
+                                            ],
+                                          ),
+                                          child: Icon(
+                                            _searchQuery.isNotEmpty 
+                                                ? Icons.search_off_rounded 
+                                                : Icons.bluetooth_disabled_rounded,
+                                            size: 56,
+                                            color: AppColors.textSecondary.withOpacity(0.5),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 32),
+                                        Text(
+                                          _searchQuery.isNotEmpty
+                                              ? 'No devices found'
+                                              : 'No paired devices',
+                                          style: AppTypography.headlineSmall.copyWith(
+                                            color: AppColors.textPrimary,
+                                            fontWeight: FontWeight.w900,
+                                            fontSize: 22,
+                                            letterSpacing: -0.3,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 12),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                                          decoration: BoxDecoration(
+                                            color: AppColors.backgroundLight,
+                                            borderRadius: BorderRadius.circular(18),
+                                            border: Border.all(
+                                              color: AppColors.lightGray.withOpacity(0.3),
+                                              width: 1.5,
+                                            ),
+                                          ),
+                                          child: Text(
+                                            _searchQuery.isNotEmpty
+                                                ? 'No devices match "${_searchController.text}". Try searching by 
+device name or MAC address.'
+                                                : 'Pair a device in your device\'s Bluetooth settings first, then 
+refresh to see available devices.',
+                                            style: AppTypography.bodyMedium.copyWith(
+                                              color: AppColors.textSecondary,
+                                              fontWeight: FontWeight.w500,
+                                              height: 1.5,
+                                              fontSize: 14,
+                                            ),
+                                            textAlign: TextAlign.center,
+                                          ),
+                                        ),
+                                        if (_searchQuery.isEmpty) ...[
+                                          const SizedBox(height: 28),
+                                          Container(
+                                            decoration: BoxDecoration(
+                                              gradient: LinearGradient(
+                                                begin: Alignment.topLeft,
+                                                end: Alignment.bottomRight,
+                                                colors: [
+                                                  primaryColor,
+                                                  primaryColor.withOpacity(0.85),
+                                                ],
+                                              ),
+                                              borderRadius: BorderRadius.circular(18),
+                                              boxShadow: [
+                                                BoxShadow(
+                                                  color: primaryColor.withOpacity(0.4),
+                                                  blurRadius: 12,
+                                                  offset: const Offset(0, 6),
+                                                ),
+                                              ],
+                                            ),
+                                            child: Material(
+                                              color: Colors.transparent,
+                                              child: InkWell(
+                                                borderRadius: BorderRadius.circular(18),
+                                                onTap: provider.isConnecting ? null : () {
+                                                  HapticFeedback.mediumImpact();
+                                                  provider.loadPairedDevices();
+                                                },
+                                                child: Padding(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                                                  child: Row(
+                                                    mainAxisAlignment: MainAxisAlignment.center,
+                                                    mainAxisSize: MainAxisSize.min,
+                                                    children: [
+                                                      if (provider.isConnecting)
+                                                        const SizedBox(
+                                                          width: 20,
+                                                          height: 20,
+                                                          child: CircularProgressIndicator(
+                                                            strokeWidth: 2.5,
+                                                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                                          ),
+                                                        )
+                                                      else
+                                                        const Icon(
+                                                          Icons.refresh_rounded,
+                                                          color: Colors.white,
+                                                          size: 22,
+                                                        ),
+                                                      const SizedBox(width: 10),
+                                                      Flexible(
+                                                        child: Text(
+
+

@@ -1,10 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
-import 'dart:isolate';
 import 'dart:math';
-import 'package:flutter/material.dart';
+import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_sound/flutter_sound.dart';
 import 'package:audioplayers/audioplayers.dart';
@@ -410,18 +408,17 @@ class VoiceChatExtension {
       // 4️⃣ Start recording with correct parameters
       await _recorder.startRecorder(
         toFile: _currentRecordingPath!,
-        codec: Codec.aacADTS,           // AAC codec for better Android support
-        sampleRate: 44100,              // 44.1 kHz sample rate (more stable)
-        numChannels: 1,                 // mono
-        bitRate: 128000,                // 128 kbps bit rate
-        audioSource: AudioSource.microphone, // Explicit audio source
+        codec: Codec.aacADTS,
+        sampleRate: 22050,  // Reduced from 44100 for smaller file size (still good quality for voice)
+        numChannels: 1,
+        bitRate: 64000,     // Reduced from 128000 for smaller file size (64kbps is good for voice)
+        audioSource: AudioSource.microphone,
       );
 
       _isRecording = true;
       _recordingStartTime = DateTime.now();
       _recordingController.add(true);
-      _debugController.add(
-          '🎙 Recording started -> $_currentRecordingPath (44.1 kHz mono AAC)');
+      _debugController.add('🎙 Recording started -> $_currentRecordingPath (22.05 kHz mono AAC @ 64kbps)');
 
       return true;
     } catch (e) {
@@ -590,12 +587,12 @@ class VoiceChatExtension {
     }
 
     try {
-      // Decode Base64 to bytes
-      final audioBytes = base64Decode(base64Audio);
-      
-      // Create temporary file
+      // Clean whitespace just in case (safe)
+      final cleaned = base64Audio.replaceAll(RegExp(r'\s+'), '');
+      final audioBytes = base64Decode(cleaned);
+
       final tempDir = await getTemporaryDirectory();
-      _currentPlayingPath = '${tempDir.path}/playback_${DateTime.now().millisecondsSinceEpoch}.wav';
+      _currentPlayingPath = '${tempDir.path}/playback_${DateTime.now().millisecondsSinceEpoch}.aac';
       final file = File(_currentPlayingPath!);
       await file.writeAsBytes(audioBytes);
 
@@ -604,10 +601,6 @@ class VoiceChatExtension {
       _isPlaying = true;
       _playingController.add(true);
       _debugController.add('Playing voice message: $_currentPlayingPath');
-
-      final bytes = await file.readAsBytes();
-      final header = bytes.take(8).toList();
-      _debugController.add('[PLAY] Header bytes: ${header.map((b) => b.toRadixString(16).padLeft(2, "0")).join(" ")}');
 
       // Listen for completion
       _player.onPlayerComplete.listen((_) {
@@ -620,6 +613,7 @@ class VoiceChatExtension {
         if (_currentPlayingPath != null) {
           File(_currentPlayingPath!).delete().catchError((e) {
             _debugController.add('Error deleting temp file: $e');
+            return File(_currentPlayingPath!);
           });
           _currentPlayingPath = null;
         }
@@ -647,6 +641,7 @@ class VoiceChatExtension {
         if (_currentPlayingPath != null) {
           File(_currentPlayingPath!).delete().catchError((e) {
             _debugController.add('Error deleting temp file: $e');
+            return File(_currentPlayingPath!);
           });
           _currentPlayingPath = null;
         }
@@ -656,69 +651,88 @@ class VoiceChatExtension {
     }
   }
 
-  /// Handle incoming voice data from Bluetooth
-  String _voiceBuffer = '';
+  // ---------------- RX Voice Stream Handling ----------------
   bool _isReceivingVoice = false;
+  final StringBuffer _voiceBuffer = StringBuffer();
   Timer? _voiceReceiveTimeout;
+
+  // Tune this if you want; with ESP now forcing END on 3s RF stall,
+  // this is mostly a safety net.
+  static const Duration _rxVoiceTimeout = Duration(seconds: 90);
+
+  void _resetVoiceTimeout() {
+    _voiceReceiveTimeout?.cancel();
+    _voiceReceiveTimeout = Timer(_rxVoiceTimeout, () {
+      if (_isReceivingVoice) {
+        _debugController.add('Voice receive timeout - resetting buffer');
+        _isReceivingVoice = false;
+        _voiceBuffer.clear();
+      }
+    });
+  }
 
   /// Process incoming data and detect voice messages
   List<String> processIncomingData(String data) {
     final messages = <String>[];
-    
-    // Split by lines to handle multiple messages
-    final lines = data.split('\n');
-    
-    for (final line in lines) {
-      final trimmedLine = line.trim();
-      if (trimmedLine.isEmpty) continue;
 
-      if (trimmedLine == '<VOICE_START>') {
+    // bluetooth_service.dart already emits lines with '\n', but just in case:
+    final lines = data.split('\n');
+
+    for (final line in lines) {
+      // Keep base64 safe: only trim end-of-line noise, not internal chars
+      final trimmed = line.replaceAll('\r', '').trim();
+      if (trimmed.isEmpty) continue;
+
+      if (trimmed == '<VOICE_START>') {
         _isReceivingVoice = true;
-        _voiceBuffer = '';
-        _voiceReceiveTimeout?.cancel();
-        _voiceReceiveTimeout = Timer(Duration(seconds: 60), () {
-          if (_isReceivingVoice) {
-            _debugController.add('Voice receive timeout - resetting buffer');
-            _isReceivingVoice = false;
-            _voiceBuffer = '';
-          }
-        });
+        _voiceBuffer.clear();
+        _resetVoiceTimeout();
         _debugController.add('Voice message start detected');
         continue;
       }
 
-      if (trimmedLine == '<VOICE_END>') {
-        _isReceivingVoice = false;
+      if (trimmed == '<VOICE_END>') {
         _voiceReceiveTimeout?.cancel();
-        if (_voiceBuffer.isNotEmpty) {
-          // Create a special marker for the complete voice message
-          messages.add('VOICE_MESSAGE:$_voiceBuffer');
-          _debugController.add('Voice message end detected (${_voiceBuffer.length} chars)');
-        } else {
-          _debugController.add('Voice message end detected but buffer is empty!');
+        _voiceReceiveTimeout = null;
+
+        if (_isReceivingVoice) {
+          _isReceivingVoice = false;
+
+          final full = _voiceBuffer.toString();
+          _voiceBuffer.clear();
+
+          if (full.isNotEmpty) {
+            messages.add('VOICE_MESSAGE:$full');
+            _debugController.add('Voice message end detected (${full.length} chars)');
+          } else {
+            _debugController.add('Voice message end detected but buffer is empty!');
+          }
         }
-        _voiceBuffer = '';
         continue;
       }
 
       if (_isReceivingVoice) {
-        // Accumulate Base64 chunks during voice stream
-        _voiceBuffer += trimmedLine;
-        _debugController.add('Voice chunk added (${trimmedLine.length} chars, total: ${_voiceBuffer.length})');
-      } else {
-        // Regular text message
-        messages.add(trimmedLine);
+        // Reset timeout on EVERY chunk so long messages don't time out
+        _resetVoiceTimeout();
+
+        // Append chunk (no newline)
+        _voiceBuffer.write(trimmed);
+
+        if (_enableDiagnostics) {
+          _debugController.add('Voice chunk added (${trimmed.length} chars, total: ${_voiceBuffer.length})');
+        }
+        continue;
       }
+
+      // Regular text
+      messages.add(trimmed);
     }
 
     return messages;
   }
 
-  /// Check if current data is part of a voice message
   bool get isReceivingVoice => _isReceivingVoice;
-
-  /// Get current voice buffer (for debugging)
-  String get voiceBuffer => _voiceBuffer;
+  String get voiceBuffer => _voiceBuffer.toString();
 
   /// Get recording duration
   Duration? getRecordingDuration() {

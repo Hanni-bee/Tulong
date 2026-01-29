@@ -16,7 +16,6 @@ import 'package:tulong_app/utils/prototype_animations.dart';
 import 'package:tulong_app/widgets/enhanced_skeleton_loaders.dart';
 import 'package:tulong_app/widgets/accessible_text.dart';
 import 'package:tulong_app/utils/icon_system.dart';
-import '../widgets/user_engagement_dashboard.dart';
 import '../providers/chat_provider.dart';
 
 class ModernProfileScreen extends StatefulWidget {
@@ -166,8 +165,6 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                               _buildQuickStats(),
                               const SizedBox(height: 20),
                               _buildStatsSection(),
-                              const SizedBox(height: 20),
-                              _buildUserEngagementDashboard(),
                               const SizedBox(height: 20),
                               _buildSettingsSections(),
                               const SizedBox(height: 20),
@@ -472,14 +469,6 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                               onLongPress: null,
                             ),
                             const SizedBox(height: 8),
-                          ] else ...[
-                            _buildHeaderCallToAction(
-                              context,
-                              icon: Icons.phone_outlined,
-                              text: 'Add phone number',
-                              onTap: () => _editProfile(context),
-                            ),
-                            const SizedBox(height: 8),
                           ],
                           if (location.isNotEmpty)
                             _buildClickableContactInfo(
@@ -533,14 +522,6 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
           icon: Icons.phone_outlined,
           label: 'Copy phone',
           onTap: () => _copyToClipboard(context, phoneNumber, 'Phone number copied'),
-        ),
-      );
-    } else {
-      actions.add(
-        _buildHeaderQuickAction(
-          icon: Icons.phone_outlined,
-          label: 'Add phone',
-          onTap: () => _editProfile(context),
         ),
       );
     }
@@ -788,157 +769,6 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
     return parts.join(', ');
   }
 
-  Widget _buildProfileCompletionCard() {
-    if (_isLoadingProfile) {
-      return const SizedBox.shrink();
-    }
-
-    return Consumer<AuthProvider>(
-      builder: (context, auth, child) {
-        final userModel = auth.currentUserModel;
-        final name = (userModel?.name ?? auth.userName ?? '').trim();
-        final username = (userModel?.username ?? auth.userUsername ?? '').trim();
-
-        final fields = <String, bool>{
-          'Name': name.isNotEmpty,
-          'Username': username.isNotEmpty,
-          'Street': (userModel?.street ?? '').trim().isNotEmpty,
-          'Barangay': (userModel?.barangay ?? '').trim().isNotEmpty,
-          'City': (userModel?.city ?? '').trim().isNotEmpty,
-          'Province': (userModel?.province ?? '').trim().isNotEmpty,
-        };
-
-        final total = fields.length;
-        final completed = fields.values.where((v) => v).length;
-        final missing = fields.entries.where((e) => !e.value).map((e) => e.key).toList();
-
-        if (missing.isEmpty) {
-          return const SizedBox.shrink();
-        }
-
-        final progress = total == 0 ? 0.0 : (completed / total).clamp(0.0, 1.0);
-        final percent = (progress * 100).round();
-
-        return AnimatedNeumorphicCard(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: AppColors.primaryRed.withOpacity(0.08),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: AppColors.primaryRed.withOpacity(0.18),
-                          width: 1,
-                        ),
-                      ),
-                      child: const Icon(
-                        Icons.fact_check_outlined,
-                        color: AppColors.primaryRed,
-                        size: 20,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Complete your profile',
-                            style: UnifiedTypography.titleMedium.copyWith(
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.textPrimary,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'Improve emergency response accuracy by adding missing details.',
-                            style: UnifiedTypography.bodySmall.copyWith(
-                              color: AppColors.textSecondary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      '$percent%',
-                      style: UnifiedTypography.titleMedium.copyWith(
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: LinearProgressIndicator(
-                    value: progress,
-                    minHeight: 8,
-                    backgroundColor: AppColors.lightGray.withOpacity(0.35),
-                    valueColor: AlwaysStoppedAnimation<Color>(AppColors.primaryRed),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final label in missing.take(3)) _buildMissingFieldChip(label),
-                    if (missing.length > 3)
-                      _buildMissingFieldChip('+${missing.length - 3} more'),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton(
-                    onPressed: () => _editProfile(context),
-                    style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                      foregroundColor: AppColors.primaryRed,
-                      textStyle: UnifiedTypography.bodyMedium.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    child: const Text('Update now'),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildMissingFieldChip(String label) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: AppColors.primaryRed.withOpacity(0.06),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color: AppColors.primaryRed.withOpacity(0.18),
-          width: 1,
-        ),
-      ),
-      child: Text(
-        label,
-        style: UnifiedTypography.bodySmall.copyWith(
-          color: AppColors.primaryRed,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-    );
-  }
-
   Future<void> _refreshProfile() async {
     HapticFeedback.lightImpact();
 
@@ -1017,152 +847,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
     );
   }
 
-  Widget _buildUserEngagementDashboard() {
-    return Consumer2<AuthProvider, ChatProvider>(
-      builder: (context, auth, chatProvider, child) {
-        // Get real data from providers
-        final messages = chatProvider.messages;
-        final sentMessages = messages.where((m) => m.isMe).length;
-        final receivedMessages = messages.where((m) => !m.isMe).length;
-        final connectionsCount = chatProvider.connectedUsersCount;
-
-        // Empty state: no activity yet (avoid showing "all zeros" analytics)
-        if (!_isLoadingProfile && messages.isEmpty) {
-          return AnimatedNeumorphicCard(
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(
-                          color: AppColors.info.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: AppColors.info.withOpacity(0.22),
-                            width: 1,
-                          ),
-                        ),
-                        child: const Icon(
-                          Icons.insights_outlined,
-                          color: AppColors.info,
-                          size: 22,
-                        ),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'No activity yet',
-                              style: UnifiedTypography.titleLarge.copyWith(
-                                fontWeight: FontWeight.bold,
-                                color: AppColors.textPrimary,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              connectionsCount <= 1
-                                  ? 'Connect and send messages to start generating engagement insights.'
-                                  : 'Start messaging to generate engagement insights.',
-                              style: UnifiedTypography.bodySmall.copyWith(
-                                color: AppColors.textSecondary,
-                                height: 1.35,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton(
-                      onPressed: () {
-                        HapticFeedback.lightImpact();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Tip: Open the “Local Chat” tab to start messaging.'),
-                            behavior: SnackBarBehavior.floating,
-                            backgroundColor: AppColors.info,
-                          ),
-                        );
-                      },
-                      style: TextButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                        foregroundColor: AppColors.primaryRed,
-                        textStyle: UnifiedTypography.bodyMedium.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      child: const Text('How do I start?'),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        }
-        
-        // TODO: Get emergency alerts count from OfflineMessagingService or SQLite
-        // For now using estimated values based on messages
-        final estimatedAlertsSent = (sentMessages * 0.1).round(); // Estimate 10% are alerts
-        final estimatedAlertsReceived = (receivedMessages * 0.08).round();
-        
-        // TODO: Calculate average response time from message timestamps
-        // For now, using a placeholder
-        double avgResponseTime = 0.0;
-        if (messages.isNotEmpty && messages.length > 1) {
-          // Simple calculation: average time between sent and received messages
-          final sentTimes = messages.where((m) => m.isMe).map((m) => m.timestamp).toList()..sort();
-          final receivedTimes = messages.where((m) => !m.isMe).map((m) => m.timestamp).toList()..sort();
-          
-          if (sentTimes.isNotEmpty && receivedTimes.isNotEmpty) {
-            // Calculate average time difference
-            int totalDiff = 0;
-            int count = 0;
-            for (var sentTime in sentTimes) {
-              var closestReceived = receivedTimes.firstWhere(
-                (rt) => rt.isAfter(sentTime),
-                orElse: () => sentTime,
-              );
-              if (closestReceived != sentTime && closestReceived.isAfter(sentTime)) {
-                totalDiff += closestReceived.difference(sentTime).inMinutes;
-                count++;
-              }
-            }
-            if (count > 0) {
-              avgResponseTime = (totalDiff / count).toDouble();
-            }
-          }
-        }
-        
-        // TODO: Track help provided/received - for now using placeholder
-        final helpProvided = 0; // Track in future updates
-        final helpReceived = 0; // Track in future updates
-        
-        return UserEngagementDashboard(
-          isLoading: _isLoadingProfile,
-          emergencyAlertsSent: estimatedAlertsSent,
-          emergencyAlertsReceived: estimatedAlertsReceived,
-          messagesSent: sentMessages,
-          messagesReceived: receivedMessages,
-          connectionsMade: connectionsCount,
-          averageResponseTime: avgResponseTime,
-          helpProvided: helpProvided,
-          helpReceived: helpReceived,
-        );
-      },
-    );
-  }
-
-  // Old weekly activity chart removed - replaced with UserEngagementDashboard
+  // Activity breakdown removed
 
   Widget _buildStatCard({
     required String title,

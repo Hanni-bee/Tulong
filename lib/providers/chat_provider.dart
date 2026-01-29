@@ -147,6 +147,16 @@ class ChatProvider with ChangeNotifier {
   StreamSubscription<String>? _messageSubscription;
   StreamSubscription<bool>? _connectionSubscription;
   StreamSubscription<String>? _debugSubscription;
+  StreamSubscription<bool>? _playingSubscription;
+  
+  // Track currently playing voice message ID
+  String? _currentlyPlayingVoiceMessageId;
+  String? get currentlyPlayingVoiceMessageId => _currentlyPlayingVoiceMessageId;
+  
+  // Check if a specific voice message is currently playing
+  bool isVoiceMessagePlaying(String voiceMessageId) {
+    return _currentlyPlayingVoiceMessageId == voiceMessageId && isPlaying;
+  }
 
   ChatProvider() {
     _instance = this; // Store static instance
@@ -213,6 +223,14 @@ class ChatProvider with ChangeNotifier {
         _debugLogs.removeAt(0);
       }
       notifyListeners();
+    });
+    
+    // Listen to voice playback completion to clear currently playing ID
+    _playingSubscription = _voiceExtension.playingStream.listen((isPlaying) {
+      if (!isPlaying) {
+        _currentlyPlayingVoiceMessageId = null;
+        notifyListeners();
+      }
     });
   }
 
@@ -1180,12 +1198,29 @@ class ChatProvider with ChangeNotifier {
 
   /// Play voice message
   Future<bool> playVoiceMessage(voice.VoiceMessage voiceMessage) async {
-    return await _voiceExtension.playVoiceMessage(voiceMessage.base64Audio);
+    // Stop any currently playing message first
+    if (_currentlyPlayingVoiceMessageId != null && isPlaying) {
+      await stopPlayback();
+    }
+    
+    // Set the currently playing voice message ID
+    _currentlyPlayingVoiceMessageId = voiceMessage.id;
+    
+    final success = await _voiceExtension.playVoiceMessage(voiceMessage.base64Audio);
+    
+    if (!success) {
+      _currentlyPlayingVoiceMessageId = null;
+    }
+    
+    notifyListeners();
+    return success;
   }
 
   /// Stop current playback
   Future<void> stopPlayback() async {
     await _voiceExtension.stopPlayback();
+    _currentlyPlayingVoiceMessageId = null;
+    notifyListeners();
   }
 
   void _addMessage(String text, bool isMe, {String? senderName, ChatMessage? message, bool isEmergency = false, Map<String, dynamic>? rawData}) {
@@ -1206,20 +1241,21 @@ class ChatProvider with ChangeNotifier {
         senderName: senderName,
         isRead: shouldMarkAsRead, // Mark as read if sent by user or if screen is visible
         isEmergency: isEmergency, // Set emergency flag (from hardware SOS button OR home page SOS button)
-        isPinned: isEmergency, // Auto-pin emergency messages (from hardware OR home page SOS button)
+        isPinned: isEmergency && !isMe, // Auto-pin emergency messages ONLY for received messages (not sender's own messages)
         messageId: messageId, // Unique ID for unpinning
         rawData: rawData, // Store raw data for source detection
       );
     } else if (!isMe && senderName != null) {
       // Update sender name if provided, preserve isRead status
+      // Only mark as read if screen is visible AND message wasn't already read
       message = message.copyWith(
         senderName: senderName,
-        isRead: message.isRead || _isLocalChatScreenVisible, // Mark as read if screen is visible
+        isRead: message.isRead || (_isLocalChatScreenVisible && !message.isRead), // Only mark as read if screen is visible and message wasn't already read
       );
     } else if (!message.isMe) {
-      // For existing incoming messages, update isRead based on screen visibility
+      // For existing incoming messages, only mark as read if screen is visible AND message wasn't already read
       message = message.copyWith(
-        isRead: message.isRead || _isLocalChatScreenVisible,
+        isRead: message.isRead || (_isLocalChatScreenVisible && !message.isRead),
       );
     }
     
@@ -1585,6 +1621,7 @@ class ChatProvider with ChangeNotifier {
     _messageSubscription?.cancel();
     _connectionSubscription?.cancel();
     _debugSubscription?.cancel();
+    _playingSubscription?.cancel();
     _bluetoothService.dispose();
     _voiceExtension.dispose();
     super.dispose();
@@ -1617,7 +1654,7 @@ class ChatMessage {
     this.isEmergency = false, // Default to false for normal messages
     this.isPinned = false, // Default to false, emergency messages auto-pin
     this.messageId,
-    this.rawData,
+    this.rawData, // Raw data for message (e.g., for SOS source)
   });
   
   ChatMessage copyWith({

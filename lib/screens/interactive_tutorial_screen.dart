@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
 import '../constants/app_colors.dart';
 import '../utils/neumorphic_utils.dart';
@@ -34,9 +33,9 @@ class _InteractiveTutorialScreenState extends State<InteractiveTutorialScreen>
       iconColor: AppColors.primaryRed,
       features: [
         TutorialFeature(
-          icon: Icons.notifications_active,
-          title: 'Instant Alerts',
-          description: 'Get real-time disaster notifications',
+          icon: Icons.message_rounded,
+          title: 'Community Notification',
+          description: 'Get message notifications from nearby devices',
         ),
         TutorialFeature(
           icon: Icons.people,
@@ -51,26 +50,26 @@ class _InteractiveTutorialScreenState extends State<InteractiveTutorialScreen>
       ],
     ),
     TutorialPageData(
-      title: 'Emergency\nAlerts',
+      title: 'SOS\nAlert',
       description:
           'Receive critical warnings about typhoons, earthquakes, fires, and floods in your area.',
-      icon: Icons.warning_amber_rounded,
-      iconColor: Colors.orange,
+      icon: Icons.sos_rounded,
+      iconColor: AppColors.primaryRed,
       features: [
         TutorialFeature(
-          icon: Icons.thunderstorm,
-          title: 'Weather Alerts',
-          description: 'Typhoon and storm warnings',
+          icon: Icons.emergency_rounded,
+          title: 'Emergency Message Trigger',
+          description: 'Sends a pre-set emergency message when the device button is pressed.',
         ),
         TutorialFeature(
-          icon: Icons.terrain,
-          title: 'Earthquake Updates',
-          description: 'Real-time seismic activity',
+          icon: Icons.notifications_active_rounded,
+          title: 'Instant SoS Notification',
+          description: 'Delivers an emergency alert from a nearby device.',
         ),
         TutorialFeature(
-          icon: Icons.water_damage,
-          title: 'Flood Warnings',
-          description: 'Water level monitoring',
+          icon: Icons.pan_tool_rounded,
+          title: 'One-Press Safety Alert',
+          description: 'Sends an emergency message with one button press.',
         ),
       ],
     ),
@@ -89,11 +88,11 @@ class _InteractiveTutorialScreenState extends State<InteractiveTutorialScreen>
         TutorialFeature(
           icon: Icons.mic,
           title: 'Voice Messages',
-          description: 'Walkie-talkie feature',
+          description: 'Record and send voice messages',
         ),
         TutorialFeature(
           icon: Icons.send,
-          title: 'Quick Messaging',
+          title: 'Messaging System',
           description: 'Send and receive messages',
         ),
       ],
@@ -111,11 +110,6 @@ class _InteractiveTutorialScreenState extends State<InteractiveTutorialScreen>
           description: 'Messages stored locally',
         ),
         TutorialFeature(
-          icon: Icons.sync,
-          title: 'Auto-Sync',
-          description: 'Syncs when online',
-        ),
-        TutorialFeature(
           icon: Icons.battery_charging_full,
           title: 'Low Power Mode',
           description: 'Optimized for emergencies',
@@ -125,24 +119,24 @@ class _InteractiveTutorialScreenState extends State<InteractiveTutorialScreen>
     TutorialPageData(
       title: 'You\'re\nAll Set!',
       description:
-          'You\'re ready to use T.U.L.O.N.G. Stay safe and connected during emergencies.',
+          'You\'re ready to use T.U.L.O.N.G. Stay safe and follow these reminders and keep your device connected.',
       icon: Icons.check_circle_outline,
       iconColor: Colors.green,
       features: [
         TutorialFeature(
-          icon: Icons.safety_check,
-          title: 'Stay Prepared',
-          description: 'Keep emergency contacts updated',
+          icon: Icons.notifications_active,
+          title: 'Turn on Notifications',
+          description: 'To receive all emergency messages',
         ),
         TutorialFeature(
-          icon: Icons.location_on,
-          title: 'Enable Location',
-          description: 'For accurate alerts',
+          icon: Icons.bluetooth,
+          title: 'Keep Bluetooth On',
+          description: 'To stay connected to your hardware device',
         ),
         TutorialFeature(
-          icon: Icons.notifications,
-          title: 'Allow Notifications',
-          description: 'Never miss critical alerts',
+          icon: Icons.phone_android,
+          title: 'Carry Your Device',
+          description: 'Make sure your hardware device is always with you',
         ),
       ],
     ),
@@ -301,14 +295,18 @@ class _InteractiveTutorialScreenState extends State<InteractiveTutorialScreen>
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  gradient: NeumorphicUtils.getModernGradient(),
+                  color: AppColors.primaryRed,
                   borderRadius: BorderRadius.circular(10),
                   boxShadow: NeumorphicUtils.getCardElevation(2),
                 ),
-                child: const Icon(
-                  Icons.shield,
-                  color: Colors.white,
-                  size: 24,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: Image.asset(
+                    'assets/images/app_logo (3).png',
+                    width: 40,
+                    height: 40,
+                    fit: BoxFit.contain,
+                  ),
                 ),
               ),
               const SizedBox(width: 12),
@@ -586,7 +584,9 @@ class _InteractiveTutorialScreenState extends State<InteractiveTutorialScreen>
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: ModernGradientButton(
                 text: _isLastPage ? 'Get Started' : 'Next',
-                icon: _isLastPage ? Icons.check : Icons.arrow_forward,
+                trailingIcon: _isLastPage 
+                    ? Icon(Icons.check, color: Colors.white, size: 22)
+                    : Icon(Icons.arrow_forward, color: Colors.white, size: 22),
                 onPressed: _nextPage,
                 height: 56,
               ),

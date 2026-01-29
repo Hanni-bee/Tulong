@@ -28,13 +28,14 @@ class LocalChatScreen extends StatefulWidget {
   State<LocalChatScreen> createState() => _LocalChatScreenState();
 }
 
-class _LocalChatScreenState extends State<LocalChatScreen> {
+class _LocalChatScreenState extends State<LocalChatScreen> with WidgetsBindingObserver {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final ScrollController _debugScrollController = ScrollController();
   
   bool _isDebugConsoleVisible = false;
   bool _isRecording = false;
+  bool _isScreenVisible = false;
   
   // Pinned banner timer management (30 seconds display duration)
   static const Duration _pinnedRetention = Duration(days: 1); // For history (24 hours)
@@ -48,6 +49,7 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     
     // Keep pinned banner/history time-window accurate while the screen stays open
     _pinnedRefreshTimer = Timer.periodic(const Duration(minutes: 1), (_) {
@@ -65,6 +67,7 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
       final chatProvider = context.read<ChatProvider>();
       
       // Mark chat screen as visible and mark all messages as read
+      _isScreenVisible = true;
       chatProvider.setLocalChatScreenVisible(true);
       chatProvider.markAllMessagesAsRead();
       
@@ -244,10 +247,11 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
   }
 
   // UI-only: Get SOS emergency history (last 24 hours)
+  // Only includes received emergency messages (not sender's own messages)
   List<ChatMessage> _getSosEmergencyHistory(List<ChatMessage> messages) {
     final now = DateTime.now();
     final list = messages
-        .where((m) => _isSosEmergencyMessage(m) && now.difference(m.timestamp) < _pinnedRetention)
+        .where((m) => _isSosEmergencyMessage(m) && !m.isMe && now.difference(m.timestamp) < _pinnedRetention)
         .toList();
     list.sort((a, b) => b.timestamp.compareTo(a.timestamp));
     return list;
@@ -524,10 +528,12 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
                   }
                   
                   // Find the latest SOS emergency message (for pinned banner)
+                  // Only show pinned banner for received messages, not sender's own messages
                   final now = DateTime.now();
                   ChatMessage? latestEmergency;
                   for (final m in provider.messages.reversed) {
                     if (!_isSosEmergencyMessage(m)) continue;
+                    if (m.isMe) continue; // Skip sender's own SOS messages
                     if (now.difference(m.timestamp) >= _pinnedRetention) continue;
                     latestEmergency = m;
                     break;
@@ -1362,8 +1368,23 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (!mounted) return;
+    final chatProvider = context.read<ChatProvider>();
+    if (state == AppLifecycleState.resumed && _isScreenVisible) {
+      chatProvider.setLocalChatScreenVisible(true);
+      chatProvider.markAllMessagesAsRead();
+    } else if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      chatProvider.setLocalChatScreenVisible(false);
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     // Mark chat screen as not visible
+    _isScreenVisible = false;
     final chatProvider = context.read<ChatProvider>();
     chatProvider.setLocalChatScreenVisible(false);
     

@@ -282,8 +282,18 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
     if (_currentIndex != index) {
       HapticFeedback.lightImpact();
       
-      // If switching to Local Chat (index 1), ensure badge updates
+      // Update chat screen visibility based on tab navigation
+      final chatProvider = Provider.of<ChatProvider>(context, listen: false);
+      
+      // If leaving Local Chat (index 1), mark screen as not visible
+      if (_currentIndex == 1 && index != 1) {
+        chatProvider.setLocalChatScreenVisible(false);
+      }
+      
+      // If switching to Local Chat (index 1), mark screen as visible and mark messages as read
       if (index == 1) {
+        chatProvider.setLocalChatScreenVisible(true);
+        chatProvider.markAllMessagesAsRead();
         // Update badge counts immediately when switching to chat
         _updateBadgeCounts();
       }

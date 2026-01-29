@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
 import '../constants/app_typography.dart';
 import '../services/sqlite_service.dart';
-import '../services/unified_data_service.dart';
 
 /// Modal to display sender's basic information (Name, Contact Number, Address)
 class SenderInfoModal extends StatefulWidget {
@@ -176,26 +175,13 @@ class _SenderInfoModalState extends State<SenderInfoModal> {
                   ),
                   const SizedBox(width: 20),
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Sender Information',
-                          style: AppTypography.headlineSmall.copyWith(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 20,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          widget.senderName,
-                          style: AppTypography.bodyMedium.copyWith(
-                            color: Colors.white.withOpacity(0.95),
-                            fontSize: 14,
-                          ),
-                        ),
-                      ],
+                    child: Text(
+                      'Sender Information',
+                      style: AppTypography.headlineSmall.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 20,
+                      ),
                     ),
                   ),
                   IconButton(
@@ -256,21 +242,13 @@ class _SenderInfoModalState extends State<SenderInfoModal> {
                                   ),
                                   const SizedBox(height: 20),
                                   
-                                  // Contact Number
-                                  _buildInfoCard(
-                                    icon: Icons.phone,
-                                    label: 'Contact Number',
-                                    value: _userInfo!['phone'] ?? 'Not available',
-                                    color: cyanBlue,
-                                  ),
-                                  const SizedBox(height: 20),
-                                  
-                                  // Address
+                                  // Address - Full address visible, no truncation
                                   _buildInfoCard(
                                     icon: Icons.location_on,
                                     label: 'Address',
                                     value: _userInfo!['address'] ?? 'Not available',
                                     color: cyanBlue,
+                                    showFullText: true,
                                   ),
                                 ],
                               )
@@ -313,6 +291,7 @@ class _SenderInfoModalState extends State<SenderInfoModal> {
     required String label,
     required String value,
     required Color color,
+    bool showFullText = false,
   }) {
     return Container(
       padding: const EdgeInsets.all(20),
@@ -362,8 +341,8 @@ class _SenderInfoModalState extends State<SenderInfoModal> {
                     fontSize: 16,
                     height: 1.4,
                   ),
-                  maxLines: 5,
-                  overflow: TextOverflow.ellipsis,
+                  maxLines: showFullText ? null : 5,
+                  overflow: showFullText ? TextOverflow.visible : TextOverflow.ellipsis,
                 ),
               ],
             ),
