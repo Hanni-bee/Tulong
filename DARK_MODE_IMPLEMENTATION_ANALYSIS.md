@@ -1053,10 +1053,12 @@ Container(
 ### Theme Selection UI
 
 #### Preference Button Location
-- **Primary Location**: Profile/Settings screen
-- **Button Style**: Icon button with theme icon (sun/moon/black circle)
-- **Button Label**: "Theme" or "Appearance"
+- **Primary Location**: Profile/Settings screen (Support section)
+- **Button Style**: Settings item with palette icon
+- **Button Label**: "Appearance" (replaces "Help Center")
+- **Subtitle**: "Theme and display settings"
 - **Visual Indicator**: Shows current theme icon
+- **Implementation Status**: ✅ UI placeholder added, awaiting ThemeProvider implementation
 
 #### Interactive Preview Modal
 
@@ -1324,11 +1326,32 @@ IconData _getCurrentThemeIcon() {
 
 **UI Location:** Profile/Settings screen with clear labels and previews
 
+#### Implementation Update: Profile Screen Changes
+
+**Changes Made:**
+- ✅ **Replaced "Help Center" with "Appearance"** in Profile screen Support section
+- ✅ **Updated Icon**: Changed from `Icons.help` to `Icons.palette`
+- ✅ **Updated Subtitle**: Changed from "Get help and support" to "Theme and display settings"
+- ✅ **Added Placeholder Modal**: Created `_showThemeSelectionModal()` method (placeholder implementation)
+- ✅ **File Modified**: `lib/screens/modern_profile_screen.dart` (lines 1308-1312)
+
+**Current Status:**
+- UI element is in place and ready for ThemeProvider integration
+- Placeholder modal shows "Theme selection will be available soon"
+- Will be replaced with interactive theme selection modal once ThemeProvider is implemented
+
+**Next Steps:**
+1. Implement ThemeProvider (Phase 1.3)
+2. Create interactive ThemeSelectionModal widget
+3. Connect Appearance button to show theme selection modal
+4. Implement live preview functionality
+
 ---
 
-**Document Version:** 1.2  
-**Last Updated:** January 2025  
+**Document Version:** 1.3  
+**Last Updated:** January 30, 2025  
 **Next Review:** After Phase 1 completion  
 **Updates:** 
 - Added 2 dark mode variants requirement and design integrity guarantee (v1.1)
 - Added interactive theme selection modal with live preview feature (v1.2)
+- Added Profile screen "Appearance" button implementation update (v1.3)

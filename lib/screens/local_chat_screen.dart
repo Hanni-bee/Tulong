@@ -7,6 +7,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import '../constants/app_colors.dart';
 import '../constants/app_typography.dart';
 import '../constants/soft_ui_design.dart';
+import '../utils/theme_colors.dart';
 import '../providers/chat_provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/voice_chat_extension.dart' as voice;
@@ -370,7 +371,7 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
                 Text(
                   'Pinned SOS History',
                   style: AppTypography.titleMedium.copyWith(
-                    color: AppColors.textPrimary,
+                    color: ThemeColors.textPrimary(context),
                     fontWeight: FontWeight.w900,
                   ),
                 ),
@@ -445,7 +446,7 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
                               Text(
                                 message.text,
                                 style: AppTypography.bodyMedium.copyWith(
-                                  color: AppColors.textPrimary,
+                                  color: ThemeColors.textPrimary(context),
                                 ),
                               ),
                             ],
@@ -467,7 +468,7 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
+      backgroundColor: ThemeColors.background(context),
       body: SafeArea(
         child: Column(
           children: [
@@ -877,7 +878,7 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
                 Text(
                   'Sent ${_formatDateTime(message.timestamp)}',
                   style: AppTypography.bodySmall.copyWith(
-                    color: AppColors.textSecondary,
+                    color: ThemeColors.textSecondary(context),
                   ),
                 ),
                 const SizedBox(height: 20),
@@ -909,10 +910,7 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
 
   Widget _buildMessageBubbleContent(ChatMessage message) {
     final isEmergency = message.isEmergency;
-    
-    return Container(
-      margin: EdgeInsets.only(bottom: isEmergency ? 16 : 12),
-      child: Row(
+    final row = Row(
         mainAxisAlignment: message.isMe 
             ? MainAxisAlignment.end 
             : MainAxisAlignment.start,
@@ -970,8 +968,8 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
             ),
             decoration: BoxDecoration(
               color: isEmergency
-                  ? (message.isMe ? AppColors.error : AppColors.error.withOpacity(0.1))
-                  : (message.isMe ? AppColors.primaryRed : Colors.white),
+                  ? (message.isMe ? AppColors.error : AppColors.error.withOpacity(0.18))
+                  : (message.isMe ? AppColors.primaryRed : ThemeColors.surface(context)),
               borderRadius: BorderRadius.circular(20).copyWith(
                 bottomLeft: message.isMe ? const Radius.circular(20) : const Radius.circular(4),
                 bottomRight: message.isMe ? const Radius.circular(4) : const Radius.circular(20),
@@ -1027,8 +1025,10 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
                       ? Text(
                           message.text,
                           style: AppTypography.bodyLarge.copyWith(
-                            fontWeight: FontWeight.w700,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
                             color: message.isMe ? Colors.white : AppColors.error,
+                            height: 1.25,
                           ),
                         )
                       : AccessibleChatText(
@@ -1036,7 +1036,7 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
                           isMe: message.isMe,
                           backgroundColor: message.isMe
                               ? AppColors.primaryRed
-                              : AppColors.white,
+                              : ThemeColors.surface(context),
                           maxLines: null,
                         ),
                 const SizedBox(height: 4),
@@ -1095,7 +1095,18 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
             ),
           ],
         ],
-      ),
+      );
+    if (isEmergency) {
+      return Container(
+        margin: const EdgeInsets.only(bottom: 16),
+        child: row
+            .animate(onPlay: (c) => c.repeat(reverse: true))
+            .scale(begin: const Offset(1, 1), end: const Offset(1.02, 1.02), duration: 1600.ms, curve: Curves.easeInOut),
+      );
+    }
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: row,
     );
   }
 
@@ -1224,10 +1235,11 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
   Widget _buildMessageInput() {
     return Container(
       decoration: SoftUIDesign.cardDecoration(
-        backgroundColor: Colors.white,
+        context: context,
+        backgroundColor: ThemeColors.surface(context),
         borderRadius: 0,
         elevation: 3.0,
-        borderColor: AppColors.lightGray.withOpacity(0.3),
+        borderColor: ThemeColors.border(context),
         showBorder: true,
       ).copyWith(
         borderRadius: null,
@@ -1246,6 +1258,7 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
                       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
                       margin: const EdgeInsets.only(bottom: 12),
                       decoration: SoftUIDesign.cardDecoration(
+                        context: context,
                         backgroundColor: provider.isRecording ? AppColors.error.withOpacity(0.08) : AppColors.success.withOpacity(0.08),
                         borderRadius: SoftUIDesign.buttonBorderRadius,
                         elevation: 2.0,
@@ -1290,6 +1303,7 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
                           width: 48,
                           height: 48,
                           decoration: SoftUIDesign.buttonDecoration(
+                            context: context,
                             backgroundColor: provider.isRecording ? AppColors.error : AppColors.online,
                             borderRadius: 24.0,
                             shadowColor: provider.isRecording ? AppColors.error : AppColors.online,
@@ -1310,10 +1324,11 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
                   Expanded(
                     child: Container(
                       decoration: SoftUIDesign.cardDecoration(
-                        backgroundColor: AppColors.white,
+                        context: context,
+                        backgroundColor: ThemeColors.surface(context),
                         borderRadius: 24.0,
                         elevation: 2.0,
-                        borderColor: AppColors.lightGray.withOpacity(0.3),
+                        borderColor: ThemeColors.border(context),
                         showBorder: true,
                       ),
                       child: TextField(
@@ -1483,7 +1498,7 @@ class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
         width: double.maxFinite,
         height: 600,
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: ThemeColors.surface(context),
           borderRadius: BorderRadius.circular(24),
           boxShadow: [
             BoxShadow(
@@ -1723,14 +1738,14 @@ class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
                       controller: _searchController,
                       decoration: InputDecoration(
                         hintText: 'Search paired devices...',
-                        prefixIcon: const Icon(Icons.search, color: AppColors.textSecondary, size: 20),
+                        prefixIcon: Icon(Icons.search, color: ThemeColors.textSecondary(context), size: 20),
                         suffixIcon: _searchQuery.isNotEmpty
                             ? IconButton(
                                 icon: const Icon(Icons.clear, size: 20),
                                 onPressed: () {
                                   _searchController.clear();
                                 },
-                                color: AppColors.textSecondary,
+                                color: ThemeColors.textSecondary(context),
                               )
                             : null,
                         filled: true,

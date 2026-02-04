@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/app_colors.dart';
+import '../utils/theme_colors.dart';
 
 class TutorialWalkthroughScreen extends StatefulWidget {
   const TutorialWalkthroughScreen({super.key});
@@ -161,7 +162,7 @@ class _TutorialWalkthroughScreenState extends State<TutorialWalkthroughScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.backgroundLight,
+      backgroundColor: ThemeColors.background(context),
       body: SafeArea(
         child: Column(
           children: [
@@ -200,18 +201,18 @@ class _TutorialWalkthroughScreenState extends State<TutorialWalkthroughScreen>
             children: [
               Text(
                 '${_currentPage + 1} of $_totalPages',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 14,
-                  color: AppColors.textSecondary,
+                  color: ThemeColors.textSecondary(context),
                   fontWeight: FontWeight.w500,
                 ),
               ),
               TextButton(
                 onPressed: _skipTutorial,
-                child: const Text(
+                child: Text(
                   'Skip',
                   style: TextStyle(
-                    color: AppColors.textSecondary,
+                    color: ThemeColors.textSecondary(context),
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -317,7 +318,7 @@ class _TutorialWalkthroughScreenState extends State<TutorialWalkthroughScreen>
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                               decoration: BoxDecoration(
-                                color: AppColors.white,
+                                color: ThemeColors.surface(context),
                                 borderRadius: BorderRadius.circular(20),
                                 border: Border.all(
                                   color: page.color,
@@ -371,9 +372,9 @@ class _TutorialWalkthroughScreenState extends State<TutorialWalkthroughScreen>
               
               Text(
                 page.description,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 16,
-                  color: AppColors.textSecondary,
+                  color: ThemeColors.textSecondary(context),
                   height: 1.5,
                 ),
                 textAlign: TextAlign.center,
@@ -441,9 +442,9 @@ class _TutorialWalkthroughScreenState extends State<TutorialWalkthroughScreen>
                 Expanded(
                   child: Text(
                     feature,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 14,
-                      color: AppColors.textSecondary,
+                      color: ThemeColors.textSecondary(context),
                       fontWeight: FontWeight.w500,
                     ),
                   ),

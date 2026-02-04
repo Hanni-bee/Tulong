@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../constants/app_colors.dart';
+import '../utils/theme_colors.dart';
 import '../services/hardware_service.dart';
 import '../widgets/hardware_status_widgets.dart';
 import '../widgets/enhanced_button.dart';
@@ -29,25 +30,25 @@ class _HardwareScreenState extends State<HardwareScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.backgroundLight,
+      backgroundColor: ThemeColors.background(context),
       appBar: AppBar(
-        title: const Text(
+        title: Text(
           'Hardware Settings',
           style: TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.w700,
-            color: AppColors.textPrimary,
+            color: ThemeColors.textPrimary(context),
           ),
         ),
-        backgroundColor: AppColors.backgroundLight,
+        backgroundColor: ThemeColors.background(context),
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
+          icon: Icon(Icons.arrow_back, color: ThemeColors.textPrimary(context)),
           onPressed: () => Navigator.of(context).pop(),
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh, color: AppColors.textPrimary),
+            icon: Icon(Icons.refresh, color: ThemeColors.textPrimary(context)),
             onPressed: () => _refreshConnection(),
           ),
         ],
@@ -95,7 +96,7 @@ class _HardwareScreenState extends State<HardwareScreen> {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: ThemeColors.surface(context),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
           color: AppColors.primaryRed.withOpacity(0.2),
@@ -121,7 +122,7 @@ class _HardwareScreenState extends State<HardwareScreen> {
                   color: AppColors.primaryRed,
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.info_outline,
                   color: Colors.white,
                   size: 18,
@@ -152,7 +153,7 @@ class _HardwareScreenState extends State<HardwareScreen> {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: ThemeColors.surface(context),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
           color: AppColors.primaryRed.withOpacity(0.2),
@@ -178,7 +179,7 @@ class _HardwareScreenState extends State<HardwareScreen> {
                   color: AppColors.primaryRed,
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.radio,
                   color: Colors.white,
                   size: 18,
@@ -210,7 +211,7 @@ class _HardwareScreenState extends State<HardwareScreen> {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: ThemeColors.surface(context),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
           color: AppColors.primaryRed.withOpacity(0.2),
@@ -236,7 +237,7 @@ class _HardwareScreenState extends State<HardwareScreen> {
                   color: AppColors.primaryRed,
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.science,
                   color: Colors.white,
                   size: 18,
@@ -365,11 +366,11 @@ class _HardwareScreenState extends State<HardwareScreen> {
   void _showConnectionOptions() {
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.white,
+      backgroundColor: ThemeColors.surface(context),
       builder: (context) => Container(
         padding: const EdgeInsets.all(20),
-        decoration: const BoxDecoration(
-          color: Colors.white,
+        decoration: BoxDecoration(
+          color: ThemeColors.surface(context),
           borderRadius: BorderRadius.only(
             topLeft: Radius.circular(20),
             topRight: Radius.circular(20),

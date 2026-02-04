@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../constants/app_colors.dart';
+import '../../utils/theme_colors.dart';
 import '../../constants/unified_typography.dart';
 import '../../services/biometric_service.dart';
 import '../../services/sqlite_service.dart';
@@ -326,7 +327,7 @@ class _BiometricVerificationScreenState extends State<BiometricVerificationScree
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.backgroundLight,
+      backgroundColor: ThemeColors.background(context),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,

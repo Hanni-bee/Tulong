@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import '../constants/app_colors.dart';
 import '../constants/unified_typography.dart';
 import '../constants/soft_ui_design.dart';
+import '../utils/theme_colors.dart';
 
 class CustomTextField extends StatelessWidget {
   final TextEditingController? controller;
@@ -42,10 +43,11 @@ class CustomTextField extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: SoftUIDesign.cardDecoration(
-        backgroundColor: Colors.white,
+        context: context,
+        backgroundColor: ThemeColors.surface(context),
         borderRadius: SoftUIDesign.inputBorderRadius,
         elevation: 2.0,
-        borderColor: AppColors.lightGray.withOpacity(0.3),
+        borderColor: ThemeColors.border(context).withOpacity(0.3),
         showBorder: true,
       ),
       child: TextFormField(

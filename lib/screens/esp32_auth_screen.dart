@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../services/simple_bluetooth_service.dart';
 import '../constants/app_colors.dart';
+import '../utils/theme_colors.dart';
 import '../constants/app_typography.dart';
 
 /// ESP32 Bluetooth Authentication Screen
@@ -43,7 +44,7 @@ class _ESP32AuthScreenState extends State<ESP32AuthScreen> with TickerProviderSt
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F5),
+      backgroundColor: ThemeColors.background(context),
       body: SafeArea(
         child: Consumer<SimpleBluetoothService>(
           builder: (context, btService, child) {
@@ -83,7 +84,7 @@ class _ESP32AuthScreenState extends State<ESP32AuthScreen> with TickerProviderSt
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: ThemeColors.surface(context),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.05),
@@ -183,7 +184,7 @@ class _ESP32AuthScreenState extends State<ESP32AuthScreen> with TickerProviderSt
       width: double.infinity,
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: ThemeColors.surface(context),
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
@@ -318,8 +319,8 @@ class _ESP32AuthScreenState extends State<ESP32AuthScreen> with TickerProviderSt
             child: Center(
               child: Text(
                 number,
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: ThemeColors.surface(context),
                   fontSize: 12,
                   fontWeight: FontWeight.bold,
                 ),

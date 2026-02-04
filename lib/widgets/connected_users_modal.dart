@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/simple_bluetooth_service.dart';
 import '../constants/app_colors.dart';
 import '../constants/unified_typography.dart';
+import '../utils/theme_colors.dart';
 import '../utils/permission_helper.dart';
 
 /// ESP32 Device Scanner Modal - Shows available ESP32 devices to pair and connect
@@ -171,7 +172,7 @@ class _ConnectedUsersModalState extends State<ConnectedUsersModal> {
       child: Container(
         constraints: const BoxConstraints(maxHeight: 500),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: ThemeColors.surface(context),
           borderRadius: BorderRadius.circular(24),
           boxShadow: [
             BoxShadow(
@@ -314,7 +315,7 @@ class _ConnectedUsersModalState extends State<ConnectedUsersModal> {
             Text(
               _isScanning ? 'Scanning for ESP32 devices...' : 'No devices found',
               style: UnifiedTypography.titleMedium.copyWith(
-                color: AppColors.textPrimary,
+                color: ThemeColors.textPrimary(context),
                 fontWeight: FontWeight.w600,
               ),
             ),

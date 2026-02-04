@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
+import '../utils/theme_colors.dart';
 
 class CallDetailScreen extends StatefulWidget {
   final String contactName;
@@ -157,8 +158,8 @@ class _CallDetailScreenState extends State<CallDetailScreen>
                 children: [
                   Text(
                     _isCallActive ? 'Call in progress' : 'Connecting...',
-                    style: const TextStyle(
-                      color: AppColors.white,
+                    style: TextStyle(
+                      color: ThemeColors.surface(context),
                       fontSize: 16,
                       fontWeight: FontWeight.w500,
                     ),
@@ -166,8 +167,8 @@ class _CallDetailScreenState extends State<CallDetailScreen>
                   if (_isCallActive)
                     Text(
                       _formatDuration(_callDuration),
-                      style: const TextStyle(
-                        color: AppColors.white,
+                      style: TextStyle(
+                        color: ThemeColors.surface(context),
                         fontSize: 16,
                         fontWeight: FontWeight.w500,
                       ),
@@ -213,8 +214,8 @@ class _CallDetailScreenState extends State<CallDetailScreen>
                                     widget.contactName.isNotEmpty
                                         ? widget.contactName[0].toUpperCase()
                                         : '?',
-                                    style: const TextStyle(
-                                      color: AppColors.white,
+                                    style: TextStyle(
+                                      color: ThemeColors.surface(context),
                                       fontSize: 60,
                                       fontWeight: FontWeight.bold,
                                     ),
@@ -232,8 +233,8 @@ class _CallDetailScreenState extends State<CallDetailScreen>
                     opacity: _fadeAnimation,
                     child: Text(
                       widget.contactName,
-                      style: const TextStyle(
-                        color: AppColors.white,
+                      style: TextStyle(
+                        color: ThemeColors.surface(context),
                         fontSize: 32,
                         fontWeight: FontWeight.bold,
                       ),
@@ -338,7 +339,7 @@ class _CallDetailScreenState extends State<CallDetailScreen>
         ),
         child: Icon(
           icon,
-          color: AppColors.white,
+          color: ThemeColors.surface(context),
           size: 24,
         ),
       ),
@@ -368,7 +369,7 @@ class _CallDetailScreenState extends State<CallDetailScreen>
         ),
         child: Icon(
           icon,
-          color: AppColors.white,
+          color: ThemeColors.surface(context),
           size: 32,
         ),
       ),

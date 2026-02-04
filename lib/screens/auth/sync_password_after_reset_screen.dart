@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../constants/app_colors.dart';
+import '../../utils/theme_colors.dart';
 import '../../services/two_factor_auth_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -79,7 +80,7 @@ class _SyncPasswordAfterResetScreenState extends State<SyncPasswordAfterResetScr
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.backgroundLight,
+      backgroundColor: ThemeColors.background(context),
       appBar: AppBar(
         title: const Text(
           'Sync Password',
@@ -111,7 +112,7 @@ class _SyncPasswordAfterResetScreenState extends State<SyncPasswordAfterResetScr
                         child: const Icon(
                           Icons.sync,
                           size: 40,
-                          color: AppColors.white,
+                          color: ThemeColors.surface(context),
                         ),
                       ),
                       const SizedBox(height: 20),
@@ -120,7 +121,7 @@ class _SyncPasswordAfterResetScreenState extends State<SyncPasswordAfterResetScr
                         style: TextStyle(
                           fontSize: 24,
                           fontWeight: FontWeight.bold,
-                          color: AppColors.textPrimary,
+                          color: ThemeColors.textPrimary(context),
                         ),
                       ),
                       const SizedBox(height: 8),
@@ -129,7 +130,7 @@ class _SyncPasswordAfterResetScreenState extends State<SyncPasswordAfterResetScr
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: 16,
-                          color: AppColors.textSecondary,
+                          color: ThemeColors.textSecondary(context),
                         ),
                       ),
                     ],
@@ -202,7 +203,7 @@ class _SyncPasswordAfterResetScreenState extends State<SyncPasswordAfterResetScr
                         'After resetting your password via email, we need to sync the new password with your local account data to ensure you can log in properly.',
                         style: TextStyle(
                           fontSize: 12,
-                          color: AppColors.textSecondary,
+                          color: ThemeColors.textSecondary(context),
                         ),
                       ),
                     ],
@@ -219,14 +220,14 @@ class _SyncPasswordAfterResetScreenState extends State<SyncPasswordAfterResetScr
                     onPressed: _isLoading ? null : _syncPassword,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.primaryRed,
-                      foregroundColor: AppColors.white,
+                      foregroundcolor: ThemeColors.surface(context),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
                     child: _isLoading
                         ? const CircularProgressIndicator(
-                            color: AppColors.white,
+                            color: ThemeColors.surface(context),
                             strokeWidth: 2,
                           )
                         : const Text(

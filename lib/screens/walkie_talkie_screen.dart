@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../constants/app_colors.dart';
+import '../utils/theme_colors.dart';
 import '../widgets/unified_top_bar.dart';
 import '../utils/prototype_animations.dart';
 import '../widgets/enhanced_skeleton_loaders.dart';
@@ -264,8 +265,8 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                   AccessibleHeading(
                     'Active Channels',
                     level: HeadingLevel.h3,
-                    color: AppColors.textPrimary,
-                    backgroundColor: AppColors.backgroundLight,
+                    color: ThemeColors.textPrimary(context),
+                    backgroundColor: ThemeColors.background(context),
                   ),
                   const Spacer(),
                   Container(
@@ -692,7 +693,7 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                     style: const TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
-                      color: AppColors.textPrimary,
+                      color: ThemeColors.textPrimary(context),
                     ),
                   ),
                   const SizedBox(height: 2),
@@ -701,7 +702,7 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                     style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w600,
-                      color: AppColors.textSecondary.withOpacity(0.7),
+                      color: ThemeColors.textSecondary(context).withOpacity(0.7),
                     ),
                   ),
                 ],
@@ -990,7 +991,7 @@ class _UserTileState extends State<_UserTile> with SingleTickerProviderStateMixi
                 '• Idle',
                 style: TextStyle(
                   fontSize: 12,
-                  color: AppColors.textSecondary,
+                  color: ThemeColors.textSecondary(context),
                   fontWeight: FontWeight.w500,
                 ),
               ),

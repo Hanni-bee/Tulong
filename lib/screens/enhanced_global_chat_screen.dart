@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../constants/app_colors.dart';
+import '../utils/theme_colors.dart';
 import '../widgets/modern_message_bubble.dart';
 import '../widgets/interactive_gestures.dart';
 import '../widgets/modern_shimmer_loading.dart';
@@ -193,7 +194,7 @@ class _EnhancedGlobalChatScreenState extends State<EnhancedGlobalChatScreen>
                             '$_typingUser is typing',
                             style: const TextStyle(
                               fontSize: 12,
-                              color: AppColors.textSecondary,
+                              color: ThemeColors.textSecondary(context),
                               fontStyle: FontStyle.italic,
                             ),
                           ),
@@ -266,7 +267,7 @@ class _EnhancedGlobalChatScreenState extends State<EnhancedGlobalChatScreen>
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w700,
-              color: AppColors.textPrimary,
+              color: ThemeColors.textPrimary(context),
             ),
           ),
           Row(
@@ -293,7 +294,7 @@ class _EnhancedGlobalChatScreenState extends State<EnhancedGlobalChatScreen>
                 _isConnected ? 'Connected' : 'Offline',
                 style: const TextStyle(
                   fontSize: 12,
-                  color: AppColors.textSecondary,
+                  color: ThemeColors.textSecondary(context),
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -328,7 +329,7 @@ class _EnhancedGlobalChatScreenState extends State<EnhancedGlobalChatScreen>
             'Offline - Messages will sync when connected',
             style: TextStyle(
               fontSize: 12,
-              color: AppColors.textSecondary,
+              color: ThemeColors.textSecondary(context),
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -369,12 +370,12 @@ class _EnhancedGlobalChatScreenState extends State<EnhancedGlobalChatScreen>
                   textCapitalization: TextCapitalization.sentences,
                   style: const TextStyle(
                     fontSize: 15,
-                    color: AppColors.textPrimary,
+                    color: ThemeColors.textPrimary(context),
                   ),
                   decoration: const InputDecoration(
                     hintText: 'Type a message...',
                     hintStyle: TextStyle(
-                      color: AppColors.textSecondary,
+                      color: ThemeColors.textSecondary(context),
                       fontSize: 15,
                     ),
                     border: InputBorder.none,

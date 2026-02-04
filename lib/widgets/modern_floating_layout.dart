@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../constants/app_colors.dart';
+import '../utils/theme_colors.dart';
 
 class ModernFloatingLayout extends StatelessWidget {
   final Widget child;
@@ -24,12 +24,13 @@ class ModernFloatingLayout extends StatelessWidget {
     final screenWidth = MediaQuery.of(context).size.width;
     final isTablet = screenWidth > 600;
     final isDesktop = screenWidth > 900;
+    final bg = backgroundColor ?? ThemeColors.background(context);
 
     return Container(
       width: double.infinity,
       height: double.infinity,
-      decoration: const BoxDecoration(
-        color: AppColors.backgroundLight,
+      decoration: BoxDecoration(
+        color: bg,
       ),
       child: enableSafeArea
           ? SafeArea(
@@ -128,7 +129,7 @@ class ModernFloatingAppBarLayout extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.backgroundLight,
+      backgroundColor: ThemeColors.background(context),
       extendBodyBehindAppBar: true,
       appBar: appBar,
       floatingActionButton: floatingActionButton,

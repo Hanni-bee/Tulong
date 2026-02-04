@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter_bluetooth_serial_plus/flutter_bluetooth_serial_plus.dart';
 import '../constants/app_colors.dart';
+import '../utils/theme_colors.dart';
 import '../utils/haptic_helper.dart';
 
 /// Radar Scan Modal for device discovery with real-time Bluetooth scanning
@@ -236,7 +237,7 @@ class _RadarScanModalState extends State<RadarScanModal> with SingleTickerProvid
       child: Container(
         padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: ThemeColors.surface(context),
           borderRadius: BorderRadius.circular(24),
           boxShadow: [
             BoxShadow(
@@ -249,12 +250,12 @@ class _RadarScanModalState extends State<RadarScanModal> with SingleTickerProvid
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text(
+            Text(
               'Scanning Area',
               style: TextStyle(
                 fontSize: 22,
                 fontWeight: FontWeight.w900,
-                color: AppColors.textPrimary,
+                color: ThemeColors.textPrimary(context),
                 letterSpacing: -0.5,
               ),
             ),
@@ -267,7 +268,7 @@ class _RadarScanModalState extends State<RadarScanModal> with SingleTickerProvid
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
-                  color: isBluetoothOff ? AppColors.error : AppColors.textSecondary,
+                  color: isBluetoothOff ? AppColors.error : ThemeColors.textSecondary(context),
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -337,12 +338,12 @@ class _RadarScanModalState extends State<RadarScanModal> with SingleTickerProvid
                       ),
                     ),
                     const SizedBox(height: 4),
-                    const Text(
+                    Text(
                       'Turn on Bluetooth to scan for nearby devices and ESP32 nodes.',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 12,
-                        color: AppColors.textSecondary,
+                        color: ThemeColors.textSecondary(context),
                         fontWeight: FontWeight.w500,
                       ),
                     ),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../constants/app_colors.dart';
+import '../utils/theme_colors.dart';
 
 class PrivateChatScreen extends StatefulWidget {
   final String contactName;
@@ -124,17 +125,17 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.backgroundLight,
+      backgroundColor: ThemeColors.background(context),
       appBar: PreferredSize(
         preferredSize: const Size.fromHeight(80),
         child: Container(
           height: 80,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           decoration: BoxDecoration(
-            color: AppColors.white,
+            color: ThemeColors.surface(context),
             boxShadow: [
               BoxShadow(
-                color: AppColors.textSecondary.withOpacity(0.04),
+                color: ThemeColors.textSecondary(context).withOpacity(0.04),
                 blurRadius: 4,
                 offset: const Offset(0, 1),
               ),
@@ -147,18 +148,18 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                 width: 48,
                 height: 48,
                 decoration: BoxDecoration(
-                  color: AppColors.white,
+                  color: ThemeColors.surface(context),
                   borderRadius: BorderRadius.circular(12),
                   boxShadow: [
                     BoxShadow(
-                      color: AppColors.textSecondary.withOpacity(0.04),
+                      color: ThemeColors.textSecondary(context).withOpacity(0.04),
                       blurRadius: 4,
                       offset: const Offset(0, 1),
                     ),
                   ],
                 ),
                 child: IconButton(
-                  icon: const Icon(Icons.arrow_back_ios_new, color: AppColors.textPrimary),
+                  icon: Icon(Icons.arrow_back_ios_new, color: ThemeColors.textPrimary(context)),
                   onPressed: () => Navigator.of(context).pop(),
                 ),
               ),
@@ -203,7 +204,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                       style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
-                        color: AppColors.textPrimary,
+                        color: ThemeColors.textPrimary(context),
                       ),
                     ),
                     Text(
@@ -223,18 +224,18 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                 width: 48,
                 height: 48,
                 decoration: BoxDecoration(
-                  color: AppColors.white,
+                  color: ThemeColors.surface(context),
                   borderRadius: BorderRadius.circular(12),
                   boxShadow: [
                     BoxShadow(
-                      color: AppColors.textSecondary.withOpacity(0.04),
+                      color: ThemeColors.textSecondary(context).withOpacity(0.04),
                       blurRadius: 4,
                       offset: const Offset(0, 1),
                     ),
                   ],
                 ),
                 child: PopupMenuButton<String>(
-                  icon: const Icon(Icons.more_vert, color: AppColors.textPrimary),
+                  icon: Icon(Icons.more_vert, color: ThemeColors.textPrimary(context)),
                   onSelected: (value) {
                     switch (value) {
                       case 'view_profile':
@@ -258,7 +259,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                       value: 'view_profile',
                       child: Row(
                         children: [
-                          Icon(Icons.person, color: AppColors.textPrimary),
+                          Icon(Icons.person, color: ThemeColors.textPrimary(context)),
                           SizedBox(width: 12),
                           Text('View Profile'),
                         ],
@@ -278,7 +279,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                       value: 'clear_chat',
                       child: Row(
                         children: [
-                          Icon(Icons.clear_all, color: AppColors.textSecondary),
+                          Icon(Icons.clear_all, color: ThemeColors.textSecondary(context)),
                           SizedBox(width: 12),
                           Text('Clear Chat'),
                         ],
@@ -341,7 +342,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
             style: const TextStyle(
               fontSize: 24,
               fontWeight: FontWeight.bold,
-              color: AppColors.textPrimary,
+              color: ThemeColors.textPrimary(context),
             ),
           ),
           const SizedBox(height: 8),
@@ -349,7 +350,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
             'Send a message to ${widget.contactName}',
             style: const TextStyle(
               fontSize: 16,
-              color: AppColors.textSecondary,
+              color: ThemeColors.textSecondary(context),
             ),
           ),
         ],
@@ -473,7 +474,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
-              color: AppColors.white,
+              color: ThemeColors.surface(context),
               borderRadius: BorderRadius.circular(20),
               boxShadow: [
                 BoxShadow(
@@ -520,7 +521,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.white,
+        color: ThemeColors.surface(context),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.05),
@@ -573,7 +574,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                 controller: _messageController,
                 decoration: const InputDecoration(
                   hintText: 'Type a message...',
-                  hintStyle: TextStyle(color: AppColors.textSecondary),
+                  hintStyle: TextStyle(color: ThemeColors.textSecondary(context)),
                   border: InputBorder.none,
                   contentPadding: EdgeInsets.symmetric(
                     horizontal: 20,

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../constants/app_colors.dart';
 import '../constants/soft_ui_design.dart';
+import '../utils/theme_colors.dart';
 import '../providers/network_provider.dart';
 import '../providers/notification_provider.dart';
 import '../providers/chat_provider.dart';
@@ -343,7 +344,7 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
     
     return Scaffold(
       extendBody: true, // allow body to render under the floating nav pill
-      backgroundColor: AppColors.neumorphicBase,
+      backgroundColor: ThemeColors.background(context),
       body: Stack(
         children: [
           ScrollConfiguration(
@@ -395,7 +396,7 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
             margin: const EdgeInsets.all(16),
             padding: EdgeInsets.zero, // transparent feel, no extra padding
             decoration: BoxDecoration(
-              color: Colors.white, // solid pill
+              color: ThemeColors.surface(context), // solid pill
               borderRadius: BorderRadius.circular(28),
               border: Border.all(
                 color: AppColors.lightGray.withOpacity(0.25), // More subtle border
@@ -416,7 +417,7 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
                   spreadRadius: 0,
                 ),
                 BoxShadow(
-                  color: Colors.white.withOpacity(0.8),
+                  color: ThemeColors.surface(context).withOpacity(0.8),
                   blurRadius: 10,
                   offset: const Offset(0, -2),
                   spreadRadius: 0,
@@ -626,11 +627,12 @@ class _AnimatedNavItemState extends State<_AnimatedNavItem>
                 margin: const EdgeInsets.symmetric(horizontal: 4),
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 decoration: BoxDecoration(
-                  color: widget.isSelected ? Colors.white : Colors.transparent,
+                  color: widget.isSelected ? ThemeColors.surface(context) : Colors.transparent,
                   borderRadius: BorderRadius.circular(20),
                   boxShadow: widget.isSelected
                       ? [
                           ...SoftUIDesign.getSoftShadow(
+                            context: context,
                             elevation: _isPressed ? 4.0 : 3.0,
                             shadowColor: widget.item.color.withOpacity(0.2),
                           ),

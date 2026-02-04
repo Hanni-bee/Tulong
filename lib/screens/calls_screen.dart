@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../constants/app_colors.dart';
+import '../utils/theme_colors.dart';
 import '../constants/app_strings.dart';
 import '../providers/network_provider.dart';
 import 'call_detail_screen.dart';
@@ -88,7 +89,7 @@ class _CallsScreenState extends State<CallsScreen> with SingleTickerProviderStat
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.backgroundLight,
+      backgroundColor: ThemeColors.background(context),
       appBar: AppBar(
         title: const Text(
           AppStrings.connectedUsers,
@@ -120,7 +121,7 @@ class _CallsScreenState extends State<CallsScreen> with SingleTickerProviderStat
                 margin: const EdgeInsets.all(16),
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: AppColors.white,
+                  color: ThemeColors.surface(context),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
                     color: networkProvider.isConnected 
@@ -171,8 +172,8 @@ class _CallsScreenState extends State<CallsScreen> with SingleTickerProviderStat
                       ),
                       child: Text(
                         networkProvider.isConnected ? 'CONNECTED' : 'OFFLINE',
-                        style: const TextStyle(
-                          color: AppColors.white,
+                        style: TextStyle(
+                          color: ThemeColors.surface(context),
                           fontSize: 10,
                           fontWeight: FontWeight.bold,
                         ),
@@ -220,10 +221,10 @@ class _CallsScreenState extends State<CallsScreen> with SingleTickerProviderStat
                     sizeFactor: _usersExpandAnim,
                     axisAlignment: -1.0,
                     child: filtered.isEmpty
-                        ? const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 40),
+                        ? Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 40),
                             child: Center(
-                              child: Text('No users found', style: TextStyle(color: AppColors.textSecondary)),
+                              child: Text('No users found', style: TextStyle(color: ThemeColors.textSecondary(context))),
                             ),
                           )
                         : Column(
@@ -298,9 +299,9 @@ class _CallsScreenState extends State<CallsScreen> with SingleTickerProviderStat
             backgroundColor: networkProvider.isConnected 
                 ? AppColors.primaryRed 
                 : AppColors.mediumGray,
-            child: const Icon(
+            child: Icon(
               Icons.mic,
-              color: AppColors.white,
+              color: ThemeColors.surface(context),
               size: 28,
             ),
           );
@@ -378,10 +379,10 @@ class _CallsScreenState extends State<CallsScreen> with SingleTickerProviderStat
                     name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w800,
-                      color: AppColors.textPrimary,
+                      color: ThemeColors.textPrimary(context),
                     ),
                   ),
                   const SizedBox(height: 2),
@@ -395,16 +396,16 @@ class _CallsScreenState extends State<CallsScreen> with SingleTickerProviderStat
                       const SizedBox(width: 4),
                       Text(
                         isOnline ? 'Active' : 'Idle',
-                        style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                        style: TextStyle(fontSize: 12, color: ThemeColors.textSecondary(context)),
                       ),
                       const SizedBox(width: 10),
-                      const Icon(Icons.network_cell, size: 12, color: AppColors.textSecondary),
+                      Icon(Icons.network_cell, size: 12, color: ThemeColors.textSecondary(context)),
                       const SizedBox(width: 2),
-                      Text('$signal', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                      Text('$signal', style: TextStyle(fontSize: 12, color: ThemeColors.textSecondary(context))),
                       const SizedBox(width: 10),
-                      const Icon(Icons.battery_full, size: 12, color: AppColors.textSecondary),
+                      Icon(Icons.battery_full, size: 12, color: ThemeColors.textSecondary(context)),
                       const SizedBox(width: 2),
-                      Text('$battery%', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                      Text('$battery%', style: TextStyle(fontSize: 12, color: ThemeColors.textSecondary(context))),
                     ],
                   ),
                 ],
@@ -476,7 +477,7 @@ class _CallsScreenState extends State<CallsScreen> with SingleTickerProviderStat
               const SizedBox(width: 10),
               Text(
                 countText,
-                style: const TextStyle(fontWeight: FontWeight.w800, color: AppColors.textPrimary, fontSize: 16),
+                style: TextStyle(fontWeight: FontWeight.w800, color: ThemeColors.textPrimary(context), fontSize: 16),
               ),
               const SizedBox(width: 10),
               Container(
@@ -489,7 +490,7 @@ class _CallsScreenState extends State<CallsScreen> with SingleTickerProviderStat
                 duration: const Duration(milliseconds: 250),
                 curve: Curves.easeInOut,
                 turns: _usersExpanded ? 0.0 : 0.5,
-                child: const Icon(Icons.expand_more, color: AppColors.textSecondary),
+                child: Icon(Icons.expand_more, color: ThemeColors.textSecondary(context)),
               ),
             ],
           ),
@@ -553,8 +554,8 @@ class _CallsScreenState extends State<CallsScreen> with SingleTickerProviderStat
   Widget _buildCallControls() {
     return Container(
       padding: const EdgeInsets.all(20),
-      decoration: const BoxDecoration(
-        color: AppColors.white,
+      decoration: BoxDecoration(
+        color: ThemeColors.surface(context),
         boxShadow: [
           BoxShadow(
             color: Colors.black12,
@@ -566,12 +567,12 @@ class _CallsScreenState extends State<CallsScreen> with SingleTickerProviderStat
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Text(
+          Text(
             'Call in Progress',
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.bold,
-              color: AppColors.textPrimary,
+              color: ThemeColors.textPrimary(context),
             ),
           ),
           const SizedBox(height: 16),
@@ -635,7 +636,7 @@ class _CallsScreenState extends State<CallsScreen> with SingleTickerProviderStat
         onPressed: onPressed,
         icon: Icon(
           icon,
-          color: AppColors.white,
+          color: ThemeColors.surface(context),
           size: 24,
         ),
       ),

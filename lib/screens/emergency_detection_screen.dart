@@ -6,6 +6,7 @@ import 'package:camera/camera.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/app_colors.dart';
+import '../utils/theme_colors.dart';
 import '../constants/app_typography.dart';
 import '../constants/soft_ui_design.dart';
 import '../utils/permission_helper.dart';
@@ -878,7 +879,7 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.backgroundLight,
+      backgroundColor: ThemeColors.background(context),
       body: SafeArea(
         child: Column(
           children: [
@@ -914,6 +915,7 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
               child: Container(
                 margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                 decoration: SoftUIDesign.cardDecoration(
+                  context: context,
                   backgroundColor: Colors.black,
                   borderRadius: SoftUIDesign.cardBorderRadius,
                   elevation: 6.0,
@@ -1216,6 +1218,7 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                           width: double.infinity,
                           height: SoftUIDesign.buttonHeight + 4,
                           decoration: SoftUIDesign.buttonDecoration(
+                            context: context,
                             backgroundColor: _isOnCooldown ? AppColors.mediumGray : AppColors.primaryRed,
                             shadowColor: _isOnCooldown ? AppColors.mediumGray : AppColors.primaryRed,
                             isPressed: _isButtonPressed,
@@ -1223,7 +1226,7 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                             boxShadow: _isOnCooldown
                                 ? []
                                 : [
-                                    ...SoftUIDesign.getButtonShadow(color: AppColors.primaryRed),
+                                    ...SoftUIDesign.getButtonShadow(context: context, color: AppColors.primaryRed),
                                     // Pulsing glow effect
                                     BoxShadow(
                                       color: AppColors.primaryRed.withOpacity(0.4 * _captureButtonGlow.value),
@@ -1321,7 +1324,8 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
               child: Container(
                 margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                 decoration: SoftUIDesign.cardDecoration(
-                  backgroundColor: AppColors.white,
+                  context: context,
+                  backgroundColor: ThemeColors.surface(context),
                   borderRadius: SoftUIDesign.cardBorderRadius,
                   elevation: 4.0,
                 ),
@@ -1414,7 +1418,7 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                                         Text(
                                           'Ready to Detect',
                                           style: AppTypography.titleMedium.copyWith(
-                                            color: AppColors.textPrimary,
+                                            color: ThemeColors.textPrimary(context),
                                             fontWeight: FontWeight.bold,
                                           ),
                                         ),
@@ -1779,7 +1783,7 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
             value,
             style: AppTypography.bodyMedium.copyWith(
               fontWeight: FontWeight.bold,
-              color: AppColors.textPrimary,
+              color: ThemeColors.textPrimary(context),
             ),
           ),
         ],
@@ -1917,7 +1921,7 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                           Text(
                             'The AI analysis shows no signs of emergency situations. Your area appears safe and normal. Continue to stay alert and report any concerns if needed.',
                             style: AppTypography.bodySmall.copyWith(
-                              color: AppColors.textPrimary,
+                              color: ThemeColors.textPrimary(context),
                               height: 1.5,
                             ),
                             textAlign: TextAlign.left,

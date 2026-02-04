@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'app_colors.dart';
+import '../utils/theme_colors.dart';
 
 /// Modern Material Design with Soft UI touches
 /// Design tokens and utilities for consistent soft UI implementation
@@ -19,12 +20,14 @@ class SoftUIDesign {
   static const double inputBorderRadius = 12.0;
   static const double inputPadding = 16.0;
   
-  // Shadow System - Soft UI inspired
+  // Shadow System - Soft UI inspired (Theme-aware)
   static List<BoxShadow> getSoftShadow({
+    required BuildContext context,
     double elevation = 2.0,
     Color? shadowColor,
   }) {
-    final color = shadowColor ?? Colors.black.withOpacity(0.08);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final color = shadowColor ?? ThemeColors.shadow(context, opacity: isDark ? 0.15 : 0.08);
     final adjustedElevation = elevation.clamp(0.0, 8.0);
     
     return [
@@ -36,9 +39,12 @@ class SoftUIDesign {
         spreadRadius: 0,
       ),
       // Subtle highlight - only for higher elevations to save on rasterization
+      // In dark mode, use lighter shadow instead of white highlight
       if (elevation >= 4.0)
         BoxShadow(
-          color: Colors.white.withOpacity(0.4),
+          color: isDark
+              ? ThemeColors.shadow(context, opacity: 0.05)
+              : Colors.white.withOpacity(0.4),
           blurRadius: adjustedElevation * 2, // Was * 3
           offset: Offset(0, -(adjustedElevation * 0.5)), // Was * 1
           spreadRadius: 0,
@@ -46,14 +52,26 @@ class SoftUIDesign {
     ];
   }
   
-  // Card shadow - for elevated cards
-  static List<BoxShadow> getCardShadow({double elevation = 4.0}) {
-    return getSoftShadow(elevation: elevation, shadowColor: Colors.black.withOpacity(0.06));
+  // Card shadow - for elevated cards (Theme-aware)
+  static List<BoxShadow> getCardShadow({
+    required BuildContext context,
+    double elevation = 4.0,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return getSoftShadow(
+      context: context,
+      elevation: elevation,
+      shadowColor: ThemeColors.shadow(context, opacity: isDark ? 0.12 : 0.06),
+    );
   }
   
-  // Button shadow - for interactive elements
-  static List<BoxShadow> getButtonShadow({Color? color}) {
-    final shadowColor = color?.withOpacity(0.2) ?? Colors.black.withOpacity(0.1);
+  // Button shadow - for interactive elements (Theme-aware)
+  static List<BoxShadow> getButtonShadow({
+    required BuildContext context,
+    Color? color,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final shadowColor = color?.withOpacity(0.2) ?? ThemeColors.shadow(context, opacity: isDark ? 0.15 : 0.1);
     return [
       BoxShadow(
         color: shadowColor,
@@ -61,25 +79,31 @@ class SoftUIDesign {
         offset: const Offset(0, 4),
         spreadRadius: 0,
       ),
-      BoxShadow(
-        color: Colors.white.withOpacity(0.6),
-        blurRadius: 4,
-        offset: const Offset(0, -2),
-        spreadRadius: 0,
-      ),
+      // In dark mode, use subtle lighter shadow instead of white highlight
+      if (!isDark)
+        BoxShadow(
+          color: Colors.white.withOpacity(0.6),
+          blurRadius: 4,
+          offset: const Offset(0, -2),
+          spreadRadius: 0,
+        ),
     ];
   }
   
-  // Subtle border for cards
-  static Border getCardBorder({Color? color}) {
+  // Subtle border for cards (Theme-aware)
+  static Border getCardBorder({
+    required BuildContext context,
+    Color? color,
+  }) {
     return Border.all(
-      color: color ?? AppColors.lightGray.withOpacity(0.3),
+      color: color ?? ThemeColors.border(context),
       width: 1.0,
     );
   }
   
-  // Card decoration builder
+  // Card decoration builder (Theme-aware)
   static BoxDecoration cardDecoration({
+    required BuildContext context,
     Color? backgroundColor,
     double? borderRadius,
     double elevation = 4.0,
@@ -87,18 +111,20 @@ class SoftUIDesign {
     bool showBorder = false,
     bool isGlass = false,
   }) {
+    final defaultBg = ThemeColors.surface(context);
     return BoxDecoration(
       color: isGlass 
-          ? (backgroundColor ?? Colors.white).withOpacity(0.8) 
-          : (backgroundColor ?? AppColors.white),
+          ? (backgroundColor ?? defaultBg).withOpacity(0.8) 
+          : (backgroundColor ?? defaultBg),
       borderRadius: BorderRadius.circular(borderRadius ?? cardBorderRadius),
-      border: showBorder ? getCardBorder(color: borderColor) : null,
-      boxShadow: getCardShadow(elevation: elevation),
+      border: showBorder ? getCardBorder(context: context, color: borderColor) : null,
+      boxShadow: getCardShadow(context: context, elevation: elevation),
     );
   }
   
-  // Button decoration builder
+  // Button decoration builder (Theme-aware)
   static BoxDecoration buttonDecoration({
+    required BuildContext context,
     required Color backgroundColor,
     double? borderRadius,
     Color? shadowColor,
@@ -107,12 +133,13 @@ class SoftUIDesign {
     return BoxDecoration(
       color: backgroundColor,
       borderRadius: BorderRadius.circular(borderRadius ?? buttonBorderRadius),
-      boxShadow: isPressed ? [] : getButtonShadow(color: shadowColor ?? backgroundColor),
+      boxShadow: isPressed ? [] : getButtonShadow(context: context, color: shadowColor ?? backgroundColor),
     );
   }
   
-  // Input field decoration builder
+  // Input field decoration builder (Theme-aware)
   static InputDecoration inputDecoration({
+    required BuildContext context,
     String? labelText,
     String? hintText,
     Widget? prefixIcon,
@@ -126,7 +153,7 @@ class SoftUIDesign {
       prefixIcon: prefixIcon,
       suffixIcon: suffixIcon,
       filled: true,
-      fillColor: AppColors.white,
+      fillColor: ThemeColors.surface(context),
       contentPadding: const EdgeInsets.symmetric(
         horizontal: inputPadding,
         vertical: inputPadding,
@@ -136,7 +163,7 @@ class SoftUIDesign {
         borderSide: BorderSide(
           color: hasError
               ? AppColors.error
-              : AppColors.lightGray.withOpacity(0.3),
+              : ThemeColors.border(context),
           width: 1.0,
         ),
       ),
@@ -145,7 +172,7 @@ class SoftUIDesign {
         borderSide: BorderSide(
           color: hasError
               ? AppColors.error
-              : AppColors.lightGray.withOpacity(0.3),
+              : ThemeColors.border(context),
           width: 1.0,
         ),
       ),
@@ -192,8 +219,9 @@ class SoftUIDesign {
   // SUBTLE OVERLAY SYSTEM
   // ==========================================
   
-  /// Subtle gradient overlay for cards - adds depth
+  /// Subtle gradient overlay for cards - adds depth (Theme-aware)
   static BoxDecoration? getCardOverlay({
+    required BuildContext context,
     Color? accentColor,
     double intensity = 0.03,
   }) {
@@ -214,8 +242,9 @@ class SoftUIDesign {
     );
   }
   
-  /// Subtle press/hover overlay for interactive elements
+  /// Subtle press/hover overlay for interactive elements (Theme-aware)
   static BoxDecoration? getPressOverlay({
+    required BuildContext context,
     Color? baseColor,
     bool isPressed = false,
   }) {
@@ -290,8 +319,14 @@ class SoftUIDesign {
     );
   }
   
-  /// Subtle accent overlay for profile headers
-  static List<Widget> buildProfileHeaderOverlays() {
+  /// Subtle accent overlay for profile headers (Theme-aware)
+  static List<Widget> buildProfileHeaderOverlays({
+    required BuildContext context,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final overlayColor = isDark 
+        ? ThemeColors.surface(context).withOpacity(0.1)
+        : Colors.white.withOpacity(0.15);
     return [
       // Top-right decorative circle
       Positioned(
@@ -301,12 +336,12 @@ class SoftUIDesign {
           width: 140,
           height: 140,
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.15),
+            color: overlayColor,
             shape: BoxShape.circle,
           ),
         ),
       ),
-      // Middle-right decorative circle
+      // Middle-right decorative circle (opacity clamped to valid 0–1 range)
       Positioned(
         top: 6,
         right: 38,
@@ -314,7 +349,7 @@ class SoftUIDesign {
           width: 56,
           height: 56,
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.18),
+            color: overlayColor.withOpacity(1.0),
             shape: BoxShape.circle,
           ),
         ),
@@ -327,7 +362,7 @@ class SoftUIDesign {
           width: 120,
           height: 120,
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.08),
+            color: overlayColor.withOpacity(0.5),
             shape: BoxShape.circle,
           ),
         ),
@@ -575,8 +610,9 @@ class SoftUIDesign {
     );
   }
 
-  /// Enhanced card with multiple overlays
+  /// Enhanced card with multiple overlays (Theme-aware)
   static Widget buildEnhancedCard({
+    required BuildContext context,
     required Widget child,
     Color? backgroundColor,
     double? borderRadius,
@@ -590,6 +626,7 @@ class SoftUIDesign {
   }) {
     return Container(
       decoration: cardDecoration(
+        context: context,
         backgroundColor: backgroundColor,
         borderRadius: borderRadius,
         elevation: elevation,

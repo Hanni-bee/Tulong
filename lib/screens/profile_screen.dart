@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../constants/app_colors.dart';
+import '../utils/theme_colors.dart';
 import '../constants/app_strings.dart';
 import '../providers/auth_provider.dart';
 import '../providers/power_provider.dart';
@@ -20,7 +21,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.backgroundLight,
+      backgroundColor: ThemeColors.background(context),
       appBar: AppBar(
         title: Row(
           children: [
@@ -68,7 +69,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 return Container(
                   padding: const EdgeInsets.all(24),
                   decoration: BoxDecoration(
-                    color: AppColors.white,
+                    color: ThemeColors.surface(context),
                     borderRadius: BorderRadius.circular(16),
                     boxShadow: [
                       BoxShadow(
@@ -86,7 +87,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         child: Text(
                           (authProvider.userName ?? 'User')[0].toUpperCase(),
                           style: const TextStyle(
-                            color: AppColors.white,
+                            color: ThemeColors.surface(context),
                             fontSize: 32,
                             fontWeight: FontWeight.bold,
                           ),
@@ -98,7 +99,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         style: const TextStyle(
                           fontSize: 24,
                           fontWeight: FontWeight.bold,
-                          color: AppColors.textPrimary,
+                          color: ThemeColors.textPrimary(context),
                         ),
                       ),
                       const SizedBox(height: 8),
@@ -106,7 +107,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         authProvider.userUsername ?? 'username',
                         style: const TextStyle(
                           fontSize: 16,
-                          color: AppColors.textSecondary,
+                          color: ThemeColors.textSecondary(context),
                         ),
                       ),
                       const SizedBox(height: 16),
@@ -139,7 +140,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
-                color: AppColors.textPrimary,
+                color: ThemeColors.textPrimary(context),
               ),
             ),
             const SizedBox(height: 16),
@@ -170,7 +171,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
-                color: AppColors.textPrimary,
+                color: ThemeColors.textPrimary(context),
               ),
             ),
             const SizedBox(height: 16),
@@ -259,7 +260,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               style: TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w600,
-                                color: AppColors.textPrimary,
+                                color: ThemeColors.textPrimary(context),
                               ),
                             ),
                             Text(
@@ -284,7 +285,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           child: const Text(
                             'LOW',
                             style: TextStyle(
-                              color: AppColors.white,
+                              color: ThemeColors.surface(context),
                               fontSize: 10,
                               fontWeight: FontWeight.bold,
                             ),
@@ -331,7 +332,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       backgroundColor: Colors.white,
       builder: (context) => Container(
         decoration: const BoxDecoration(
-          color: AppColors.white,
+          color: ThemeColors.surface(context),
           borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
         ),
         child: Column(

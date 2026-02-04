@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
+import '../utils/theme_colors.dart';
 import '../constants/soft_ui_design.dart';
 
 class TermsConditionsModal extends StatefulWidget {
@@ -44,7 +45,7 @@ class _TermsConditionsModalState extends State<TermsConditionsModal> {
   @override
   Widget build(BuildContext context) {
     return Dialog(
-      backgroundColor: Colors.white,
+      backgroundColor: ThemeColors.surface(context),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(SoftUIDesign.cardBorderRadius),
       ),
@@ -64,13 +65,13 @@ class _TermsConditionsModalState extends State<TermsConditionsModal> {
                   size: 24,
                 ),
                 const SizedBox(width: 12),
-                const Expanded(
+                Expanded(
                   child: Text(
                     'Terms & Conditions',
                     style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
-                      color: AppColors.textPrimary,
+                      color: ThemeColors.textPrimary(context),
                     ),
                   ),
                 ),
@@ -147,11 +148,11 @@ class _TermsConditionsModalState extends State<TermsConditionsModal> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       'Last updated: December 2024',
                       style: TextStyle(
                         fontSize: 12,
-                        color: AppColors.textSecondary,
+                        color: ThemeColors.textSecondary(context),
                         fontStyle: FontStyle.italic,
                       ),
                     ),
@@ -235,7 +236,7 @@ class _TermsConditionsModalState extends State<TermsConditionsModal> {
                               style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w600,
-                                color: AppColors.textPrimary,
+                                color: ThemeColors.textPrimary(context),
                                 height: 1.5,
                               ),
                             ),

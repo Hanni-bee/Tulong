@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../constants/app_colors.dart';
+import '../../utils/theme_colors.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/two_factor_auth_service.dart';
 import '../../widgets/modern_loading_indicator.dart';
@@ -190,12 +191,12 @@ class _TwoFactorVerificationScreenState extends State<TwoFactorVerificationScree
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.backgroundLight,
+      backgroundColor: ThemeColors.background(context),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
+          icon: Icon(Icons.arrow_back, color: ThemeColors.textPrimary(context)),
           onPressed: () => Navigator.of(context).pop(),
         ),
       ),
@@ -207,12 +208,12 @@ class _TwoFactorVerificationScreenState extends State<TwoFactorVerificationScree
             const SizedBox(height: 40),
             
             // Header
-            const Text(
+            Text(
               'Two-Factor Authentication',
               style: TextStyle(
                 fontSize: 28,
                 fontWeight: FontWeight.bold,
-                color: AppColors.textPrimary,
+                color: ThemeColors.textPrimary(context),
               ),
             ),
             
@@ -222,9 +223,9 @@ class _TwoFactorVerificationScreenState extends State<TwoFactorVerificationScree
               widget.isRecovery 
                   ? 'We\'ve sent a verification code to your email to help you recover your account.'
                   : 'We\'ve sent a 6-digit verification code to your email address.',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 16,
-                color: AppColors.textSecondary,
+                color: ThemeColors.textSecondary(context),
                 height: 1.5,
               ),
             ),
@@ -245,10 +246,10 @@ class _TwoFactorVerificationScreenState extends State<TwoFactorVerificationScree
             // Verification code input
             Text(
               'Enter verification code',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
-                color: AppColors.textPrimary,
+                color: ThemeColors.textPrimary(context),
               ),
             ),
             
@@ -286,7 +287,7 @@ class _TwoFactorVerificationScreenState extends State<TwoFactorVerificationScree
                   borderSide: const BorderSide(color: AppColors.primaryRed, width: 2),
                 ),
                 filled: true,
-                fillColor: AppColors.white,
+                fillColor: ThemeColors.surface(context),
                 contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
               ),
               inputFormatters: [

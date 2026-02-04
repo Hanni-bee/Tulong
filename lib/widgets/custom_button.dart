@@ -36,7 +36,7 @@ class CustomButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final buttonHeight = _getButtonHeight();
     final buttonPadding = _getButtonPadding();
-    final buttonStyle = _getButtonStyle();
+    final buttonStyle = _getButtonStyle(context);
     
     return Container(
       width: width ?? double.infinity,
@@ -124,7 +124,7 @@ class CustomButton extends StatelessWidget {
     }
   }
 
-  _ButtonStyle _getButtonStyle() {
+  _ButtonStyle _getButtonStyle(BuildContext context) {
     switch (variant) {
       case ButtonVariant.primary:
         return _ButtonStyle(
@@ -132,7 +132,7 @@ class CustomButton extends StatelessWidget {
           textColor: AppColors.white,
           border: Border.all(color: AppColors.white.withOpacity(0.2), width: 1),
           borderRadius: AppSpacing.radiusXl,
-          shadows: SoftUIDesign.getButtonShadow(color: AppColors.primaryRed),
+          shadows: SoftUIDesign.getButtonShadow(context: context, color: AppColors.primaryRed),
           fontSize: size == ButtonSize.small ? 14 : size == ButtonSize.medium ? 16 : 18,
           fontWeight: FontWeight.w700,
           letterSpacing: 0.5,
@@ -145,7 +145,7 @@ class CustomButton extends StatelessWidget {
           textColor: AppColors.textPrimary,
           border: Border.all(color: AppColors.mediumGray, width: 1),
           borderRadius: AppSpacing.radiusXl,
-          shadows: SoftUIDesign.getCardShadow(elevation: 2.0),
+          shadows: SoftUIDesign.getCardShadow(context: context, elevation: 2.0),
           fontSize: size == ButtonSize.small ? 14 : size == ButtonSize.medium ? 16 : 18,
           fontWeight: FontWeight.w600,
           letterSpacing: 0.3,
@@ -188,7 +188,7 @@ class CustomButton extends StatelessWidget {
           textColor: AppColors.white,
           border: Border.all(color: AppColors.white.withOpacity(0.2), width: 1),
           borderRadius: AppSpacing.radiusXl,
-          shadows: SoftUIDesign.getButtonShadow(color: AppColors.error),
+          shadows: SoftUIDesign.getButtonShadow(context: context, color: AppColors.error),
           fontSize: size == ButtonSize.small ? 14 : size == ButtonSize.medium ? 16 : 18,
           fontWeight: FontWeight.w700,
           letterSpacing: 0.5,

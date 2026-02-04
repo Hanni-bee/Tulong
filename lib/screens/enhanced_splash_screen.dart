@@ -5,6 +5,7 @@ import 'dart:ui' show ImageFilter;
 import 'package:flutter_animate/flutter_animate.dart';
 import '../constants/app_colors.dart';
 import '../constants/unified_typography.dart';
+import '../utils/theme_colors.dart';
 import '../providers/auth_provider.dart';
 import '../utils/permission_helper.dart';
 import 'auth/modern_sign_in_screen.dart';
@@ -242,7 +243,7 @@ class _EnhancedSplashScreenState extends State<EnhancedSplashScreen>
           children: [
             FadeTransition(
               opacity: exitFade,
-              child: Container(color: Colors.white),
+              child: Container(color: ThemeColors.background(context)),
             ),
             FadeTransition(
               opacity: fadeAnimation,
@@ -272,7 +273,7 @@ class _EnhancedSplashScreenState extends State<EnhancedSplashScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: ThemeColors.background(context),
       body: Stack(
         children: [
           // 1. Premium Liquid Background
@@ -357,7 +358,7 @@ class _EnhancedSplashScreenState extends State<EnhancedSplashScreen>
             textAlign: TextAlign.center,
             style: UnifiedTypography.bodyLarge.copyWith(
               fontWeight: FontWeight.w700,
-              color: AppColors.textPrimary.withAlpha((0.6 * 255).round()),
+              color: ThemeColors.textPrimary(context).withAlpha((0.6 * 255).round()),
               letterSpacing: 1.0,
             ),
           ).animate()
@@ -372,7 +373,7 @@ class _EnhancedSplashScreenState extends State<EnhancedSplashScreen>
                textAlign: TextAlign.center,
                style: UnifiedTypography.bodyLarge.copyWith(
                  fontWeight: FontWeight.w700,
-                 color: AppColors.textPrimary.withAlpha((0.6 * 255).round()),
+                 color: ThemeColors.textPrimary(context).withAlpha((0.6 * 255).round()),
                  letterSpacing: 1.0 + (1.0 * (1 - value)), // Spacing settles into place
                ),
              ),
@@ -603,7 +604,7 @@ class _SplashBackground extends StatelessWidget {
     return Stack(
       children: [
         // Clean white base
-        Container(color: Colors.white),
+        Container(color: ThemeColors.background(context)),
 
         // Extremely soft liquid orbs
         Positioned(

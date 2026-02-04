@@ -4,6 +4,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import '../../constants/app_colors.dart';
 import '../../constants/unified_typography.dart';
 import '../../constants/soft_ui_design.dart';
+import '../../utils/theme_colors.dart';
 import '../../widgets/custom_button.dart';
 import '../../widgets/custom_text_field.dart';
 import '../../widgets/password_strength_indicator.dart';
@@ -257,7 +258,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: ThemeColors.background(context),
       body: Stack(
         children: [
           // Removed background overlay to avoid hazy/blurred appearance on sign-up
@@ -265,7 +266,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
           Column(
             children: [
               AppBar(
-                backgroundColor: Colors.white,
+                backgroundColor: ThemeColors.background(context),
                 elevation: 0,
                 leading: IconButton(
                   icon: const Icon(Icons.arrow_back, color: AppColors.primaryRed),
@@ -278,7 +279,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   'Create Account',
                   level: HeadingLevel.h2,
                   color: AppColors.primary,
-                  backgroundColor: AppColors.backgroundLight,
+                  backgroundColor: ThemeColors.background(context),
                 ),
               ),
               Expanded(
@@ -321,7 +322,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
           width: 80,
           height: 80,
           decoration: SoftUIDesign.cardDecoration(
-            backgroundColor: AppColors.white,
+            context: context,
+            backgroundColor: ThemeColors.surface(context),
             borderRadius: 20,
             elevation: 6.0,
             borderColor: AppColors.primaryRed.withOpacity(0.2),
@@ -395,7 +397,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: SoftUIDesign.cardDecoration(
-        backgroundColor: Colors.white,
+        context: context,
+        backgroundColor: ThemeColors.background(context),
         borderRadius: SoftUIDesign.cardBorderRadius,
         elevation: 4.0,
         borderColor: AppColors.lightGray.withOpacity(0.3),
@@ -493,7 +496,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
           // Region dropdown
           Container(
             decoration: SoftUIDesign.cardDecoration(
-              backgroundColor: Colors.white,
+              context: context,
+              backgroundColor: ThemeColors.background(context),
               borderRadius: SoftUIDesign.cardBorderRadius,
               elevation: 2.0,
               borderColor: AppColors.lightGray.withOpacity(0.3),
@@ -581,7 +585,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
           // Province or City (for NCR) dropdown
           Container(
             decoration: SoftUIDesign.cardDecoration(
-              backgroundColor: Colors.white,
+              context: context,
+              backgroundColor: ThemeColors.background(context),
               borderRadius: SoftUIDesign.cardBorderRadius,
               elevation: 2.0,
               borderColor: AppColors.lightGray.withOpacity(0.3),
@@ -679,7 +684,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
           const SizedBox(height: 20),
           Container(
             decoration: SoftUIDesign.cardDecoration(
-              backgroundColor: AppColors.white,
+              context: context,
+              backgroundColor: ThemeColors.surface(context),
               borderRadius: SoftUIDesign.cardBorderRadius,
               elevation: 2.0,
               borderColor: AppColors.lightGray.withOpacity(0.3),
@@ -766,7 +772,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
           // Barangay dropdown (full width)
           Container(
             decoration: SoftUIDesign.cardDecoration(
-              backgroundColor: Colors.white,
+              context: context,
+              backgroundColor: ThemeColors.background(context),
               borderRadius: SoftUIDesign.cardBorderRadius,
               elevation: 2.0,
               borderColor: AppColors.lightGray.withOpacity(0.3),

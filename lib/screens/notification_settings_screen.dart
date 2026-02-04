@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
+import '../utils/theme_colors.dart';
 import '../services/notification_service.dart';
 import '../services/offline_sync_service.dart';
 import '../widgets/accessible_text.dart';
@@ -136,18 +137,18 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.backgroundLight,
+      backgroundColor: ThemeColors.background(context),
       appBar: AppBar(
         title: AccessibleHeading(
           'Notifications & Sync',
           level: HeadingLevel.h2,
-          color: AppColors.textPrimary,
-          backgroundColor: AppColors.backgroundLight,
+          color: ThemeColors.textPrimary(context),
+          backgroundColor: ThemeColors.background(context),
         ),
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
+          icon: Icon(Icons.arrow_back, color: ThemeColors.textPrimary(context)),
           onPressed: () => Navigator.of(context).pop(),
         ),
       ),
@@ -215,8 +216,8 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
         AccessibleHeading(
           title,
           level: HeadingLevel.h3,
-          color: AppColors.textPrimary,
-          backgroundColor: AppColors.backgroundLight,
+          color: ThemeColors.textPrimary(context),
+          backgroundColor: ThemeColors.background(context),
         ),
       ],
     );
@@ -315,13 +316,13 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
               AccessibleHeading(
                 title,
                 level: HeadingLevel.h5,
-                color: AppColors.textPrimary,
+                color: ThemeColors.textPrimary(context),
                 backgroundColor: AppColors.white,
               ),
               AccessibleBodyText(
                 subtitle,
                 size: BodySize.medium,
-                color: AppColors.textSecondary,
+                color: ThemeColors.textSecondary(context),
                 backgroundColor: AppColors.white,
               ),
             ],
@@ -377,9 +378,9 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
                       _syncService.isOnline 
                           ? 'Changes will sync automatically'
                           : 'Changes will sync when you go online',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 14,
-                        color: AppColors.textSecondary,
+                        color: ThemeColors.textSecondary(context),
                       ),
                     ),
                   ],
@@ -405,17 +406,17 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
                   children: [
                     Text(
                       'Pending Operations',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
-                        color: AppColors.textPrimary,
+                        color: ThemeColors.textPrimary(context),
                       ),
                     ),
                     Text(
                       '$_pendingOperations items waiting to sync',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 14,
-                        color: AppColors.textSecondary,
+                        color: ThemeColors.textSecondary(context),
                       ),
                     ),
                   ],

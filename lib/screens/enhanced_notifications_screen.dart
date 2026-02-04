@@ -7,6 +7,7 @@ import '../widgets/enhanced_empty_state.dart';
 import '../utils/standardized_spacing.dart';
 import '../widgets/accessible_text.dart';
 import '../constants/app_colors.dart';
+import '../utils/theme_colors.dart';
 import '../utils/icon_system.dart';
 
 /// Enhanced Notifications Screen
@@ -26,7 +27,7 @@ class _EnhancedNotificationsScreenState extends State<EnhancedNotificationsScree
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.backgroundLight,
+      backgroundColor: ThemeColors.background(context),
       appBar: AppBar(
         title: const AccessibleHeading('Notifications', level: HeadingLevel.h4),
         actions: [
@@ -162,7 +163,7 @@ class _EnhancedNotificationsScreenState extends State<EnhancedNotificationsScree
             _selectedFilter = label;
           });
         },
-        backgroundColor: AppColors.white,
+        backgroundColor: ThemeColors.surface(context),
         selectedColor: AppColors.primaryRed,
         checkmarkColor: AppColors.white,
       ),
@@ -219,7 +220,7 @@ class _EnhancedNotificationsScreenState extends State<EnhancedNotificationsScree
               AccessibleHeading(
                 group.title,
                 level: HeadingLevel.h5,
-                color: AppColors.textPrimary,
+                color: ThemeColors.textPrimary(context),
               ),
               const SizedBox(width: 8),
               if (group.hasUnread)

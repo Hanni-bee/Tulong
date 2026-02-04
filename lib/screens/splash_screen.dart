@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/app_colors.dart';
+import '../utils/theme_colors.dart';
 import '../constants/app_strings.dart';
 import '../providers/auth_provider.dart';
 import '../utils/responsive_helper.dart';
@@ -139,8 +140,8 @@ class _SplashScreenState extends State<SplashScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
-        decoration: const BoxDecoration(
-          color: AppColors.backgroundLight,
+        decoration: BoxDecoration(
+          color: ThemeColors.background(context),
         ),
         child: Stack(
           children: [
@@ -201,7 +202,7 @@ class _SplashScreenState extends State<SplashScreen>
                                   width: ResponsiveHelper.isMobile(context) ? 160 : 200,
                                   height: ResponsiveHelper.isMobile(context) ? 160 : 200,
                                   decoration: BoxDecoration(
-                                    color: AppColors.white,
+                                    color: ThemeColors.surface(context),
                                     borderRadius: BorderRadius.circular(50),
                                     boxShadow: [
                                       // Enhanced neumorphic shadows

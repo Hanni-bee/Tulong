@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
 import '../constants/app_colors.dart';
+import '../utils/theme_colors.dart';
 import '../utils/neumorphic_utils.dart';
 import '../widgets/modern_gradient_button.dart';
 import '../providers/auth_provider.dart';
@@ -250,7 +251,7 @@ class _InteractiveTutorialScreenState extends State<InteractiveTutorialScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.neumorphicBase,
+      backgroundColor: ThemeColors.background(context),
       body: SafeArea(
         child: Column(
           children: [
@@ -305,9 +306,9 @@ class _InteractiveTutorialScreenState extends State<InteractiveTutorialScreen>
                   borderRadius: BorderRadius.circular(10),
                   boxShadow: NeumorphicUtils.getCardElevation(2),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.shield,
-                  color: Colors.white,
+                  color: ThemeColors.surface(context),
                   size: 24,
                 ),
               ),
@@ -328,10 +329,10 @@ class _InteractiveTutorialScreenState extends State<InteractiveTutorialScreen>
           if (!_isLastPage)
             TextButton(
               onPressed: _skipTutorial,
-              child: const Text(
+              child: Text(
                 'Skip',
                 style: TextStyle(
-                  color: AppColors.textSecondary,
+                  color: ThemeColors.textSecondary(context),
                   fontWeight: FontWeight.w600,
                   fontSize: 14,
                 ),
@@ -399,7 +400,7 @@ class _InteractiveTutorialScreenState extends State<InteractiveTutorialScreen>
                   height: 120,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: Colors.white,
+                    color: ThemeColors.surface(context),
                     boxShadow: [
                       ...NeumorphicUtils.getNeumorphicShadow(depth: 12),
                       BoxShadow(
@@ -434,10 +435,10 @@ class _InteractiveTutorialScreenState extends State<InteractiveTutorialScreen>
                   child: Text(
                     page.title,
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 36,
                       fontWeight: FontWeight.w900,
-                      color: AppColors.textPrimary,
+                      color: ThemeColors.textPrimary(context),
                       height: 1.2,
                       letterSpacing: -0.5,
                     ),
@@ -462,9 +463,9 @@ class _InteractiveTutorialScreenState extends State<InteractiveTutorialScreen>
                   child: Text(
                     page.description,
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 16,
-                      color: AppColors.textSecondary,
+                      color: ThemeColors.textSecondary(context),
                       height: 1.6,
                       fontWeight: FontWeight.w500,
                     ),
@@ -507,7 +508,7 @@ class _InteractiveTutorialScreenState extends State<InteractiveTutorialScreen>
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: ThemeColors.surface(context),
         borderRadius: BorderRadius.circular(16),
         boxShadow: NeumorphicUtils.getNeumorphicShadow(depth: 4),
       ),
@@ -549,9 +550,9 @@ class _InteractiveTutorialScreenState extends State<InteractiveTutorialScreen>
                 const SizedBox(height: 4),
                 Text(
                   feature.description,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 13,
-                    color: AppColors.textSecondary,
+                    color: ThemeColors.textSecondary(context),
                     fontWeight: FontWeight.w500,
                   ),
                 ),

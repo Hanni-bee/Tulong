@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../constants/app_colors.dart';
+import '../../utils/theme_colors.dart';
 // import removed
 import '../../providers/auth_provider.dart';
 import '../../widgets/modern_responsive_layout.dart';
@@ -209,7 +210,7 @@ class _SignInScreenState extends State<SignInScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.backgroundLight,
+      backgroundColor: ThemeColors.background(context),
       body: ModernResponsiveLayout(
         child: SingleChildScrollView(
           child: Column(
@@ -251,7 +252,7 @@ class _SignInScreenState extends State<SignInScreen> {
                 offset: const Offset(0, 8),
               ),
               BoxShadow(
-                color: AppColors.white.withOpacity(0.8),
+                color: ThemeColors.surface(context).withOpacity(0.8),
                 blurRadius: 24,
                 offset: const Offset(0, -8),
               ),
@@ -398,12 +399,12 @@ class _SignInScreenState extends State<SignInScreen> {
                   : const Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.login, color: AppColors.white),
+                        Icon(Icons.login, color: ThemeColors.surface(context)),
                         SizedBox(width: 10),
                         Text(
                           'Sign In',
                           style: TextStyle(
-                            color: AppColors.white,
+                            color: ThemeColors.surface(context),
                             fontSize: 16,
                             fontWeight: FontWeight.w700,
                             letterSpacing: 0.3,
@@ -432,7 +433,7 @@ class _SignInScreenState extends State<SignInScreen> {
                   child: Text(
                     'OR',
                     style: TextStyle(
-                      color: AppColors.textSecondary.withOpacity(0.6),
+                      color: ThemeColors.textSecondary(context).withOpacity(0.6),
                       fontSize: 14,
                       fontWeight: FontWeight.w500,
                     ),
@@ -457,7 +458,7 @@ class _SignInScreenState extends State<SignInScreen> {
                 height: 56,
                 width: double.infinity,
                 decoration: BoxDecoration(
-                  color: AppColors.white,
+                  color: ThemeColors.surface(context),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
                     color: AppColors.primaryRed.withOpacity(0.3),
@@ -563,7 +564,7 @@ class _SignInScreenState extends State<SignInScreen> {
         const SizedBox(height: 8),
         Container(
           decoration: BoxDecoration(
-            color: AppColors.white,
+            color: ThemeColors.surface(context),
             borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
@@ -572,7 +573,7 @@ class _SignInScreenState extends State<SignInScreen> {
                 offset: const Offset(0, 2),
               ),
               BoxShadow(
-                color: AppColors.white.withOpacity(0.8),
+                color: ThemeColors.surface(context).withOpacity(0.8),
                 blurRadius: 8,
                 offset: const Offset(0, -2),
               ),
@@ -600,7 +601,7 @@ class _SignInScreenState extends State<SignInScreen> {
             ),
             style: const TextStyle(
               fontSize: 16,
-              color: AppColors.textPrimary,
+              color: ThemeColors.textPrimary(context),
             ),
           ),
         ),

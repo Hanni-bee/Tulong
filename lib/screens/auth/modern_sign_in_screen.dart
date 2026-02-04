@@ -9,6 +9,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 
 import '../../constants/app_colors.dart';
 import '../../constants/unified_typography.dart';
+import '../../utils/theme_colors.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/biometric_service.dart';
 import '../../services/sqlite_service.dart';
@@ -393,9 +394,9 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
                   filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
                   child: Container(
                     decoration: BoxDecoration(
-                      color: Colors.white.withAlpha((0.9 * 255).round()),
+                      color: ThemeColors.surface(context).withAlpha((0.9 * 255).round()),
                       borderRadius: const BorderRadius.vertical(top: Radius.circular(40)),
-                      border: Border.all(color: Colors.white.withAlpha((0.2 * 255).round()), width: 1.5),
+                      border: Border.all(color: ThemeColors.border(context).withAlpha((0.2 * 255).round()), width: 1.5),
                       boxShadow: [
                         BoxShadow(
                           color: Colors.black.withAlpha((0.1 * 255).round()),
@@ -433,7 +434,7 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
               'Welcome Back',
               textAlign: TextAlign.center,
               style: UnifiedTypography.headlineLarge.copyWith(
-                color: AppColors.textPrimary,
+                color: ThemeColors.textPrimary(context),
                 fontWeight: FontWeight.w900,
                 letterSpacing: -0.5,
               ),
@@ -443,7 +444,7 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
               'Sign in to continue to T.U.L.O.N.G',
               textAlign: TextAlign.center,
               style: UnifiedTypography.bodyLarge.copyWith(
-                color: AppColors.textSecondary.withAlpha((0.7 * 255).round()),
+                color: ThemeColors.textSecondary(context).withAlpha((0.7 * 255).round()),
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -621,7 +622,7 @@ class _TallHeader extends StatelessWidget {
             height: 90,
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: ThemeColors.surface(context),
               borderRadius: BorderRadius.circular(24),
               boxShadow: [
                 BoxShadow(

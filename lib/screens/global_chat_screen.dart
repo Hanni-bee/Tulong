@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
+import '../utils/theme_colors.dart';
 import '../utils/navigation_helper.dart';
 
 class GlobalChatScreen extends StatefulWidget {
@@ -130,12 +131,12 @@ class _GlobalChatScreenState extends State<GlobalChatScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.white,
+      backgroundColor: ThemeColors.surface(context),
       appBar: AppBar(
-        backgroundColor: AppColors.white,
+        backgroundColor: ThemeColors.surface(context),
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
+          icon: Icon(Icons.arrow_back, color: ThemeColors.textPrimary(context)),
           onPressed: () {
             // Safe navigation back
             NavigationHelper.safePop(context);
@@ -166,7 +167,7 @@ class _GlobalChatScreenState extends State<GlobalChatScreen> {
                 const Text(
                   'Global Chat',
                   style: TextStyle(
-                    color: AppColors.textPrimary,
+                    color: ThemeColors.textPrimary(context),
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
                   ),
@@ -189,7 +190,7 @@ class _GlobalChatScreenState extends State<GlobalChatScreen> {
                 Text(
                   '$_connectedUsers connected',
                   style: const TextStyle(
-                    color: AppColors.textSecondary,
+                    color: ThemeColors.textSecondary(context),
                     fontSize: 12,
                   ),
                 ),
@@ -238,7 +239,7 @@ class _GlobalChatScreenState extends State<GlobalChatScreen> {
                           child: Text(
                             message['senderName'].toString().split(' ').map((n) => n[0]).join(''),
                             style: const TextStyle(
-                              color: AppColors.white,
+                              color: ThemeColors.surface(context),
                               fontSize: 12,
                               fontWeight: FontWeight.bold,
                             ),
@@ -266,7 +267,7 @@ class _GlobalChatScreenState extends State<GlobalChatScreen> {
                                 Text(
                                   message['senderName'],
                                   style: const TextStyle(
-                                    color: AppColors.textPrimary,
+                                    color: ThemeColors.textPrimary(context),
                                     fontSize: 12,
                                     fontWeight: FontWeight.w600,
                                   ),
@@ -296,7 +297,7 @@ class _GlobalChatScreenState extends State<GlobalChatScreen> {
                                     const SizedBox(width: 4),
                                     const Icon(
                                       Icons.done_all,
-                                      color: AppColors.white,
+                                      color: ThemeColors.surface(context),
                                       size: 12,
                                     ),
                                   ],
@@ -313,7 +314,7 @@ class _GlobalChatScreenState extends State<GlobalChatScreen> {
                           backgroundColor: AppColors.primaryRed,
                           child: Icon(
                             Icons.person,
-                            color: AppColors.white,
+                            color: ThemeColors.surface(context),
                             size: 16,
                           ),
                         ),
@@ -329,7 +330,7 @@ class _GlobalChatScreenState extends State<GlobalChatScreen> {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: const BoxDecoration(
-              color: AppColors.white,
+              color: ThemeColors.surface(context),
               border: Border(
                 top: BorderSide(color: AppColors.lightGray, width: 1),
               ),
@@ -372,7 +373,7 @@ class _GlobalChatScreenState extends State<GlobalChatScreen> {
                     ),
                     child: const Icon(
                       Icons.send,
-                      color: AppColors.white,
+                      color: ThemeColors.surface(context),
                       size: 20,
                     ),
                   ),
@@ -436,7 +437,7 @@ class _GlobalChatScreenState extends State<GlobalChatScreen> {
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.error,
-              foregroundColor: AppColors.white,
+              foregroundcolor: ThemeColors.surface(context),
             ),
             child: const Text('Send Alert'),
           ),

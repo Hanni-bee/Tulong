@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../constants/app_colors.dart';
+import '../utils/theme_colors.dart';
 import '../widgets/animated_neumorphic_card.dart';
 import '../constants/app_typography.dart';
 
@@ -63,9 +64,9 @@ class _UserInfoScreenState extends State<UserInfoScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: ThemeColors.background(context),
       appBar: AppBar(
-        backgroundColor: AppColors.background,
+        backgroundColor: ThemeColors.background(context),
         elevation: 0,
         leading: IconButton(
           onPressed: () => Navigator.pop(context),
@@ -87,17 +88,17 @@ class _UserInfoScreenState extends State<UserInfoScreen>
                 ),
               ],
             ),
-            child: const Icon(
+            child: Icon(
               Icons.arrow_back,
-              color: AppColors.textPrimary,
+              color: ThemeColors.textPrimary(context),
               size: 20,
             ),
           ),
         ),
-        title: const Text(
+        title: Text(
           'User Information',
           style: TextStyle(
-            color: AppColors.textPrimary,
+            color: ThemeColors.textPrimary(context),
             fontWeight: FontWeight.bold,
             fontSize: 20,
           ),
@@ -167,7 +168,7 @@ class _UserInfoScreenState extends State<UserInfoScreen>
                             Text(
                               'User Information',
                               style: AppTypography.titleLarge.copyWith(
-                                color: AppColors.textPrimary,
+                                color: ThemeColors.textPrimary(context),
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
@@ -175,7 +176,7 @@ class _UserInfoScreenState extends State<UserInfoScreen>
                             Text(
                               'Current logged-in user details',
                               style: AppTypography.bodyMedium.copyWith(
-                                color: AppColors.textSecondary,
+                                color: ThemeColors.textSecondary(context),
                               ),
                             ),
                           ],
@@ -271,7 +272,7 @@ class _UserInfoScreenState extends State<UserInfoScreen>
                                 Text(
                                   'Debug Information',
                                   style: AppTypography.titleMedium.copyWith(
-                                    color: AppColors.textPrimary,
+                                    color: ThemeColors.textPrimary(context),
                                     fontWeight: FontWeight.bold,
                                   ),
                                 ),
@@ -281,7 +282,7 @@ class _UserInfoScreenState extends State<UserInfoScreen>
                             Text(
                               'User ID: ${user?.id ?? 'Not available'}',
                               style: AppTypography.bodySmall.copyWith(
-                                color: AppColors.textSecondary,
+                                color: ThemeColors.textSecondary(context),
                                 fontFamily: 'monospace',
                               ),
                             ),
@@ -290,7 +291,7 @@ class _UserInfoScreenState extends State<UserInfoScreen>
                             Text(
                               'Address Setup Completed: ${user?.addressSetupCompleted ?? false}',
                               style: AppTypography.bodySmall.copyWith(
-                                color: AppColors.textSecondary,
+                                color: ThemeColors.textSecondary(context),
                                 fontFamily: 'monospace',
                               ),
                             ),
@@ -298,7 +299,7 @@ class _UserInfoScreenState extends State<UserInfoScreen>
                               Text(
                               'Account Status: ${user?.accountStatus ?? 'Not available'}',
                               style: AppTypography.bodySmall.copyWith(
-                                color: AppColors.textSecondary,
+                                color: ThemeColors.textSecondary(context),
                                 fontFamily: 'monospace',
                               ),
                             ),
@@ -356,7 +357,7 @@ class _UserInfoScreenState extends State<UserInfoScreen>
                   Text(
                     value,
                     style: AppTypography.bodyMedium.copyWith(
-                      color: AppColors.textPrimary,
+                      color: ThemeColors.textPrimary(context),
                       fontWeight: FontWeight.w600,
                     ),
                   ),

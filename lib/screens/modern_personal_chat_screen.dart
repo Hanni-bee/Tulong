@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../constants/app_colors.dart';
+import '../utils/theme_colors.dart';
 import '../utils/navigation_helper.dart';
 import '../utils/performance_optimizer.dart';
 import '../widgets/modern_message_bubble.dart';
@@ -216,9 +217,9 @@ class _ModernPersonalChatScreenState extends State<ModernPersonalChatScreen> {
       backgroundColor: Colors.white,
       builder: (context) => Container(
         height: MediaQuery.of(context).size.height * 0.7,
-        decoration: const BoxDecoration(
-          color: AppColors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        decoration: BoxDecoration(
+          color: ThemeColors.surface(context),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         ),
         child: Column(
           children: [
@@ -256,8 +257,8 @@ class _ModernPersonalChatScreenState extends State<ModernPersonalChatScreen> {
                     child: Center(
                       child: Text(
                         widget.contactName.isNotEmpty ? widget.contactName[0].toUpperCase() : 'U',
-                        style: const TextStyle(
-                          color: AppColors.white,
+                        style: TextStyle(
+                          color: ThemeColors.surface(context),
                           fontSize: 32,
                           fontWeight: FontWeight.bold,
                         ),
@@ -270,10 +271,10 @@ class _ModernPersonalChatScreenState extends State<ModernPersonalChatScreen> {
                   // Name
                   Text(
                     widget.contactName,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 24,
                       fontWeight: FontWeight.bold,
-                      color: AppColors.textPrimary,
+                      color: ThemeColors.textPrimary(context),
                     ),
                   ),
                   
@@ -316,12 +317,12 @@ class _ModernPersonalChatScreenState extends State<ModernPersonalChatScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.backgroundLight,
+      backgroundColor: ThemeColors.background(context),
       appBar: AppBar(
         backgroundColor: AppColors.primaryRed,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppColors.white),
+          icon: Icon(Icons.arrow_back, color: ThemeColors.surface(context)),
           onPressed: () => NavigationHelper.safePop(context),
         ),
         title: Row(
@@ -350,8 +351,8 @@ class _ModernPersonalChatScreenState extends State<ModernPersonalChatScreen> {
                 child: Center(
                   child: Text(
                     widget.contactName.isNotEmpty ? widget.contactName[0].toUpperCase() : 'U',
-                    style: const TextStyle(
-                      color: AppColors.white,
+                    style: TextStyle(
+                      color: ThemeColors.surface(context),
                       fontWeight: FontWeight.bold,
                       fontSize: 16,
                     ),
@@ -366,8 +367,8 @@ class _ModernPersonalChatScreenState extends State<ModernPersonalChatScreen> {
                 children: [
                   Text(
                     widget.contactName,
-                    style: const TextStyle(
-                      color: AppColors.white,
+                    style: TextStyle(
+                      color: ThemeColors.surface(context),
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
                     ),
@@ -387,7 +388,7 @@ class _ModernPersonalChatScreenState extends State<ModernPersonalChatScreen> {
                       Text(
                         widget.isOnline ? 'Connected' : 'Last seen recently',
                         style: TextStyle(
-                          color: AppColors.white.withOpacity(0.8),
+                          color: ThemeColors.surface(context).withOpacity(0.8),
                           fontSize: 12,
                         ),
                       ),
@@ -400,7 +401,7 @@ class _ModernPersonalChatScreenState extends State<ModernPersonalChatScreen> {
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.videocam, color: AppColors.white),
+            icon: Icon(Icons.videocam, color: ThemeColors.surface(context)),
             onPressed: () {
               Navigator.of(context).push(
                 MaterialPageRoute(
@@ -414,7 +415,7 @@ class _ModernPersonalChatScreenState extends State<ModernPersonalChatScreen> {
             },
           ),
           PopupMenuButton<String>(
-            icon: const Icon(Icons.more_vert, color: AppColors.white),
+            icon: Icon(Icons.more_vert, color: ThemeColors.surface(context)),
             onSelected: (value) {
               switch (value) {
                 case 'info':
@@ -504,7 +505,7 @@ class _ModernPersonalChatScreenState extends State<ModernPersonalChatScreen> {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: AppColors.white,
+              color: ThemeColors.surface(context),
               border: Border(
                 top: BorderSide(
                   color: AppColors.lightGray.withOpacity(0.3),
@@ -527,7 +528,7 @@ class _ModernPersonalChatScreenState extends State<ModernPersonalChatScreen> {
                     ),
                   ),
                   child: IconButton(
-                    icon: const Icon(Icons.warning, color: AppColors.white),
+                    icon: Icon(Icons.warning, color: ThemeColors.surface(context)),
                     onPressed: _sendEmergencyMessage,
                   ),
                 ),
@@ -537,7 +538,7 @@ class _ModernPersonalChatScreenState extends State<ModernPersonalChatScreen> {
                 Expanded(
                   child: Container(
                     decoration: BoxDecoration(
-                      color: AppColors.white,
+                      color: ThemeColors.surface(context),
                       borderRadius: BorderRadius.circular(24),
                       border: Border.all(
                         color: AppColors.lightGray.withOpacity(0.5),
@@ -574,7 +575,7 @@ class _ModernPersonalChatScreenState extends State<ModernPersonalChatScreen> {
                     ),
                   ),
                   child: IconButton(
-                    icon: const Icon(Icons.send, color: AppColors.white),
+                    icon: Icon(Icons.send, color: ThemeColors.surface(context)),
                     onPressed: _sendMessage,
                   ),
                 ),
@@ -652,7 +653,7 @@ class _ModernPersonalChatScreenState extends State<ModernPersonalChatScreen> {
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.error,
-              foregroundColor: AppColors.white,
+              foregroundColor: ThemeColors.surface(context),
             ),
             child: const Text('Block'),
           ),
@@ -681,7 +682,7 @@ class _ModernPersonalChatScreenState extends State<ModernPersonalChatScreen> {
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.error,
-              foregroundColor: AppColors.white,
+              foregroundColor: ThemeColors.surface(context),
             ),
             child: const Text('Clear'),
           ),

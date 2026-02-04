@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../constants/app_colors.dart';
+import '../utils/theme_colors.dart';
 import '../services/sqlite_service.dart';
 import '../widgets/animated_neumorphic_card.dart';
 import '../widgets/modern_user_card.dart';
@@ -218,7 +219,7 @@ class _ModernPeopleScreenState extends State<ModernPeopleScreen>
             width: 48,
             height: 48,
             decoration: BoxDecoration(
-              color: AppColors.white,
+              color: ThemeColors.surface(context),
               borderRadius: BorderRadius.circular(12),
               boxShadow: shadows.EnhancedShadows.buttonLight,
             ),
@@ -247,7 +248,7 @@ class _ModernPeopleScreenState extends State<ModernPeopleScreen>
             width: 48,
             height: 48,
             decoration: BoxDecoration(
-              color: AppColors.white,
+              color: ThemeColors.surface(context),
               borderRadius: BorderRadius.circular(12),
               boxShadow: shadows.EnhancedShadows.buttonLight,
             ),
@@ -418,7 +419,7 @@ class _ModernPeopleScreenState extends State<ModernPeopleScreen>
             title,
             style: const TextStyle(
               fontSize: 12,
-              color: AppColors.textSecondary,
+              color: ThemeColors.textSecondary(context),
               letterSpacing: 0.1,
             ),
           ),
@@ -458,7 +459,7 @@ class _ModernPeopleScreenState extends State<ModernPeopleScreen>
                 'No users found',
                 style: TextStyle(
                   fontSize: 18,
-                  color: AppColors.textSecondary,
+                  color: ThemeColors.textSecondary(context),
                 ),
               ),
             ],
@@ -514,7 +515,7 @@ class _ModernPeopleScreenState extends State<ModernPeopleScreen>
                 child: Text(
                   user['name'][0],
                   style: const TextStyle(
-                    color: AppColors.white,
+                    color: ThemeColors.surface(context),
                     fontSize: 32,
                     fontWeight: FontWeight.bold,
                   ),
@@ -534,7 +535,7 @@ class _ModernPeopleScreenState extends State<ModernPeopleScreen>
               user['status'],
               style: const TextStyle(
                 fontSize: 16,
-                color: AppColors.textSecondary,
+                color: ThemeColors.textSecondary(context),
               ),
             ),
             
@@ -650,7 +651,7 @@ class _ModernPeopleScreenState extends State<ModernPeopleScreen>
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
-                color: AppColors.textPrimary,
+                color: ThemeColors.textPrimary(context),
               ),
             ),
             const SizedBox(height: 24),

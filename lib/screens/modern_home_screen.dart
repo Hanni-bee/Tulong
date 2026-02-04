@@ -14,6 +14,7 @@ import '../widgets/emergency_alert_widget.dart';
 import '../widgets/enhanced_text_styles.dart';
 import '../widgets/polished_animations.dart';
 import '../constants/soft_ui_design.dart';
+import '../utils/theme_colors.dart';
 import '../utils/page_transitions.dart';
 import '../utils/phone_responsive_helper.dart';
 import '../providers/auth_provider.dart';
@@ -222,7 +223,7 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                     await Future.delayed(const Duration(milliseconds: 500));
                   },
                   color: AppColors.primaryRed,
-                  backgroundColor: Colors.white,
+                  backgroundColor: ThemeColors.surface(context),
                   displacement: 60,
                   child: SingleChildScrollView(
                     physics: const AlwaysScrollableScrollPhysics(),
@@ -242,6 +243,7 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                         child: Container(
                           margin: const EdgeInsets.symmetric(horizontal: 16),
                           child: SoftUIDesign.buildEnhancedCard(
+                            context: context,
                             child: Padding(
                               padding: const EdgeInsets.all(18),
                               child: _buildEmergencySection(),
@@ -315,14 +317,14 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                   animation: _welcomeAnimation,
                   builder: (context, child) {
                     return Container(
-                      color: AppColors.backgroundLight.withOpacity(0.95),
+                      color: ThemeColors.background(context).withOpacity(0.95),
                       child: Center(
                         child: Transform.scale(
                           scale: _welcomeAnimation.value,
                           child: Container(
                             padding: const EdgeInsets.all(32),
                             decoration: BoxDecoration(
-                              color: AppColors.white,
+                              color: ThemeColors.surface(context),
                               borderRadius: BorderRadius.circular(24),
                               boxShadow: [
                                 BoxShadow(
@@ -331,7 +333,7 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                                   offset: const Offset(0, 10),
                                 ),
                                 BoxShadow(
-                                  color: AppColors.white.withOpacity(0.8),
+                                  color: ThemeColors.surface(context).withOpacity(0.8),
                                   blurRadius: 30,
                                   offset: const Offset(0, -10),
                                 ),
@@ -355,9 +357,9 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                                       ),
                                     ],
                                   ),
-                                  child: const Icon(
+                                  child: Icon(
                                     Icons.check_circle,
-                                    color: AppColors.white,
+                                    color: ThemeColors.surface(context),
                                     size: 40,
                                   ),
                                 ),
@@ -392,9 +394,9 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     decoration: BoxDecoration(
-                      color: AppColors.white,
+                      color: ThemeColors.surface(context),
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: AppColors.borderColor),
+                      border: Border.all(color: ThemeColors.border(context)),
                       boxShadow: [
                         BoxShadow(
                           color: Colors.black.withOpacity(0.05),
@@ -444,10 +446,11 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
             Container(
               margin: const EdgeInsets.symmetric(horizontal: 16),
               decoration: SoftUIDesign.cardDecoration(
-                backgroundColor: AppColors.white,
+                context: context,
+                backgroundColor: ThemeColors.surface(context),
                 borderRadius: SoftUIDesign.cardBorderRadius,
                 elevation: 4.0,
-                borderColor: AppColors.lightGray.withOpacity(0.2),
+                borderColor: ThemeColors.border(context),
                 showBorder: true,
               ),
               child: Padding(
@@ -602,10 +605,10 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
         return Container(
           padding: PhoneResponsiveHelper.getPhonePadding(context),
           decoration: BoxDecoration(
-            color: AppColors.white,
+            color: ThemeColors.surface(context),
             borderRadius: BorderRadius.circular(cardRadius),
             border: Border.all(
-              color: AppColors.lightGray.withOpacity(0.2),
+              color: ThemeColors.border(context),
               width: 1.5,
             ),
             boxShadow: [
@@ -685,10 +688,10 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                       vertical: 6,
                     ),
                     decoration: BoxDecoration(
-                      color: AppColors.ultraLightGray.withOpacity(0.8),
+                      color: ThemeColors.surfaceContainer(context).withOpacity(0.8),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                        color: AppColors.borderColor.withOpacity(0.5),
+                        color: ThemeColors.border(context).withOpacity(0.5),
                         width: 1,
                       ),
                     ),
@@ -697,14 +700,14 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                       children: [
                         Icon(
                           Icons.touch_app_rounded,
-                          color: AppColors.textSecondary.withOpacity(0.8),
+                          color: ThemeColors.textSecondary(context).withOpacity(0.8),
                           size: 14,
                         ),
                         const SizedBox(width: 6),
                         Text(
                           'Tap to use',
                           style: AppTypography.captionText.copyWith(
-                            color: AppColors.textSecondary.withOpacity(0.9),
+                            color: ThemeColors.textSecondary(context).withOpacity(0.9),
                             fontWeight: FontWeight.w700,
                             fontSize: 11,
                             letterSpacing: 0.2,
@@ -769,13 +772,13 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
         return Container(
           height: height,
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: ThemeColors.surface(context),
             borderRadius: BorderRadius.circular(radius),
             border: Border.all(
               color: backgroundColor.withOpacity(0.12),
               width: 1.5,
             ),
-            boxShadow: SoftUIDesign.getCardShadow(elevation: 3),
+            boxShadow: SoftUIDesign.getCardShadow(context: context, elevation: 3),
           ),
           child: Material(
             color: Colors.transparent,
@@ -831,7 +834,7 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                           child: Text(
                             title,
                             style: AppTypography.cardTitle.copyWith(
-                              color: AppColors.textPrimary,
+                              color: ThemeColors.textPrimary(context),
                               fontWeight: FontWeight.w900,
                               fontSize: 15,
                               letterSpacing: 0.5,
@@ -845,7 +848,7 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                         Text(
                           subtitle,
                           style: AppTypography.captionText.copyWith(
-                            color: AppColors.textSecondary,
+                            color: ThemeColors.textSecondary(context),
                             fontWeight: FontWeight.w700,
                             fontSize: 11,
                             letterSpacing: 0.2,
@@ -967,7 +970,7 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                       decoration: BoxDecoration(
                         color: color,
                         shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 2),
+                        border: Border.all(color: ThemeColors.surface(context), width: 2),
                         boxShadow: [
                           BoxShadow(
                             color: color.withOpacity(0.5),
@@ -1356,7 +1359,7 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
     showDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        backgroundColor: Colors.white,
+        backgroundColor: ThemeColors.surface(context),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(SoftUIDesign.cardBorderRadius),
         ),
@@ -1369,10 +1372,10 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'Customize the message that will be sent during an emergency.',
               style: TextStyle(
-                color: AppColors.textSecondary,
+                color: ThemeColors.textSecondary(context),
                 fontSize: 14,
               ),
             ),
@@ -1385,11 +1388,11 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                 hintText: 'Enter your emergency message...',
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: AppColors.borderColor),
+                  borderSide: BorderSide(color: ThemeColors.border(context)),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: AppColors.borderColor),
+                  borderSide: BorderSide(color: ThemeColors.border(context)),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -1498,14 +1501,14 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                       child: Text(
                         'Emergency Messages',
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
-                          color: AppColors.textPrimary,
+                          color: ThemeColors.textPrimary(context),
                         ),
                       ),
                     ),
@@ -1522,7 +1525,8 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                             final isDefault = defaultIndex == index;
                             return Container(
                               decoration: SoftUIDesign.cardDecoration(
-                                backgroundColor: isDefault ? AppColors.primaryRed.withOpacity(0.06) : AppColors.white,
+                                context: context,
+                                backgroundColor: isDefault ? AppColors.primaryRed.withOpacity(0.06) : ThemeColors.surface(context),
                                 borderRadius: SoftUIDesign.buttonBorderRadius,
                                 elevation: isDefault ? 3.0 : 2.0,
                                 borderColor: isDefault ? AppColors.primaryRed.withOpacity(0.4) : AppColors.lightGray.withOpacity(0.3),
@@ -1535,7 +1539,7 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                                   Expanded(
                                     child: Text(
                                       messages[index],
-                                      style: const TextStyle(color: AppColors.textPrimary, fontSize: 14, height: 1.3),
+                                      style: TextStyle(color: ThemeColors.textPrimary(context), fontSize: 14, height: 1.3),
                                     ),
                                   ),
                                   const SizedBox(width: 8),
@@ -1555,7 +1559,7 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                                       await showDialog(
                                         context: context,
                                         builder: (_) => AlertDialog(
-                                          backgroundColor: Colors.white,
+                                          backgroundColor: ThemeColors.surface(context),
                                           shape: RoundedRectangleBorder(
                                             borderRadius: BorderRadius.circular(SoftUIDesign.cardBorderRadius),
                                           ),
@@ -1564,6 +1568,7 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                                             controller: editController,
                                             maxLines: 4,
                                             decoration: SoftUIDesign.inputDecoration(
+                                              context: context,
                                               hintText: 'Enter message',
                                             ),
                                           ),
@@ -1601,9 +1606,9 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                         ),
                       )
                     else
-                      const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                        child: Text('No saved messages yet. Add one below.', style: TextStyle(color: AppColors.textSecondary)),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                        child: Text('No saved messages yet. Add one below.', style: TextStyle(color: ThemeColors.textSecondary(context))),
                       ),
 
                     const SizedBox(height: 12),
@@ -1704,7 +1709,7 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
       barrierDismissible: true,
       barrierColor: Colors.black.withOpacity(0.7),
       builder: (dialogContext) => AlertDialog(
-        backgroundColor: Colors.white,
+        backgroundColor: ThemeColors.surface(context),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(SoftUIDesign.cardBorderRadius),
         ),
@@ -1717,10 +1722,10 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'Are you sure you want to send this emergency message?',
               style: TextStyle(
-                color: AppColors.textPrimary,
+                color: ThemeColors.textPrimary(context),
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
               ),
@@ -1743,10 +1748,10 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text(
+                      Text(
                         'Message:',
                         style: TextStyle(
-                          color: AppColors.textSecondary,
+                          color: ThemeColors.textSecondary(context),
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
                         ),
@@ -1771,8 +1776,8 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                   const SizedBox(height: 8),
                   Text(
                     emergencyMessage,
-                    style: const TextStyle(
-                      color: AppColors.textPrimary,
+                    style: TextStyle(
+                      color: ThemeColors.textPrimary(context),
                       fontSize: 15,
                       fontWeight: FontWeight.w500,
                     ),
@@ -1927,7 +1932,7 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
       context: context,
       barrierDismissible: true,
       builder: (dialogContext) => AlertDialog(
-        backgroundColor: Colors.white,
+        backgroundColor: ThemeColors.surface(context),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(SoftUIDesign.cardBorderRadius),
         ),
@@ -1940,10 +1945,10 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'Emergency messages can only be sent when connected to ESP32.',
               style: TextStyle(
-                color: AppColors.textPrimary,
+                color: ThemeColors.textPrimary(context),
                 fontSize: 16,
               ),
             ),
@@ -2053,7 +2058,7 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                   Text(
                     'Help is on the way',
                     style: AppTypography.bodyMedium.copyWith(
-                      color: AppColors.textSecondary,
+                      color: ThemeColors.textSecondary(context),
                     ),
                   ),
                 ],
@@ -2137,7 +2142,7 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
             }
             
             return AlertDialog(
-              backgroundColor: Colors.white,
+              backgroundColor: ThemeColors.surface(context),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(SoftUIDesign.cardBorderRadius),
               ),
@@ -2150,18 +2155,18 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'This will send an emergency alert to all connected users in your network.',
                     style: TextStyle(
-                      color: AppColors.textSecondary,
+                      color: ThemeColors.textSecondary(context),
                       fontSize: 16,
                     ),
                   ),
                   const SizedBox(height: 16),
-                  const Text(
+                  Text(
                     'Message to send:',
                     style: TextStyle(
-                      color: AppColors.textPrimary,
+                      color: ThemeColors.textPrimary(context),
                       fontWeight: FontWeight.w700,
                       fontSize: 14,
                     ),
@@ -2173,12 +2178,12 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                     decoration: BoxDecoration(
                       color: AppColors.backgroundLight.withOpacity(0.5),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppColors.borderColor),
+                      border: Border.all(color: ThemeColors.border(context)),
                     ),
                     child: Text(
                       emergencyMessage,
-                      style: const TextStyle(
-                        color: AppColors.textPrimary,
+                      style: TextStyle(
+                        color: ThemeColors.textPrimary(context),
                         fontSize: 15,
                         fontWeight: FontWeight.w500,
                       ),
@@ -2339,7 +2344,7 @@ class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
         width: double.maxFinite,
         height: 600,
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: ThemeColors.surface(context),
           borderRadius: BorderRadius.circular(24),
           boxShadow: [
             BoxShadow(

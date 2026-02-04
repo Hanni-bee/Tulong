@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:async';
 import '../constants/app_colors.dart';
+import '../utils/theme_colors.dart';
 import '../constants/app_typography.dart';
 import '../widgets/unified_top_bar.dart';
 import '../constants/soft_ui_design.dart';
@@ -202,7 +203,7 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
     final currentScenario = _scenarios[_currentScenario];
     
     return Scaffold(
-      backgroundColor: AppColors.backgroundLight,
+      backgroundColor: ThemeColors.background(context),
       body: SafeArea(
         child: Column(
           children: [
@@ -316,7 +317,8 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: SoftUIDesign.cardDecoration(
-        backgroundColor: AppColors.white,
+        context: context,
+        backgroundColor: ThemeColors.surface(context),
         borderRadius: SoftUIDesign.cardBorderRadius,
         elevation: 3.0,
         borderColor: AppColors.lightGray.withOpacity(0.3),
@@ -398,7 +400,8 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: SoftUIDesign.cardDecoration(
-        backgroundColor: AppColors.white,
+        context: context,
+        backgroundColor: ThemeColors.surface(context),
         borderRadius: SoftUIDesign.cardBorderRadius,
         elevation: 3.0,
         borderColor: AppColors.lightGray.withOpacity(0.3),
@@ -740,7 +743,8 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: SoftUIDesign.cardDecoration(
-        backgroundColor: AppColors.white,
+        context: context,
+        backgroundColor: ThemeColors.surface(context),
         borderRadius: SoftUIDesign.cardBorderRadius,
         elevation: 3.0,
         borderColor: scenario.color.withOpacity(0.2),
@@ -827,7 +831,8 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: SoftUIDesign.cardDecoration(
-        backgroundColor: AppColors.white,
+        context: context,
+        backgroundColor: ThemeColors.surface(context),
         borderRadius: SoftUIDesign.cardBorderRadius,
         elevation: 3.0,
         borderColor: AppColors.lightGray.withOpacity(0.3),
@@ -950,7 +955,8 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: SoftUIDesign.cardDecoration(
-        backgroundColor: AppColors.white,
+        context: context,
+        backgroundColor: ThemeColors.surface(context),
         borderRadius: SoftUIDesign.cardBorderRadius,
         elevation: 3.0,
         borderColor: AppColors.lightGray.withOpacity(0.3),

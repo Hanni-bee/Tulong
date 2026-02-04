@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../constants/app_colors.dart';
+import '../utils/theme_colors.dart';
 import '../constants/app_strings.dart';
 import '../providers/network_provider.dart';
 import '../widgets/user_card.dart';
@@ -97,7 +98,7 @@ class _PeopleScreenState extends State<PeopleScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.backgroundLight,
+      backgroundColor: ThemeColors.background(context),
       appBar: AppBar(
         title: const Text(
           AppStrings.people,
@@ -120,14 +121,14 @@ class _PeopleScreenState extends State<PeopleScreen> {
                   children: [
                     const Icon(
                       Icons.wifi_tethering,
-                      color: AppColors.white,
+                      color: ThemeColors.surface(context),
                       size: 16,
                     ),
                     const SizedBox(width: 4),
                     Text(
                       '${networkProvider.connectedUsers} connected',
                       style: const TextStyle(
-                        color: AppColors.white,
+                        color: ThemeColors.surface(context),
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                       ),
@@ -274,7 +275,7 @@ class _PeopleScreenState extends State<PeopleScreen> {
       builder: (context) => Container(
         height: MediaQuery.of(context).size.height * 0.6,
         decoration: const BoxDecoration(
-          color: AppColors.white,
+          color: ThemeColors.surface(context),
           borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
         ),
         child: Column(
@@ -301,7 +302,7 @@ class _PeopleScreenState extends State<PeopleScreen> {
                     child: Text(
                       user['name'][0],
                       style: const TextStyle(
-                        color: AppColors.white,
+                        color: ThemeColors.surface(context),
                         fontSize: 24,
                         fontWeight: FontWeight.bold,
                       ),
@@ -313,7 +314,7 @@ class _PeopleScreenState extends State<PeopleScreen> {
                     style: const TextStyle(
                       fontSize: 24,
                       fontWeight: FontWeight.bold,
-                      color: AppColors.textPrimary,
+                      color: ThemeColors.textPrimary(context),
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -343,7 +344,7 @@ class _PeopleScreenState extends State<PeopleScreen> {
                     user['status'],
                     style: const TextStyle(
                       fontSize: 16,
-                      color: AppColors.textSecondary,
+                      color: ThemeColors.textSecondary(context),
                     ),
                     textAlign: TextAlign.center,
                   ),

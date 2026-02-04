@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../constants/app_colors.dart';
+import '../utils/theme_colors.dart';
 import '../widgets/animated_loader.dart';
 import '../widgets/micro_interactions.dart';
 import '../widgets/parallax_scroll.dart';
-import '../widgets/interactive_elements.dart';
+import '../widgets/interactive_elements.dart' as ie;
 import '../widgets/custom_transitions.dart' as custom_transitions;
 import '../constants/app_icons.dart' as app_icons;
 
@@ -42,7 +43,7 @@ class _AnimationDemoScreenState extends State<AnimationDemoScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.backgroundLight,
+      backgroundColor: ThemeColors.background(context),
       appBar: AppBar(
         title: const Text('🎨 Animation Demo'),
         backgroundColor: AppColors.primaryRed,
@@ -79,7 +80,7 @@ class _AnimationDemoScreenState extends State<AnimationDemoScreen>
   Widget _buildHeader() {
     return Container(
       padding: const EdgeInsets.all(24),
-      child: const Column(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           AnimatedText(
@@ -87,16 +88,16 @@ class _AnimationDemoScreenState extends State<AnimationDemoScreen>
             style: TextStyle(
               fontSize: 28,
               fontWeight: FontWeight.bold,
-              color: AppColors.textPrimary,
+              color: ThemeColors.textPrimary(context),
             ),
             type: AnimatedTextType.typewriter,
           ),
-          SizedBox(height: 16),
+          const SizedBox(height: 16),
           AnimatedText(
             'Experience the power of beautiful animations and micro-interactions',
             style: TextStyle(
               fontSize: 16,
-              color: AppColors.textSecondary,
+              color: ThemeColors.textSecondary(context),
             ),
             type: AnimatedTextType.fade,
           ),
@@ -123,12 +124,12 @@ class _AnimationDemoScreenState extends State<AnimationDemoScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             '🎭 Lottie Animations',
             style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.bold,
-              color: AppColors.textPrimary,
+              color: ThemeColors.textPrimary(context),
             ),
           ),
           const SizedBox(height: 16),
@@ -223,12 +224,12 @@ class _AnimationDemoScreenState extends State<AnimationDemoScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             '🎯 Micro-interactions',
             style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.bold,
-              color: AppColors.textPrimary,
+              color: ThemeColors.textPrimary(context),
             ),
           ),
           const SizedBox(height: 16),
@@ -324,16 +325,16 @@ class _AnimationDemoScreenState extends State<AnimationDemoScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             '🎮 Interactive Elements',
             style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.bold,
-              color: AppColors.textPrimary,
+              color: ThemeColors.textPrimary(context),
             ),
           ),
           const SizedBox(height: 16),
-          InteractiveCard(
+          ie.InteractiveCard(
             onTap: () => HapticFeedback.mediumImpact(),
             backgroundColor: AppColors.primaryRed.withOpacity(0.1),
             child: const Column(
@@ -354,7 +355,7 @@ class _AnimationDemoScreenState extends State<AnimationDemoScreen>
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              InteractiveButton(
+              ie.InteractiveButton(
                 text: 'Animated Button',
                 onPressed: () => HapticFeedback.lightImpact(),
                 backgroundColor: AppColors.primaryRed,
@@ -390,12 +391,12 @@ class _AnimationDemoScreenState extends State<AnimationDemoScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             '🎬 Custom Transitions',
             style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.bold,
-              color: AppColors.textPrimary,
+              color: ThemeColors.textPrimary(context),
             ),
           ),
           const SizedBox(height: 16),
@@ -436,12 +437,12 @@ class _AnimationDemoScreenState extends State<AnimationDemoScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             '🌊 Parallax Scrolling',
             style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.bold,
-              color: AppColors.textPrimary,
+              color: ThemeColors.textPrimary(context),
             ),
           ),
           const SizedBox(height: 16),
@@ -494,7 +495,7 @@ class _AnimationDemoScreenState extends State<AnimationDemoScreen>
           ),
         ],
       ),
-      child: const Column(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
@@ -502,10 +503,10 @@ class _AnimationDemoScreenState extends State<AnimationDemoScreen>
             style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.bold,
-              color: AppColors.textPrimary,
+              color: ThemeColors.textPrimary(context),
             ),
           ),
-          SizedBox(height: 16),
+          const SizedBox(height: 16),
           Wrap(
             spacing: 16,
             runSpacing: 16,
@@ -548,7 +549,7 @@ class _AnimationDemoScreenState extends State<AnimationDemoScreen>
   }
 
   Widget _buildAnimationButton(String text, VoidCallback onTap, Color color) {
-    return InteractiveButton(
+    return ie.InteractiveButton(
       text: text,
       onPressed: onTap,
       backgroundColor: color,
@@ -556,7 +557,7 @@ class _AnimationDemoScreenState extends State<AnimationDemoScreen>
   }
 
   Widget _buildTransitionButton(String text, custom_transitions.SlideDirection? direction) {
-    return InteractiveButton(
+    return ie.InteractiveButton(
       text: text,
       onPressed: () {
         if (direction != null) {
@@ -598,21 +599,21 @@ class _AnimationDemoScreenState extends State<AnimationDemoScreen>
             const SizedBox(height: 16),
             Text(
               '$title Transition',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.bold,
-                color: AppColors.textPrimary,
+                color: ThemeColors.textPrimary(context),
               ),
             ),
             const SizedBox(height: 8),
-            const Text(
+            Text(
               'This page demonstrates the custom transition effect.',
               style: TextStyle(
-                color: AppColors.textSecondary,
+                color: ThemeColors.textSecondary(context),
               ),
             ),
             const SizedBox(height: 24),
-            InteractiveButton(
+            ie.InteractiveButton(
               text: 'Go Back',
               onPressed: () => Navigator.of(context).pop(),
               backgroundColor: AppColors.primaryRed,

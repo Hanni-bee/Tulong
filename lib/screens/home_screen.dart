@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 import '../constants/app_colors.dart';
+import '../utils/theme_colors.dart';
 import '../constants/app_strings.dart';
 import '../widgets/quick_action_card.dart';
 import '../widgets/user_contacts.dart';
@@ -23,7 +24,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.backgroundLight,
+      backgroundColor: ThemeColors.background(context),
       appBar: AppBar(
         title: Row(
           children: [
@@ -57,7 +58,7 @@ class _HomeScreenState extends State<HomeScreen> {
               style: TextStyle(
                 fontWeight: FontWeight.w700,
                 fontSize: 20,
-                color: AppColors.white,
+                color: ThemeColors.surface(context),
               ),
             ),
           ],
@@ -116,10 +117,10 @@ class _HomeScreenState extends State<HomeScreen> {
                                     width: 60,
                                     height: 60,
                                     decoration: BoxDecoration(
-                                      color: AppColors.white.withOpacity(0.2),
+                                      color: ThemeColors.surface(context).withOpacity(0.2),
                                       borderRadius: BorderRadius.circular(15),
                                       border: Border.all(
-                                        color: AppColors.white.withOpacity(0.3),
+                                        color: ThemeColors.surface(context).withOpacity(0.3),
                                         width: 1,
                                       ),
                                     ),
@@ -141,7 +142,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                       .then()
                                       .shimmer(
                                         duration: 2000.ms,
-                                        color: AppColors.white.withOpacity(0.3),
+                                        color: ThemeColors.surface(context).withOpacity(0.3),
                                       ),
                                   
                                   const SizedBox(width: 16),
@@ -155,7 +156,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                           style: TextStyle(
                                             fontSize: 24,
                                             fontWeight: FontWeight.bold,
-                                            color: AppColors.white,
+                                            color: ThemeColors.surface(context),
                                           ),
                                         )
                                             .animate()
@@ -177,7 +178,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                           'Your emergency communication network',
                                           style: TextStyle(
                                             fontSize: 16,
-                                            color: AppColors.white,
+                                            color: ThemeColors.surface(context),
                                             fontWeight: FontWeight.w400,
                                           ),
                                         )
@@ -222,7 +223,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               style: TextStyle(
                                 fontSize: 22,
                                 fontWeight: FontWeight.bold,
-                                color: AppColors.textPrimary,
+                                color: ThemeColors.textPrimary(context),
                               ),
                             )
                                 .animate()
@@ -311,7 +312,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               style: TextStyle(
                                 fontSize: 22,
                                 fontWeight: FontWeight.bold,
-                                color: AppColors.textPrimary,
+                                color: ThemeColors.textPrimary(context),
                               ),
                             ),
                             SizedBox(height: 16),
@@ -339,7 +340,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               style: TextStyle(
                                 fontSize: 22,
                                 fontWeight: FontWeight.bold,
-                                color: AppColors.textPrimary,
+                                color: ThemeColors.textPrimary(context),
                               ),
                             ),
                             SizedBox(height: 16),
@@ -385,7 +386,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 .then()
                 .shimmer(
                   duration: 2000.ms,
-                  color: AppColors.white.withOpacity(0.3),
+                  color: ThemeColors.surface(context).withOpacity(0.3),
                 ),
           ),
           // Emergency Alert FAB
@@ -408,7 +409,7 @@ class _HomeScreenState extends State<HomeScreen> {
               .then()
               .shimmer(
                 duration: 2000.ms,
-                color: AppColors.white.withOpacity(0.3),
+                color: ThemeColors.surface(context).withOpacity(0.3),
               ),
         ],
       ),
@@ -435,7 +436,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 'Emergency Alert',
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
-                  color: AppColors.textPrimary,
+                  color: ThemeColors.textPrimary(context),
                 ),
               ),
             ],
@@ -443,7 +444,7 @@ class _HomeScreenState extends State<HomeScreen> {
           content: const Text(
             'This will send an emergency alert to all connected users in your network. Are you sure you want to proceed?',
             style: TextStyle(
-              color: AppColors.textSecondary,
+              color: ThemeColors.textSecondary(context),
               fontSize: 16,
             ),
           ),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
+import '../utils/theme_colors.dart';
 import '../constants/app_typography.dart';
 import '../services/sqlite_service.dart';
 import '../services/unified_data_service.dart';
@@ -130,7 +131,7 @@ class _SenderInfoModalState extends State<SenderInfoModal> {
         width: double.maxFinite,
         constraints: const BoxConstraints(maxHeight: 600),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: ThemeColors.surface(context),
           borderRadius: BorderRadius.circular(24),
           boxShadow: [
             BoxShadow(

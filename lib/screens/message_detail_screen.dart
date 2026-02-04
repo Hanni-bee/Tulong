@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
+import '../utils/theme_colors.dart';
 import 'private_call_screen.dart';
 
 class MessageDetailScreen extends StatefulWidget {
@@ -112,12 +113,12 @@ class _MessageDetailScreenState extends State<MessageDetailScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.white,
+      backgroundColor: ThemeColors.background(context),
       appBar: AppBar(
-        backgroundColor: AppColors.white,
+        backgroundColor: ThemeColors.surface(context),
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
+          icon: Icon(Icons.arrow_back, color: ThemeColors.textPrimary(context)),
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: Row(
@@ -147,8 +148,8 @@ class _MessageDetailScreenState extends State<MessageDetailScreen> {
                 children: [
                   Text(
                     widget.contactName,
-                    style: const TextStyle(
-                      color: AppColors.textPrimary,
+                    style: TextStyle(
+                      color: ThemeColors.textPrimary(context),
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
                     ),
@@ -255,7 +256,7 @@ class _MessageDetailScreenState extends State<MessageDetailScreen> {
                             vertical: 12,
                           ),
                           decoration: BoxDecoration(
-                            color: isMe ? AppColors.primaryRed : AppColors.lightGray,
+                            color: isMe ? AppColors.primaryRed : ThemeColors.border(context).withOpacity(0.3),
                             borderRadius: BorderRadius.circular(20).copyWith(
                               bottomLeft: isMe ? const Radius.circular(20) : const Radius.circular(4),
                               bottomRight: isMe ? const Radius.circular(4) : const Radius.circular(20),
@@ -267,7 +268,7 @@ class _MessageDetailScreenState extends State<MessageDetailScreen> {
                               Text(
                                 message['text'],
                                 style: TextStyle(
-                                  color: isMe ? AppColors.white : AppColors.textPrimary,
+                                  color: isMe ? Colors.white : ThemeColors.textPrimary(context),
                                   fontSize: 14,
                                 ),
                               ),
@@ -307,10 +308,10 @@ class _MessageDetailScreenState extends State<MessageDetailScreen> {
           // Message input
           Container(
             padding: const EdgeInsets.all(16),
-            decoration: const BoxDecoration(
-              color: AppColors.white,
+            decoration: BoxDecoration(
+              color: ThemeColors.surface(context),
               border: Border(
-                top: BorderSide(color: AppColors.lightGray, width: 1),
+                top: BorderSide(color: ThemeColors.border(context), width: 1),
               ),
             ),
             child: Row(
@@ -320,10 +321,10 @@ class _MessageDetailScreenState extends State<MessageDetailScreen> {
                     controller: _messageController,
                     decoration: InputDecoration(
                       hintText: 'Type a message...',
-                      hintStyle: const TextStyle(color: AppColors.mediumGray),
+                      hintStyle: TextStyle(color: ThemeColors.textSecondary(context)),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(25),
-                        borderSide: const BorderSide(color: AppColors.lightGray),
+                        borderSide: BorderSide(color: ThemeColors.border(context)),
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(25),

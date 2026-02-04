@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
+import '../utils/theme_colors.dart';
 
 class PersonalMessageScreen extends StatefulWidget {
   final String contactName;
@@ -110,10 +111,10 @@ class _PersonalMessageScreenState extends State<PersonalMessageScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.white,
+      backgroundColor: ThemeColors.surface(context),
       appBar: AppBar(
         backgroundColor: AppColors.primaryRed,
-        foregroundColor: AppColors.white,
+        foregroundcolor: ThemeColors.surface(context),
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
@@ -124,7 +125,7 @@ class _PersonalMessageScreenState extends State<PersonalMessageScreen> {
             // Contact avatar
             CircleAvatar(
               radius: 20,
-              backgroundColor: AppColors.white,
+              backgroundColor: ThemeColors.surface(context),
               child: widget.contactAvatar != null
                   ? ClipOval(
                       child: Image.network(
@@ -151,7 +152,7 @@ class _PersonalMessageScreenState extends State<PersonalMessageScreen> {
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
-                      color: AppColors.white,
+                      color: ThemeColors.surface(context),
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -160,7 +161,7 @@ class _PersonalMessageScreenState extends State<PersonalMessageScreen> {
                     'Connected',
                     style: TextStyle(
                       fontSize: 12,
-                      color: AppColors.white,
+                      color: ThemeColors.surface(context),
                       fontWeight: FontWeight.w400,
                     ),
                   ),
@@ -211,7 +212,7 @@ class _PersonalMessageScreenState extends State<PersonalMessageScreen> {
                               : Text(
                                   widget.contactName.split(' ').map((n) => n[0]).join(''),
                                   style: const TextStyle(
-                                    color: AppColors.white,
+                                    color: ThemeColors.surface(context),
                                     fontSize: 12,
                                     fontWeight: FontWeight.bold,
                                   ),
@@ -259,7 +260,7 @@ class _PersonalMessageScreenState extends State<PersonalMessageScreen> {
                                     const SizedBox(width: 4),
                                     const Icon(
                                       Icons.done_all,
-                                      color: AppColors.white,
+                                      color: ThemeColors.surface(context),
                                       size: 12,
                                     ),
                                   ],
@@ -276,7 +277,7 @@ class _PersonalMessageScreenState extends State<PersonalMessageScreen> {
                           backgroundColor: AppColors.primaryRed,
                           child: Icon(
                             Icons.person,
-                            color: AppColors.white,
+                            color: ThemeColors.surface(context),
                             size: 16,
                           ),
                         ),
@@ -292,7 +293,7 @@ class _PersonalMessageScreenState extends State<PersonalMessageScreen> {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: const BoxDecoration(
-              color: AppColors.white,
+              color: ThemeColors.surface(context),
               border: Border(
                 top: BorderSide(color: AppColors.lightGray, width: 1),
               ),
@@ -335,7 +336,7 @@ class _PersonalMessageScreenState extends State<PersonalMessageScreen> {
                     ),
                     child: const Icon(
                       Icons.send,
-                      color: AppColors.white,
+                      color: ThemeColors.surface(context),
                       size: 20,
                     ),
                   ),
@@ -376,7 +377,7 @@ class _PersonalMessageScreenState extends State<PersonalMessageScreen> {
                 style: const TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
-                  color: AppColors.textPrimary,
+                  color: ThemeColors.textPrimary(context),
                 ),
               ),
               const SizedBox(height: 20),
@@ -456,7 +457,7 @@ class _PersonalMessageScreenState extends State<PersonalMessageScreen> {
                 'Block Contact',
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
-                  color: AppColors.textPrimary,
+                  color: ThemeColors.textPrimary(context),
                 ),
               ),
             ],
@@ -464,7 +465,7 @@ class _PersonalMessageScreenState extends State<PersonalMessageScreen> {
           content: Text(
             'Are you sure you want to block ${widget.contactName}? You won\'t receive messages from them.',
             style: const TextStyle(
-              color: AppColors.textSecondary,
+              color: ThemeColors.textSecondary(context),
             ),
           ),
           actions: [

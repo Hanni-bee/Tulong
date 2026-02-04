@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
+import '../utils/theme_colors.dart';
 import '../constants/soft_ui_design.dart';
 import '../utils/performance_optimizer.dart';
 import '../widgets/modern_message_bubble.dart';
@@ -206,7 +207,7 @@ class _ModernGlobalChatScreenState extends State<ModernGlobalChatScreen> {
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.chatBubble,
-              foregroundColor: AppColors.white,
+              foregroundcolor: ThemeColors.surface(context),
             ),
             child: const Text('Clear'),
           ),
@@ -269,7 +270,7 @@ class _ModernGlobalChatScreenState extends State<ModernGlobalChatScreen> {
         child: Container(
           margin: const EdgeInsets.all(8), // Reduced from 16
           decoration: BoxDecoration(
-            color: AppColors.white,
+            color: ThemeColors.surface(context),
             borderRadius: BorderRadius.circular(24),
             boxShadow: [
               // Neumorphic shadow - outer shadow
@@ -291,7 +292,7 @@ class _ModernGlobalChatScreenState extends State<ModernGlobalChatScreen> {
                 height: 80,
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 decoration: const BoxDecoration(
-                  color: AppColors.white,
+                  color: ThemeColors.surface(context),
                 ),
                 child: Row(
                 children: [
@@ -300,7 +301,7 @@ class _ModernGlobalChatScreenState extends State<ModernGlobalChatScreen> {
                     width: 48,
                     height: 48,
                     decoration: BoxDecoration(
-                      color: AppColors.white,
+                      color: ThemeColors.surface(context),
                       borderRadius: BorderRadius.circular(12),
                       boxShadow: shadows.EnhancedShadows.buttonLight,
                     ),
@@ -413,7 +414,7 @@ class _ModernGlobalChatScreenState extends State<ModernGlobalChatScreen> {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: AppColors.white,
+              color: ThemeColors.surface(context),
               border: Border(
                 top: BorderSide(
                   color: AppColors.lightGray.withOpacity(0.3),
@@ -436,7 +437,7 @@ class _ModernGlobalChatScreenState extends State<ModernGlobalChatScreen> {
                     ),
                   ),
                   child: IconButton(
-                    icon: const Icon(Icons.warning, color: AppColors.white),
+                    icon: Icon(Icons.warning, color: ThemeColors.surface(context)),
                     onPressed: _sendEmergencyMessage,
                   ),
                 ),
@@ -446,7 +447,7 @@ class _ModernGlobalChatScreenState extends State<ModernGlobalChatScreen> {
                 Expanded(
                   child: Container(
                     decoration: BoxDecoration(
-                      color: AppColors.white,
+                      color: ThemeColors.surface(context),
                       borderRadius: BorderRadius.circular(28),
                       border: Border.all(
                         color: AppColors.lightGray.withOpacity(0.5),
@@ -471,7 +472,7 @@ class _ModernGlobalChatScreenState extends State<ModernGlobalChatScreen> {
                       textCapitalization: TextCapitalization.sentences,
                       style: const TextStyle(
                         fontSize: 16,
-                        color: AppColors.textPrimary,
+                        color: ThemeColors.textPrimary(context),
                       ),
                     ),
                   ),
@@ -491,7 +492,7 @@ class _ModernGlobalChatScreenState extends State<ModernGlobalChatScreen> {
                     ),
                   ),
                   child: IconButton(
-                    icon: const Icon(Icons.send_rounded, color: AppColors.white, size: 24),
+                    icon: Icon(Icons.send_rounded, color: ThemeColors.surface(context), size: 24),
                     onPressed: _sendMessage,
                   ),
                 ),
@@ -613,7 +614,7 @@ class _ModernGlobalChatScreenState extends State<ModernGlobalChatScreen> {
       child: IconButton(
         icon: Icon(
           icon,
-          color: AppColors.textPrimary,
+          color: ThemeColors.textPrimary(context),
           size: 18,
         ),
         onPressed: onPressed,
@@ -628,7 +629,7 @@ class _ModernGlobalChatScreenState extends State<ModernGlobalChatScreen> {
       builder: (context) => Container(
         margin: const EdgeInsets.all(16),
         decoration: SoftUIDesign.cardDecoration(
-          backgroundColor: AppColors.white,
+          backgroundColor: ThemeColors.surface(context),
           borderRadius: SoftUIDesign.cardBorderRadius,
           elevation: 6.0,
           borderColor: AppColors.lightGray.withOpacity(0.3),
@@ -654,7 +655,7 @@ class _ModernGlobalChatScreenState extends State<ModernGlobalChatScreen> {
                   _buildMenuOption(
                     icon: Icons.clear_all,
                     title: 'Clear Chat',
-                    color: AppColors.textSecondary,
+                    color: ThemeColors.textSecondary(context),
                     onTap: () {
                       Navigator.pop(context);
                       _clearChat();
@@ -664,7 +665,7 @@ class _ModernGlobalChatScreenState extends State<ModernGlobalChatScreen> {
                   _buildMenuOption(
                     icon: Icons.settings,
                     title: 'Chat Settings',
-                    color: AppColors.textSecondary,
+                    color: ThemeColors.textSecondary(context),
                     onTap: () {
                       Navigator.pop(context);
                       _showChatSettings();
@@ -729,7 +730,7 @@ class _ModernGlobalChatScreenState extends State<ModernGlobalChatScreen> {
             ),
             Icon(
               Icons.arrow_forward_ios,
-              color: AppColors.textSecondary,
+              color: ThemeColors.textSecondary(context),
               size: 16,
             ),
           ],

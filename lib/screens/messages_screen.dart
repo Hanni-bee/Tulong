@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
+import '../utils/theme_colors.dart';
 import '../widgets/chat_card.dart';
 import '../widgets/enhanced_search_bar.dart';
 import '../widgets/unified_top_bar.dart';
@@ -96,7 +97,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.backgroundLight,
+      backgroundColor: ThemeColors.background(context),
       body: SafeArea(
         child: Column(
           children: [
@@ -144,7 +145,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
                   '${_conversations.where((c) => c['unreadCount'] > 0).length} unread',
                   size: BodySize.medium,
                   color: AppColors.primaryRed,
-                  backgroundColor: AppColors.backgroundLight,
+                  backgroundColor: ThemeColors.background(context),
                 ),
               ],
             ),
@@ -220,11 +221,11 @@ class _MessagesScreenState extends State<MessagesScreen> {
   void _showOptionsMenu(BuildContext context) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.white,
+      backgroundColor: ThemeColors.surface(context),
       builder: (context) => Container(
-        decoration: const BoxDecoration(
-          color: AppColors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        decoration: BoxDecoration(
+          color: ThemeColors.surface(context),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,

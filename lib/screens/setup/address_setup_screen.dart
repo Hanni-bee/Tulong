@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../constants/app_colors.dart';
+import '../../utils/theme_colors.dart';
 import '../../constants/unified_typography.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/unified_data_service.dart';
@@ -307,15 +308,15 @@ class _AddressSetupScreenState extends State<AddressSetupScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.backgroundLight,
+      backgroundColor: ThemeColors.background(context),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
         automaticallyImplyLeading: false,
-        title: const Text(
+        title: Text(
           'Complete Your Profile',
           style: TextStyle(
-            color: AppColors.textPrimary,
+            color: ThemeColors.textPrimary(context),
             fontWeight: FontWeight.w700,
           ),
         ),

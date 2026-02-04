@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../constants/app_colors.dart';
+import '../utils/theme_colors.dart';
 import '../constants/unified_typography.dart';
 import '../models/user_model.dart';
 import '../providers/auth_provider.dart';
@@ -284,7 +285,7 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
       barrierDismissible: false,
       barrierColor: Colors.black.withOpacity(0.7),
       builder: (context) => AlertDialog(
-        backgroundColor: Colors.white,
+        backgroundColor: ThemeColors.surface(context),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
         ),
@@ -303,12 +304,12 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
               ),
             ),
             const SizedBox(width: 12),
-            const Expanded(
+            Expanded(
               child: Text(
                 'Are you sure on changes?',
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
-                  color: AppColors.textPrimary,
+                  color: ThemeColors.textPrimary(context),
                 ),
               ),
             ),
@@ -494,7 +495,7 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
               child: Text(
                 'Profile Updated!',
                 style: UnifiedTypography.titleMedium.copyWith(
-                  color: AppColors.textPrimary,
+                  color: ThemeColors.textPrimary(context),
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -564,9 +565,9 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
                 value: item[valueKey].toString(),
                 child: Text(
                   item[displayKey].toString(),
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 14,
-                    color: AppColors.textPrimary,
+                    color: ThemeColors.textPrimary(context),
                   ),
                 ),
               );
@@ -583,19 +584,19 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
   Widget build(BuildContext context) {
     if (_isLoadingUserData) {
       return Scaffold(
-        backgroundColor: AppColors.backgroundLight,
+        backgroundColor: ThemeColors.background(context),
         appBar: AppBar(
           backgroundColor: Colors.transparent,
           elevation: 0,
-          title: const Text(
+          title: Text(
             'Update Profile',
             style: TextStyle(
-              color: AppColors.textPrimary,
+              color: ThemeColors.textPrimary(context),
               fontWeight: FontWeight.w700,
             ),
           ),
           centerTitle: true,
-          iconTheme: const IconThemeData(color: AppColors.textPrimary),
+          iconTheme: IconThemeData(color: ThemeColors.textPrimary(context)),
         ),
         body: const Center(
           child: CircularProgressIndicator(
@@ -606,7 +607,7 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
     }
 
     return Scaffold(
-      backgroundColor: AppColors.backgroundLight,
+      backgroundColor: ThemeColors.background(context),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -680,7 +681,7 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
                 Text(
                   'Personal Information',
                   style: UnifiedTypography.titleLarge.copyWith(
-                    color: AppColors.textPrimary,
+                    color: ThemeColors.textPrimary(context),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -742,7 +743,7 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
                 Text(
                   'Address Information',
                   style: UnifiedTypography.titleLarge.copyWith(
-                    color: AppColors.textPrimary,
+                    color: ThemeColors.textPrimary(context),
                   ),
                 ),
                 const SizedBox(height: 16),

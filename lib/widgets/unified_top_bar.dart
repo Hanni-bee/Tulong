@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
 import '../constants/unified_typography.dart';
 import '../utils/prototype_animations.dart';
+import '../utils/theme_colors.dart';
 
 /// Unified top bar component for consistent design across Local Chat, Calls, and Profile screens
 /// Matches the app's neumorphic design system and typography
@@ -11,7 +12,8 @@ class UnifiedTopBar extends StatefulWidget {
   final String? subtitle;
   final IconData icon;
   final Color iconColor;
-  final Color backgroundColor;
+  /// When null, uses theme surface (adapts to light/dark).
+  final Color? backgroundColor;
   final List<Widget>? actions;
   final VoidCallback? onIconTap;
   final bool showBackButton;
@@ -30,7 +32,7 @@ class UnifiedTopBar extends StatefulWidget {
     this.subtitle,
     required this.icon,
     this.iconColor = AppColors.primary,
-    this.backgroundColor = AppColors.white,
+    this.backgroundColor = null,
     this.actions,
     this.onIconTap,
     this.showBackButton = false,
@@ -100,6 +102,7 @@ class _UnifiedTopBarState extends State<UnifiedTopBar>
     final double iconBoxSize = widget.compact ? 44 : 56;
     final double iconSize = widget.compact ? 22 : 28;
     final double titleFontSize = widget.compact ? 17 : 21;
+    final Color barBackground = widget.backgroundColor ?? ThemeColors.surface(context);
 
     return FadeTransition(
       opacity: _floatingBarFade,
@@ -116,21 +119,21 @@ class _UnifiedTopBarState extends State<UnifiedTopBar>
             ),
             padding: containerPadding,
             decoration: BoxDecoration(
-              color: widget.backgroundColor,
+              color: barBackground,
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
-                color: Colors.grey.withOpacity(0.15),
+                color: ThemeColors.border(context),
                 width: 1.5,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.06),
+                  color: ThemeColors.shadow(context, opacity: 0.06),
                   blurRadius: 12,
                   offset: const Offset(0, 4),
                   spreadRadius: 0,
                 ),
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.04),
+                  color: ThemeColors.shadow(context, opacity: 0.04),
                   blurRadius: 6,
                   offset: const Offset(0, 2),
                   spreadRadius: 0,
@@ -150,16 +153,16 @@ class _UnifiedTopBarState extends State<UnifiedTopBar>
                             width: iconBoxSize,
                             height: iconBoxSize,
                             decoration: BoxDecoration(
-                              color: Colors.grey.withOpacity(0.08),
+                              color: ThemeColors.surfaceContainer(context),
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(
-                                color: Colors.grey.withOpacity(0.1),
+                                color: ThemeColors.border(context),
                                 width: 1,
                               ),
                             ),
                             child: Icon(
                               Icons.arrow_back_ios_new,
-                              color: AppColors.textPrimary,
+                              color: ThemeColors.textPrimary(context),
                               size: widget.compact ? 20 : 24,
                             ),
                           ),
@@ -214,7 +217,7 @@ class _UnifiedTopBarState extends State<UnifiedTopBar>
                                 color: (widget.presenceColor ?? widget.iconColor),
                                 shape: BoxShape.circle,
                                 border: Border.all(
-                                  color: widget.backgroundColor,
+                                  color: barBackground,
                                   width: 2.5,
                                 ),
                                 boxShadow: [
@@ -246,7 +249,7 @@ class _UnifiedTopBarState extends State<UnifiedTopBar>
                           overflow: TextOverflow.ellipsis,
                           maxLines: 1,
                           style: UnifiedTypography.appBarTitle.copyWith(
-                            color: AppColors.textPrimary,
+                            color: ThemeColors.textPrimary(context),
                             fontSize: titleFontSize,
                             fontWeight: FontWeight.w700,
                             letterSpacing: -0.3,

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
+import '../utils/theme_colors.dart';
 import '../constants/app_strings.dart';
 import '../widgets/notification_card.dart';
 import '../constants/app_typography.dart';
@@ -72,7 +73,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     final unreadCount = _notifications.where((n) => !n['isRead']).length;
     
     return Scaffold(
-      backgroundColor: AppColors.backgroundLight,
+      backgroundColor: ThemeColors.background(context),
       appBar: AppBar(
         title: const Text(
           AppStrings.notifications,
@@ -109,7 +110,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             margin: const EdgeInsets.all(16),
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: AppColors.white,
+              color: ThemeColors.surface(context),
               borderRadius: BorderRadius.circular(12),
               boxShadow: [
                 BoxShadow(
@@ -141,14 +142,14 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     children: [
                       Text(
                         'You have $unreadCount unread notifications',
-                        style: const UnifiedTypography.titleLarge,
+                        style: UnifiedTypography.titleLarge,
                       ),
                       const SizedBox(height: 4),
                       Text(
                         '${_notifications.length} total notifications',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 14,
-                          color: AppColors.textSecondary,
+                          color: ThemeColors.textSecondary(context),
                         ),
                       ),
                     ],
@@ -256,11 +257,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   void _showNotificationSettings(BuildContext context) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.white,
+      backgroundColor: ThemeColors.surface(context),
       builder: (context) => Container(
-        decoration: const BoxDecoration(
-          color: AppColors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        decoration: BoxDecoration(
+          color: ThemeColors.surface(context),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -270,7 +271,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               height: 4,
               margin: const EdgeInsets.symmetric(vertical: 12),
               decoration: BoxDecoration(
-                color: AppColors.lightGray,
+                color: ThemeColors.border(context),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),

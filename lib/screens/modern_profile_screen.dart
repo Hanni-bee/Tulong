@@ -7,6 +7,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:tulong_app/constants/app_colors.dart';
 import 'package:tulong_app/constants/unified_typography.dart';
 import 'package:tulong_app/constants/soft_ui_design.dart';
+import 'package:tulong_app/utils/theme_colors.dart';
 import 'package:tulong_app/providers/auth_provider.dart';
 import 'package:tulong_app/models/user_model.dart';
 import 'package:tulong_app/screens/notification_settings_screen.dart';
@@ -18,6 +19,7 @@ import 'package:tulong_app/widgets/accessible_text.dart';
 import 'package:tulong_app/utils/icon_system.dart';
 import '../widgets/user_engagement_dashboard.dart';
 import '../providers/chat_provider.dart';
+import '../providers/theme_provider.dart';
 
 class ModernProfileScreen extends StatefulWidget {
   const ModernProfileScreen({super.key});
@@ -135,7 +137,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: ThemeColors.background(context),
       body: SafeArea(
         child: Stack(
           children: [
@@ -250,7 +252,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                 offset: const Offset(0, 8),
                 spreadRadius: 2,
               ),
-              ...SoftUIDesign.getCardShadow(elevation: 6.0),
+              ...SoftUIDesign.getCardShadow(context: context, elevation: 6.0),
             ],
             border: Border.all(
               color: Colors.white.withOpacity(0.25),
@@ -285,7 +287,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                 child: Stack(
                   children: [
                     // Decorative overlays using SoftUI system
-                    ...SoftUIDesign.buildProfileHeaderOverlays(),
+                    ...SoftUIDesign.buildProfileHeaderOverlays(context: context),
 
                     // Subtle contrast scrim (solid, no blur) to keep text readable
                     Positioned.fill(
@@ -852,14 +854,14 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                             'Complete your profile',
                             style: UnifiedTypography.titleMedium.copyWith(
                               fontWeight: FontWeight.bold,
-                              color: AppColors.textPrimary,
+                              color: ThemeColors.textPrimary(context),
                             ),
                           ),
                           const SizedBox(height: 2),
                           Text(
                             'Improve emergency response accuracy by adding missing details.',
                             style: UnifiedTypography.bodySmall.copyWith(
-                              color: AppColors.textSecondary,
+                              color: ThemeColors.textSecondary(context),
                             ),
                           ),
                         ],
@@ -870,7 +872,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                       '$percent%',
                       style: UnifiedTypography.titleMedium.copyWith(
                         fontWeight: FontWeight.w800,
-                        color: AppColors.textPrimary,
+                        color: ThemeColors.textPrimary(context),
                       ),
                     ),
                   ],
@@ -1062,7 +1064,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                               'No activity yet',
                               style: UnifiedTypography.titleLarge.copyWith(
                                 fontWeight: FontWeight.bold,
-                                color: AppColors.textPrimary,
+                                color: ThemeColors.textPrimary(context),
                               ),
                             ),
                             const SizedBox(height: 4),
@@ -1071,7 +1073,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                                   ? 'Connect and send messages to start generating engagement insights.'
                                   : 'Start messaging to generate engagement insights.',
                               style: UnifiedTypography.bodySmall.copyWith(
-                                color: AppColors.textSecondary,
+                                color: ThemeColors.textSecondary(context),
                                 height: 1.35,
                               ),
                             ),
@@ -1245,7 +1247,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                     value,
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      color: AppColors.textPrimary,
+                      color: ThemeColors.textPrimary(context),
                       fontWeight: FontWeight.w800,
                       fontSize: 26,
                       height: 1.0,
@@ -1258,7 +1260,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                     title,
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      color: AppColors.textSecondary,
+                      color: ThemeColors.textSecondary(context),
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                       height: 1.2,
@@ -1306,10 +1308,10 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
           title: 'Support',
           items: [
             _buildSettingsItem(
-              icon: Icons.help,
-              title: 'Help Center',
-              subtitle: 'Get help and support',
-              onTap: () => _showHelpCenterModal(context),
+              icon: Icons.palette,
+              title: 'Appearance',
+              subtitle: 'Theme and display settings',
+              onTap: () => _showThemeSelectionModal(context),
             ),
             _buildSettingsItem(
               icon: IconSystem.info,
@@ -1336,7 +1338,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
             child: Text(
               title,
               style: UnifiedTypography.titleMedium.copyWith(
-                color: AppColors.textPrimary,
+                color: ThemeColors.textPrimary(context),
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -1390,7 +1392,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                       Text(
                         title,
                         style: UnifiedTypography.bodyLarge.copyWith(
-                          color: AppColors.textPrimary,
+                          color: ThemeColors.textPrimary(context),
                           fontWeight: FontWeight.w600,
                         ),
                         maxLines: 1,
@@ -1400,7 +1402,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                       Text(
                         subtitle,
                         style: UnifiedTypography.bodySmall.copyWith(
-                          color: AppColors.textSecondary,
+                          color: ThemeColors.textSecondary(context),
                         ),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
@@ -1411,7 +1413,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                 const SizedBox(width: 8),
                 Icon(
                   Icons.arrow_forward_ios,
-                  color: AppColors.textSecondary.withOpacity(0.9),
+                  color: ThemeColors.textSecondary(context).withOpacity(0.9),
                   size: 16,
                 ),
               ],
@@ -1428,6 +1430,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
         Expanded(
           child: Container(
             decoration: SoftUIDesign.buttonDecoration(
+              context: context,
               backgroundColor: AppColors.primaryRed,
               borderRadius: SoftUIDesign.buttonBorderRadius,
               shadowColor: AppColors.primaryRed,
@@ -1502,7 +1505,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: ThemeColors.surface(context),
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setModalState) {
@@ -1523,13 +1526,14 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                           size: 24,
                         ),
                         const SizedBox(width: 8),
-                        const Expanded(
+                        Expanded(
                           child: Text(
                             'Security',
                             style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
-                                color: AppColors.textPrimary),
+                                color: ThemeColors.textPrimary(context),
+                            ),
                           ),
                         ),
                       ],
@@ -1538,7 +1542,8 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                     // Current Password
                     Container(
                         decoration: SoftUIDesign.cardDecoration(
-                          backgroundColor: AppColors.white,
+                          context: context,
+                          backgroundColor: ThemeColors.surface(context),
                           borderRadius: SoftUIDesign.inputBorderRadius,
                           elevation: 2.0,
                           borderColor: AppColors.lightGray.withOpacity(0.3),
@@ -1689,10 +1694,10 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                                 borderRadius: BorderRadius.circular(12),
                               ),
                             ),
-                            child: const Text(
+                            child: Text(
                               'Cancel',
                               style: TextStyle(
-                                color: AppColors.textSecondary,
+                                color: ThemeColors.textSecondary(context),
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
@@ -1818,14 +1823,14 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   child: Text(
-                        'Emergency Messages',
+                    'Emergency Messages',
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
-                      color: AppColors.textPrimary,
+                      color: ThemeColors.textPrimary(context),
                     ),
                   ),
                 ),
@@ -1842,7 +1847,8 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                             final isDefault = defaultIndex == index;
                             return Container(
                               decoration: SoftUIDesign.cardDecoration(
-                                backgroundColor: isDefault ? AppColors.primaryRed.withOpacity(0.06) : AppColors.white,
+                                context: context,
+                                backgroundColor: isDefault ? AppColors.primaryRed.withOpacity(0.06) : ThemeColors.surface(context),
                                 borderRadius: SoftUIDesign.buttonBorderRadius,
                                 elevation: isDefault ? 3.0 : 2.0,
                                 borderColor: isDefault ? AppColors.primaryRed.withOpacity(0.4) : AppColors.lightGray.withOpacity(0.3),
@@ -1855,7 +1861,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                                   Expanded(
                                     child: Text(
                                       messages[index],
-                                      style: const TextStyle(color: AppColors.textPrimary, fontSize: 14, height: 1.3),
+                                      style: TextStyle(color: ThemeColors.textPrimary(context), fontSize: 14, height: 1.3),
                                     ),
                                   ),
                                   const SizedBox(width: 8),
@@ -1884,6 +1890,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                                             controller: editController,
                                             maxLines: 4,
                                             decoration: SoftUIDesign.inputDecoration(
+                                              context: context,
                                               hintText: 'Enter message',
                                             ),
                                           ),
@@ -1921,9 +1928,9 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                         ),
                       )
                     else
-                      const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                        child: Text('No saved messages yet. Add one below.', style: TextStyle(color: AppColors.textSecondary)),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                        child: Text('No saved messages yet. Add one below.', style: TextStyle(color: ThemeColors.textSecondary(context))),
                       ),
 
                     const SizedBox(height: 12),
@@ -2004,21 +2011,21 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                   child: const Icon(Icons.logout, color: AppColors.primaryRed, size: 28),
                 ),
                 const SizedBox(height: 12),
-                const Text(
+                Text(
                   'Sign out of T.U.L.O.N.G?',
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w800,
-                    color: AppColors.textPrimary,
+                    color: ThemeColors.textPrimary(context),
                   ),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 8),
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Text(
                     'You\'ll be returned to the login screen. Your offline data remains saved on this device.',
-                    style: TextStyle(color: AppColors.textSecondary, height: 1.3),
+                    style: TextStyle(color: ThemeColors.textSecondary(context), height: 1.3),
                     textAlign: TextAlign.center,
                   ),
                 ),
@@ -2336,129 +2343,63 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
     }
   }
 
-  // Help Center Modal
-  void _showHelpCenterModal(BuildContext context) {
+  // Theme Selection Modal (Appearance) - wired to ThemeProvider
+  void _showThemeSelectionModal(BuildContext context) {
+    final themeProvider = context.read<ThemeProvider>();
     showDialog(
       context: context,
       barrierDismissible: true,
       barrierColor: Colors.black54,
-      builder: (context) => Dialog(
+      builder: (dialogContext) => Dialog(
+        backgroundColor: ThemeColors.surface(context),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(24),
         ),
         child: Container(
-          constraints: const BoxConstraints(maxWidth: 400, maxHeight: 600),
+          constraints: const BoxConstraints(maxWidth: 400),
           padding: const EdgeInsets.all(24),
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: AppColors.primaryRed.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(
-                      Icons.help_outline,
-                      color: AppColors.primaryRed,
-                      size: 28,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Help Center',
-                          style: UnifiedTypography.titleLarge.copyWith(
-                            color: AppColors.textPrimary,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Get help and support',
-                          style: UnifiedTypography.bodySmall.copyWith(
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close),
-                    onPressed: () => Navigator.pop(context),
-                    color: AppColors.textSecondary,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-              
-              // Help Topics
-              Expanded(
-                child: SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildHelpTopic(
-                        icon: Icons.emergency,
-                        title: 'Emergency Features',
-                        description: 'Learn how to send emergency alerts and SOS messages',
-                      ),
-                      const SizedBox(height: 16),
-                      _buildHelpTopic(
-                        icon: Icons.bluetooth,
-                        title: 'Bluetooth Connection',
-                        description: 'How to connect to ESP32 devices and mesh network',
-                      ),
-                      const SizedBox(height: 16),
-                      _buildHelpTopic(
-                        icon: Icons.chat_bubble,
-                        title: 'Local Chat',
-                        description: 'Send messages and voice recordings to nearby users',
-                      ),
-                      const SizedBox(height: 16),
-                      _buildHelpTopic(
-                        icon: Icons.radio,
-                        title: 'Voice Calls',
-                        description: 'Push-to-talk walkie-talkie style communication',
-                      ),
-                      const SizedBox(height: 16),
-                      _buildHelpTopic(
-                        icon: Icons.network_check,
-                        title: 'Network Status',
-                        description: 'Monitor connection status and nearby users',
-                      ),
-                    ],
-                  ),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.primaryRed.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.palette,
+                  color: AppColors.primaryRed,
+                  size: 28,
                 ),
               ),
-              
               const SizedBox(height: 16),
-              
-              // Contact Support Button
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: () {
-                    Navigator.pop(context);
-                    // TODO: Open support email or contact form
-                  },
-                  icon: const Icon(Icons.email),
-                  label: const Text('Contact Support'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primaryRed,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
+              Text(
+                'Appearance',
+                style: UnifiedTypography.titleLarge.copyWith(
+                  color: ThemeColors.textPrimary(context),
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Choose how the app looks.',
+                style: UnifiedTypography.bodyMedium.copyWith(
+                  color: ThemeColors.textSecondary(context),
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 20),
+              _themeOption(dialogContext, themeProvider, AppThemeMode.light, Icons.light_mode, 'Light'),
+              _themeOption(dialogContext, themeProvider, AppThemeMode.dark, Icons.dark_mode, 'Dark'),
+              _themeOption(dialogContext, themeProvider, AppThemeMode.darkAmoled, Icons.brightness_2, 'AMOLED Black'),
+              _themeOption(dialogContext, themeProvider, AppThemeMode.system, Icons.phone_android, 'System'),
+              const SizedBox(height: 12),
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: Text(
+                  'Close',
+                  style: TextStyle(color: ThemeColors.textSecondary(context)),
                 ),
               ),
             ],
@@ -2468,59 +2409,26 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
     );
   }
 
-  Widget _buildHelpTopic({
-    required IconData icon,
-    required String title,
-    required String description,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.lightGray.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: AppColors.lightGray.withOpacity(0.3),
+  Widget _themeOption(BuildContext context, ThemeProvider themeProvider, AppThemeMode mode, IconData icon, String label) {
+    final isSelected = themeProvider.themeMode == mode;
+    return ListTile(
+      leading: Icon(
+        icon,
+        color: isSelected ? AppColors.primaryRed : ThemeColors.textSecondary(context),
+        size: 24,
+      ),
+      title: Text(
+        label,
+        style: TextStyle(
+          fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+          color: ThemeColors.textPrimary(context),
         ),
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: AppColors.primaryRed.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(
-              icon,
-              color: AppColors.primaryRed,
-              size: 20,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: UnifiedTypography.bodyLarge.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  description,
-                  style: UnifiedTypography.bodySmall.copyWith(
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+      trailing: isSelected ? const Icon(Icons.check_circle, color: AppColors.primaryRed, size: 22) : null,
+      onTap: () async {
+        await themeProvider.setThemeMode(mode);
+        if (context.mounted) Navigator.pop(context);
+      },
     );
   }
 
@@ -2588,7 +2496,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                         child: Text(
                           'About',
                           style: UnifiedTypography.titleLarge.copyWith(
-                            color: AppColors.textPrimary,
+                            color: ThemeColors.textPrimary(context),
                             fontWeight: FontWeight.w900,
                             letterSpacing: -0.5,
                             fontSize: 22,
@@ -2605,7 +2513,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                             padding: const EdgeInsets.all(8),
                             child: Icon(
                               Icons.close_rounded,
-                              color: AppColors.textSecondary,
+                              color: ThemeColors.textSecondary(context),
                               size: 22,
                             ),
                           ),
@@ -2687,7 +2595,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                         Text(
                           'T.U.L.O.N.G',
                           style: UnifiedTypography.headlineSmall.copyWith(
-                            color: AppColors.textPrimary,
+                            color: ThemeColors.textPrimary(context),
                             fontWeight: FontWeight.w900,
                             letterSpacing: 1.2,
                             fontSize: 26,
@@ -2700,7 +2608,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                           'Transmission Unit for Local\nOffline Network Generation',
                           textAlign: TextAlign.center,
                           style: UnifiedTypography.bodyMedium.copyWith(
-                            color: AppColors.textSecondary,
+                            color: ThemeColors.textSecondary(context),
                             height: 1.4,
                             fontSize: 14,
                           ),
@@ -2762,7 +2670,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                             'A disaster-ready communication system for emergency situations. Connect with nearby users through mesh networking when traditional communication fails.',
                             textAlign: TextAlign.center,
                             style: UnifiedTypography.bodySmall.copyWith(
-                              color: AppColors.textSecondary,
+                              color: ThemeColors.textSecondary(context),
                               height: 1.6,
                               fontSize: 13,
                             ),
@@ -2837,14 +2745,14 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
         Text(
           label,
           style: UnifiedTypography.bodyMedium.copyWith(
-            color: AppColors.textSecondary,
+            color: ThemeColors.textSecondary(context),
             fontWeight: FontWeight.w600,
           ),
         ),
         Text(
           value,
           style: UnifiedTypography.bodyMedium.copyWith(
-            color: AppColors.textPrimary,
+            color: ThemeColors.textPrimary(context),
             fontWeight: FontWeight.w700,
           ),
         ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../constants/app_colors.dart';
 import '../constants/soft_ui_design.dart';
+import '../utils/theme_colors.dart';
 
 class EmergencyAlertWidget extends StatefulWidget {
   final String title;
@@ -173,10 +174,10 @@ class _EmergencyAlertWidgetState extends State<EmergencyAlertWidget>
                 child: Container(
                   margin: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: AppColors.white,
+                    color: ThemeColors.surface(context),
                     borderRadius: BorderRadius.circular(SoftUIDesign.cardBorderRadius),
                     // Neumorphic dual shadows for depth (animated on press)
-                    boxShadow: SoftUIDesign.getCardShadow(elevation: _pressElevationAnimation.value),
+                    boxShadow: SoftUIDesign.getCardShadow(context: context, elevation: _pressElevationAnimation.value),
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(SoftUIDesign.cardBorderRadius),
@@ -208,8 +209,8 @@ class _EmergencyAlertWidgetState extends State<EmergencyAlertWidget>
                                   begin: Alignment.topCenter,
                                   end: Alignment.bottomCenter,
                                   colors: [
-                                    AppColors.white.withOpacity(0.85),
-                                    AppColors.white.withOpacity(0.95),
+                                    ThemeColors.surface(context).withOpacity(0.85),
+                                    ThemeColors.surface(context).withOpacity(0.95),
                                   ],
                                 ),
                               ),
@@ -238,10 +239,10 @@ class _EmergencyAlertWidgetState extends State<EmergencyAlertWidget>
                                     child: Container(
                                       padding: const EdgeInsets.all(12),
                                       decoration: BoxDecoration(
-                                        color: AppColors.white,
+                                        color: ThemeColors.surfaceContainer(context),
                                         borderRadius: BorderRadius.circular(12),
                                         boxShadow: [
-                                          ...SoftUIDesign.getSoftShadow(elevation: 2.0),
+                                          ...SoftUIDesign.getSoftShadow(context: context, elevation: 2.0),
                                           // Subtle glow on icon
                                           BoxShadow(
                                             color: emergencyColor.withOpacity(0.15 * (_iconPulseAnimation.value - 1.0) / 0.08),
@@ -287,7 +288,7 @@ class _EmergencyAlertWidgetState extends State<EmergencyAlertWidget>
                                       style: TextStyle(
                                         fontSize: 18,
                                         fontWeight: FontWeight.w700,
-                                        color: AppColors.textPrimary,
+                                        color: ThemeColors.textPrimary(context),
                                         letterSpacing: -0.3,
                                       ),
                                       maxLines: 1,
@@ -365,10 +366,10 @@ class _EmergencyAlertWidgetState extends State<EmergencyAlertWidget>
                                     ),
                                   ],
                                 ),
-                                child: const Text(
+                                child: Text(
                                   'EMERGENCY',
                                   style: TextStyle(
-                                    color: AppColors.white,
+                                    color: ThemeColors.textWhite(context),
                                     fontSize: 9,
                                     fontWeight: FontWeight.w700,
                                     letterSpacing: 1.2,
@@ -402,9 +403,9 @@ class _EmergencyAlertWidgetState extends State<EmergencyAlertWidget>
                                 width: double.infinity,
                                 padding: const EdgeInsets.all(16),
                                 decoration: BoxDecoration(
-                                  color: AppColors.white,
+                                  color: ThemeColors.surfaceContainer(context),
                                   borderRadius: BorderRadius.circular(12),
-                                  boxShadow: SoftUIDesign.getSoftShadow(elevation: 2.0),
+                                  boxShadow: SoftUIDesign.getSoftShadow(context: context, elevation: 2.0),
                                   border: Border.all(
                                     color: emergencyColor.withOpacity(0.1),
                                     width: 1,
@@ -414,7 +415,7 @@ class _EmergencyAlertWidgetState extends State<EmergencyAlertWidget>
                                   widget.message,
                                   style: TextStyle(
                                     fontSize: 15,
-                                    color: AppColors.textPrimary,
+                                    color: ThemeColors.textPrimary(context),
                                     fontWeight: FontWeight.w500,
                                     height: 1.5,
                                   ),
@@ -441,9 +442,9 @@ class _EmergencyAlertWidgetState extends State<EmergencyAlertWidget>
                                       width: double.infinity,
                                       padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
                                       decoration: BoxDecoration(
-                                        color: AppColors.white,
+                                        color: ThemeColors.surfaceContainer(context),
                                         borderRadius: BorderRadius.circular(12),
-                                        boxShadow: SoftUIDesign.getSoftShadow(elevation: 2.0),
+                                        boxShadow: SoftUIDesign.getSoftShadow(context: context, elevation: 2.0),
                                         border: Border.all(
                                           color: emergencyColor.withOpacity(0.15),
                                           width: 1,
