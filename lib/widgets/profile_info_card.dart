@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
+import '../utils/theme_colors.dart';
 
 class ProfileInfoCard extends StatelessWidget {
   final String title;
@@ -20,7 +21,7 @@ class ProfileInfoCard extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       child: Material(
-        color: AppColors.white,
+        color: ThemeColors.surfaceContainer(context),
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
           onTap: onEdit,
@@ -30,12 +31,12 @@ class ProfileInfoCard extends StatelessWidget {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: AppColors.lightGray,
+                color: ThemeColors.border(context),
                 width: 1,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
+                  color: ThemeColors.shadow(context, opacity: 0.08),
                   blurRadius: 8,
                   offset: const Offset(0, 2),
                 ),
@@ -47,7 +48,7 @@ class ProfileInfoCard extends StatelessWidget {
                   width: 40,
                   height: 40,
                   decoration: BoxDecoration(
-                    color: AppColors.primaryRedLight,
+                    color: AppColors.primaryRedLight.withOpacity(ThemeColors.isDark(context) ? 0.25 : 1.0),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Icon(
@@ -63,18 +64,18 @@ class ProfileInfoCard extends StatelessWidget {
                     children: [
                       Text(
                         title,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 14,
-                          color: AppColors.textSecondary,
+                          color: ThemeColors.textSecondary(context),
                           fontWeight: FontWeight.w500,
                         ),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         value,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 16,
-                          color: AppColors.textPrimary,
+                          color: ThemeColors.textPrimary(context),
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -82,9 +83,9 @@ class ProfileInfoCard extends StatelessWidget {
                   ),
                 ),
                 if (onEdit != null)
-                  const Icon(
+                  Icon(
                     Icons.edit,
-                    color: AppColors.mediumGray,
+                    color: ThemeColors.textSecondary(context),
                     size: 20,
                   ),
               ],

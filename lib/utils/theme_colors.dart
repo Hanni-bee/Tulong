@@ -62,20 +62,20 @@ class ThemeColors {
     return Theme.of(context).colorScheme.onSurface;
   }
 
-  /// Secondary text color
+  /// Secondary text color (WCAG AA compliant - min 4.5:1 on dark surfaces)
   static Color textSecondary(BuildContext context) {
     final brightness = Theme.of(context).brightness;
     if (brightness == Brightness.dark) {
-      return const Color(0xFFB0B0B0);
+      return const Color(0xFFB8B8B8); // Lighter for better contrast on dark BG
     }
     return AppColors.textSecondary;
   }
 
-  /// Tertiary text color
+  /// Tertiary text color (WCAG AA compliant for placeholders/hints)
   static Color textTertiary(BuildContext context) {
     final brightness = Theme.of(context).brightness;
     if (brightness == Brightness.dark) {
-      return const Color(0xFF808080);
+      return const Color(0xFF9A9A9A); // Readable on dark surfaces
     }
     return AppColors.textLight;
   }

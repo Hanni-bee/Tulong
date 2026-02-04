@@ -9,6 +9,7 @@ import '../constants/app_colors.dart';
 import '../utils/theme_colors.dart';
 import '../constants/app_typography.dart';
 import '../constants/soft_ui_design.dart';
+import '../constants/unified_typography.dart';
 import '../utils/permission_helper.dart';
 import '../models/emergency_type.dart';
 import '../models/emergency_detection_result.dart';
@@ -885,25 +886,39 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
           children: [
             UnifiedTopBar(
               title: 'Emergency',
-              subtitle: 'Emergency Detection',
+              subtitle: null,
               icon: Icons.camera_alt_rounded,
               iconColor: AppColors.primaryRed,
               actions: [
-                _topBarAction(
-                  icon: _showGrid ? Icons.grid_on_rounded : Icons.grid_off_rounded,
-                  tooltip: _showGrid ? 'Hide grid' : 'Show grid',
-                  onPressed: () {
-                    setState(() {
-                      _showGrid = !_showGrid;
-                    });
-                    HapticFeedback.lightImpact();
-                  },
-                ),
-                const SizedBox(width: 12),
-                _topBarAction(
-                  icon: Icons.info_outline_rounded,
-                  tooltip: 'About Emergency Detection',
-                  onPressed: _showInfoDialog,
+                Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: _showInfoDialog,
+                    borderRadius: BorderRadius.circular(10),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: AppColors.warning.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: AppColors.warning.withOpacity(0.25),
+                          width: 1.5,
+                        ),
+                      ),
+                      child: Text(
+                        'Detection',
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                        style: UnifiedTypography.appBarSubtitle.copyWith(
+                          color: AppColors.warning,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          height: 1.1,
+                          letterSpacing: 0.2,
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
               ],
               compact: true,
@@ -1588,40 +1603,6 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-
-  static Widget _topBarAction({
-    required IconData icon,
-    required String tooltip,
-    required VoidCallback onPressed,
-  }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onPressed,
-        borderRadius: BorderRadius.circular(12),
-        child: Tooltip(
-          message: tooltip,
-          child: Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: AppColors.primaryRed.withOpacity(0.12),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: AppColors.primaryRed.withOpacity(0.2),
-                width: 1.5,
-              ),
-            ),
-            child: Icon(
-              icon,
-              color: AppColors.primaryRed,
-              size: 22,
-            ),
-          ),
         ),
       ),
     );

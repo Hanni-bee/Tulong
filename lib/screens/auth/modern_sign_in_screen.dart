@@ -7,7 +7,6 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
-import '../../constants/app_colors.dart';
 import '../../constants/unified_typography.dart';
 import '../../utils/theme_colors.dart';
 import '../../providers/auth_provider.dart';
@@ -315,7 +314,7 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
     final double keyboardTop = media.padding.top + pillHeight + 16.0; 
     
     return Scaffold(
-      backgroundColor: AppColors.primaryRed,
+      backgroundColor: ThemeColors.primary(context),
       resizeToAvoidBottomInset: false, 
       body: Stack(
         children: [
@@ -394,12 +393,12 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
                   filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
                   child: Container(
                     decoration: BoxDecoration(
-                      color: ThemeColors.surface(context).withAlpha((0.9 * 255).round()),
+                      color: ThemeColors.surface(context).withAlpha((0.98 * 255).round()),
                       borderRadius: const BorderRadius.vertical(top: Radius.circular(40)),
-                      border: Border.all(color: ThemeColors.border(context).withAlpha((0.2 * 255).round()), width: 1.5),
+                      border: Border.all(color: ThemeColors.border(context).withAlpha((0.3 * 255).round()), width: 1.5),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withAlpha((0.1 * 255).round()),
+                          color: ThemeColors.shadow(context, opacity: 0.12),
                           blurRadius: 40,
                           offset: const Offset(0, -10),
                         ),
@@ -464,6 +463,7 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
             prefixIcon: Icons.person_outline,
             textInputAction: TextInputAction.next,
             validator: InputValidator.validateUsername,
+            accentColor: ThemeColors.primary(context),
           ),
           
           const SizedBox(height: 20),
@@ -479,6 +479,7 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
             textInputAction: TextInputAction.done,
             onFieldSubmitted: (_) => _signIn(),
             validator: (v) => (v?.length ?? 0) < 6 ? 'Password must be 6+ chars' : null,
+            accentColor: ThemeColors.primary(context),
           ),
 
           // Forgot Password
@@ -489,10 +490,16 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
                 HapticHelper.light();
                 Navigator.pushNamed(context, '/forgot-password');
               },
-              style: TextButton.styleFrom(foregroundColor: AppColors.primaryRed),
+              style: TextButton.styleFrom(
+                foregroundColor: ThemeColors.primary(context),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              ),
               child: Text(
                 'Forgot Password?',
-                style: UnifiedTypography.labelLarge.copyWith(fontWeight: FontWeight.w700),
+                style: UnifiedTypography.labelLarge.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: ThemeColors.primary(context),
+                ),
               ),
             ),
           ),
@@ -522,7 +529,9 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
           children: [
             Text(
               "Don't have an account? ",
-              style: UnifiedTypography.bodyMedium.copyWith(color: AppColors.textSecondary),
+              style: UnifiedTypography.bodyMedium.copyWith(
+                color: ThemeColors.textSecondary(context),
+              ),
             ),
             GestureDetector(
               onTap: () {
@@ -532,7 +541,7 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
               child: Text(
                 'Create Account',
                 style: UnifiedTypography.bodyMedium.copyWith(
-                  color: AppColors.primaryRed,
+                  color: ThemeColors.primary(context),
                   fontWeight: FontWeight.w900,
                 ),
               ),
@@ -544,25 +553,26 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
   }
 
   Widget _buildPrimaryButton() {
+    final primaryColor = ThemeColors.primary(context);
     return SizedBox(
       height: 56,
       child: ElevatedButton(
         onPressed: _isLoading ? null : _signIn,
         style: ElevatedButton.styleFrom(
-          backgroundColor: AppColors.primaryRed,
-          foregroundColor: Colors.white,
+          backgroundColor: primaryColor,
+          foregroundColor: ThemeColors.textWhite(context),
           elevation: _isLoading ? 0 : 8,
-          shadowColor: AppColors.primaryRed.withAlpha((0.4 * 255).round()),
+          shadowColor: primaryColor.withAlpha((0.4 * 255).round()),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
         ),
         child: _isLoading
-            ? const SmartLoader.inline(color: Colors.white)
+            ? SmartLoader.inline(color: ThemeColors.textWhite(context))
             : Text(
                 'Sign In',
                 style: UnifiedTypography.buttonLarge.copyWith(
-                  color: Colors.white,
+                  color: ThemeColors.textWhite(context),
                   fontWeight: FontWeight.w700,
                   fontSize: 18,
                 ),
@@ -572,13 +582,14 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
   }
 
   Widget _buildQuickSignInButton() {
+    final primaryColor = ThemeColors.primary(context);
     return SizedBox(
       height: 56,
       child: OutlinedButton(
         onPressed: _isQuickSignInLoading ? null : _quickSignInWithBiometric,
         style: OutlinedButton.styleFrom(
-          foregroundColor: AppColors.primaryRed,
-          side: const BorderSide(color: AppColors.primaryRed, width: 2),
+          foregroundColor: primaryColor,
+          side: BorderSide(color: primaryColor, width: 2),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
@@ -588,17 +599,17 @@ class _ModernSignInScreenState extends State<ModernSignInScreen>
           mainAxisSize: MainAxisSize.min,
           children: [
             if (_isQuickSignInLoading)
-              const SmartLoader.inline(color: AppColors.primaryRed)
+              SmartLoader.inline(color: primaryColor)
             else ...[
               Text(
                 'Quick Sign In',
                 style: UnifiedTypography.buttonLarge.copyWith(
-                  color: AppColors.primaryRed,
+                  color: primaryColor,
                   fontWeight: FontWeight.w700,
                 ),
               ),
               const SizedBox(width: 10),
-              const Icon(Icons.fingerprint, size: 24),
+              Icon(Icons.fingerprint, size: 24, color: primaryColor),
             ],
           ],
         ),
@@ -668,6 +679,15 @@ class _PillHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = ThemeColors.isDark(context);
+    final pillBg = isDark
+        ? ThemeColors.surface(context).withAlpha((0.95 * 255).round())
+        : Colors.white.withAlpha((0.9 * 255).round());
+    final pillBorder = isDark
+        ? ThemeColors.border(context).withAlpha((0.5 * 255).round())
+        : Colors.white.withAlpha((0.3 * 255).round());
+    final primaryColor = ThemeColors.primary(context);
+
     return SafeArea(
       child: Center(
         child: ClipRRect(
@@ -677,12 +697,12 @@ class _PillHeader extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               decoration: BoxDecoration(
-                color: Colors.white.withAlpha((0.9 * 255).round()),
+                color: pillBg,
                 borderRadius: BorderRadius.circular(50),
-                border: Border.all(color: Colors.white.withAlpha((0.3 * 255).round()), width: 1),
+                border: Border.all(color: pillBorder, width: 1),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withAlpha((0.1 * 255).round()),
+                    color: ThemeColors.shadow(context, opacity: 0.15),
                     blurRadius: 10,
                     offset: const Offset(0, 4),
                   ),
@@ -694,7 +714,7 @@ class _PillHeader extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.all(4),
                     decoration: BoxDecoration(
-                      color: AppColors.primaryRed.withAlpha((0.1 * 255).round()),
+                      color: primaryColor.withAlpha((0.15 * 255).round()),
                       shape: BoxShape.circle,
                     ),
                     child: Image.asset('assets/images/app_logo (3).png', height: 20),
@@ -703,7 +723,7 @@ class _PillHeader extends StatelessWidget {
                   Text(
                     'T.U.L.O.N.G',
                     style: UnifiedTypography.titleMedium.copyWith(
-                      color: AppColors.primaryRed,
+                      color: primaryColor,
                       fontWeight: FontWeight.w900,
                       letterSpacing: 0.5,
                       fontSize: 14,
@@ -726,15 +746,15 @@ class _LiquidBackground extends StatelessWidget {
   Widget build(BuildContext context) {
     return Stack(
       children: [
-        // Base Gradient
+        // Base Gradient (theme-aware for dark mode)
         Container(
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                AppColors.primary,
-                AppColors.primaryDark,
+                ThemeColors.primary(context),
+                ThemeColors.primaryDark(context),
               ],
             ),
           ),

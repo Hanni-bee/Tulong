@@ -342,11 +342,11 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
           margin: const EdgeInsets.fromLTRB(16, 16, 16, 24),
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: ThemeColors.surface(ctx),
             borderRadius: BorderRadius.circular(20),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.18),
+                color: ThemeColors.shadow(ctx, opacity: 0.18),
                 blurRadius: 22,
                 offset: const Offset(0, 10),
               ),
@@ -362,7 +362,7 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
                     width: 40,
                     height: 4,
                     decoration: BoxDecoration(
-                      color: AppColors.lightGray,
+                      color: ThemeColors.textTertiary(ctx),
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
@@ -371,7 +371,7 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
                 Text(
                   'Pinned SOS History',
                   style: AppTypography.titleMedium.copyWith(
-                    color: ThemeColors.textPrimary(context),
+                    color: ThemeColors.textPrimary(ctx),
                     fontWeight: FontWeight.w900,
                   ),
                 ),
@@ -384,13 +384,13 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
                         Icon(
                           Icons.history,
                           size: 48,
-                          color: AppColors.mediumGray.withOpacity(0.5),
+                          color: ThemeColors.textTertiary(ctx),
                         ),
                         const SizedBox(height: 12),
                         Text(
                           'No SOS history',
                           style: AppTypography.bodyMedium.copyWith(
-                            color: AppColors.mediumGray,
+                            color: ThemeColors.textSecondary(ctx),
                           ),
                         ),
                       ],
@@ -407,10 +407,10 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
                           margin: const EdgeInsets.only(bottom: 12),
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
-                            color: AppColors.error.withOpacity(0.05),
+                            color: ThemeColors.error(context).withOpacity(0.08),
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: AppColors.error.withOpacity(0.2),
+                              color: ThemeColors.error(context).withOpacity(0.25),
                               width: 1,
                             ),
                           ),
@@ -422,7 +422,7 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
                                   Icon(
                                     Icons.emergency,
                                     size: 16,
-                                    color: AppColors.error,
+                                    color: ThemeColors.error(context),
                                   ),
                                   const SizedBox(width: 8),
                                   Expanded(
@@ -430,14 +430,14 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
                                       message.senderName ?? 'Unknown',
                                       style: AppTypography.bodyMedium.copyWith(
                                         fontWeight: FontWeight.w700,
-                                        color: AppColors.error,
+                                        color: ThemeColors.error(context),
                                       ),
                                     ),
                                   ),
                                   Text(
                                     DateFormat('MMM d, h:mm a').format(message.timestamp),
                                     style: AppTypography.bodySmall.copyWith(
-                                      color: AppColors.mediumGray,
+                                      color: ThemeColors.textSecondary(context),
                                     ),
                                   ),
                                 ],
@@ -446,7 +446,7 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
                               Text(
                                 message.text,
                                 style: AppTypography.bodyMedium.copyWith(
-                                  color: ThemeColors.textPrimary(context),
+                                  color: ThemeColors.textPrimary(ctx),
                                 ),
                               ),
                             ],

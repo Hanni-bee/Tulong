@@ -227,11 +227,11 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: AppColors.white,
+        color: ThemeColors.surface(context),
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: ThemeColors.shadow(context, opacity: 0.05),
             blurRadius: 10,
             offset: const Offset(0, 2),
           ),
@@ -246,7 +246,7 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
             Colors.red,
             'emergency',
           ),
-          const Divider(height: 24),
+          Divider(height: 24, color: ThemeColors.divider(context)),
           _buildSettingTile(
             'Chat Messages',
             'New messages in conversations',
@@ -254,7 +254,7 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
             Colors.blue,
             'messages',
           ),
-          const Divider(height: 24),
+          Divider(height: 24, color: ThemeColors.divider(context)),
           _buildSettingTile(
             'System Notifications',
             'App updates and system messages',
@@ -262,7 +262,7 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
             Colors.orange,
             'system',
           ),
-          const Divider(height: 24),
+          Divider(height: 24, color: ThemeColors.divider(context)),
           _buildSettingTile(
             'Reminders',
             'Scheduled reminders and alerts',
@@ -270,7 +270,7 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
             Colors.green,
             'reminders',
           ),
-          const Divider(height: 24),
+          Divider(height: 24, color: ThemeColors.divider(context)),
           _buildSettingTile(
             'Sound',
             'Play notification sounds',
@@ -278,7 +278,7 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
             Colors.purple,
             'sound',
           ),
-          const Divider(height: 24),
+          Divider(height: 24, color: ThemeColors.divider(context)),
           _buildSettingTile(
             'Vibration',
             'Vibrate on notifications',
@@ -317,13 +317,13 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
                 title,
                 level: HeadingLevel.h5,
                 color: ThemeColors.textPrimary(context),
-                backgroundColor: AppColors.white,
+                backgroundColor: ThemeColors.surface(context),
               ),
               AccessibleBodyText(
                 subtitle,
                 size: BodySize.medium,
                 color: ThemeColors.textSecondary(context),
-                backgroundColor: AppColors.white,
+                backgroundColor: ThemeColors.surface(context),
               ),
             ],
           ),
@@ -331,7 +331,8 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
         Switch(
           value: _settings[key] ?? false,
           onChanged: (value) => _updateSetting(key, value),
-          activeThumbColor: AppColors.primaryRed,
+          activeTrackColor: ThemeColors.primary(context).withOpacity(0.5),
+          activeThumbColor: ThemeColors.primary(context),
         ),
       ],
     );
@@ -341,11 +342,11 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: AppColors.white,
+        color: ThemeColors.surface(context),
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: ThemeColors.shadow(context, opacity: 0.05),
             blurRadius: 10,
             offset: const Offset(0, 2),
           ),
@@ -494,8 +495,8 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
                 ),
               ),
               style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.blue,
-                side: const BorderSide(color: Colors.blue),
+                foregroundColor: ThemeColors.info(context),
+                side: BorderSide(color: ThemeColors.info(context)),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -511,11 +512,11 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: AppColors.white,
+        color: ThemeColors.surface(context),
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: ThemeColors.shadow(context, opacity: 0.05),
             blurRadius: 10,
             offset: const Offset(0, 2),
           ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../constants/app_colors.dart';
 import '../constants/unified_typography.dart';
+import '../utils/theme_colors.dart';
 import '../widgets/animated_neumorphic_card.dart';
 
 /// User Engagement Dashboard
@@ -69,7 +70,7 @@ class UserEngagementDashboard extends StatelessWidget {
                     'Engagement Overview',
                     style: UnifiedTypography.titleLarge.copyWith(
                       fontWeight: FontWeight.bold,
-                      color: AppColors.textPrimary,
+                      color: ThemeColors.textPrimary(context),
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -99,17 +100,17 @@ class UserEngagementDashboard extends StatelessWidget {
             const SizedBox(height: 24),
 
             // Key Metrics Grid
-            _buildMetricsGrid(),
+            _buildMetricsGrid(context),
 
             const SizedBox(height: 24),
 
             // Activity Breakdown Chart
-            _buildActivityChart(),
+            _buildActivityChart(context),
 
             const SizedBox(height: 16),
 
             // Help & Response Stats
-            _buildHelpStats(),
+            _buildHelpStats(context),
           ],
         ),
       ),
@@ -117,64 +118,69 @@ class UserEngagementDashboard extends StatelessWidget {
   }
 
   Widget _buildLoadingState() {
-    return AnimatedNeumorphicCard(
-      child: Container(
-        height: 400,
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+    return Builder(
+      builder: (context) {
+        final skeletonColor = ThemeColors.textTertiary(context).withOpacity(0.3);
+        return AnimatedNeumorphicCard(
+          child: Container(
+            height: 400,
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: AppColors.lightGray.withOpacity(0.3),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        width: 150,
-                        height: 16,
-                        decoration: BoxDecoration(
-                          color: AppColors.lightGray.withOpacity(0.3),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
+                Row(
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: skeletonColor,
+                        borderRadius: BorderRadius.circular(8),
                       ),
-                    ],
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            width: 150,
+                            height: 16,
+                            decoration: BoxDecoration(
+                              color: skeletonColor,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                Expanded(
+                  child: GridView.count(
+                    crossAxisCount: 2,
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                    children: List.generate(4, (index) {
+                      return Container(
+                        decoration: BoxDecoration(
+                          color: skeletonColor,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      );
+                    }),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 24),
-            Expanded(
-              child: GridView.count(
-                crossAxisCount: 2,
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
-                children: List.generate(4, (index) {
-                  return Container(
-                    decoration: BoxDecoration(
-                      color: AppColors.lightGray.withOpacity(0.3),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  );
-                }),
-              ),
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
-  Widget _buildMetricsGrid() {
+  Widget _buildMetricsGrid(BuildContext context) {
     return GridView.count(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
@@ -184,24 +190,28 @@ class UserEngagementDashboard extends StatelessWidget {
       childAspectRatio: 1.5,
       children: [
         _buildMetricCard(
+          context,
           icon: Icons.warning_amber_rounded,
           label: 'Alerts Sent',
           value: emergencyAlertsSent.toString(),
           color: AppColors.error,
         ),
         _buildMetricCard(
+          context,
           icon: Icons.message_outlined,
           label: 'Messages Sent',
           value: messagesSent.toString(),
           color: AppColors.info,
         ),
         _buildMetricCard(
+          context,
           icon: Icons.bluetooth_connected,
           label: 'Connections',
           value: connectionsMade.toString(),
           color: AppColors.success,
         ),
         _buildMetricCard(
+          context,
           icon: Icons.timer_outlined,
           label: 'Avg Response',
           value: averageResponseTime > 0 
@@ -213,7 +223,8 @@ class UserEngagementDashboard extends StatelessWidget {
     );
   }
 
-  Widget _buildMetricCard({
+  Widget _buildMetricCard(
+    BuildContext context, {
     required IconData icon,
     required String label,
     required String value,
@@ -239,14 +250,14 @@ class UserEngagementDashboard extends StatelessWidget {
             value,
             style: UnifiedTypography.titleMedium.copyWith(
               fontWeight: FontWeight.bold,
-              color: AppColors.textPrimary,
+              color: ThemeColors.textPrimary(context),
             ),
           ),
           const SizedBox(height: 4),
           Text(
             label,
             style: UnifiedTypography.bodySmall.copyWith(
-              color: AppColors.textSecondary,
+              color: ThemeColors.textSecondary(context),
               fontSize: 11,
             ),
             maxLines: 1,
@@ -257,10 +268,11 @@ class UserEngagementDashboard extends StatelessWidget {
     );
   }
 
-  Widget _buildActivityChart() {
+  Widget _buildActivityChart(BuildContext context) {
     final totalSent = emergencyAlertsSent + messagesSent;
     final totalReceived = emergencyAlertsReceived + messagesReceived;
     final maxValue = [totalSent, totalReceived, connectionsMade].reduce((a, b) => a > b ? a : b);
+    final textSecondary = ThemeColors.textSecondary(context);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -269,7 +281,7 @@ class UserEngagementDashboard extends StatelessWidget {
           'Activity Breakdown',
           style: UnifiedTypography.bodyMedium.copyWith(
             fontWeight: FontWeight.w600,
-            color: AppColors.textPrimary,
+            color: ThemeColors.textPrimary(context),
           ),
         ),
         const SizedBox(height: 12),
@@ -316,7 +328,7 @@ class UserEngagementDashboard extends StatelessWidget {
                           child: Text(
                             labels[value.toInt()],
                             style: UnifiedTypography.bodySmall.copyWith(
-                              color: AppColors.textSecondary,
+                              color: textSecondary,
                               fontSize: 11,
                             ),
                           ),
@@ -336,7 +348,7 @@ class UserEngagementDashboard extends StatelessWidget {
                         return Text(
                           value.toInt().toString(),
                           style: UnifiedTypography.bodySmall.copyWith(
-                            color: AppColors.textSecondary,
+                            color: textSecondary,
                             fontSize: 10,
                           ),
                         );
@@ -352,7 +364,7 @@ class UserEngagementDashboard extends StatelessWidget {
                 horizontalInterval: 5,
                 getDrawingHorizontalLine: (value) {
                   return FlLine(
-                    color: AppColors.lightGray.withOpacity(0.2),
+                    color: ThemeColors.divider(context).withOpacity(0.6),
                     strokeWidth: 1,
                   );
                 },
@@ -427,7 +439,7 @@ class UserEngagementDashboard extends StatelessWidget {
     );
   }
 
-  Widget _buildHelpStats() {
+  Widget _buildHelpStats(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -461,14 +473,14 @@ class UserEngagementDashboard extends StatelessWidget {
                   'Community Impact',
                   style: UnifiedTypography.bodyMedium.copyWith(
                     fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
+                    color: ThemeColors.textPrimary(context),
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   'Helped $helpProvided • Received $helpReceived',
                   style: UnifiedTypography.bodySmall.copyWith(
-                    color: AppColors.textSecondary,
+                    color: ThemeColors.textSecondary(context),
                     fontSize: 12,
                   ),
                 ),

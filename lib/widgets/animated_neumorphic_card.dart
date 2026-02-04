@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../constants/app_colors.dart';
+import '../utils/theme_colors.dart';
 
 class AnimatedNeumorphicCard extends StatefulWidget {
   final Widget child;
@@ -174,34 +174,38 @@ class _AnimatedNeumorphicCardState extends State<AnimatedNeumorphicCard>
 
   @override
   Widget build(BuildContext context) {
+    final isDark = ThemeColors.isDark(context);
+    final cardColor = widget.backgroundColor ?? ThemeColors.surfaceContainer(context);
+    final shadowColor = ThemeColors.shadow(context, opacity: isDark ? 0.25 : 0.08);
+    final highlightShadow = isDark
+        ? null
+        : BoxShadow(
+            color: Colors.white.withOpacity(0.9),
+            blurRadius: _elevationAnimation.value,
+            offset: Offset(0, -_elevationAnimation.value / 2),
+          );
     Widget cardContent = Container(
       width: widget.width,
       height: widget.height,
       margin: widget.margin,
       decoration: BoxDecoration(
-        color: widget.backgroundColor ?? AppColors.white,
+        color: cardColor,
         borderRadius: BorderRadius.circular(widget.borderRadius),
         boxShadow: _isPressed || widget.isPressed
             ? [
-                // Pressed state - reduced shadow
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.04),
+                  color: ThemeColors.shadow(context, opacity: 0.06),
                   blurRadius: 2,
                   offset: const Offset(0, 1),
                 ),
               ]
             : [
-                // Normal state - raised shadow
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.08),
+                  color: shadowColor,
                   blurRadius: _elevationAnimation.value,
                   offset: Offset(0, _elevationAnimation.value / 2),
                 ),
-                BoxShadow(
-                  color: Colors.white.withOpacity(0.9),
-                  blurRadius: _elevationAnimation.value,
-                  offset: Offset(0, -_elevationAnimation.value / 2),
-                ),
+                if (highlightShadow != null) highlightShadow,
               ],
       ),
       child: Padding(

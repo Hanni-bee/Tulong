@@ -38,9 +38,8 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
   // Stagger animations for Stat Cards (2 cards)
   late StaggeredListAnimations _statCardsStagger;
   
-  // Scroll controller for enhanced scroll behavior
+  // Scroll controller for scrollable content
   final ScrollController _scrollController = ScrollController();
-  bool _showScrollToTop = false;
   
   // Loading state
   bool _isLoadingProfile = true;
@@ -84,8 +83,6 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
       itemCount: 4,
     );
     
-    // Listen to scroll position for scroll-to-top button
-    _scrollController.addListener(_onScroll);
     
     // Load user model immediately when screen opens to ensure data is available
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -104,29 +101,8 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
     });
   }
 
-  void _onScroll() {
-    if (!_scrollController.hasClients) return;
-    final shouldShow = _scrollController.offset > 400;
-    if (shouldShow != _showScrollToTop) {
-      setState(() {
-        _showScrollToTop = shouldShow;
-      });
-    }
-  }
-
-  Future<void> _scrollToTop() async {
-    if (!_scrollController.hasClients) return;
-    HapticFeedback.lightImpact();
-    await _scrollController.animateTo(
-      0,
-      duration: const Duration(milliseconds: 400),
-      curve: Curves.easeOutCubic,
-    );
-  }
-
   @override
   void dispose() {
-    _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     _fadeController.dispose();
     _slideController.dispose();
@@ -152,7 +128,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                 Expanded(
                   child: RefreshIndicator(
                     color: AppColors.primaryRed,
-                    backgroundColor: Colors.white,
+                    backgroundColor: ThemeColors.surface(context),
                     displacement: 60,
                     onRefresh: _refreshProfile,
                     child: SingleChildScrollView(
@@ -174,7 +150,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                               _buildSettingsSections(),
                               const SizedBox(height: 20),
                               _buildActionButtons(),
-                              const SizedBox(height: 120),
+                              const SizedBox(height: 24),
                             ],
                           ),
                         ),
@@ -184,19 +160,6 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                 ),
               ],
             ),
-            // Scroll-to-top button
-            if (_showScrollToTop)
-              Positioned(
-                bottom: 100,
-                right: 20,
-                child: FloatingActionButton.small(
-                  onPressed: _scrollToTop,
-                  backgroundColor: AppColors.primaryRed,
-                  child: const Icon(Icons.arrow_upward_rounded, color: Colors.white),
-                ).animate()
-                    .fadeIn(duration: 200.ms)
-                    .scale(begin: const Offset(0.8, 0.8), end: const Offset(1, 1)),
-              ),
           ],
         ),
       ),
@@ -227,9 +190,8 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
         final location = _composeAddressShort(userModel);
         final fullAddress = _composeFullAddress(userModel);
         final avatar = (userModel?.avatar ?? '').trim();
-        final phoneNumber = userModel?.phoneNumber ?? '';
         
-         return Container(
+        return Container(
           margin: const EdgeInsets.only(bottom: 16),
               decoration: BoxDecoration(
             // Enhanced gradient background
@@ -277,7 +239,6 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                 context,
                 isConnected: isConnected,
                 username: username,
-                phoneNumber: phoneNumber,
                 hasAddress: location.isNotEmpty,
                 fullAddress: fullAddress,
               );
@@ -353,39 +314,6 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                                         fontSize: 12,
                                       ),
                                     ),
-                                    if (phoneNumber.isNotEmpty) ...[
-                                      const SizedBox(height: 4),
-                                      Row(
-                                        children: [
-                                          Icon(Icons.phone_outlined, color: Colors.white.withOpacity(0.8), size: 12),
-                                          const SizedBox(width: 4),
-                                          Expanded(
-                                            child: Text(
-                                              phoneNumber,
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: UnifiedTypography.bodySmall.copyWith(
-                                                color: Colors.white.withOpacity(0.9),
-                                                fontWeight: FontWeight.w600,
-                                                fontSize: 11,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ] else ...[
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        'Phone not set',
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: UnifiedTypography.bodySmall.copyWith(
-                                          color: Colors.white.withOpacity(0.85),
-                                          fontWeight: FontWeight.w600,
-                                          fontSize: 11,
-                                        ),
-                                      ),
-                                    ],
                                     if (location.isNotEmpty) ...[
                                       const SizedBox(height: 4),
                                       Text(
@@ -465,24 +393,6 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                             onLongPress: null,
                           ),
                           const SizedBox(height: 8),
-                          if (phoneNumber.isNotEmpty) ...[
-                            _buildClickableContactInfo(
-                              context,
-                              icon: Icons.phone_outlined,
-                              text: phoneNumber,
-                              onTap: () => _copyToClipboard(context, phoneNumber, 'Phone number copied'),
-                              onLongPress: null,
-                            ),
-                            const SizedBox(height: 8),
-                          ] else ...[
-                            _buildHeaderCallToAction(
-                              context,
-                              icon: Icons.phone_outlined,
-                              text: 'Add phone number',
-                              onTap: () => _editProfile(context),
-                            ),
-                            const SizedBox(height: 8),
-                          ],
                           if (location.isNotEmpty)
                             _buildClickableContactInfo(
                               context,
@@ -515,7 +425,6 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
     BuildContext context, {
     required bool isConnected,
     required String username,
-    required String phoneNumber,
     required bool hasAddress,
     required String fullAddress,
   }) {
@@ -528,24 +437,6 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
         onTap: () => _copyToClipboard(context, username, 'Username copied'),
       ),
     );
-
-    if (phoneNumber.isNotEmpty) {
-      actions.add(
-        _buildHeaderQuickAction(
-          icon: Icons.phone_outlined,
-          label: 'Copy phone',
-          onTap: () => _copyToClipboard(context, phoneNumber, 'Phone number copied'),
-        ),
-      );
-    } else {
-      actions.add(
-        _buildHeaderQuickAction(
-          icon: Icons.phone_outlined,
-          label: 'Add phone',
-          onTap: () => _editProfile(context),
-        ),
-      );
-    }
 
     if (hasAddress) {
       actions.add(
@@ -883,7 +774,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                   child: LinearProgressIndicator(
                     value: progress,
                     minHeight: 8,
-                    backgroundColor: AppColors.lightGray.withOpacity(0.35),
+                    backgroundColor: ThemeColors.border(context).withOpacity(0.5),
                     valueColor: AlwaysStoppedAnimation<Color>(AppColors.primaryRed),
                   ),
                 ),
@@ -987,6 +878,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                 child: _statCardsStagger.buildAnimatedItem(
                   0,
                   _buildStatCard(
+                    context,
                     title: 'Days Active',
                     value: _getDaysActiveCount(userModel),
                     icon: Icons.calendar_today_outlined,
@@ -1003,6 +895,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                     builder: (context, snapshot) {
                       final deviceCount = snapshot.data ?? '0';
                       return _buildStatCard(
+                        context,
                         title: 'Connected Devices',
                         value: deviceCount,
                         icon: Icons.bluetooth_connected,
@@ -1166,7 +1059,8 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
 
   // Old weekly activity chart removed - replaced with UserEngagementDashboard
 
-  Widget _buildStatCard({
+  Widget _buildStatCard(
+    BuildContext context, {
     required String title,
     required String value,
     required IconData icon,
@@ -1175,17 +1069,21 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
     return Container(
       constraints: const BoxConstraints(minHeight: 140),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: ThemeColors.surfaceContainer(context),
         borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: ThemeColors.border(context).withOpacity(0.6),
+          width: 1,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.08),
+            color: ThemeColors.shadow(context, opacity: 0.12),
             blurRadius: 12,
             offset: const Offset(0, 4),
             spreadRadius: 0,
           ),
           BoxShadow(
-            color: color.withOpacity(0.05),
+            color: color.withOpacity(0.08),
             blurRadius: 8,
             offset: const Offset(0, 2),
             spreadRadius: 0,
@@ -1520,9 +1418,9 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                   children: [
                     Row(
                       children: [
-                        const Icon(
+                        Icon(
                           Icons.security,
-                          color: AppColors.primary,
+                          color: ThemeColors.primary(context),
                           size: 24,
                         ),
                         const SizedBox(width: 8),
@@ -1543,10 +1441,10 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                     Container(
                         decoration: SoftUIDesign.cardDecoration(
                           context: context,
-                          backgroundColor: ThemeColors.surface(context),
+                          backgroundColor: ThemeColors.surfaceContainer(context),
                           borderRadius: SoftUIDesign.inputBorderRadius,
                           elevation: 2.0,
-                          borderColor: AppColors.lightGray.withOpacity(0.3),
+                          borderColor: ThemeColors.border(context),
                           showBorder: true,
                         ),
                         child: TextField(
@@ -1578,21 +1476,13 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
 
                     // New Password
                     Container(
-                      decoration: BoxDecoration(
-                        color: AppColors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        boxShadow: [
-                          BoxShadow(
-                            color: AppColors.primaryRed.withOpacity(0.05),
-                            blurRadius: 4,
-                            offset: const Offset(2, 2),
-                          ),
-                          BoxShadow(
-                            color: AppColors.white.withOpacity(0.8),
-                            blurRadius: 4,
-                            offset: const Offset(-2, -2),
-                          ),
-                        ],
+                      decoration: SoftUIDesign.cardDecoration(
+                        context: context,
+                        backgroundColor: ThemeColors.surfaceContainer(context),
+                        borderRadius: SoftUIDesign.inputBorderRadius,
+                        elevation: 2.0,
+                        borderColor: ThemeColors.border(context),
+                        showBorder: true,
                       ),
                       child: TextField(
                       controller: newCtrl,
@@ -1623,21 +1513,13 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
 
                     // Confirm Password
                     Container(
-                      decoration: BoxDecoration(
-                        color: AppColors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        boxShadow: [
-                          BoxShadow(
-                            color: AppColors.primaryRed.withOpacity(0.05),
-                            blurRadius: 4,
-                            offset: const Offset(2, 2),
-                          ),
-                          BoxShadow(
-                            color: AppColors.white.withOpacity(0.8),
-                            blurRadius: 4,
-                            offset: const Offset(-2, -2),
-                          ),
-                        ],
+                      decoration: SoftUIDesign.cardDecoration(
+                        context: context,
+                        backgroundColor: ThemeColors.surfaceContainer(context),
+                        borderRadius: SoftUIDesign.inputBorderRadius,
+                        elevation: 2.0,
+                        borderColor: ThemeColors.border(context),
+                        showBorder: true,
                       ),
                       child: TextField(
                       controller: confirmCtrl,
@@ -1670,21 +1552,13 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
                         Container(
-                          decoration: BoxDecoration(
-                            color: AppColors.white,
-                            borderRadius: BorderRadius.circular(12),
-                            boxShadow: [
-                              BoxShadow(
-                                color: AppColors.primaryRed.withOpacity(0.05),
-                                blurRadius: 4,
-                                offset: const Offset(2, 2),
-                              ),
-                              BoxShadow(
-                                color: AppColors.white.withOpacity(0.8),
-                                blurRadius: 4,
-                                offset: const Offset(-2, -2),
-                              ),
-                            ],
+                          decoration: SoftUIDesign.cardDecoration(
+                            context: context,
+                            backgroundColor: ThemeColors.surfaceContainer(context),
+                            borderRadius: SoftUIDesign.inputBorderRadius,
+                            elevation: 2.0,
+                            borderColor: ThemeColors.border(context),
+                            showBorder: true,
                           ),
                           child: TextButton(
                           onPressed: () => Navigator.pop(context),
@@ -1706,16 +1580,16 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                         const SizedBox(width: 12),
                         Container(
                           decoration: BoxDecoration(
-                            color: AppColors.primaryRed,
+                            color: ThemeColors.primary(context),
                             borderRadius: BorderRadius.circular(12),
                             boxShadow: [
                               BoxShadow(
-                                color: AppColors.primaryRed.withOpacity(0.2),
+                                color: ThemeColors.primary(context).withOpacity(0.2),
                                 blurRadius: 6,
                                 offset: const Offset(3, 3),
                               ),
                               BoxShadow(
-                                color: AppColors.white.withOpacity(0.3),
+                                color: ThemeColors.surface(context).withOpacity(0.3),
                                 blurRadius: 6,
                                 offset: const Offset(-3, -3),
                               ),
@@ -1851,7 +1725,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                                 backgroundColor: isDefault ? AppColors.primaryRed.withOpacity(0.06) : ThemeColors.surface(context),
                                 borderRadius: SoftUIDesign.buttonBorderRadius,
                                 elevation: isDefault ? 3.0 : 2.0,
-                                borderColor: isDefault ? AppColors.primaryRed.withOpacity(0.4) : AppColors.lightGray.withOpacity(0.3),
+                                borderColor: isDefault ? AppColors.primaryRed.withOpacity(0.4) : ThemeColors.border(context),
                                 showBorder: true,
                               ),
                               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -1881,7 +1755,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                                       await showDialog(
                                         context: context,
                                         builder: (_) => AlertDialog(
-                                          backgroundColor: Colors.white,
+                                          backgroundColor: ThemeColors.surface(context),
                                           shape: RoundedRectangleBorder(
                                             borderRadius: BorderRadius.circular(SoftUIDesign.cardBorderRadius),
                                           ),
@@ -1944,7 +1818,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                           hintText: 'Type a new emergency message to save...',
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
                       filled: true,
-                      fillColor: AppColors.white,
+                      fillColor: ThemeColors.surfaceContainer(context),
                     ),
                   ),
                 ),
@@ -1990,7 +1864,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
     final rootContext = context; // preserve parent context for navigation
     showModalBottomSheet(
       context: rootContext,
-      backgroundColor: Colors.white,
+      backgroundColor: ThemeColors.surface(rootContext),
       isScrollControlled: false,
       builder: (sheetContext) {
         return Padding(
@@ -2036,8 +1910,8 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                       child: OutlinedButton(
                         onPressed: () => Navigator.pop(sheetContext),
                         style: OutlinedButton.styleFrom(
-                          foregroundColor: AppColors.textPrimary,
-                          side: BorderSide(color: AppColors.lightGray.withOpacity(0.6), width: 1.4),
+                          foregroundColor: ThemeColors.textPrimary(rootContext),
+                          side: BorderSide(color: ThemeColors.border(rootContext).withOpacity(0.8), width: 1.4),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                           padding: const EdgeInsets.symmetric(vertical: 14),
                         ),
@@ -2444,11 +2318,11 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
         child: Container(
           constraints: const BoxConstraints(maxWidth: 400),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: ThemeColors.surface(context),
             borderRadius: BorderRadius.circular(28),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.15),
+                color: ThemeColors.shadow(context, opacity: 0.15),
                 blurRadius: 24,
                 offset: const Offset(0, 8),
                 spreadRadius: 0,
@@ -2468,8 +2342,8 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                       colors: [
-                        AppColors.primaryRed.withOpacity(0.08),
-                        AppColors.primaryRed.withOpacity(0.03),
+                        ThemeColors.primary(context).withOpacity(0.08),
+                        ThemeColors.primary(context).withOpacity(0.03),
                       ],
                     ),
                   ),
@@ -2478,16 +2352,16 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                       Container(
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
-                          color: AppColors.primaryRed.withOpacity(0.12),
+                          color: ThemeColors.primary(context).withOpacity(0.12),
                           borderRadius: BorderRadius.circular(14),
                           border: Border.all(
-                            color: AppColors.primaryRed.withOpacity(0.2),
+                            color: ThemeColors.primary(context).withOpacity(0.2),
                             width: 1.5,
                           ),
                         ),
-                        child: const Icon(
+                        child: Icon(
                           Icons.info_outline_rounded,
-                          color: AppColors.primaryRed,
+                          color: ThemeColors.primary(context),
                           size: 24,
                         ),
                       ),
@@ -2539,23 +2413,23 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                           height: 120,
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            color: AppColors.white,
+                            color: ThemeColors.surfaceContainer(context),
                             borderRadius: BorderRadius.circular(28),
                             boxShadow: [
                               BoxShadow(
-                                color: AppColors.primaryRed.withOpacity(0.25),
+                                color: ThemeColors.primary(context).withOpacity(0.25),
                                 blurRadius: 20,
                                 offset: const Offset(0, 8),
                                 spreadRadius: 2,
                               ),
                               BoxShadow(
-                                color: Colors.black.withOpacity(0.1),
+                                color: ThemeColors.shadow(context, opacity: 0.1),
                                 blurRadius: 10,
                                 offset: const Offset(0, 4),
                               ),
                             ],
                             border: Border.all(
-                              color: AppColors.primaryRed.withOpacity(0.15),
+                              color: ThemeColors.primary(context).withOpacity(0.15),
                               width: 1.5,
                             ),
                           ),
@@ -2573,8 +2447,8 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                                       begin: Alignment.topLeft,
                                       end: Alignment.bottomRight,
                                       colors: [
-                                        AppColors.primaryRed,
-                                        AppColors.primaryRed.withOpacity(0.8),
+                                        ThemeColors.primary(context),
+                                        ThemeColors.primary(context).withOpacity(0.8),
                                       ],
                                     ),
                                     borderRadius: BorderRadius.circular(20),
@@ -2619,37 +2493,30 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                         Container(
                           padding: const EdgeInsets.all(20),
                           decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [
-                                AppColors.lightGray.withOpacity(0.15),
-                                AppColors.lightGray.withOpacity(0.08),
-                              ],
-                            ),
+                            color: ThemeColors.surfaceContainer(context),
                             borderRadius: BorderRadius.circular(18),
                             border: Border.all(
-                              color: AppColors.lightGray.withOpacity(0.3),
+                              color: ThemeColors.border(context),
                               width: 1.5,
                             ),
                           ),
                           child: Column(
                             children: [
-                              _buildAboutRow('Version', '1.0.0'),
+                              _buildAboutRow(context, 'Version', '1.0.0'),
                               const SizedBox(height: 20),
                               Container(
                                 height: 1,
-                                color: AppColors.lightGray.withOpacity(0.4),
+                                color: ThemeColors.divider(context),
                               ),
                               const SizedBox(height: 20),
-                              _buildAboutRow('Build', 'Release'),
+                              _buildAboutRow(context, 'Build', 'Release'),
                               const SizedBox(height: 20),
                               Container(
                                 height: 1,
-                                color: AppColors.lightGray.withOpacity(0.4),
+                                color: ThemeColors.divider(context),
                               ),
                               const SizedBox(height: 20),
-                              _buildAboutRow('Platform', 'Android'),
+                              _buildAboutRow(context, 'Platform', 'Android'),
                             ],
                           ),
                         ),
@@ -2659,10 +2526,10 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                         Container(
                           padding: const EdgeInsets.all(18),
                           decoration: BoxDecoration(
-                            color: AppColors.primaryRed.withOpacity(0.05),
+                            color: ThemeColors.primary(context).withOpacity(0.06),
                             borderRadius: BorderRadius.circular(16),
                             border: Border.all(
-                              color: AppColors.primaryRed.withOpacity(0.15),
+                              color: ThemeColors.primary(context).withOpacity(0.15),
                               width: 1,
                             ),
                           ),
@@ -2687,14 +2554,14 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                                 begin: Alignment.topLeft,
                                 end: Alignment.bottomRight,
                                 colors: [
-                                  AppColors.primaryRed,
-                                  AppColors.primaryRed.withOpacity(0.85),
+                                  ThemeColors.primary(context),
+                                  ThemeColors.primary(context).withOpacity(0.85),
                                 ],
                               ),
                               borderRadius: BorderRadius.circular(16),
                               boxShadow: [
                                 BoxShadow(
-                                  color: AppColors.primaryRed.withOpacity(0.4),
+                                  color: ThemeColors.primary(context).withOpacity(0.4),
                                   blurRadius: 12,
                                   offset: const Offset(0, 6),
                                 ),
@@ -2738,7 +2605,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
     );
   }
 
-  Widget _buildAboutRow(String label, String value) {
+  Widget _buildAboutRow(BuildContext context, String label, String value) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [

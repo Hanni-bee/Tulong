@@ -320,54 +320,11 @@ class SoftUIDesign {
   }
   
   /// Subtle accent overlay for profile headers (Theme-aware)
+  /// Returns empty list - decorative circles removed for cleaner header
   static List<Widget> buildProfileHeaderOverlays({
     required BuildContext context,
   }) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final overlayColor = isDark 
-        ? ThemeColors.surface(context).withOpacity(0.1)
-        : Colors.white.withOpacity(0.15);
-    return [
-      // Top-right decorative circle
-      Positioned(
-        top: -22,
-        right: -18,
-        child: Container(
-          width: 140,
-          height: 140,
-          decoration: BoxDecoration(
-            color: overlayColor,
-            shape: BoxShape.circle,
-          ),
-        ),
-      ),
-      // Middle-right decorative circle (opacity clamped to valid 0–1 range)
-      Positioned(
-        top: 6,
-        right: 38,
-        child: Container(
-          width: 56,
-          height: 56,
-          decoration: BoxDecoration(
-            color: overlayColor.withOpacity(1.0),
-            shape: BoxShape.circle,
-          ),
-        ),
-      ),
-      // Bottom-left decorative circle
-      Positioned(
-        bottom: -28,
-        left: -24,
-        child: Container(
-          width: 120,
-          height: 120,
-          decoration: BoxDecoration(
-            color: overlayColor.withOpacity(0.5),
-            shape: BoxShape.circle,
-          ),
-        ),
-      ),
-    ];
+    return [];
   }
   
   /// Subtle depth overlay for elevated cards

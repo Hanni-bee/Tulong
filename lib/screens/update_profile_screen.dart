@@ -482,11 +482,11 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: ThemeColors.surface(context),
                 borderRadius: BorderRadius.circular(16),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
+                    color: ThemeColors.shadow(context, opacity: 0.1),
                     blurRadius: 20,
                     offset: const Offset(0, 10),
                   ),
@@ -521,41 +521,38 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
         Text(
           label,
           style: UnifiedTypography.labelLarge.copyWith(
-            color: AppColors.textPrimary,
+            color: ThemeColors.textPrimary(context),
           ),
         ),
         const SizedBox(height: 8),
         Container(
           decoration: BoxDecoration(
-            color: AppColors.white,
+            color: ThemeColors.surfaceContainer(context),
             borderRadius: BorderRadius.circular(12),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.05),
+                color: ThemeColors.shadow(context, opacity: 0.05),
                 blurRadius: 10,
                 offset: const Offset(0, 2),
-              ),
-              BoxShadow(
-                color: Colors.white.withOpacity(0.9),
-                blurRadius: 10,
-                offset: const Offset(0, -2),
               ),
             ],
           ),
           child: DropdownButtonFormField<String>(
             initialValue: value,
+            dropdownColor: ThemeColors.surface(context),
+            icon: Icon(Icons.arrow_drop_down, color: ThemeColors.textSecondary(context)),
             decoration: InputDecoration(
               contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide.none,
               ),
-              errorStyle: const TextStyle(fontSize: 12),
+              errorStyle: TextStyle(fontSize: 12, color: ThemeColors.error(context)),
             ),
             hint: Text(
               'Select $label',
               style: TextStyle(
-                color: AppColors.textSecondary.withOpacity(0.6),
+                color: ThemeColors.textTertiary(context),
                 fontSize: 14,
               ),
             ),
@@ -611,15 +608,15 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: const Text(
+        title: Text(
           'Update Profile',
           style: TextStyle(
-            color: AppColors.textPrimary,
+            color: ThemeColors.textPrimary(context),
             fontWeight: FontWeight.w700,
           ),
         ),
         centerTitle: true,
-        iconTheme: const IconThemeData(color: AppColors.textPrimary),
+        iconTheme: IconThemeData(color: ThemeColors.textPrimary(context)),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -633,16 +630,16 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: AppColors.white,
+                    color: ThemeColors.surface(context),
                     borderRadius: BorderRadius.circular(12),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
+                        color: ThemeColors.shadow(context, opacity: 0.05),
                         blurRadius: 10,
                         offset: const Offset(0, 2),
                       ),
                       BoxShadow(
-                        color: Colors.white.withOpacity(0.9),
+                        color: ThemeColors.shadow(context, opacity: 0.03),
                         blurRadius: 10,
                         offset: const Offset(0, -2),
                       ),
@@ -653,12 +650,12 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: AppColors.primary.withOpacity(0.1),
+                          color: ThemeColors.primary(context).withOpacity(0.1),
                           borderRadius: BorderRadius.circular(12),
                         ),
-                        child: const Icon(
+                        child: Icon(
                           Icons.person,
-                          color: AppColors.primary,
+                          color: ThemeColors.primary(context),
                           size: 24,
                         ),
                       ),
@@ -667,7 +664,7 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
                         child: Text(
                           'Update your personal information and address details.',
                           style: UnifiedTypography.bodyMedium.copyWith(
-                            color: AppColors.textSecondary,
+                            color: ThemeColors.textSecondary(context),
                           ),
                         ),
                       ),

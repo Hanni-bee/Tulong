@@ -262,32 +262,36 @@ class _UnifiedTopBarState extends State<UnifiedTopBar>
                         Row(
                           children: [
                             if (widget.subtitle != null && widget.subtitle!.isNotEmpty)
-                              GestureDetector(
-                                onTap: widget.onSubtitleTap,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-                                  decoration: BoxDecoration(
-                                    color: widget.subtitle!.toLowerCase().contains('connected')
-                                        ? AppColors.success.withOpacity(0.12)
-                                        : AppColors.warning.withOpacity(0.12),
-                                    borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(
+                              Expanded(
+                                child: GestureDetector(
+                                  onTap: widget.onSubtitleTap,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                                    decoration: BoxDecoration(
                                       color: widget.subtitle!.toLowerCase().contains('connected')
-                                          ? AppColors.success.withOpacity(0.25)
-                                          : AppColors.warning.withOpacity(0.25),
-                                      width: 1.5,
+                                          ? AppColors.success.withOpacity(0.12)
+                                          : AppColors.warning.withOpacity(0.12),
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(
+                                        color: widget.subtitle!.toLowerCase().contains('connected')
+                                            ? AppColors.success.withOpacity(0.25)
+                                            : AppColors.warning.withOpacity(0.25),
+                                        width: 1.5,
+                                      ),
                                     ),
-                                  ),
-                                  child: Text(
-                                    widget.subtitle!,
-                                    style: UnifiedTypography.appBarSubtitle.copyWith(
-                                      color: widget.subtitle!.toLowerCase().contains('connected')
-                                          ? AppColors.success
-                                          : AppColors.warning,
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w700,
-                                      height: 1.1,
-                                      letterSpacing: 0.2,
+                                    child: Text(
+                                      widget.subtitle!,
+                                      overflow: TextOverflow.ellipsis,
+                                      maxLines: 1,
+                                      style: UnifiedTypography.appBarSubtitle.copyWith(
+                                        color: widget.subtitle!.toLowerCase().contains('connected')
+                                            ? AppColors.success
+                                            : AppColors.warning,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w700,
+                                        height: 1.1,
+                                        letterSpacing: 0.2,
+                                      ),
                                     ),
                                   ),
                                 ),

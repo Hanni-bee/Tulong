@@ -256,22 +256,30 @@ class _EmergencyAlertWidgetState extends State<EmergencyAlertWidget>
                                         ),
                                       ),
                                       child: Container(
-                                        padding: const EdgeInsets.all(8),
+                                        padding: const EdgeInsets.all(6),
                                         decoration: BoxDecoration(
-                                          gradient: LinearGradient(
-                                            begin: Alignment.topLeft,
-                                            end: Alignment.bottomRight,
-                                            colors: [
-                                              emergencyColor,
-                                              emergencyColor.withOpacity(0.8),
-                                            ],
-                                          ),
+                                          color: Colors.white,
                                           borderRadius: BorderRadius.circular(8),
+                                          border: Border.all(
+                                            color: emergencyColor.withOpacity(0.2),
+                                            width: 1,
+                                          ),
                                         ),
-                                        child: Icon(
-                                          Icons.emergency,
-                                          color: AppColors.white,
-                                          size: 24,
+                                        child: ClipRRect(
+                                          borderRadius: BorderRadius.circular(6),
+                                          child: Image.asset(
+                                            'assets/images/app_logo (3).png',
+                                            width: 28,
+                                            height: 28,
+                                            fit: BoxFit.contain,
+                                            errorBuilder: (context, error, stackTrace) {
+                                              return Icon(
+                                                Icons.emergency,
+                                                color: emergencyColor,
+                                                size: 24,
+                                              );
+                                            },
+                                          ),
                                         ),
                                       ),
                                     ),

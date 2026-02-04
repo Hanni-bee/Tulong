@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../constants/app_colors.dart';
 import '../constants/app_typography.dart';
+import '../utils/theme_colors.dart';
 
 /// Enhanced empty state widget with consistent design, animations, and actionable guidance
 class EnhancedEmptyState extends StatefulWidget {
@@ -128,9 +129,11 @@ class _EnhancedEmptyStateState extends State<EnhancedEmptyState>
     super.dispose();
   }
 
-  Widget _buildIcon() {
+  Widget _buildIcon(BuildContext context) {
     final iconColor = widget.iconColor ?? AppColors.primaryRed;
-    final iconBgColor = widget.iconBackgroundColor ?? iconColor.withOpacity(0.08);
+    final isDark = ThemeColors.isDark(context);
+    final iconBgColor = widget.iconBackgroundColor ??
+        (isDark ? iconColor.withOpacity(0.12) : iconColor.withOpacity(0.08));
 
     if (widget.illustration != null) {
       return widget.illustration!;
@@ -155,17 +158,18 @@ class _EnhancedEmptyStateState extends State<EnhancedEmptyState>
         shape: BoxShape.circle,
         boxShadow: [
           BoxShadow(
-            color: iconColor.withOpacity(0.15),
-            blurRadius: 24,
+            color: iconColor.withOpacity(isDark ? 0.2 : 0.15),
+            blurRadius: isDark ? 20 : 24,
             offset: const Offset(0, 8),
             spreadRadius: 0,
           ),
-          BoxShadow(
-            color: Colors.white.withOpacity(0.6),
-            blurRadius: 12,
-            offset: const Offset(0, -4),
-            spreadRadius: 0,
-          ),
+          if (!isDark)
+            BoxShadow(
+              color: Colors.white.withOpacity(0.6),
+              blurRadius: 12,
+              offset: const Offset(0, -4),
+              spreadRadius: 0,
+            ),
         ],
       ),
       child: Center(child: iconWidget),
@@ -192,12 +196,12 @@ class _EnhancedEmptyStateState extends State<EnhancedEmptyState>
                       scale: _scaleAnimation,
                       child: Transform.scale(
                         scale: _iconPulseAnimation.value,
-                        child: _buildIcon(),
+                        child: _buildIcon(context),
                       ),
                     ),
                   )
                 else
-                  _buildIcon(),
+                  _buildIcon(context),
 
                 const SizedBox(height: 32),
 
@@ -211,7 +215,7 @@ class _EnhancedEmptyStateState extends State<EnhancedEmptyState>
                         Text(
                           widget.title,
                           style: AppTypography.headlineMedium.copyWith(
-                            color: AppColors.textPrimary,
+                            color: ThemeColors.textPrimary(context),
                             fontWeight: FontWeight.w700,
                             letterSpacing: -0.5,
                           ),
@@ -221,7 +225,7 @@ class _EnhancedEmptyStateState extends State<EnhancedEmptyState>
                         Text(
                           widget.message,
                           style: AppTypography.bodyLarge.copyWith(
-                            color: AppColors.textSecondary,
+                            color: ThemeColors.textSecondary(context),
                             height: 1.5,
                           ),
                           textAlign: TextAlign.center,
@@ -235,10 +239,10 @@ class _EnhancedEmptyStateState extends State<EnhancedEmptyState>
                               vertical: 12,
                             ),
                             decoration: BoxDecoration(
-                              color: AppColors.info.withOpacity(0.1),
+                              color: ThemeColors.surfaceContainer(context),
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(
-                                color: AppColors.info.withOpacity(0.2),
+                                color: ThemeColors.border(context),
                                 width: 1,
                               ),
                             ),

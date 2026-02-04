@@ -176,7 +176,7 @@ class _ConnectedUsersModalState extends State<ConnectedUsersModal> {
           borderRadius: BorderRadius.circular(24),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.2),
+              color: ThemeColors.shadow(context, opacity: 0.2),
               blurRadius: 24,
               offset: const Offset(0, 8),
             ),
@@ -325,7 +325,7 @@ class _ConnectedUsersModalState extends State<ConnectedUsersModal> {
                   ? 'Make sure your ESP32 is powered on'
                   : 'Try scanning again or check your device',
               style: UnifiedTypography.bodySmall.copyWith(
-                color: AppColors.textSecondary,
+                color: ThemeColors.textSecondary(context),
               ),
               textAlign: TextAlign.center,
             ),
@@ -348,17 +348,17 @@ class _ConnectedUsersModalState extends State<ConnectedUsersModal> {
         return Container(
           margin: const EdgeInsets.only(bottom: 12),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: ThemeColors.surfaceContainer(context),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
               color: isSelected 
                   ? AppColors.info 
-                  : Colors.grey.withOpacity(0.2),
+                  : ThemeColors.border(context),
               width: isSelected ? 2 : 1,
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.05),
+                color: ThemeColors.shadow(context, opacity: 0.05),
                 blurRadius: 8,
                 offset: const Offset(0, 2),
               ),
@@ -383,6 +383,7 @@ class _ConnectedUsersModalState extends State<ConnectedUsersModal> {
               deviceName,
               style: UnifiedTypography.titleMedium.copyWith(
                 fontWeight: FontWeight.w700,
+                color: ThemeColors.textPrimary(context),
               ),
             ),
             subtitle: Padding(
@@ -390,7 +391,7 @@ class _ConnectedUsersModalState extends State<ConnectedUsersModal> {
               child: Text(
                 deviceAddress,
                 style: UnifiedTypography.bodySmall.copyWith(
-                  color: AppColors.textSecondary,
+                  color: ThemeColors.textSecondary(context),
                 ),
               ),
             ),
@@ -403,7 +404,7 @@ class _ConnectedUsersModalState extends State<ConnectedUsersModal> {
                 : Icon(
                     Icons.arrow_forward_ios,
                     size: 18,
-                    color: AppColors.textSecondary,
+                    color: ThemeColors.textSecondary(context),
                   ),
             onTap: isSelected ? null : () {
               _pairAndConnect(deviceName, deviceAddress);
