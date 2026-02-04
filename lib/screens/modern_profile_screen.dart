@@ -17,6 +17,10 @@ import 'package:tulong_app/widgets/enhanced_skeleton_loaders.dart';
 import 'package:tulong_app/widgets/accessible_text.dart';
 import 'package:tulong_app/utils/icon_system.dart';
 import '../providers/chat_provider.dart';
+import '../services/user_status_service.dart';
+import '../models/emergency_type.dart';
+import '../models/emergency_detection_result.dart';
+import 'package:intl/intl.dart';
 
 class ModernProfileScreen extends StatefulWidget {
   const ModernProfileScreen({super.key});
@@ -807,47 +811,194 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
       builder: (context, auth, child) {
         final userModel = auth.currentUserModel;
         
-        return Container(
-          margin: const EdgeInsets.only(bottom: 32),
-          child: Row(
-            children: [
-              Expanded(
-                child: _statCardsStagger.buildAnimatedItem(
-                  0,
-                  _buildStatCard(
-                    title: 'Days Active',
-                    value: _getDaysActiveCount(userModel),
-                    icon: Icons.calendar_today_outlined,
-                    color: AppColors.info,
+        return Column(
+          children: [
+            // User Status Card (Current Emergency Status)
+            Container(
+              margin: const EdgeInsets.only(bottom: 16),
+              child: FutureBuilder<Map<String, dynamic>?>(
+                future: UserStatusService.instance.getFormattedStatus(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const SkeletonStatCard();
+                  }
+                  
+                  final status = snapshot.data;
+                  if (status == null) {
+                    return _buildUserStatusCard(
+                      severity: null,
+                      emergencyType: null,
+                      lastUpdated: null,
+                    );
+                  }
+                  
+                  return _buildUserStatusCard(
+                    severity: status['severity'] as SeverityLevel,
+                    emergencyType: status['emergency_type'] as EmergencyType,
+                    lastUpdated: status['last_updated'] as DateTime,
+                    severityColor: status['severity_color'] as Color,
+                    lastUpdatedFormatted: status['last_updated_formatted'] as String,
+                  );
+                },
+              ),
+            ),
+            
+            // Stats Row
+            Row(
+              children: [
+                Expanded(
+                  child: _statCardsStagger.buildAnimatedItem(
+                    0,
+                    _buildStatCard(
+                      title: 'Days Active',
+                      value: _getDaysActiveCount(userModel),
+                      icon: Icons.calendar_today_outlined,
+                      color: AppColors.info,
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: _statCardsStagger.buildAnimatedItem(
-                  1,
-                  FutureBuilder<String>(
-                    future: _getConnectedDevicesCountAsync(),
-                    builder: (context, snapshot) {
-                      final deviceCount = snapshot.data ?? '0';
-                      return _buildStatCard(
-                        title: 'Connected Devices',
-                        value: deviceCount,
-                        icon: Icons.bluetooth_connected,
-                        color: AppColors.primaryRed,
-                      );
-                    },
+                const SizedBox(width: 16),
+                Expanded(
+                  child: _statCardsStagger.buildAnimatedItem(
+                    1,
+                    FutureBuilder<String>(
+                      future: _getConnectedDevicesCountAsync(),
+                      builder: (context, snapshot) {
+                        final deviceCount = snapshot.data ?? '0';
+                        return _buildStatCard(
+                          title: 'Connected Devices',
+                          value: deviceCount,
+                          icon: Icons.bluetooth_connected,
+                          color: AppColors.primaryRed,
+                        );
+                      },
+                    ),
                   ),
                 ),
-              ),
-            ],
-          ),
+              ],
+            ),
+          ],
         );
       },
     );
   }
 
   // Activity breakdown removed
+  
+  /// Build user status card showing current emergency status
+  Widget _buildUserStatusCard({
+    SeverityLevel? severity,
+    EmergencyType? emergencyType,
+    DateTime? lastUpdated,
+    Color? severityColor,
+    String? lastUpdatedFormatted,
+  }) {
+    final hasStatus = severity != null && emergencyType != null && lastUpdated != null;
+    final color = severityColor ?? AppColors.mediumGray;
+    final dateFormat = DateFormat('MMM dd, yyyy');
+    final timeFormat = DateFormat('hh:mm:ss a');
+    
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: hasStatus ? color.withOpacity(0.3) : AppColors.lightGray,
+          width: 2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: hasStatus ? color.withOpacity(0.1) : Colors.black.withOpacity(0.05),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: hasStatus ? color.withOpacity(0.1) : AppColors.lightGray.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  hasStatus ? Icons.warning_amber_rounded : Icons.info_outline,
+                  color: hasStatus ? color : AppColors.mediumGray,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Current Status',
+                      style: UnifiedTypography.bodySmall.copyWith(
+                        color: AppColors.mediumGray,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      hasStatus
+                          ? '${emergencyType!.emoji} ${emergencyType.label} - ${severity!.label.toUpperCase()}'
+                          : 'No Status Available',
+                      style: UnifiedTypography.titleMedium.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: hasStatus ? color : AppColors.mediumGray,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (hasStatus && lastUpdated != null) ...[
+            const SizedBox(height: 16),
+            const Divider(height: 1),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Icon(
+                  Icons.access_time,
+                  size: 16,
+                  color: AppColors.mediumGray,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Last Updated',
+                        style: UnifiedTypography.bodySmall.copyWith(
+                          color: AppColors.mediumGray,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        lastUpdatedFormatted ?? '${dateFormat.format(lastUpdated)} at ${timeFormat.format(lastUpdated)}',
+                        style: UnifiedTypography.bodyMedium.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 
   Widget _buildStatCard({
     required String title,

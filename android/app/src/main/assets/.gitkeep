@@ -1,0 +1,2 @@
+# This file ensures the assets directory exists
+# TFLite models are loaded from flutter_assets, not this directory

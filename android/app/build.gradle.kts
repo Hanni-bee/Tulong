@@ -58,6 +58,30 @@ android {
             // proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
+
+    // CRITICAL: Prevent TFLite model compression
+    // TFLite models MUST NOT be compressed, otherwise they can't be loaded at runtime
+    // This is the #1 cause of "model can't be loaded" errors
+    packaging {
+        resources {
+            excludes += listOf(
+                "META-INF/DEPENDENCIES",
+                "META-INF/LICENSE",
+                "META-INF/LICENSE.txt",
+                "META-INF/license.txt",
+                "META-INF/NOTICE",
+                "META-INF/NOTICE.txt",
+                "META-INF/notice.txt",
+                "META-INF/ASL2.0"
+            )
+        }
+    }
+    
+    // CRITICAL: Do not compress .tflite files
+    // This is essential for TFLite models to load correctly
+    androidResources {
+        noCompress += listOf("tflite", "lite")
+    }
 }
 
 flutter {

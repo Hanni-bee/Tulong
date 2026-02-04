@@ -71,6 +71,7 @@ flutter:
     - assets/lottie/
     - assets/gifs/disasters/
     - assets/philippine_provinces_cities_municipalities_and_barangays_2019v2.json
+    - assets/best_model.tflite
 
 # Flutter Launcher Icons Configuration
 flutter_launcher_icons:
