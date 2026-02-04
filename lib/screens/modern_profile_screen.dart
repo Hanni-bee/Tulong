@@ -20,6 +20,7 @@ import 'package:tulong_app/utils/icon_system.dart';
 import '../widgets/user_engagement_dashboard.dart';
 import '../providers/chat_provider.dart';
 import '../providers/theme_provider.dart';
+import '../services/user_status_service.dart';
 
 class ModernProfileScreen extends StatefulWidget {
   const ModernProfileScreen({super.key});
@@ -872,40 +873,125 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
         
         return Container(
           margin: const EdgeInsets.only(bottom: 32),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Expanded(
-                child: _statCardsStagger.buildAnimatedItem(
-                  0,
-                  _buildStatCard(
-                    context,
-                    title: 'Days Active',
-                    value: _getDaysActiveCount(userModel),
-                    icon: Icons.calendar_today_outlined,
-                    color: AppColors.info,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: _statCardsStagger.buildAnimatedItem(
-                  1,
-                  FutureBuilder<String>(
-                    future: _getConnectedDevicesCountAsync(),
-                    builder: (context, snapshot) {
-                      final deviceCount = snapshot.data ?? '0';
-                      return _buildStatCard(
+              Row(
+                children: [
+                  Expanded(
+                    child: _statCardsStagger.buildAnimatedItem(
+                      0,
+                      _buildStatCard(
                         context,
-                        title: 'Connected Devices',
-                        value: deviceCount,
-                        icon: Icons.bluetooth_connected,
-                        color: AppColors.primaryRed,
-                      );
-                    },
+                        title: 'Days Active',
+                        value: _getDaysActiveCount(userModel),
+                        icon: Icons.calendar_today_outlined,
+                        color: AppColors.info,
+                      ),
+                    ),
                   ),
-                ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: _statCardsStagger.buildAnimatedItem(
+                      1,
+                      FutureBuilder<String>(
+                        future: _getConnectedDevicesCountAsync(),
+                        builder: (context, snapshot) {
+                          final deviceCount = snapshot.data ?? '0';
+                          return _buildStatCard(
+                            context,
+                            title: 'Connected Devices',
+                            value: deviceCount,
+                            icon: Icons.bluetooth_connected,
+                            color: AppColors.primaryRed,
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              _statCardsStagger.buildAnimatedItem(
+                2,
+                _buildUserStatusCard(),
               ),
             ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildUserStatusCard() {
+    return FutureBuilder<Map<String, dynamic>?>(
+      future: UserStatusService.instance.getFormattedStatus(),
+      builder: (context, snapshot) {
+        final status = snapshot.data;
+        if (status == null) {
+          return const SizedBox.shrink();
+        }
+        final severityColor = status['severity_color'] as Color;
+        final severityLabel = status['severity_label'] as String;
+        final emergencyLabel = status['emergency_type_label'] as String;
+        final lastUpdated = status['last_updated_formatted'] as String? ?? '—';
+        return AnimatedNeumorphicCard(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: severityColor.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: severityColor.withOpacity(0.3),
+                      width: 1,
+                    ),
+                  ),
+                  child: Text(
+                    status['emergency_type_emoji'] as String? ?? '📋',
+                    style: const TextStyle(fontSize: 24),
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Current Status',
+                        style: UnifiedTypography.bodySmall.copyWith(
+                          color: AppColors.mediumGray,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '$emergencyLabel · $severityLabel',
+                        style: UnifiedTypography.titleMedium.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: severityColor,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Updated: $lastUpdated',
+                        style: UnifiedTypography.bodySmall.copyWith(
+                          color: AppColors.mediumGray,
+                          fontSize: 11,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         );
       },

@@ -5,11 +5,11 @@ import 'package:flutter/services.dart';
 import 'package:camera/camera.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:intl/intl.dart';
 import '../constants/app_colors.dart';
 import '../utils/theme_colors.dart';
 import '../constants/app_typography.dart';
 import '../constants/soft_ui_design.dart';
-import '../constants/unified_typography.dart';
 import '../utils/permission_helper.dart';
 import '../models/emergency_type.dart';
 import '../models/emergency_detection_result.dart';
@@ -18,7 +18,11 @@ import '../services/image_preprocessing_service.dart';
 import '../services/emergency_detection_service.dart';
 import '../services/simple_bluetooth_service.dart';
 import '../services/ml_model_service.dart';
+import '../services/disaster_classification_service.dart';
+import '../services/detection_history_service.dart';
 import '../widgets/unified_top_bar.dart';
+import '../widgets/ai_info_widget.dart';
+import '../widgets/ai_assessment_widget.dart';
 
 /// Emergency Detection Screen - Replaces Calls Screen
 /// Allows users to capture photos and detect emergency types using AI/ML
@@ -34,6 +38,8 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
   final CameraService _cameraService = CameraService();
   final ImagePreprocessingService _preprocessingService = ImagePreprocessingService();
   final EmergencyDetectionService _detectionService = EmergencyDetectionService();
+  final DisasterClassificationService _mlClassificationService = DisasterClassificationService.instance;
+  final DetectionHistoryService _historyService = DetectionHistoryService.instance;
   
   bool _isCameraInitialized = false;
   bool _isProcessing = false;
@@ -106,28 +112,74 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
       ),
     );
     
-    // Try to load ML model if available (optional, won't fail if not present)
+    // Try to load AI disaster classification model (best_model.tflite)
     _tryLoadMLModel();
-    
+    _loadHistory();
     _initializeCamera();
   }
-  
-  /// Try to load ML model (optional enhancement)
-  Future<void> _tryLoadMLModel() async {
+
+  /// Load detection history from SQLite (user-specific)
+  Future<void> _loadHistory() async {
+    if (!mounted) return;
     try {
-      // Try to load model - will fail silently if model not found
-      final loaded = await MLModelService.instance.loadModel('models/emergency_detector.tflite');
-      if (loaded) {
-        // Enable ML model usage in detection service
-        _detectionService.setUseMLModel(true);
-        debugPrint('✅ ML Model enabled for emergency detection');
-      } else {
-        debugPrint('ℹ️ ML Model not available, using rule-based detection');
+      final detections = await _historyService.getUserDetections(limit: 10);
+      if (mounted) {
+        setState(() {
+          _recentDetections.clear();
+          _recentDetections.addAll(detections);
+        });
       }
     } catch (e) {
-      // Model not found or other error - this is fine, rule-based will work
-      debugPrint('ℹ️ ML Model not available: $e (rule-based detection will be used)');
+      debugPrint('Error loading detection history: $e');
     }
+  }
+
+  /// Try to load ML model (AI disaster classification - best_model.tflite)
+  Future<void> _tryLoadMLModel() async {
+    try {
+      final loaded = await _mlClassificationService.loadModel();
+      if (loaded) {
+        debugPrint('✅ AI disaster classification model loaded successfully');
+      } else {
+        // Fallback: try legacy path for rule-based enhancement
+        final legacyLoaded = await MLModelService.instance.loadModel('best_model.tflite');
+        if (legacyLoaded) {
+          _detectionService.setUseMLModel(true);
+          debugPrint('✅ ML Model enabled for emergency detection');
+        } else {
+          debugPrint('ℹ️ AI model not available, using rule-based detection');
+        }
+      }
+    } catch (e) {
+      debugPrint('ℹ️ AI model not available: $e (rule-based detection will be used)');
+    }
+  }
+
+  /// Show AI info modal (replaces debug UI)
+  void _showAIInfo() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.psychology, color: AppColors.primaryRed),
+            SizedBox(width: 8),
+            Text('AI Disaster Detection'),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: AIInfoWidget(
+            isModelLoaded: _mlClassificationService.isModelLoaded,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Got it'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -325,42 +377,41 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
         return;
       }
       
-      // Preprocess image for ML model
-      final preprocessed = await _preprocessingService.preprocessImage(imagePath);
-      
-      if (preprocessed == null) {
-        if (mounted) {
-          setState(() {
-            _isProcessing = false;
-          });
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Failed to process image. Please try again.'),
-              backgroundColor: AppColors.error,
-            ),
-          );
+      // Use AI disaster classification if model is loaded, else rule-based
+      EmergencyDetectionResult result;
+      if (_mlClassificationService.isModelLoaded) {
+        result = await _mlClassificationService.classifyDisaster(imagePath);
+        await _historyService.saveDetection(result);
+      } else {
+        final preprocessed = await _preprocessingService.preprocessImage(imagePath);
+        if (preprocessed == null) {
+          if (mounted) {
+            setState(() {
+              _isProcessing = false;
+            });
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Failed to process image. Please try again.'),
+                backgroundColor: AppColors.error,
+              ),
+            );
+          }
+          return;
         }
-        return;
+        result = await _detectionService.detectEmergency(preprocessed, imagePath);
+        await _historyService.saveDetection(result);
       }
-      
-      // Perform emergency detection using rule-based classification
-      final result = await _detectionService.detectEmergency(
-        preprocessed,
-        imagePath,
-      );
 
       if (mounted) {
         setState(() {
           _isProcessing = false;
           _recentDetections.insert(0, result);
-          // Keep only last 10 detections
           if (_recentDetections.length > 10) {
             _recentDetections.removeLast();
           }
         });
-
-        // Show result dialog
         _showDetectionResult(result);
+        _loadHistory();
       }
     } catch (e) {
       debugPrint('Error capturing photo: $e');
@@ -393,7 +444,8 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
   }
 
   /// Show detection result dialog with enhanced UI
-  void _showDetectionResult(EmergencyDetectionResult result) {
+  /// [detailedAssessment] optional from DisasterClassificationService for AI breakdown
+  void _showDetectionResult(EmergencyDetectionResult result, [Map<String, dynamic>? detailedAssessment]) {
     // Special handling for "No Emergency" - positive, reassuring message
     if (result.type == EmergencyType.noEmergency) {
       _showNoEmergencyDialog(result);
@@ -604,7 +656,10 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                         ),
                       ],
                     ),
-                    
+                    if (detailedAssessment != null) ...[
+                      const SizedBox(height: 16),
+                      AIAssessmentWidget(result: result, detailedAssessment: detailedAssessment),
+                    ],
                     const SizedBox(height: 20),
                     
                     // Quick actions
@@ -890,35 +945,10 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
               icon: Icons.camera_alt_rounded,
               iconColor: AppColors.primaryRed,
               actions: [
-                Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    onTap: _showInfoDialog,
-                    borderRadius: BorderRadius.circular(10),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: AppColors.warning.withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: AppColors.warning.withOpacity(0.25),
-                          width: 1.5,
-                        ),
-                      ),
-                      child: Text(
-                        'Detection',
-                        overflow: TextOverflow.ellipsis,
-                        maxLines: 1,
-                        style: UnifiedTypography.appBarSubtitle.copyWith(
-                          color: AppColors.warning,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          height: 1.1,
-                          letterSpacing: 0.2,
-                        ),
-                      ),
-                    ),
-                  ),
+                IconButton(
+                  icon: const Icon(Icons.info_outline_rounded),
+                  onPressed: _showAIInfo,
+                  tooltip: 'AI Detection Info',
                 ),
               ],
               compact: true,
@@ -1333,271 +1363,201 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
               ),
             ),
 
-            // Recent detections section - always visible
+            // Detection History section (branch UI - horizontal list + View All modal)
             Flexible(
               flex: 2,
               child: Container(
                 margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                decoration: SoftUIDesign.cardDecoration(
-                  context: context,
-                  backgroundColor: ThemeColors.surface(context),
-                  borderRadius: SoftUIDesign.cardBorderRadius,
-                  elevation: 4.0,
-                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Header
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-                      child: Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: AppColors.primaryRed.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Icon(
-                              Icons.history_rounded,
-                              size: 20,
-                              color: AppColors.primaryRed,
-                            ),
+                    Row(
+                      children: [
+                        const Icon(Icons.history, color: AppColors.primaryRed, size: 22),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Detection History',
+                          style: AppTypography.bodyLarge.copyWith(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 18,
                           ),
-                          const SizedBox(width: 12),
-                          Text(
-                            'Recent Detections',
-                            style: AppTypography.titleLarge.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const Spacer(),
-                          if (_recentDetections.isNotEmpty)
-                            Text(
-                              '${_recentDetections.length}',
-                              style: AppTypography.bodySmall.copyWith(
-                                color: AppColors.mediumGray,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                    
-                    // Content - scrollable if many items
-                    Expanded(
-                      child: _recentDetections.isEmpty
-                          ? SingleChildScrollView(
-                              child: ConstrainedBox(
-                                constraints: BoxConstraints(
-                                  minHeight: MediaQuery.of(context).size.height * 0.2,
+                        ),
+                        const Spacer(),
+                        if (_recentDetections.isNotEmpty)
+                          GestureDetector(
+                            onTap: _showFullHistoryModal,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: AppColors.primaryRed.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color: AppColors.primaryRed.withOpacity(0.3),
+                                  width: 1,
                                 ),
-                                child: Center(
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 24),
-                                    child: Column(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        TweenAnimationBuilder<double>(
-                                          tween: Tween(begin: 0.0, end: 1.0),
-                                          duration: const Duration(milliseconds: 800),
-                                          curve: Curves.easeOut,
-                                          builder: (context, value, child) {
-                                            return Transform.scale(
-                                              scale: 0.8 + (0.2 * value),
-                                              child: Opacity(
-                                                opacity: value,
-                                                child: child,
-                                              ),
-                                            );
-                                          },
-                                          child: Container(
-                                            padding: const EdgeInsets.all(24),
-                                            decoration: BoxDecoration(
-                                              color: AppColors.primaryRed.withOpacity(0.1),
-                                              shape: BoxShape.circle,
-                                              border: Border.all(
-                                                color: AppColors.primaryRed.withOpacity(0.2),
-                                                width: 2,
-                                              ),
-                                            ),
-                                            child: Icon(
-                                              Icons.camera_alt_rounded,
-                                              size: 48,
-                                              color: AppColors.primaryRed.withOpacity(0.6),
-                                            ),
-                                          ),
-                                        ),
-                                        const SizedBox(height: 24),
-                                        Text(
-                                          'Ready to Detect',
-                                          style: AppTypography.titleMedium.copyWith(
-                                            color: ThemeColors.textPrimary(context),
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 8),
-                                        Text(
-                                          'Capture a photo to detect emergency situations',
-                                          style: AppTypography.bodySmall.copyWith(
-                                            color: AppColors.mediumGray,
-                                          ),
-                                          textAlign: TextAlign.center,
-                                        ),
-                                        const SizedBox(height: 16),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                                          decoration: BoxDecoration(
-                                            color: AppColors.primaryRed.withOpacity(0.1),
-                                            borderRadius: BorderRadius.circular(20),
-                                            border: Border.all(
-                                              color: AppColors.primaryRed.withOpacity(0.2),
-                                              width: 1,
-                                            ),
-                                          ),
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Icon(
-                                                Icons.auto_awesome,
-                                                size: 16,
-                                                color: AppColors.primaryRed,
-                                              ),
-                                              const SizedBox(width: 8),
-                                              Text(
-                                                'AI-Powered Detection',
-                                                style: AppTypography.bodySmall.copyWith(
-                                                  color: AppColors.primaryRed,
-                                                  fontWeight: FontWeight.w600,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ],
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    'View All',
+                                    style: AppTypography.bodySmall.copyWith(
+                                      color: AppColors.primaryRed,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12,
                                     ),
                                   ),
+                                  const SizedBox(width: 4),
+                                  Icon(
+                                    Icons.arrow_forward_ios,
+                                    size: 12,
+                                    color: AppColors.primaryRed,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    if (_recentDetections.isEmpty)
+                      Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: ThemeColors.surface(context),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: AppColors.lightGray),
+                        ),
+                        child: Center(
+                          child: Column(
+                            children: [
+                              Icon(
+                                Icons.history_outlined,
+                                size: 48,
+                                color: AppColors.mediumGray.withOpacity(0.5),
+                              ),
+                              const SizedBox(height: 12),
+                              Text(
+                                'No detections yet',
+                                style: AppTypography.bodyMedium.copyWith(
+                                  color: AppColors.mediumGray,
                                 ),
                               ),
-                            )
-                          : ListView.builder(
-                              padding: const EdgeInsets.symmetric(horizontal: 16),
-                              itemCount: _recentDetections.length,
-                              itemBuilder: (context, index) {
-                                final detection = _recentDetections[index];
-                                final severityColor = _getSeverityColor(detection.severity);
-                                
-                                return TweenAnimationBuilder<double>(
-                                  tween: Tween(begin: 0.0, end: 1.0),
-                                  duration: Duration(milliseconds: 300 + (index * 50)),
-                                  curve: Curves.easeOut,
-                                  builder: (context, value, child) {
-                                    return Opacity(
-                                      opacity: value,
-                                      child: Transform.translate(
-                                        offset: Offset(0, 20 * (1 - value)),
-                                        child: child,
-                                      ),
-                                    );
-                                  },
-                                  child: Container(
-                                    margin: const EdgeInsets.only(bottom: 12),
-                                    padding: const EdgeInsets.all(14),
-                                    decoration: BoxDecoration(
-                                      color: severityColor.withOpacity(0.05),
-                                      borderRadius: BorderRadius.circular(12),
-                                      border: Border.all(
-                                        color: severityColor.withOpacity(0.2),
-                                        width: 1.5,
-                                      ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Capture a photo to start',
+                                style: AppTypography.captionText.copyWith(
+                                  color: AppColors.mediumGray,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    else
+                      SizedBox(
+                        height: 140,
+                        child: ListView.builder(
+                          scrollDirection: Axis.horizontal,
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          itemCount: _recentDetections.length,
+                          itemBuilder: (context, index) {
+                            final detection = _recentDetections[index];
+                            final severityColor = _getSeverityColor(detection.severity);
+                            final dateFormat = DateFormat('MMM dd');
+                            final timeFormat = DateFormat('hh:mm a');
+                            return GestureDetector(
+                              onTap: () => _showDetectionDetails(detection),
+                              child: Container(
+                                width: 140,
+                                margin: const EdgeInsets.only(right: 12),
+                                decoration: BoxDecoration(
+                                  color: ThemeColors.surface(context),
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(
+                                    color: severityColor.withOpacity(0.3),
+                                    width: 2,
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: severityColor.withOpacity(0.1),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 2),
                                     ),
-                                    child: Row(
-                                      children: [
-                                        Container(
-                                          padding: const EdgeInsets.all(10),
-                                          decoration: BoxDecoration(
-                                            color: severityColor.withOpacity(0.15),
-                                            borderRadius: BorderRadius.circular(10),
-                                            border: Border.all(
-                                              color: severityColor.withOpacity(0.3),
-                                              width: 1,
-                                            ),
-                                          ),
-                                          child: Text(
+                                  ],
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(12),
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Text(
                                             detection.type.emoji,
                                             style: const TextStyle(fontSize: 28),
                                           ),
-                                        ),
-                                        const SizedBox(width: 14),
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              Text(
-                                                detection.type.label,
-                                                style: AppTypography.titleMedium.copyWith(
-                                                  fontWeight: FontWeight.bold,
-                                                ),
-                                              ),
-                                              const SizedBox(height: 6),
-                                              Row(
-                                                children: [
-                                                  Container(
-                                                    width: 10,
-                                                    height: 10,
-                                                    decoration: BoxDecoration(
-                                                      color: severityColor,
-                                                      shape: BoxShape.circle,
-                                                      boxShadow: [
-                                                        BoxShadow(
-                                                          color: severityColor.withOpacity(0.5),
-                                                          blurRadius: 4,
-                                                          spreadRadius: 1,
-                                                        ),
-                                                      ],
-                                                    ),
-                                                  ),
-                                                  const SizedBox(width: 8),
-                                                  Text(
-                                                    detection.severity.label.toUpperCase(),
-                                                    style: AppTypography.bodySmall.copyWith(
-                                                      color: severityColor,
-                                                      fontWeight: FontWeight.bold,
-                                                      letterSpacing: 0.5,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ],
+                                          const Spacer(),
+                                          Container(
+                                            width: 8,
+                                            height: 8,
+                                            decoration: BoxDecoration(
+                                              color: severityColor,
+                                              shape: BoxShape.circle,
+                                            ),
                                           ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        detection.type.label,
+                                        style: AppTypography.bodySmall.copyWith(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 12,
                                         ),
-                                        Column(
-                                          crossAxisAlignment: CrossAxisAlignment.end,
-                                          children: [
-                                            Text(
-                                              _formatTimeAgo(detection.timestamp),
-                                              style: AppTypography.bodySmall.copyWith(
-                                                color: AppColors.mediumGray,
-                                              ),
-                                            ),
-                                            const SizedBox(height: 4),
-                                            Text(
-                                              '${(detection.confidence * 100).toStringAsFixed(0)}%',
-                                              style: AppTypography.bodySmall.copyWith(
-                                                color: AppColors.mediumGray,
-                                                fontWeight: FontWeight.w600,
-                                              ),
-                                            ),
-                                          ],
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        detection.severity.label,
+                                        style: AppTypography.captionText.copyWith(
+                                          color: severityColor,
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: 10,
                                         ),
-                                      ],
-                                    ),
+                                      ),
+                                      const Spacer(),
+                                      Row(
+                                        children: [
+                                          Icon(
+                                            Icons.access_time,
+                                            size: 10,
+                                            color: AppColors.mediumGray,
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Expanded(
+                                            child: Text(
+                                              '${dateFormat.format(detection.timestamp)}\n${timeFormat.format(detection.timestamp)}',
+                                              style: AppTypography.captionText.copyWith(
+                                                color: AppColors.mediumGray,
+                                                fontSize: 9,
+                                              ),
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
                                   ),
-                                );
-                              },
-                            ),
-                    ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -1608,20 +1568,223 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
     );
   }
 
-  /// Format timestamp as "X minutes ago"
-  String _formatTimeAgo(DateTime timestamp) {
-    final now = DateTime.now();
-    final difference = now.difference(timestamp);
+  /// Full history modal (branch UI - draggable sheet with list)
+  void _showFullHistoryModal() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.7,
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
+          expand: false,
+          builder: (BuildContext context, ScrollController scrollController) {
+            return Container(
+              decoration: BoxDecoration(
+                color: ThemeColors.surface(context),
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 10,
+                    spreadRadius: 5,
+                  ),
+                ],
+              ),
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    child: Container(
+                      width: 40,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        color: AppColors.mediumGray.withOpacity(0.5),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.history, color: AppColors.primaryRed, size: 24),
+                        const SizedBox(width: 12),
+                        Text(
+                          'Detection History',
+                          style: AppTypography.titleLarge.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const Spacer(),
+                        Text(
+                          '${_recentDetections.length}',
+                          style: AppTypography.bodyLarge.copyWith(
+                            color: AppColors.mediumGray,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  Expanded(
+                    child: _recentDetections.isEmpty
+                        ? Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.history_outlined,
+                                  size: 64,
+                                  color: AppColors.mediumGray.withOpacity(0.5),
+                                ),
+                                const SizedBox(height: 16),
+                                Text(
+                                  'No detection history',
+                                  style: AppTypography.bodyLarge.copyWith(
+                                    color: AppColors.mediumGray,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        : ListView.builder(
+                            controller: scrollController,
+                            padding: const EdgeInsets.all(16),
+                            itemCount: _recentDetections.length,
+                            itemBuilder: (context, index) {
+                              final detection = _recentDetections[index];
+                              final severityColor = _getSeverityColor(detection.severity);
+                              final dateFormat = DateFormat('MMM dd, yyyy');
+                              final timeFormat = DateFormat('hh:mm:ss a');
+                              return GestureDetector(
+                                onTap: () {
+                                  Navigator.pop(context);
+                                  _showDetectionDetails(detection);
+                                },
+                                child: Container(
+                                  margin: const EdgeInsets.only(bottom: 12),
+                                  padding: const EdgeInsets.all(16),
+                                  decoration: BoxDecoration(
+                                    color: ThemeColors.surface(context),
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(
+                                      color: severityColor.withOpacity(0.3),
+                                      width: 2,
+                                    ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: severityColor.withOpacity(0.1),
+                                        blurRadius: 8,
+                                        offset: const Offset(0, 2),
+                                      ),
+                                    ],
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.all(12),
+                                        decoration: BoxDecoration(
+                                          color: severityColor.withOpacity(0.1),
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        child: Text(
+                                          detection.type.emoji,
+                                          style: const TextStyle(fontSize: 32),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 16),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              detection.type.label.toUpperCase(),
+                                              style: AppTypography.bodyLarge.copyWith(
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Row(
+                                              children: [
+                                                Container(
+                                                  width: 8,
+                                                  height: 8,
+                                                  decoration: BoxDecoration(
+                                                    color: severityColor,
+                                                    shape: BoxShape.circle,
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 6),
+                                                Text(
+                                                  detection.severity.label.toUpperCase(),
+                                                  style: AppTypography.bodySmall.copyWith(
+                                                    color: severityColor,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 12),
+                                                Text(
+                                                  detection.getConfidenceString(),
+                                                  style: AppTypography.bodySmall.copyWith(
+                                                    color: AppColors.mediumGray,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 8),
+                                            Row(
+                                              children: [
+                                                Icon(
+                                                  Icons.access_time,
+                                                  size: 14,
+                                                  color: AppColors.mediumGray,
+                                                ),
+                                                const SizedBox(width: 6),
+                                                Text(
+                                                  '${dateFormat.format(detection.timestamp)} • ${timeFormat.format(detection.timestamp)}',
+                                                  style: AppTypography.captionText.copyWith(
+                                                    color: AppColors.mediumGray,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      Icon(
+                                        Icons.chevron_right,
+                                        color: AppColors.mediumGray,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
 
-    if (difference.inMinutes < 1) {
-      return 'Just now';
-    } else if (difference.inMinutes < 60) {
-      return '${difference.inMinutes} min ago';
-    } else if (difference.inHours < 24) {
-      return '${difference.inHours} hr ago';
-    } else {
-      return '${difference.inDays} days ago';
+  /// Show detection details (from history tap) with optional AI assessment
+  void _showDetectionDetails(EmergencyDetectionResult detection) {
+    Map<String, dynamic>? detailedAssessment;
+    if (_mlClassificationService.isModelLoaded) {
+      detailedAssessment = _mlClassificationService.getDetailedAssessment(
+        detection.type,
+        detection.confidence,
+      );
     }
+    _showDetectionResult(detection, detailedAssessment);
   }
 
   /// Report false positive - helps improve system
@@ -2004,146 +2167,7 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
       ),
     );
   }
-  
-  /// Show info dialog about emergency detection
-  void _showInfoDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => Dialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Container(
-          constraints: const BoxConstraints(maxWidth: 400),
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: AppColors.primaryRed.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(
-                      Icons.info_outline_rounded,
-                      color: AppColors.primaryRed,
-                      size: 24,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Text(
-                      'Emergency Detection',
-                      style: AppTypography.titleLarge.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close),
-                    onPressed: () => Navigator.pop(context),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              _buildInfoRow(
-                icon: Icons.camera_alt_rounded,
-                title: 'Real-time Detection',
-                description: 'Capture photos using the in-app camera to detect emergency situations instantly.',
-              ),
-              const SizedBox(height: 16),
-              _buildInfoRow(
-                icon: Icons.smartphone,
-                title: '100% Offline',
-                description: 'All processing happens on your device. No internet required. Works during disasters.',
-              ),
-              const SizedBox(height: 16),
-              _buildInfoRow(
-                icon: Icons.security,
-                title: 'Privacy Protected',
-                description: 'Images stay on your device. Only detection results are shared via ESP32/radio.',
-              ),
-              const SizedBox(height: 16),
-              _buildInfoRow(
-                icon: Icons.auto_awesome,
-                title: 'AI-Powered',
-                description: 'Uses advanced image analysis to detect fires, floods, earthquakes, accidents, and more.',
-              ),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () => Navigator.pop(context),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primaryRed,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child: const Text('Got it'),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-  
-  Widget _buildInfoRow({
-    required IconData icon,
-    required String title,
-    required String description,
-  }) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: AppColors.primaryRed.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Icon(
-            icon,
-            size: 20,
-            color: AppColors.primaryRed,
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: AppTypography.titleSmall.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                description,
-                style: AppTypography.bodySmall.copyWith(
-                  color: AppColors.mediumGray,
-                  height: 1.4,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-  
+
   /// Build camera grid lines for composition
   Widget _buildCameraGrid() {
     return IgnorePointer(

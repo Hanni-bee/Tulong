@@ -21,6 +21,11 @@ android {
         jvmTarget = JavaVersion.VERSION_11.toString()
     }
 
+    // CRITICAL: Do not compress .tflite files (required for ML model loading)
+    androidResources {
+        noCompress += listOf("tflite", "lite")
+    }
+
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.activity2.tulong2"
