@@ -19,6 +19,7 @@ import '../widgets/accessible_text.dart';
 import '../widgets/enhanced_message_status.dart';
 import '../widgets/enhanced_voice_message_view.dart';
 import 'package:flutter_bluetooth_serial_plus/flutter_bluetooth_serial_plus.dart';
+import '../models/emergency_type.dart';
 
 /// Local Chat Screen - Polished UI with Working Backend
 class LocalChatScreen extends StatefulWidget {
@@ -915,9 +916,15 @@ class _LocalChatScreenState extends State<LocalChatScreen> with WidgetsBindingOb
 
   Widget _buildMessageBubbleContent(ChatMessage message) {
     final isEmergency = message.isEmergency;
+    final severityLevel = message.severityLevel;
+    final emergencyType = message.emergencyType;
+    
+    // ENHANCED: Use severity-based styling if available, otherwise fallback to emergency flag
+    final hasSeverity = severityLevel != null;
+    final shouldHighlight = hasSeverity || isEmergency;
     
     return Container(
-      margin: EdgeInsets.only(bottom: isEmergency ? 16 : 12),
+      margin: EdgeInsets.only(bottom: shouldHighlight ? 16 : 12),
       child: Row(
         mainAxisAlignment: message.isMe 
             ? MainAxisAlignment.end 
@@ -931,22 +938,24 @@ class _LocalChatScreenState extends State<LocalChatScreen> with WidgetsBindingOb
                     }
                   : null,
               child: Container(
-                decoration: isEmergency ? BoxDecoration(
+                decoration: (hasSeverity && severityLevel == SeverityLevel.critical) || isEmergency ? BoxDecoration(
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
-                      color: AppColors.error.withOpacity(0.5),
+                      color: (hasSeverity && severityLevel == SeverityLevel.critical) 
+                          ? AppColors.error.withOpacity(0.5)
+                          : AppColors.error.withOpacity(0.5),
                       blurRadius: 12,
                       spreadRadius: 2,
                     ),
                   ],
                 ) : null,
                 child: CircleAvatar(
-                  radius: isEmergency ? 18 : 16,
-                  backgroundColor: isEmergency 
+                  radius: shouldHighlight ? 18 : 16,
+                  backgroundColor: (hasSeverity && severityLevel == SeverityLevel.critical) || isEmergency
                       ? AppColors.error.withOpacity(0.2)
                       : AppColors.primaryRed.withOpacity(0.1),
-                  child: isEmergency
+                  child: (hasSeverity && severityLevel == SeverityLevel.critical) || isEmergency
                       ? const Icon(
                           Icons.emergency,
                           color: AppColors.error,
@@ -957,7 +966,9 @@ class _LocalChatScreenState extends State<LocalChatScreen> with WidgetsBindingOb
                               ? (message.senderName![0].toUpperCase())
                               : 'ESP',
                           style: AppTypography.bodySmall.copyWith(
-                            color: isEmergency ? AppColors.error : AppColors.primaryRed,
+                            color: (hasSeverity && severityLevel == SeverityLevel.critical) || isEmergency 
+                                ? AppColors.error 
+                                : AppColors.primaryRed,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
@@ -971,28 +982,23 @@ class _LocalChatScreenState extends State<LocalChatScreen> with WidgetsBindingOb
               maxWidth: MediaQuery.of(context).size.width * 0.7,
             ),
             padding: EdgeInsets.symmetric(
-              horizontal: isEmergency ? 18 : 16,
-              vertical: isEmergency ? 14 : 12,
+              horizontal: shouldHighlight ? 18 : 16,
+              vertical: shouldHighlight ? 14 : 12,
             ),
             decoration: BoxDecoration(
-              color: isEmergency
-                  ? (message.isMe ? AppColors.error : AppColors.error.withOpacity(0.1))
-                  : (message.isMe ? AppColors.primaryRed : Colors.white),
+              // ENHANCED: Priority to severity-based color, then emergency, then default
+              color: _getSeverityColor(message),
               borderRadius: BorderRadius.circular(20).copyWith(
                 bottomLeft: message.isMe ? const Radius.circular(20) : const Radius.circular(4),
                 bottomRight: message.isMe ? const Radius.circular(4) : const Radius.circular(20),
               ),
               border: Border.all(
-                color: isEmergency
-                    ? AppColors.error.withOpacity(0.8)
-                    : (message.isMe 
-                        ? Colors.white.withOpacity(0.2)
-                        : AppColors.lightGray.withOpacity(0.5)),
-                width: isEmergency ? 2.5 : 1.5,
+                color: _getSeverityBorderColor(message),
+                width: shouldHighlight ? 2.5 : 1.5,
               ),
-              boxShadow: isEmergency ? [
+              boxShadow: shouldHighlight ? [
                 BoxShadow(
-                  color: AppColors.error.withOpacity(0.3),
+                  color: _getSeverityColor(message).withOpacity(0.3),
                   blurRadius: 12,
                   spreadRadius: 2,
                   offset: const Offset(0, 4),
@@ -1002,8 +1008,8 @@ class _LocalChatScreenState extends State<LocalChatScreen> with WidgetsBindingOb
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Emergency badge
-                if (isEmergency) ...[
+                // Emergency badge - only show for critical severity or emergency flag
+                if ((severityLevel == SeverityLevel.critical) || isEmergency) ...[
                   Row(
                     children: [
                       const Icon(
@@ -1029,12 +1035,15 @@ class _LocalChatScreenState extends State<LocalChatScreen> with WidgetsBindingOb
                 if (message.type == voice.MessageType.voice && message.voiceMessage != null)
                   _buildVoiceMessageContent(message.voiceMessage!, message.timestamp.millisecondsSinceEpoch.toString(), message.isMe)
                 else
-                  isEmergency
+                  (isEmergency || message.severityLevel != null)
                       ? Text(
                           message.text,
                           style: AppTypography.bodyLarge.copyWith(
                             fontWeight: FontWeight.w700,
-                            color: message.isMe ? Colors.white : AppColors.error,
+                            // ENHANCED: Text color based on severity
+                            color: message.severityLevel != null
+                                ? (message.isMe ? Colors.white : AppColors.textPrimary)
+                                : (message.isMe ? Colors.white : AppColors.error),
                           ),
                         )
                       : AccessibleChatText(
@@ -1397,6 +1406,61 @@ class _LocalChatScreenState extends State<LocalChatScreen> with WidgetsBindingOb
     _scrollController.dispose();
     _debugScrollController.dispose();
     super.dispose();
+  }
+
+  /// Get unique color based on severity level for AI-detected emergencies
+  Color _getSeverityColor(ChatMessage message) {
+    if (message.severityLevel != null) {
+      switch (message.severityLevel!) {
+        case SeverityLevel.low:
+          return message.isMe 
+              ? Colors.green.shade300  // Light green for low severity (sent)
+              : Colors.green.shade50;   // Very light green for received
+        case SeverityLevel.medium:
+          return message.isMe 
+              ? Colors.orange.shade300  // Light orange for medium severity (sent)
+              : Colors.orange.shade50;  // Very light orange for received
+        case SeverityLevel.high:
+          return message.isMe 
+              ? Colors.deepOrange.shade300  // Light deep orange for high severity (sent)
+              : Colors.deepOrange.shade50;   // Very light deep orange for received
+        case SeverityLevel.critical:
+          return message.isMe 
+              ? Colors.red.shade300  // Light red for critical severity (sent)
+              : Colors.red.shade50;  // Very light red for received
+      }
+    }
+    
+    // Fallback to original logic for non-AI messages
+    if (message.isEmergency) {
+      return message.isMe ? Colors.red.shade300 : Colors.red.shade50;
+    }
+    return message.isMe ? AppColors.primaryRed : Colors.white;
+  }
+
+  /// Get border color based on severity level
+  Color _getSeverityBorderColor(ChatMessage message) {
+    if (message.severityLevel != null) {
+      switch (message.severityLevel!) {
+        case SeverityLevel.low:
+          return Colors.green.shade300;
+        case SeverityLevel.medium:
+          return Colors.orange.shade300;
+        case SeverityLevel.high:
+          return Colors.deepOrange.shade300;
+        case SeverityLevel.critical:
+          return Colors.red.shade300;
+      }
+    }
+    
+    // Fallback to original logic
+    if (message.isEmergency) {
+      return Colors.red.shade300.withOpacity(0.8);
+    }
+    if (message.isMe) {
+      return Colors.white.withOpacity(0.2);
+    }
+    return AppColors.lightGray.withOpacity(0.5);
   }
 }
 

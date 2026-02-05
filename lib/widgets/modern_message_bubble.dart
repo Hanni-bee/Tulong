@@ -20,6 +20,8 @@ class ModernMessageBubble extends StatefulWidget {
   final VoidCallback? onLongPress;
   final VoidCallback? onTap;
   final VoidCallback? onRetry; // Added retry callback
+  final SeverityLevel? severityLevel; // Severity level for unique UI styling
+  final EmergencyType? emergencyType; // Emergency type for styling
 
   const ModernMessageBubble({
     super.key,
@@ -34,6 +36,8 @@ class ModernMessageBubble extends StatefulWidget {
     this.onLongPress,
     this.onTap,
     this.onRetry,
+    this.severityLevel, // Severity level for styling
+    this.emergencyType, // Emergency type
   });
 
   @override
@@ -135,9 +139,8 @@ class _ModernMessageBubbleState extends State<ModernMessageBubble>
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                       decoration: BoxDecoration(
-                        color: widget.isMe 
-                            ? (widget.isEmergency ? AppColors.error : AppColors.primaryRed)
-                            : AppColors.white,
+                        // ENHANCED: Unique colors based on severity level
+                        color: _getSeverityColor(),
                         borderRadius: BorderRadius.only(
                           topLeft: const Radius.circular(20),
                           topRight: const Radius.circular(20),
@@ -145,13 +148,17 @@ class _ModernMessageBubbleState extends State<ModernMessageBubble>
                           bottomRight: widget.isMe ? const Radius.circular(4) : const Radius.circular(20),
                         ),
                         border: Border.all(
-                          color: widget.isEmergency 
-                              ? AppColors.error 
-                              : widget.isMe 
-                                  ? Colors.white.withOpacity(0.2)
-                                  : AppColors.lightGray.withOpacity(0.5),
-                          width: widget.isEmergency ? 2 : 1.5,
+                          color: _getSeverityBorderColor(),
+                          width: widget.severityLevel != null ? 2.5 : (widget.isEmergency ? 2 : 1.5),
                         ),
+                        boxShadow: widget.severityLevel != null ? [
+                          BoxShadow(
+                            color: _getSeverityColor().withOpacity(0.3),
+                            blurRadius: 8,
+                            spreadRadius: 1,
+                            offset: const Offset(0, 2),
+                          ),
+                        ] : null,
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -179,10 +186,13 @@ class _ModernMessageBubbleState extends State<ModernMessageBubble>
                           Text(
                             widget.text,
                             style: TextStyle(
-                              color: widget.isMe ? AppColors.white : AppColors.textPrimary,
+                              // ENHANCED: Text color based on severity
+                              color: _getTextColor(),
                               fontSize: 16,
                               height: 1.4,
-                              fontWeight: widget.isEmergency ? FontWeight.w600 : FontWeight.w500,
+                              fontWeight: widget.severityLevel != null || widget.isEmergency 
+                                  ? FontWeight.w600 
+                                  : FontWeight.w500,
                             ),
                           ),
                           
@@ -388,5 +398,72 @@ class _ModernMessageBubbleState extends State<ModernMessageBubble>
         ],
       ),
     );
+  }
+
+  /// Get unique color based on severity level for AI-detected emergencies
+  Color _getSeverityColor() {
+    // If severity level is provided, use unique colors per severity
+    if (widget.severityLevel != null) {
+      switch (widget.severityLevel!) {
+        case SeverityLevel.low:
+          return widget.isMe 
+              ? Colors.green.shade300  // Light green for low severity (sent)
+              : Colors.green.shade50;   // Very light green for received
+        case SeverityLevel.medium:
+          return widget.isMe 
+              ? Colors.orange.shade300  // Light orange for medium severity (sent)
+              : Colors.orange.shade50;  // Very light orange for received
+        case SeverityLevel.high:
+          return widget.isMe 
+              ? Colors.deepOrange.shade300  // Light deep orange for high severity (sent)
+              : Colors.deepOrange.shade50;   // Very light deep orange for received
+        case SeverityLevel.critical:
+          return widget.isMe 
+              ? Colors.red.shade300  // Light red for critical severity (sent)
+              : Colors.red.shade50;  // Very light red for received
+      }
+    }
+    
+    // Fallback to original logic for non-AI messages
+    if (widget.isMe) {
+      return widget.isEmergency ? Colors.red.shade300 : AppColors.primaryRed;
+    }
+    return AppColors.white;
+  }
+
+  /// Get border color based on severity level
+  Color _getSeverityBorderColor() {
+    if (widget.severityLevel != null) {
+      switch (widget.severityLevel!) {
+        case SeverityLevel.low:
+          return Colors.green.shade300;
+        case SeverityLevel.medium:
+          return Colors.orange.shade300;
+        case SeverityLevel.high:
+          return Colors.deepOrange.shade300;
+        case SeverityLevel.critical:
+          return Colors.red.shade300;
+      }
+    }
+    
+    // Fallback to original logic
+    if (widget.isEmergency) {
+      return Colors.red.shade300;
+    }
+    if (widget.isMe) {
+      return Colors.white.withOpacity(0.2);
+    }
+    return AppColors.lightGray.withOpacity(0.5);
+  }
+
+  /// Get text color based on severity and message type
+  Color _getTextColor() {
+    if (widget.severityLevel != null) {
+      // For severity-based messages, use white text on colored background (sent) or dark text (received)
+      return widget.isMe ? AppColors.white : AppColors.textPrimary;
+    }
+    
+    // Fallback to original logic
+    return widget.isMe ? AppColors.white : AppColors.textPrimary;
   }
 }

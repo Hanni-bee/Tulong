@@ -1,6 +1,9 @@
+import 'dart:async';
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:tflite_flutter/tflite_flutter.dart' as tflite;
 
 /// Service for loading and running ML models for emergency detection
@@ -124,21 +127,77 @@ class MLModelService {
       // Note: GPU delegate can be enabled here if needed for better performance
       
       try {
-        debugPrint('   Calling tflite.Interpreter.fromAsset("$assetPath")...');
-        _interpreter = await tflite.Interpreter.fromAsset(
-          assetPath, // Must be 'best_model.tflite' not 'assets/best_model.tflite'
-          options: options,
-        );
-        debugPrint('   ✅ Interpreter created successfully');
+        debugPrint('   Attempting to load via fromAsset()...');
+        debugPrint('   ⏳ Loading ~14.5 MB model (this may take 10-30 seconds)...');
         
-        if (_interpreter == null) {
-          _lastError = 'Interpreter is null after loading';
-          debugPrint('❌ Interpreter is null after loading');
-          _isLoaded = false;
-          return false;
+        // Try fromAsset first (fastest if it works)
+        try {
+          _interpreter = await Future(() async {
+            return await tflite.Interpreter.fromAsset(
+              assetPath,
+              options: options,
+            );
+          }).timeout(
+            const Duration(seconds: 45),
+            onTimeout: () {
+              throw TimeoutException('fromAsset timeout after 45 seconds');
+            },
+          );
+          
+          if (_interpreter != null) {
+            debugPrint('✅ Interpreter loaded successfully via fromAsset');
+            // Continue to Step 3 (tensor validation)
+          } else {
+            throw Exception('Interpreter is null after fromAsset');
+          }
+        } catch (fromAssetError) {
+          debugPrint('⚠️ fromAsset() failed: $fromAssetError');
+          debugPrint('   Trying fallback: copy to internal storage and load from file...');
+          
+          // FALLBACK: Copy asset to internal storage and load from file
+          // This works even if the model is compressed or fromAsset has issues
+          try {
+            final ByteData assetData = await rootBundle.load('assets/$assetPath');
+            final List<int> bytes = assetData.buffer.asUint8List();
+            
+            // Get app's internal directory
+            final Directory appDir = await getApplicationDocumentsDirectory();
+            final String modelPath = '${appDir.path}/$assetPath';
+            final File modelFile = File(modelPath);
+            
+            // Write model to internal storage (only if it doesn't exist or is different size)
+            if (!await modelFile.exists() || await modelFile.length() != bytes.length) {
+              await modelFile.writeAsBytes(bytes);
+              debugPrint('✅ Model copied to internal storage: $modelPath');
+            } else {
+              debugPrint('✅ Model already exists in internal storage');
+            }
+            debugPrint('   File size: ${(bytes.length / 1024 / 1024).toStringAsFixed(2)} MB');
+            
+            // Load from file path (fromFile is synchronous, wrap in Future for timeout)
+            _interpreter = await Future(() {
+              return tflite.Interpreter.fromFile(
+                modelFile,
+                options: options,
+              );
+            }).timeout(
+              const Duration(seconds: 45),
+              onTimeout: () {
+                throw TimeoutException('fromFile timeout after 45 seconds');
+              },
+            );
+            
+            if (_interpreter != null) {
+              debugPrint('✅ Interpreter loaded successfully via fromFile (fallback)');
+              // Continue to Step 3 (tensor validation)
+            } else {
+              throw Exception('Interpreter is null after fromFile');
+            }
+          } catch (fallbackError) {
+            debugPrint('❌ Fallback method also failed: $fallbackError');
+            throw fromAssetError; // Throw original error for better diagnostics
+          }
         }
-        
-        debugPrint('✅ Interpreter created successfully');
       } catch (e, stackTrace) {
         _lastError = 'Failed to create interpreter: $e';
         debugPrint('❌ CRITICAL: Failed to create TFLite interpreter');

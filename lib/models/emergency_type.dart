@@ -17,7 +17,7 @@ enum EmergencyType {
   static EmergencyType fromString(String value) {
     return EmergencyType.values.firstWhere(
       (type) => type.name == value.toLowerCase(),
-      orElse: () => EmergencyType.general,
+      orElse: () => EmergencyType.noEmergency, // Default to "No Emergency" instead of "General Emergency"
     );
   }
   

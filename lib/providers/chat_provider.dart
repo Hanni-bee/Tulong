@@ -11,6 +11,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import '../utils/enhanced_error_handler.dart';
 import '../services/notification_service.dart';
 import '../widgets/modern_toast.dart';
+import '../models/emergency_type.dart';
 
 class ChatProvider with ChangeNotifier {
   // Static instance for access from services without context
@@ -494,7 +495,12 @@ class ChatProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  Future<bool> sendMessage(String text, {BuildContext? context}) async {
+  Future<bool> sendMessage(
+    String text, {
+    BuildContext? context,
+    SeverityLevel? severityLevel,
+    EmergencyType? emergencyType,
+  }) async {
     if (text.trim().isEmpty) return false;
 
     ChatMessage message = ChatMessage(
@@ -503,6 +509,8 @@ class ChatProvider with ChangeNotifier {
       timestamp: DateTime.now(),
       status: voice.MessageStatus.sending,
       type: voice.MessageType.text,
+      severityLevel: severityLevel,
+      emergencyType: emergencyType,
     );
 
     _addMessage(message.text, true, message: message);
@@ -1641,6 +1649,8 @@ class ChatMessage {
   bool isPinned; // Flag to indicate pinned emergency message
   final String? messageId; // Unique ID for message (for unpinning)
   final Map<String, dynamic>? rawData; // Raw message data for source detection
+  final SeverityLevel? severityLevel; // Severity level for AI-detected emergencies (for unique UI styling)
+  final EmergencyType? emergencyType; // Emergency type for AI-detected emergencies
 
   ChatMessage({
     required this.text,
@@ -1655,6 +1665,8 @@ class ChatMessage {
     this.isPinned = false, // Default to false, emergency messages auto-pin
     this.messageId,
     this.rawData, // Raw data for message (e.g., for SOS source)
+    this.severityLevel, // Severity level for styling
+    this.emergencyType, // Emergency type
   });
   
   ChatMessage copyWith({
@@ -1670,6 +1682,8 @@ class ChatMessage {
     bool? isPinned,
     String? messageId,
     Map<String, dynamic>? rawData,
+    SeverityLevel? severityLevel,
+    EmergencyType? emergencyType,
   }) {
     return ChatMessage(
       text: text ?? this.text,
@@ -1684,6 +1698,8 @@ class ChatMessage {
       isPinned: isPinned ?? this.isPinned,
       messageId: messageId ?? this.messageId,
       rawData: rawData ?? this.rawData,
+      severityLevel: severityLevel ?? this.severityLevel,
+      emergencyType: emergencyType ?? this.emergencyType,
     );
   }
 }

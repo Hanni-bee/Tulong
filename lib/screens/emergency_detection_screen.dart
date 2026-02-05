@@ -25,6 +25,7 @@ import 'local_chat_screen.dart';
 import '../widgets/unified_top_bar.dart';
 import '../widgets/ai_assessment_widget.dart';
 import '../widgets/ai_info_widget.dart';
+import '../services/ml_model_service.dart';
 import 'package:intl/intl.dart';
 
 /// Emergency Detection Screen - Clean and focused on detection
@@ -155,24 +156,43 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
     }
   }
 
-  /// Load ML disaster classification model - DIRECT LOADING (no verification blocking)
+  /// Load ML disaster classification model - ENHANCED with proper state management
   Future<void> _loadMLModel() async {
+    // Prevent multiple simultaneous loads
+    if (_isMLModelLoading || _isMLModelLoaded) {
+      debugPrint('⚠️ Model loading already in progress or already loaded');
+      return;
+    }
+    
     if (mounted) {
       setState(() {
         _isMLModelLoading = true;
+        _isMLModelLoaded = false; // Reset to ensure clean state
       });
     }
     
     try {
       debugPrint('🔄 Loading ML model directly...');
+      debugPrint('⏳ This may take 10-30 seconds for the ~14.5 MB model...');
       
-      // Load model directly - don't wait for verification
-      final loaded = await _mlClassificationService.loadModel();
+      // Load model with timeout to prevent infinite hanging
+      final loaded = await _mlClassificationService.loadModel().timeout(
+        const Duration(seconds: 90),
+        onTimeout: () {
+          debugPrint('❌ TIMEOUT: Model loading exceeded 90 seconds');
+          debugPrint('   This usually means:');
+          debugPrint('   1. Model file is corrupted in APK');
+          debugPrint('   2. Model file was compressed despite noCompress setting');
+          debugPrint('   3. Device has insufficient memory');
+          return false;
+        },
+      );
       
+      // ALWAYS update state, even on timeout or failure
       if (mounted) {
         setState(() {
           _isMLModelLoaded = loaded && _mlClassificationService.isModelLoaded;
-          _isMLModelLoading = false;
+          _isMLModelLoading = false; // CRITICAL: Always set to false to prevent infinite loading
         });
       }
       
@@ -192,6 +212,9 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
         final debugInfo = _mlClassificationService.getDebugInfo();
         debugPrint('   Error: ${debugInfo['lastError']}');
         debugPrint('   Model loaded flag: ${_mlClassificationService.isModelLoaded}');
+        final mlService = MLModelService.instance;
+        debugPrint('   MLModelService error: ${mlService.lastError}');
+        debugPrint('   MLModelService loaded: ${mlService.isLoaded}');
       }
     } catch (e, stackTrace) {
       debugPrint('❌ Error loading ML model: $e');
@@ -536,10 +559,9 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
           )
         : result;
     
-    if (adjustedResult.type == EmergencyType.noEmergency) {
-      _showNoEmergencyDialog(adjustedResult);
-      return;
-    }
+    // REMOVED: No longer showing separate dialog for noEmergency
+    // Now showing full analysis dialog for ALL results including "No Emergency"
+    // This allows users to view analysis and send to chat even for "No Emergency"
     
     final severityColor = _getSeverityColor(adjustedResult.severity);
     final dateFormat = DateFormat('MMM dd, yyyy');
@@ -767,10 +789,34 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                             ),
                           
                           // AI Assessment Widget (if ML classification was used)
+                          // ENHANCED: Show for ALL results including "No Emergency"
                           if (detailedAssessment != null && _isMLModelLoaded) ...[
                             AIAssessmentWidget(
                               result: adjustedResult,
                               detailedAssessment: detailedAssessment,
+                            ),
+                            SizedBox(height: isSmallScreen ? 16 : 20),
+                          ] else if (adjustedResult.type == EmergencyType.noEmergency && _isMLModelLoaded) ...[
+                            // Show basic info for "No Emergency" even without detailed assessment
+                            Container(
+                              padding: EdgeInsets.all(isSmallScreen ? 14 : 16),
+                              decoration: BoxDecoration(
+                                color: Colors.green.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: Colors.green.withOpacity(0.3)),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.check_circle, color: Colors.green, size: 24),
+                                  SizedBox(width: 12),
+                                  Expanded(
+                                    child: Text(
+                                      'No emergency detected. Area appears safe.',
+                                      style: AppTypography.bodyMedium.copyWith(color: Colors.green.shade700),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                             SizedBox(height: isSmallScreen ? 16 : 20),
                           ] else ...[
@@ -956,7 +1002,7 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                           },
                           icon: Icon(Icons.send, size: isSmallScreen ? 16 : 18),
                           label: Text(
-                            adjustedResult.type == EmergencyType.noEmergency ? 'Dismiss' : 'Send Alert',
+                            adjustedResult.type == EmergencyType.noEmergency ? 'Send to Chat' : 'Send Alert',
                             style: AppTypography.bodyMedium.copyWith(
                               fontWeight: FontWeight.bold,
                               fontSize: isSmallScreen ? 13 : 14,
@@ -1019,16 +1065,28 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
       // Navigate to chat screen and send message
       final chatProvider = Provider.of<ChatProvider>(context, listen: false);
       
-      // Create emergency message
+      // Create emergency message - REMOVED confidence, ENHANCED with severity-based styling
+      // ENHANCED: Ensure "No Emergency" always has low severity for green color
+      final adjustedSeverity = result.type == EmergencyType.noEmergency 
+          ? SeverityLevel.low 
+          : result.severity;
+      
       final message = result.type == EmergencyType.noEmergency
-          ? '✅ No emergency detected. Area appears safe.'
+          ? '✅ NO EMERGENCY DETECTED\n'
+              'Status: Area appears safe\n'
+              'Time: ${DateFormat('MMM dd, yyyy hh:mm:ss a').format(result.timestamp)}'
           : '🚨 ${result.type.emoji} ${result.type.label.toUpperCase()} DETECTED\n'
               'Severity: ${result.severity.label.toUpperCase()}\n'
-              'Confidence: ${result.getConfidenceString()}\n'
               'Time: ${DateFormat('MMM dd, yyyy hh:mm:ss a').format(result.timestamp)}';
       
-      // Send message via chat provider
-      final success = await chatProvider.sendMessage(message, context: context);
+      // Send message via chat provider with severity level for unique UI styling
+      // CRITICAL: Use adjustedSeverity to ensure "No Emergency" shows green (low severity)
+      final success = await chatProvider.sendMessage(
+        message, 
+        context: context,
+        severityLevel: adjustedSeverity,  // Use adjusted severity (low for no emergency)
+        emergencyType: result.type,
+      );
       
       if (mounted) {
         if (success) {
