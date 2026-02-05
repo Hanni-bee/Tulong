@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../constants/app_colors.dart';
+import '../constants/severity_colors.dart';
 import 'emergency_badge.dart';
 import '../models/emergency_detection_result.dart';
 import '../models/emergency_type.dart';
@@ -20,6 +21,8 @@ class ModernMessageBubble extends StatefulWidget {
   final VoidCallback? onLongPress;
   final VoidCallback? onTap;
   final VoidCallback? onRetry; // Added retry callback
+  final SeverityLevel? severityLevel; // Severity level for unique UI styling (AI-detected)
+  final EmergencyType? emergencyType; // Emergency type for styling
 
   const ModernMessageBubble({
     super.key,
@@ -34,6 +37,8 @@ class ModernMessageBubble extends StatefulWidget {
     this.onLongPress,
     this.onTap,
     this.onRetry,
+    this.severityLevel,
+    this.emergencyType,
   });
 
   @override
@@ -78,6 +83,16 @@ class _ModernMessageBubbleState extends State<ModernMessageBubble>
 
   void _handleTapCancel() {
     _animationController.reverse();
+  }
+
+  /// Effective severity: explicit severityLevel or parsed from messageData
+  SeverityLevel? get _effectiveSeverity {
+    if (widget.severityLevel != null) return widget.severityLevel;
+    if (widget.messageData != null) {
+      final parsed = EmergencyMessageParser.parseFromMessageData(widget.messageData!);
+      return parsed?.severity;
+    }
+    return null;
   }
 
   @override
@@ -135,9 +150,7 @@ class _ModernMessageBubbleState extends State<ModernMessageBubble>
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                       decoration: BoxDecoration(
-                        color: widget.isMe 
-                            ? (widget.isEmergency ? AppColors.error : AppColors.primaryRed)
-                            : AppColors.white,
+                        color: _getSeverityColor(),
                         borderRadius: BorderRadius.only(
                           topLeft: const Radius.circular(20),
                           topRight: const Radius.circular(20),
@@ -145,13 +158,17 @@ class _ModernMessageBubbleState extends State<ModernMessageBubble>
                           bottomRight: widget.isMe ? const Radius.circular(4) : const Radius.circular(20),
                         ),
                         border: Border.all(
-                          color: widget.isEmergency 
-                              ? AppColors.error 
-                              : widget.isMe 
-                                  ? Colors.white.withOpacity(0.2)
-                                  : AppColors.lightGray.withOpacity(0.5),
-                          width: widget.isEmergency ? 2 : 1.5,
+                          color: _getSeverityBorderColor(),
+                          width: _effectiveSeverity != null ? 2.5 : (widget.isEmergency ? 2 : 1.5),
                         ),
+                        boxShadow: _effectiveSeverity != null ? [
+                          BoxShadow(
+                            color: _getSeverityColor().withOpacity(0.3),
+                            blurRadius: 8,
+                            spreadRadius: 1,
+                            offset: const Offset(0, 2),
+                          ),
+                        ] : null,
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -179,10 +196,12 @@ class _ModernMessageBubbleState extends State<ModernMessageBubble>
                           Text(
                             widget.text,
                             style: TextStyle(
-                              color: widget.isMe ? AppColors.white : AppColors.textPrimary,
+                              color: _getTextColor(),
                               fontSize: 16,
                               height: 1.4,
-                              fontWeight: widget.isEmergency ? FontWeight.w600 : FontWeight.w500,
+                              fontWeight: _effectiveSeverity != null || widget.isEmergency
+                                  ? FontWeight.w600
+                                  : FontWeight.w500,
                             ),
                           ),
                           
@@ -251,8 +270,7 @@ class _ModernMessageBubbleState extends State<ModernMessageBubble>
                                         ),
                                       ).animate(onPlay: (controller) => controller.repeat(reverse: true))
                                        .shimmer(duration: 1200.ms, color: Colors.white.withOpacity(0.4))
-                                       .scale(duration: 800.ms, begin: const Offset(1, 1), end: const Offset(1.08, 1.08))
-                                       .shake(duration: 600.ms, hz: 4),
+                                       .scale(duration: 800.ms, begin: const Offset(1, 1), end: const Offset(1.08, 1.08)),
                                     ] else if (widget.status == voice.MessageStatus.sending) ...[
                                       const SizedBox(
                                         width: 12,
@@ -388,5 +406,35 @@ class _ModernMessageBubbleState extends State<ModernMessageBubble>
         ],
       ),
     );
+  }
+
+  /// Fill color from app-wide severity palette (sent = base color, received = background)
+  Color _getSeverityColor() {
+    final severity = _effectiveSeverity;
+    if (severity != null) {
+      return widget.isMe
+          ? SeverityColors.color(severity).withOpacity(0.85)
+          : SeverityColors.background(severity);
+    }
+    if (widget.isMe) {
+      return widget.isEmergency ? SeverityColors.critical : AppColors.primaryRed;
+    }
+    return AppColors.white;
+  }
+
+  /// Border color from app-wide severity palette
+  Color _getSeverityBorderColor() {
+    final severity = _effectiveSeverity;
+    if (severity != null) return SeverityColors.border(severity);
+    if (widget.isEmergency) return SeverityColors.border(SeverityLevel.critical);
+    if (widget.isMe) return Colors.white.withOpacity(0.2);
+    return AppColors.lightGray.withOpacity(0.5);
+  }
+
+  Color _getTextColor() {
+    if (widget.severityLevel != null) {
+      return widget.isMe ? AppColors.white : AppColors.textPrimary;
+    }
+    return widget.isMe ? AppColors.white : AppColors.textPrimary;
   }
 }

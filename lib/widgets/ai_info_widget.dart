@@ -80,10 +80,10 @@ class AIInfoWidget extends StatelessWidget {
           title: 'Supported Disaster Types',
           icon: Icons.warning_amber_rounded,
           children: [
-            _buildDisasterType('🌊', 'Flood', 'Detects flooding, water damage, and inundated areas'),
-            _buildDisasterType('🔥', 'Wildfire', 'Identifies fire, smoke, and burned landscapes'),
-            _buildDisasterType('🌍', 'Earthquake', 'Recognizes structural damage and ground displacement'),
-            _buildDisasterType('🌀', 'Cyclone', 'Detects storm damage, strong winds, and hurricane effects'),
+            _buildDisasterType(Icons.water_drop_rounded, 'Flood', 'Detects flooding, water damage, and inundated areas'),
+            _buildDisasterType(Icons.local_fire_department_rounded, 'Wildfire', 'Identifies fire, smoke, and burned landscapes'),
+            _buildDisasterType(Icons.terrain_rounded, 'Earthquake', 'Recognizes structural damage and ground displacement'),
+            _buildDisasterType(Icons.cloud_rounded, 'Cyclone', 'Detects storm damage, strong winds, and hurricane effects'),
           ],
         ),
 
@@ -192,15 +192,27 @@ class AIInfoWidget extends StatelessWidget {
     );
   }
 
-  Widget _buildDisasterType(String emoji, String name, String description) {
+  Widget _buildDisasterType(IconData icon, String name, String description) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            emoji,
-            style: const TextStyle(fontSize: 24),
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: AppColors.primary.withOpacity(0.2),
+                width: 1,
+              ),
+            ),
+            child: Icon(
+              icon,
+              size: 24,
+              color: AppColors.primary,
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(

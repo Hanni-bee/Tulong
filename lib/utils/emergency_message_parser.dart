@@ -3,16 +3,16 @@ import '../models/emergency_detection_result.dart';
 
 /// Utility to parse emergency detection messages from chat
 class EmergencyMessageParser {
-  /// Check if a message is an emergency detection message
+  /// Check if a message is an emergency detection message (from app or copy-paste)
   static bool isEmergencyMessage(String message) {
-    // Check for emergency message pattern
+    final upper = message.toUpperCase();
+    // From Emergency Detection page: "FIRE DETECTED", "NO EMERGENCY DETECTED", etc.
+    if (upper.contains(' DETECTED') && (upper.contains('EMERGENCY') || upper.contains('SEVERITY'))) return true;
+    if (upper.startsWith('NO EMERGENCY DETECTED')) return true;
+    // Legacy / copy-paste with emojis or "Emergency:"
     return message.startsWith('Emergency:') ||
-        message.contains('🌋') ||
-        message.contains('🌍') ||
-        message.contains('🌧️') ||
-        message.contains('🔥') ||
-        message.contains('🚑') ||
-        message.contains('⚠️');
+        message.contains('🌋') || message.contains('🌍') || message.contains('🌧️') ||
+        message.contains('🔥') || message.contains('🚑') || message.contains('⚠️');
   }
 
   /// Parse emergency detection from message text
@@ -57,9 +57,30 @@ class EmergencyMessageParser {
         }
       }
       
-      // If no emoji found but message starts with "Emergency:", try to extract from text
+      // If no emoji: try "X DETECTED" / "NO EMERGENCY DETECTED" (from Emergency Detection page)
+      if (matchedType == null) {
+        final upper = message.toUpperCase();
+        if (upper.contains('NO EMERGENCY DETECTED')) {
+          matchedType = EmergencyType.noEmergency;
+        } else {
+          final typeLabels = {
+            'FIRE DETECTED': EmergencyType.fire,
+            'FLOOD DETECTED': EmergencyType.flood,
+            'EARTHQUAKE DETECTED': EmergencyType.earthquake,
+            'ACCIDENT DETECTED': EmergencyType.accident,
+            'CALAMITY DETECTED': EmergencyType.calamity,
+            'GENERAL EMERGENCY DETECTED': EmergencyType.general,
+          };
+          for (final entry in typeLabels.entries) {
+            if (upper.contains(entry.key)) {
+              matchedType = entry.value;
+              break;
+            }
+          }
+        }
+      }
+      // Fallback: "Emergency:" or text labels (fire, flood, etc.)
       if (matchedType == null && message.startsWith('Emergency:')) {
-        // Try to match emergency type from text label
         final typeLabels = {
           'fire': EmergencyType.fire,
           'flood': EmergencyType.flood,
@@ -67,7 +88,6 @@ class EmergencyMessageParser {
           'accident': EmergencyType.accident,
           'calamity': EmergencyType.calamity,
         };
-        
         final lowerMessage = message.toLowerCase();
         for (final entry in typeLabels.entries) {
           if (lowerMessage.contains(entry.key)) {
@@ -80,15 +100,19 @@ class EmergencyMessageParser {
       emergencyType = matchedType;
       
       // IMPROVED: Extract severity with better regex and validation
-      // Support multiple formats: "High Severity", "High", "high", etc.
+      // Support: " - High Severity", "Severity: HIGH", "High", etc.
       SeverityLevel? parsedSeverity;
       
-      // Try strict format first: " - {severity} Severity"
-      var severityMatch = RegExp(r'-\s*(\w+)\s+Severity', caseSensitive: false)
+      // Format from Emergency Detection page: "Severity: HIGH"
+      var severityMatch = RegExp(r'Severity:\s*(\w+)', caseSensitive: false)
           .firstMatch(message);
-      
       if (severityMatch == null) {
-        // Try relaxed format: " - {severity}"
+        // Legacy: " - {severity} Severity"
+        severityMatch = RegExp(r'-\s*(\w+)\s+Severity', caseSensitive: false)
+            .firstMatch(message);
+      }
+      if (severityMatch == null) {
+        // Relaxed: " - {severity}"
         severityMatch = RegExp(r'-\s*(\w+)(?:\s|$)', caseSensitive: false)
             .firstMatch(message);
       }

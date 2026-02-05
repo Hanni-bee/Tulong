@@ -1,6 +1,9 @@
+import 'dart:async';
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:tflite_flutter/tflite_flutter.dart' as tflite;
 
 /// Service for loading and running ML models for emergency detection
@@ -8,19 +11,19 @@ import 'package:tflite_flutter/tflite_flutter.dart' as tflite;
 class MLModelService {
   static MLModelService? _instance;
   static MLModelService get instance => _instance ??= MLModelService._();
-
+  
   MLModelService._();
-
+  
   tflite.Interpreter? _interpreter;
   bool _isLoaded = false;
   String? _lastError;
-
+  
   /// Check if ML model is loaded and available
   bool get isLoaded => _isLoaded && _interpreter != null;
-
+  
   /// Get last error message
   String? get lastError => _lastError;
-
+  
   /// Get model input shape
   List<int>? get inputShape {
     if (_interpreter == null) return null;
@@ -31,7 +34,7 @@ class MLModelService {
       return null;
     }
   }
-
+  
   /// Get model output shape
   List<int>? get outputShape {
     if (_interpreter == null) return null;
@@ -42,30 +45,30 @@ class MLModelService {
       return null;
     }
   }
-
+  
   /// Load ML model from assets
-  ///
+  /// 
   /// [modelPath] - Path to model file in assets (e.g., 'best_model.tflite')
   /// Returns true if model loaded successfully
   Future<bool> loadModel(String modelPath) async {
     try {
       _lastError = null;
-
+      
       // CRITICAL: Ensure modelPath is correctly formatted for fromAsset
       // fromAsset expects: 'best_model.tflite' (relative to assets folder, NO "assets/" prefix)
       // File location: assets/best_model.tflite (WITH underscore between "best" and "model")
       String assetPath = modelPath.trim();
-
+      
       // Remove 'assets/' prefix if present
       if (assetPath.startsWith('assets/')) {
         assetPath = assetPath.substring(7);
       }
-
+      
       // Remove leading slash if present
       if (assetPath.startsWith('/')) {
         assetPath = assetPath.substring(1);
       }
-
+      
       // CRITICAL: Verify and correct the path to 'best_model.tflite' (with underscore)
       // The actual file is assets/best_model.tflite (with underscore between "best" and "model")
       // Common mistake: "bestmodel.tflite" (no underscore) - this will fail!
@@ -78,7 +81,7 @@ class MLModelService {
         assetPath = 'best_model.tflite';
         debugPrint('   ✅ Corrected to: "$assetPath"');
       }
-
+      
       debugPrint('');
       debugPrint('═══════════════════════════════════════════════════════════');
       debugPrint('🔄 ML MODEL LOADING - COMPREHENSIVE DEBUG');
@@ -87,7 +90,7 @@ class MLModelService {
       debugPrint('📁 Asset path (for fromAsset): $assetPath');
       debugPrint('📁 Full asset path: assets/$assetPath');
       debugPrint('📁 File must exist at: assets/best_model.tflite (with underscore)');
-
+      
       // Step 1: Verify asset exists in bundle
       debugPrint('📦 Step 1: Verifying asset exists in bundle...');
       try {
@@ -95,7 +98,7 @@ class MLModelService {
         final int assetSize = data.lengthInBytes;
         debugPrint('✅ Asset found in bundle: assets/$assetPath');
         debugPrint('   Asset size: ${(assetSize / 1024 / 1024).toStringAsFixed(2)} MB');
-
+        
         if (assetSize == 0) {
           _lastError = 'Asset file is empty';
           debugPrint('❌ Asset file is empty!');
@@ -111,34 +114,90 @@ class MLModelService {
         debugPrint('   3. Run: flutter clean && flutter pub get');
         return false;
       }
-
+      
       // Step 2: Load interpreter from asset
       debugPrint('📦 Step 2: Loading TFLite interpreter from asset...');
       debugPrint('   Using asset path: $assetPath');
       debugPrint('   Full path for fromAsset: $assetPath (should NOT include "assets/")');
-
+      
       // CRITICAL: fromAsset expects path relative to assets folder WITHOUT "assets/" prefix
       // Example: 'best_model.tflite' not 'assets/best_model.tflite'
       final options = tflite.InterpreterOptions()
         ..threads = 4;
       // Note: GPU delegate can be enabled here if needed for better performance
-
+      
       try {
-        debugPrint('   Calling tflite.Interpreter.fromAsset("$assetPath")...');
-        _interpreter = await tflite.Interpreter.fromAsset(
-          assetPath, // Must be 'best_model.tflite' not 'assets/best_model.tflite'
-          options: options,
-        );
-        debugPrint('   ✅ Interpreter created successfully');
-
-        if (_interpreter == null) {
-          _lastError = 'Interpreter is null after loading';
-          debugPrint('❌ Interpreter is null after loading');
-          _isLoaded = false;
-          return false;
+        debugPrint('   Attempting to load via fromAsset()...');
+        debugPrint('   ⏳ Loading ~14.5 MB model (this may take 10-30 seconds)...');
+        
+        // Try fromAsset first (fastest if it works)
+        try {
+          _interpreter = await Future(() async {
+            return await tflite.Interpreter.fromAsset(
+              assetPath,
+              options: options,
+            );
+          }).timeout(
+            const Duration(seconds: 45),
+            onTimeout: () {
+              throw TimeoutException('fromAsset timeout after 45 seconds');
+            },
+          );
+          
+          if (_interpreter != null) {
+            debugPrint('✅ Interpreter loaded successfully via fromAsset');
+            // Continue to Step 3 (tensor validation)
+          } else {
+            throw Exception('Interpreter is null after fromAsset');
+          }
+        } catch (fromAssetError) {
+          debugPrint('⚠️ fromAsset() failed: $fromAssetError');
+          debugPrint('   Trying fallback: copy to internal storage and load from file...');
+          
+          // FALLBACK: Copy asset to internal storage and load from file
+          // This works even if the model is compressed or fromAsset has issues
+          try {
+            final ByteData assetData = await rootBundle.load('assets/$assetPath');
+            final List<int> bytes = assetData.buffer.asUint8List();
+            
+            // Get app's internal directory
+            final Directory appDir = await getApplicationDocumentsDirectory();
+            final String modelPath = '${appDir.path}/$assetPath';
+            final File modelFile = File(modelPath);
+            
+            // Write model to internal storage (only if it doesn't exist or is different size)
+            if (!await modelFile.exists() || await modelFile.length() != bytes.length) {
+              await modelFile.writeAsBytes(bytes);
+              debugPrint('✅ Model copied to internal storage: $modelPath');
+            } else {
+              debugPrint('✅ Model already exists in internal storage');
+            }
+            debugPrint('   File size: ${(bytes.length / 1024 / 1024).toStringAsFixed(2)} MB');
+            
+            // Load from file path (fromFile is synchronous, wrap in Future for timeout)
+            _interpreter = await Future(() {
+              return tflite.Interpreter.fromFile(
+                modelFile,
+                options: options,
+              );
+            }).timeout(
+              const Duration(seconds: 45),
+              onTimeout: () {
+                throw TimeoutException('fromFile timeout after 45 seconds');
+              },
+            );
+            
+            if (_interpreter != null) {
+              debugPrint('✅ Interpreter loaded successfully via fromFile (fallback)');
+              // Continue to Step 3 (tensor validation)
+            } else {
+              throw Exception('Interpreter is null after fromFile');
+            }
+          } catch (fallbackError) {
+            debugPrint('❌ Fallback method also failed: $fallbackError');
+            throw fromAssetError; // Throw original error for better diagnostics
+          }
         }
-
-        debugPrint('✅ Interpreter created successfully');
       } catch (e, stackTrace) {
         _lastError = 'Failed to create interpreter: $e';
         debugPrint('❌ CRITICAL: Failed to create TFLite interpreter');
@@ -158,18 +217,18 @@ class MLModelService {
         _interpreter = null;
         return false;
       }
-
+      
       // Step 3: Verify interpreter is initialized
       debugPrint('📦 Step 3: Verifying interpreter initialization...');
       try {
         final inputTensor = _interpreter!.getInputTensor(0);
         final outputTensor = _interpreter!.getOutputTensor(0);
-
+        
         final inputShape = inputTensor.shape;
         final outputShape = outputTensor.shape;
         final inputType = inputTensor.type;
         final outputType = outputTensor.type;
-
+        
         debugPrint('✅ Interpreter initialized successfully');
         debugPrint('   Input tensor:');
         debugPrint('     Shape: $inputShape');
@@ -179,13 +238,13 @@ class MLModelService {
         debugPrint('     Shape: $outputShape');
         debugPrint('     Type: $outputType');
         debugPrint('     Size: ${outputShape.reduce((a, b) => a * b)} elements');
-
+        
         // Verify expected input shape (should be [1, 224, 224, 3] or [224, 224, 3])
         final expectedInputSize = 224 * 224 * 3;
         final actualInputSize = inputShape.length > 1
             ? inputShape.sublist(1).reduce((a, b) => a * b)  // Skip batch dimension
             : inputShape.reduce((a, b) => a * b);
-
+        
         if (actualInputSize != expectedInputSize) {
           debugPrint('⚠️ Warning: Input size mismatch');
           debugPrint('   Expected: $expectedInputSize (224x224x3)');
@@ -193,13 +252,13 @@ class MLModelService {
         } else {
           debugPrint('✅ Input size matches expected: $expectedInputSize');
         }
-
+        
         // Verify expected output shape (should be [1, 4] or [4] for 4 classes)
         final expectedOutputSize = 4;
         final actualOutputSize = outputShape.length > 1
             ? outputShape.sublist(1).reduce((a, b) => a * b)  // Skip batch dimension
             : outputShape.reduce((a, b) => a * b);
-
+        
         if (actualOutputSize != expectedOutputSize) {
           debugPrint('⚠️ Warning: Output size mismatch');
           debugPrint('   Expected: $expectedOutputSize (4 classes)');
@@ -207,7 +266,7 @@ class MLModelService {
         } else {
           debugPrint('✅ Output size matches expected: $expectedOutputSize');
         }
-
+        
       } catch (e, stackTrace) {
         _lastError = 'Failed to verify interpreter: $e';
         debugPrint('❌ Failed to verify interpreter initialization: $e');
@@ -216,14 +275,14 @@ class MLModelService {
         _interpreter = null;
         return false;
       }
-
+      
       _isLoaded = true;
-
+      
       debugPrint('═══════════════════════════════════════════════════════════');
       debugPrint('✅ ML MODEL LOADED SUCCESSFULLY');
       debugPrint('═══════════════════════════════════════════════════════════');
       debugPrint('');
-
+      
       return true;
     } catch (e, stackTrace) {
       _lastError = 'Unexpected error loading model: $e';
@@ -234,9 +293,9 @@ class MLModelService {
       return false;
     }
   }
-
+  
   /// Run full classification using ML model
-  ///
+  /// 
   /// [preprocessedImage] - Normalized Float32List (224x224x3 = 150528 values)
   /// Returns classification probabilities or null
   Future<List<double>?> classify(Float32List preprocessedImage) async {
@@ -244,17 +303,17 @@ class MLModelService {
       debugPrint('⚠️ ML model not loaded, cannot classify');
       return null;
     }
-
+    
     try {
       final inputTensor = _interpreter!.getInputTensor(0);
       final outputTensor = _interpreter!.getOutputTensor(0);
-
+      
       // Get input shape (usually [1, 224, 224, 3] for batch, height, width, channels)
       final inputShape = inputTensor.shape;
       final expectedSize = inputShape.length > 1
           ? inputShape.sublist(1).reduce((a, b) => a * b)  // Skip batch dimension
           : inputShape.reduce((a, b) => a * b);
-
+      
       // Verify input size matches (accounting for batch dimension)
       if (preprocessedImage.length != expectedSize) {
         debugPrint('❌ Input size mismatch in classify:');
@@ -263,24 +322,24 @@ class MLModelService {
         debugPrint('   Input shape: $inputShape');
         return null;
       }
-
+      
       // CRITICAL: Prepare input buffer correctly
       // TFLite expects input to match tensor shape exactly
       // If tensor is [1, 224, 224, 3], we need to reshape the flat array
       debugPrint('📐 Input tensor shape: $inputShape');
       debugPrint('📐 Preprocessed image length: ${preprocessedImage.length}');
-
+      
       // Reshape the flat array to match tensor shape
       // For shape [1, 224, 224, 3], we need to create a properly shaped buffer
       final inputBuffer = [preprocessedImage];
-
+      
       // Verify input buffer size matches expected
       // The preprocessedImage is [224*224*3] = 150,528 elements (without batch dimension)
       // The input tensor shape is [1, 224, 224, 3] = 150,528 elements (with batch dimension)
       // tflite_flutter handles the batch dimension automatically when we wrap in [preprocessedImage]
       final expectedInputElements = inputShape.reduce((a, b) => a * b); // Full tensor size including batch
       final expectedNonBatchSize = inputShape.sublist(1).reduce((a, b) => a * b); // Size without batch
-
+      
       // Preprocessed image should match non-batch size (150,528)
       if (preprocessedImage.length != expectedNonBatchSize) {
         debugPrint('❌ CRITICAL: Input size mismatch!');
@@ -291,19 +350,19 @@ class MLModelService {
         debugPrint('   Expected: $expectedNonBatchSize (224 * 224 * 3)');
         return null;
       }
-
+      
       debugPrint('✅ Input size verified: ${preprocessedImage.length} elements (matches $expectedNonBatchSize)');
-
+      
       // Prepare output buffer
       final outputSize = outputTensor.shape.reduce((a, b) => a * b);
       final outputBuffer = [Float32List(outputSize)];
-
+      
       // Run inference - THIS IS DYNAMIC, RUNS FRESH EVERY TIME
       debugPrint('🔄 Running TFLite inference (dynamic, no caching)...');
       debugPrint('   Input buffer size: ${inputBuffer[0].length}');
       debugPrint('   Output buffer size: ${outputBuffer[0].length}');
       final inferenceStartTime = DateTime.now();
-
+      
       try {
         _interpreter!.run(inputBuffer, outputBuffer);
       } catch (e, stackTrace) {
@@ -314,15 +373,15 @@ class MLModelService {
         debugPrint('   Output shape: ${outputTensor.shape}');
         return null;
       }
-
+      
       final inferenceDuration = DateTime.now().difference(inferenceStartTime);
       debugPrint('✅ TFLite inference completed in ${inferenceDuration.inMilliseconds}ms');
-
+      
       // Extract probabilities (handle batch dimension if present)
       final output = outputBuffer[0];
       debugPrint('📊 Raw output buffer size: ${output.length}');
       debugPrint('📊 Output tensor shape: ${outputTensor.shape}');
-
+      
       // If output has batch dimension [1, num_classes], take first element
       // Otherwise, use output directly
       List<double> probabilities;
@@ -336,13 +395,13 @@ class MLModelService {
         probabilities = output.map((e) => e.toDouble()).toList();
         debugPrint('📊 Using ${probabilities.length} probabilities directly');
       }
-
+      
       // Log raw output for verification
       debugPrint('📊 Raw Model Output Values:');
       for (int i = 0; i < probabilities.length && i < 4; i++) {
         debugPrint('   Output[$i]: ${probabilities[i].toStringAsFixed(6)}');
       }
-
+      
       return probabilities;
     } catch (e, stackTrace) {
       debugPrint('❌ Error during ML classification: $e');
@@ -350,9 +409,9 @@ class MLModelService {
       return null;
     }
   }
-
+  
   /// Extract features from preprocessed image using ML model
-  ///
+  /// 
   /// [preprocessedImage] - Normalized Float32List (224x224x3)
   /// Returns feature vector or null if model not loaded
   Future<Float32List?> extractFeatures(Float32List preprocessedImage) async {
@@ -361,22 +420,22 @@ class MLModelService {
     if (probabilities == null) return null;
     return Float32List.fromList(probabilities.map((e) => e.toDouble()).toList());
   }
-
+  
   /// Test model with dummy input to verify it works
   Future<bool> testModel() async {
     if (!isLoaded || _interpreter == null) {
       debugPrint('⚠️ Model not loaded, cannot test');
       return false;
     }
-
+    
     try {
       debugPrint('🧪 Testing model with dummy input...');
-
+      
       // Create dummy input (224x224x3 = 150528 values, all zeros)
       final dummyInput = Float32List(224 * 224 * 3);
-
+      
       final result = await classify(dummyInput);
-
+      
       if (result != null && result.length > 0) {
         debugPrint('✅ Model test successful - got ${result.length} outputs');
         return true;
@@ -390,7 +449,7 @@ class MLModelService {
       return false;
     }
   }
-
+  
   /// Dispose resources
   void dispose() {
     _interpreter?.close();

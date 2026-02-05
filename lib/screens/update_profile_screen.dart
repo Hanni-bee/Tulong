@@ -874,11 +874,12 @@ class _UpdateProfileScreenState extends State<UpdateProfileScreen> {
 
                 const SizedBox(height: 32),
 
-                // Update button - only triggers confirmation modal
+                // Update button - only triggers confirmation modal (medium size so text fits)
                 CustomButton(
                   text: _isLoading ? 'Updating...' : 'Update Profile',
                   onPressed: _isLoading ? null : _showConfirmationDialog,
                   isLoading: _isLoading,
+                  size: ButtonSize.medium,
                 ),
               ],
             ),

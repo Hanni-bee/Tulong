@@ -21,6 +21,7 @@ import '../widgets/user_engagement_dashboard.dart';
 import '../providers/chat_provider.dart';
 import '../providers/theme_provider.dart';
 import '../services/user_status_service.dart';
+import '../models/emergency_type.dart';
 
 class ModernProfileScreen extends StatefulWidget {
   const ModernProfileScreen({super.key});
@@ -935,62 +936,106 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
         final severityLabel = status['severity_label'] as String;
         final emergencyLabel = status['emergency_type_label'] as String;
         final lastUpdated = status['last_updated_formatted'] as String? ?? '—';
+        final emergencyType = status['emergency_type'] as EmergencyType?;
+        final statusIcon = emergencyType?.icon ?? Icons.assignment_outlined;
         return AnimatedNeumorphicCard(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: severityColor.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: severityColor.withOpacity(0.3),
-                      width: 1,
+          borderRadius: 18,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(18),
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(18),
+                border: Border(
+                  left: BorderSide(
+                    color: severityColor,
+                    width: 4,
+                  ),
+                ),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: severityColor.withOpacity(0.14),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: severityColor.withOpacity(0.35),
+                          width: 1.5,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: severityColor.withOpacity(0.12),
+                            blurRadius: 10,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Icon(
+                        statusIcon,
+                        size: 28,
+                        color: severityColor,
+                      ),
                     ),
-                  ),
-                  child: Text(
-                    status['emergency_type_emoji'] as String? ?? '📋',
-                    style: const TextStyle(fontSize: 24),
-                  ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Current Status',
+                            style: UnifiedTypography.bodySmall.copyWith(
+                              color: ThemeColors.textTertiary(context),
+                              fontWeight: FontWeight.w600,
+                              fontSize: 11,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '$emergencyLabel · $severityLabel',
+                            style: UnifiedTypography.titleMedium.copyWith(
+                              fontWeight: FontWeight.w700,
+                              color: severityColor,
+                              fontSize: 16,
+                              letterSpacing: 0.2,
+                              height: 1.25,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.schedule_rounded,
+                                size: 14,
+                                color: ThemeColors.textTertiary(context),
+                              ),
+                              const SizedBox(width: 5),
+                              Expanded(
+                                child: Text(
+                                  lastUpdated,
+                                  style: UnifiedTypography.bodySmall.copyWith(
+                                    color: ThemeColors.textTertiary(context),
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Current Status',
-                        style: UnifiedTypography.bodySmall.copyWith(
-                          color: AppColors.mediumGray,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '$emergencyLabel · $severityLabel',
-                        style: UnifiedTypography.titleMedium.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: severityColor,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Updated: $lastUpdated',
-                        style: UnifiedTypography.bodySmall.copyWith(
-                          color: AppColors.mediumGray,
-                          fontSize: 11,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
         );

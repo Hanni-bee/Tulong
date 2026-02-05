@@ -7,7 +7,9 @@ import 'package:flutter_animate/flutter_animate.dart';
 import '../constants/app_colors.dart';
 import '../constants/app_typography.dart';
 import '../constants/soft_ui_design.dart';
+import '../constants/severity_colors.dart';
 import '../utils/theme_colors.dart';
+import '../models/emergency_type.dart';
 import '../providers/chat_provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/voice_chat_extension.dart' as voice;
@@ -908,8 +910,30 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
     );
   }
 
+  Color _severityBubbleColor(SeverityLevel? severity, bool isMe, bool isEmergency) {
+    if (severity != null) {
+      return isMe
+          ? SeverityColors.color(severity).withOpacity(0.75)
+          : SeverityColors.background(severity);
+    }
+    if (isMe) return isEmergency ? AppColors.error : AppColors.primaryRed;
+    return isEmergency ? AppColors.error.withOpacity(0.18) : ThemeColors.surface(context);
+  }
+
+  Color _severityBorderColor(SeverityLevel? severity, bool isMe, bool isEmergency) {
+    if (severity != null) return SeverityColors.border(severity);
+    if (isEmergency) return AppColors.error.withOpacity(0.8);
+    if (isMe) return Colors.white.withOpacity(0.2);
+    return AppColors.lightGray.withOpacity(0.5);
+  }
+
   Widget _buildMessageBubbleContent(ChatMessage message) {
     final isEmergency = message.isEmergency;
+    final severity = message.severityLevel;
+    final emergencyType = message.emergencyType;
+    final isFromEmergencyDetection = emergencyType != null;
+    final bubbleColor = _severityBubbleColor(severity, message.isMe, isEmergency);
+    final borderColor = _severityBorderColor(severity, message.isMe, isEmergency);
     final row = Row(
         mainAxisAlignment: message.isMe 
             ? MainAxisAlignment.end 
@@ -967,24 +991,18 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
               vertical: isEmergency ? 14 : 12,
             ),
             decoration: BoxDecoration(
-              color: isEmergency
-                  ? (message.isMe ? AppColors.error : AppColors.error.withOpacity(0.18))
-                  : (message.isMe ? AppColors.primaryRed : ThemeColors.surface(context)),
+              color: bubbleColor,
               borderRadius: BorderRadius.circular(20).copyWith(
                 bottomLeft: message.isMe ? const Radius.circular(20) : const Radius.circular(4),
                 bottomRight: message.isMe ? const Radius.circular(4) : const Radius.circular(20),
               ),
               border: Border.all(
-                color: isEmergency
-                    ? AppColors.error.withOpacity(0.8)
-                    : (message.isMe 
-                        ? Colors.white.withOpacity(0.2)
-                        : AppColors.lightGray.withOpacity(0.5)),
-                width: isEmergency ? 2.5 : 1.5,
+                color: borderColor,
+                width: (severity != null || isEmergency) ? 2.5 : 1.5,
               ),
-              boxShadow: isEmergency ? [
+              boxShadow: (severity != null || isEmergency) ? [
                 BoxShadow(
-                  color: AppColors.error.withOpacity(0.3),
+                  color: borderColor.withOpacity(0.3),
                   blurRadius: 12,
                   spreadRadius: 2,
                   offset: const Offset(0, 4),
@@ -994,8 +1012,8 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Emergency badge
-                if (isEmergency) ...[
+                // SOS Emergency badge (hardware/home SOS)
+                if (isEmergency && !isFromEmergencyDetection) ...[
                   Row(
                     children: [
                       const Icon(
@@ -1016,6 +1034,29 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
                     ],
                   ),
                   const SizedBox(height: 8),
+                ],
+                // "From Emergency Detection" badge – so others know it's AI-verified, not copy-paste
+                if (isFromEmergencyDetection) ...[
+                  Row(
+                    children: [
+                      Icon(
+                        emergencyType.icon,
+                        size: 16,
+                        color: severity != null ? borderColor : ThemeColors.primary(context),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        'FROM EMERGENCY DETECTION',
+                        style: AppTypography.bodySmall.copyWith(
+                          color: severity != null ? borderColor : ThemeColors.primary(context),
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.6,
+                          fontSize: 10,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
                 ],
                 // Message content
                 if (message.type == voice.MessageType.voice && message.voiceMessage != null)

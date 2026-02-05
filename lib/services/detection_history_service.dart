@@ -10,21 +10,21 @@ import '../models/emergency_type.dart';
 class DetectionHistoryService {
   static DetectionHistoryService? _instance;
   static DetectionHistoryService get instance => _instance ??= DetectionHistoryService._internal();
-
+  
   DetectionHistoryService._internal();
-
+  
   static Database? _database;
   static const String _databaseName = 'detection_history.db';
   static const int _databaseVersion = 2; // Incremented for user_uid migration
   static const String _tableName = 'detections';
-
+  
   /// Get database instance
   Future<Database> get database async {
     if (_database != null) return _database!;
     _database = await _initDatabase();
     return _database!;
   }
-
+  
   /// Initialize database
   Future<Database> _initDatabase() async {
     String path = join(await getDatabasesPath(), _databaseName);
@@ -39,7 +39,7 @@ class DetectionHistoryService {
       },
     );
   }
-
+  
   /// Create table
   Future<void> _onCreate(Database db, int version) async {
     await db.execute('''
@@ -54,7 +54,7 @@ class DetectionHistoryService {
         created_at INTEGER NOT NULL
       )
     ''');
-
+    
     // Create indexes for faster queries
     await db.execute('''
       CREATE INDEX idx_timestamp ON $_tableName(timestamp DESC)
@@ -66,14 +66,14 @@ class DetectionHistoryService {
       CREATE INDEX idx_user_timestamp ON $_tableName(user_uid, timestamp DESC)
     ''');
   }
-
+  
   /// Migrate existing table to add user_uid column
   Future<void> _migrateTable(Database db) async {
     try {
       // Check if user_uid column exists
       final tableInfo = await db.rawQuery('PRAGMA table_info($_tableName)');
       final hasUserUid = tableInfo.any((column) => column['name'] == 'user_uid');
-
+      
       if (!hasUserUid) {
         // Add user_uid column
         await db.execute('ALTER TABLE $_tableName ADD COLUMN user_uid TEXT');
@@ -93,18 +93,18 @@ class DetectionHistoryService {
       debugPrint('Migration error: $e');
     }
   }
-
+  
   /// Save detection result to database with user UID
   Future<int> saveDetection(EmergencyDetectionResult result) async {
     final db = await database;
-
+    
     // Get user UID from SharedPreferences
     final prefs = await SharedPreferences.getInstance();
     final userUid = prefs.getString('session_uid') ?? 'unknown';
-
+    
     // Ensure migration is applied
     await _migrateTable(db);
-
+    
     final id = await db.insert(
       _tableName,
       {
@@ -117,22 +117,22 @@ class DetectionHistoryService {
         'created_at': DateTime.now().millisecondsSinceEpoch,
       },
     );
-
+    
     // Update user's current status in SharedPreferences
     await prefs.setString('user_current_status', result.severity.name);
     await prefs.setString('user_current_emergency_type', result.type.name);
     await prefs.setInt('user_status_last_updated', result.timestamp.millisecondsSinceEpoch);
-
+    
     return id;
   }
-
+  
   /// Get current user's latest status
   Future<Map<String, dynamic>?> getCurrentUserStatus() async {
     final prefs = await SharedPreferences.getInstance();
     final userUid = prefs.getString('session_uid');
-
+    
     if (userUid == null) return null;
-
+    
     final db = await database;
     final List<Map<String, dynamic>> maps = await db.query(
       _tableName,
@@ -141,9 +141,9 @@ class DetectionHistoryService {
       orderBy: 'timestamp DESC',
       limit: 1,
     );
-
+    
     if (maps.isEmpty) return null;
-
+    
     final map = maps.first;
     return {
       'emergency_type': map['emergency_type'],
@@ -153,14 +153,14 @@ class DetectionHistoryService {
       'last_updated': map['timestamp'],
     };
   }
-
+  
   /// Get user's detection history
   Future<List<EmergencyDetectionResult>> getUserDetections({int? limit}) async {
     final prefs = await SharedPreferences.getInstance();
     final userUid = prefs.getString('session_uid');
-
+    
     if (userUid == null) return [];
-
+    
     final db = await database;
     final List<Map<String, dynamic>> maps = await db.query(
       _tableName,
@@ -169,10 +169,10 @@ class DetectionHistoryService {
       orderBy: 'timestamp DESC',
       limit: limit,
     );
-
+    
     return maps.map((map) => _mapToResult(map)).toList();
   }
-
+  
   /// Get all detections, ordered by most recent first
   Future<List<EmergencyDetectionResult>> getAllDetections({int? limit}) async {
     final db = await database;
@@ -181,15 +181,15 @@ class DetectionHistoryService {
       orderBy: 'timestamp DESC',
       limit: limit,
     );
-
+    
     return maps.map((map) => _mapToResult(map)).toList();
   }
-
+  
   /// Get recent detections for current user (default behavior)
   Future<List<EmergencyDetectionResult>> getRecentDetections(int count) async {
     return await getUserDetections(limit: count);
   }
-
+  
   /// Get detections by emergency type
   Future<List<EmergencyDetectionResult>> getDetectionsByType(EmergencyType type) async {
     final db = await database;
@@ -199,18 +199,18 @@ class DetectionHistoryService {
       whereArgs: [type.name],
       orderBy: 'timestamp DESC',
     );
-
+    
     return maps.map((map) => _mapToResult(map)).toList();
   }
-
-
+  
+  
   /// Get detection count
   Future<int> getDetectionCount() async {
     final db = await database;
     final result = await db.rawQuery('SELECT COUNT(*) as count FROM $_tableName');
     return Sqflite.firstIntValue(result) ?? 0;
   }
-
+  
   /// Delete detection by ID
   Future<int> deleteDetection(int id) async {
     final db = await database;
@@ -220,13 +220,13 @@ class DetectionHistoryService {
       whereArgs: [id],
     );
   }
-
+  
   /// Clear all detections
   Future<int> clearAllDetections() async {
     final db = await database;
     return await db.delete(_tableName);
   }
-
+  
   /// Convert database map to EmergencyDetectionResult
   EmergencyDetectionResult _mapToResult(Map<String, dynamic> map) {
     return EmergencyDetectionResult(
@@ -237,7 +237,7 @@ class DetectionHistoryService {
       imagePath: map['image_path'] as String?,
     );
   }
-
+  
   /// Close database
   Future<void> close() async {
     final db = await database;

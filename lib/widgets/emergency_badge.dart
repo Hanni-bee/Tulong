@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../constants/app_colors.dart';
+import '../constants/severity_colors.dart';
 import '../models/emergency_type.dart';
 import '../models/emergency_detection_result.dart';
 
@@ -51,59 +51,11 @@ class _EmergencyBadgeState extends State<EmergencyBadge>
     super.dispose();
   }
 
-  /// Get badge color based on emergency type and severity
-  Color _getBadgeColor() {
-    final severity = widget.result.severity;
-    
-    // Base color by emergency type
-    Color baseColor;
-    switch (widget.result.type) {
-      case EmergencyType.fire:
-        baseColor = AppColors.primaryRed;
-        break;
-      case EmergencyType.flood:
-        baseColor = AppColors.info;
-        break;
-      case EmergencyType.earthquake:
-        baseColor = const Color(0xFF8B4513); // Brown
-        break;
-      case EmergencyType.accident:
-        baseColor = AppColors.warning;
-        break;
-      case EmergencyType.calamity:
-        baseColor = AppColors.purple;
-        break;
-      case EmergencyType.general:
-        baseColor = AppColors.mediumGray;
-        break;
-    }
-    
-    // Adjust brightness based on severity
-    switch (severity) {
-      case SeverityLevel.low:
-        return baseColor.withOpacity(0.7);
-      case SeverityLevel.medium:
-        return baseColor;
-      case SeverityLevel.high:
-        return baseColor;
-      case SeverityLevel.critical:
-        return baseColor;
-    }
-  }
+  /// Get badge color from app-wide severity palette
+  Color _getBadgeColor() => SeverityColors.color(widget.result.severity);
 
-  /// Get border color based on severity
-  Color _getBorderColor() {
-    switch (widget.result.severity) {
-      case SeverityLevel.low:
-        return Colors.green.withOpacity(0.5);
-      case SeverityLevel.medium:
-        return Colors.yellow.withOpacity(0.5);
-      case SeverityLevel.high:
-        return Colors.orange.withOpacity(0.7);
-      case SeverityLevel.critical:
-        return Colors.red.withOpacity(0.9);
-    }
-  }
+  /// Get border color from app-wide severity palette
+  Color _getBorderColor() => SeverityColors.border(widget.result.severity);
 
   @override
   Widget build(BuildContext context) {
@@ -134,9 +86,10 @@ class _EmergencyBadgeState extends State<EmergencyBadge>
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            widget.result.type.emoji,
-            style: const TextStyle(fontSize: 16),
+          Icon(
+            widget.result.type.icon,
+            size: 16,
+            color: Colors.white,
           ),
           const SizedBox(width: 6),
           Text(

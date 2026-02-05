@@ -153,8 +153,7 @@ class _EnhancedMessageStatusState extends State<EnhancedMessageStatus>
           ),
         ).animate(onPlay: (controller) => controller.repeat(reverse: true))
           .shimmer(duration: 1200.ms, color: Colors.white.withOpacity(0.4))
-          .scale(duration: 800.ms, begin: const Offset(1, 1), end: const Offset(1.08, 1.08))
-          .shake(duration: 600.ms, hz: 4);
+          .scale(duration: 800.ms, begin: const Offset(1, 1), end: const Offset(1.08, 1.08));
     }
   }
 }

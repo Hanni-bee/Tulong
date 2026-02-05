@@ -321,7 +321,7 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
         backgroundColor: ThemeColors.surface(context),
         borderRadius: SoftUIDesign.cardBorderRadius,
         elevation: 3.0,
-        borderColor: AppColors.lightGray.withOpacity(0.3),
+        borderColor: ThemeColors.border(context),
         showBorder: true,
       ),
       child: Column(
@@ -334,7 +334,7 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
               Text(
                 'Select Scenario',
                 style: AppTypography.cardTitle.copyWith(
-                  color: AppColors.textPrimary,
+                  color: ThemeColors.textPrimary(context),
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -355,12 +355,12 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
                   decoration: BoxDecoration(
                     color: isSelected 
                         ? scenario.color.withOpacity(0.15)
-                        : AppColors.lightGray.withOpacity(0.1),
+                        : ThemeColors.textTertiary(context).withOpacity(0.15),
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
                       color: isSelected 
                           ? scenario.color
-                          : AppColors.lightGray.withOpacity(0.3),
+                          : ThemeColors.border(context),
                       width: isSelected ? 2 : 1,
                     ),
                   ),
@@ -370,7 +370,7 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
                       Icon(
                         scenario.icon,
                         size: 18,
-                        color: isSelected ? scenario.color : AppColors.textSecondary,
+                        color: isSelected ? scenario.color : ThemeColors.textSecondary(context),
                       ),
                       const SizedBox(width: 8),
                       Text(
@@ -378,7 +378,7 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
-                          color: isSelected ? scenario.color : AppColors.textSecondary,
+                          color: isSelected ? scenario.color : ThemeColors.textSecondary(context),
                         ),
                       ),
                     ],
@@ -404,7 +404,7 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
         backgroundColor: ThemeColors.surface(context),
         borderRadius: SoftUIDesign.cardBorderRadius,
         elevation: 3.0,
-        borderColor: AppColors.lightGray.withOpacity(0.3),
+        borderColor: ThemeColors.border(context),
         showBorder: true,
       ),
       child: Column(
@@ -417,7 +417,7 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
               Text(
                 'Simulation Stats',
                 style: AppTypography.cardTitle.copyWith(
-                  color: AppColors.textPrimary,
+                  color: ThemeColors.textPrimary(context),
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -490,7 +490,7 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
             style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w600,
-              color: AppColors.textSecondary,
+              color: ThemeColors.textSecondary(context),
             ),
           ),
         ],
@@ -713,7 +713,7 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
-                              color: AppColors.textSecondary,
+                              color: ThemeColors.textSecondary(context),
                             ),
                           ),
                           const SizedBox(height: 2),
@@ -775,7 +775,7 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
                     Text(
                       scenario.title,
                       style: AppTypography.cardTitle.copyWith(
-                        color: AppColors.textPrimary,
+                        color: ThemeColors.textPrimary(context),
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -783,7 +783,7 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
                     Text(
                       scenario.description,
                       style: AppTypography.bodySmall.copyWith(
-                        color: AppColors.textSecondary,
+                        color: ThemeColors.textSecondary(context),
                       ),
                     ),
                   ],
@@ -811,13 +811,13 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: AppColors.backgroundLight,
+              color: ThemeColors.surfaceContainer(context),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Text(
               'This is how T.U.L.O.N.G would respond to a ${scenario.title.toLowerCase()}. The app automatically sends alerts to all users in the affected area through the mesh network.',
               style: AppTypography.bodyMedium.copyWith(
-                color: AppColors.textSecondary,
+                color: ThemeColors.textSecondary(context),
                 height: 1.5,
               ),
             ),
@@ -835,7 +835,7 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
         backgroundColor: ThemeColors.surface(context),
         borderRadius: SoftUIDesign.cardBorderRadius,
         elevation: 3.0,
-        borderColor: AppColors.lightGray.withOpacity(0.3),
+        borderColor: ThemeColors.border(context),
         showBorder: true,
       ),
       child: Column(
@@ -849,12 +849,12 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
                 size: 24,
               ),
               const SizedBox(width: 12),
-              const Text(
+              Text(
                 'Community Response',
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
-                  color: AppColors.textPrimary,
+                  color: ThemeColors.textPrimary(context),
                 ),
               ),
             ],
@@ -920,17 +920,17 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
                   children: [
                     Text(
                       name,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
-                        color: AppColors.textPrimary,
+                        color: ThemeColors.textPrimary(context),
                       ),
                     ),
                     Text(
                       time,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
-                        color: AppColors.textSecondary,
+                        color: ThemeColors.textSecondary(context),
                       ),
                     ),
                   ],
@@ -941,9 +941,9 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
           const SizedBox(height: 8),
           Text(
             message,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 14,
-              color: AppColors.textSecondary,
+              color: ThemeColors.textSecondary(context),
             ),
           ),
         ],
@@ -959,7 +959,7 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
         backgroundColor: ThemeColors.surface(context),
         borderRadius: SoftUIDesign.cardBorderRadius,
         elevation: 3.0,
-        borderColor: AppColors.lightGray.withOpacity(0.3),
+        borderColor: ThemeColors.border(context),
         showBorder: true,
       ),
       child: Column(
@@ -973,12 +973,12 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
                 size: 24,
               ),
               const SizedBox(width: 12),
-              const Text(
+              Text(
                 'Safety Actions',
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
-                  color: AppColors.textPrimary,
+                  color: ThemeColors.textPrimary(context),
                 ),
               ),
             ],
@@ -1005,9 +1005,9 @@ class _DisasterDemoScreenState extends State<DisasterDemoScreen>
                 Expanded(
                   child: Text(
                     action,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 14,
-                      color: AppColors.textSecondary,
+                      color: ThemeColors.textSecondary(context),
                       fontWeight: FontWeight.w500,
                     ),
                   ),
