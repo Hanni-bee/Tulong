@@ -4,14 +4,19 @@ import '../utils/theme_colors.dart';
 import '../constants/app_typography.dart';
 import '../services/sqlite_service.dart';
 import '../services/unified_data_service.dart';
+import '../providers/chat_provider.dart';
 
-/// Modal to display sender's basic information (Name, Contact Number, Address)
+/// Modal to display sender's basic information (Name, Contact Number, Address).
+/// Loads by [senderUid] (exact) when provided; otherwise falls back to [senderName] (LIKE).
+/// Optional: when UID provided and not in DB/cache, requests profile from ESP32 then refreshes.
 class SenderInfoModal extends StatefulWidget {
-  final String senderName;
+  final String? senderUid;
+  final String? senderName;
 
   const SenderInfoModal({
     super.key,
-    required this.senderName,
+    this.senderUid,
+    this.senderName,
   });
 
   @override
@@ -22,6 +27,7 @@ class _SenderInfoModalState extends State<SenderInfoModal> {
   bool _isLoading = true;
   Map<String, dynamic>? _userInfo;
   String? _errorMessage;
+  bool _requestedProfile = false;
 
   @override
   void initState() {
@@ -36,32 +42,38 @@ class _SenderInfoModalState extends State<SenderInfoModal> {
     });
 
     try {
-      // Try to find user by name in the database
       final sqliteService = SQLiteService();
-      
-      // Search in SQLite first - try exact match first, then partial
       final db = await sqliteService.database;
-      
-      // First try exact match on full name
-      String fullNameQuery = 'first_name || " " || last_name';
-      var results = await db.query(
-        'users',
-        where: '$fullNameQuery = ?',
-        whereArgs: [widget.senderName.trim()],
-      );
+      List<Map<String, dynamic>> results = [];
 
-      // If no exact match, try partial match
-      if (results.isEmpty) {
-        // Try matching first name or last name
+      // Prefer UID-based lookup (exact) when available
+      if (widget.senderUid != null && widget.senderUid!.trim().isNotEmpty) {
         results = await db.query(
           'users',
-          where: 'first_name LIKE ? OR last_name LIKE ? OR $fullNameQuery LIKE ?',
-          whereArgs: [
-            widget.senderName.trim(),
-            widget.senderName.trim(),
-            '%${widget.senderName.trim()}%',
-          ],
+          where: 'uid = ?',
+          whereArgs: [widget.senderUid!.trim()],
         );
+      }
+
+      // Fallback: search by name (exact then partial) when no UID or not found by UID
+      if (results.isEmpty && widget.senderName != null && widget.senderName!.trim().isNotEmpty) {
+        String fullNameQuery = 'first_name || " " || last_name';
+        results = await db.query(
+          'users',
+          where: '$fullNameQuery = ?',
+          whereArgs: [widget.senderName!.trim()],
+        );
+        if (results.isEmpty) {
+          results = await db.query(
+            'users',
+            where: 'first_name LIKE ? OR last_name LIKE ? OR $fullNameQuery LIKE ?',
+            whereArgs: [
+              widget.senderName!.trim(),
+              widget.senderName!.trim(),
+              '%${widget.senderName!.trim()}%',
+            ],
+          );
+        }
       }
 
       if (results.isNotEmpty) {
@@ -77,12 +89,22 @@ class _SenderInfoModalState extends State<SenderInfoModal> {
         return;
       }
 
-      // User not found in SQLite (offline-only)
+      // Not found: if we have UID and haven't requested profile yet, request then retry
+      if (widget.senderUid != null &&
+          widget.senderUid!.trim().isNotEmpty &&
+          !_requestedProfile &&
+          ChatProvider.instance != null) {
+        _requestedProfile = true;
+        await ChatProvider.instance!.requestProfileFromESP32(widget.senderUid!.trim());
+        await Future.delayed(const Duration(milliseconds: 800));
+        if (mounted) await _loadSenderInfo();
+        return;
+      }
 
-      // If not found, show limited info
+      // User not found (offline or no data)
       setState(() {
         _userInfo = {
-          'name': widget.senderName,
+          'name': widget.senderName ?? widget.senderUid ?? 'Unknown',
           'phone': 'Not available',
           'address': 'Not available',
         };
@@ -190,7 +212,7 @@ class _SenderInfoModalState extends State<SenderInfoModal> {
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          widget.senderName,
+                          widget.senderName ?? widget.senderUid ?? 'Unknown',
                           style: AppTypography.bodyMedium.copyWith(
                             color: Colors.white.withOpacity(0.95),
                             fontSize: 14,
@@ -252,7 +274,7 @@ class _SenderInfoModalState extends State<SenderInfoModal> {
                                   _buildInfoCard(
                                     icon: Icons.person,
                                     label: 'Name',
-                                    value: _userInfo!['name'] ?? widget.senderName,
+                                    value: _userInfo!['name'] ?? widget.senderName ?? widget.senderUid ?? 'Unknown',
                                     color: cyanBlue,
                                   ),
                                   const SizedBox(height: 20),

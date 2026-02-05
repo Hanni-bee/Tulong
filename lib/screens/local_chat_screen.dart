@@ -917,9 +917,13 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
         children: [
           if (!message.isMe) ...[
             GestureDetector(
-              onTap: message.senderName != null && message.senderName!.isNotEmpty
+              onTap: (message.senderUid != null && message.senderUid!.isNotEmpty) ||
+                     (message.senderName != null && message.senderName!.isNotEmpty)
                   ? () {
-                      _showSenderInfoModal(message.senderName!);
+                      _showSenderInfoModal(
+                        senderUid: message.senderUid,
+                        senderName: message.senderName,
+                      );
                     }
                   : null,
               child: Container(
@@ -1126,10 +1130,13 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
     );
   }
 
-  void _showSenderInfoModal(String senderName) {
+  void _showSenderInfoModal({String? senderUid, String? senderName}) {
     showDialog(
       context: context,
-      builder: (context) => SenderInfoModal(senderName: senderName),
+      builder: (context) => SenderInfoModal(
+        senderUid: senderUid,
+        senderName: senderName,
+      ),
     );
   }
 

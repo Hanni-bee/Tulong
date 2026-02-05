@@ -538,11 +538,19 @@ class ChatProvider with ChangeNotifier {
   }
 
   /// Process incoming Map message (JSON format from ESP32)
-  /// Handles messages from:
-  /// 1. Home page SOS button (sent with isEmergency: true flag)
-  /// 2. Other devices forwarding emergency messages (with is_emergency flag)
+  /// Handles: profile_response (save to cache), SOS/emergency map messages.
   void _processIncomingMapMessage(Map<String, dynamic> data) {
     try {
+      // profile_response: save to cache first; later when message comes we check UID in cache before requesting
+      if (data['command'] == 'profile_response') {
+        final profileData = data['data'] as Map<String, dynamic>?;
+        if (profileData != null) {
+          _saveProfileFromESP32(profileData);
+          print('BT_PROFILE: profile_response received -> saved to cache (UID=${profileData['uid']})');
+        }
+        return;
+      }
+
       final messageText = data['message'] ?? '';
       final senderName = data['sender_name'] ?? 'Unknown';
       // Check for emergency flag - this includes messages from home page SOS button
@@ -648,6 +656,7 @@ class ChatProvider with ChangeNotifier {
             _incomingMessageBuffer = '';
             _isBufferingMessage = true;
             print('BT_RX: Message start from UID: $uid');
+            print('BT_RX: RECV_MSG_HEADER_UID=$uid'); // log: kaninong UID yung narereceive as msg header
             
             // Check if UID is known, if not request profile
             _isUidKnown(uid).then((isKnown) {
@@ -664,9 +673,12 @@ class ChatProvider with ChangeNotifier {
             'metrics': {'uid': uid}
           });
         }
+        // Header line never appears in UI — skip adding it as message
+        continue;
       } else if (message == '<MSG_END>') {
         // Message complete - flush buffer
         await _flushBufferedMessage();
+        continue; // End marker never appears in UI
       } else if (_isBufferingMessage) {
         // Continuation fragment - append to buffer
         _incomingMessageBuffer += message;
@@ -734,6 +746,9 @@ class ChatProvider with ChangeNotifier {
     return false;
   }
 
+  /// Request profile from ESP32 (public for modal tap-to-fetch).
+  Future<void> requestProfileFromESP32(String uid) => _requestProfileFromESP32(uid);
+
   /// Request profile from ESP32
   Future<void> _requestProfileFromESP32(String uid) async {
     if (!_bluetoothService.isConnected) {
@@ -742,13 +757,13 @@ class ChatProvider with ChangeNotifier {
     }
     
     try {
-      // Send request command (matches ESP32 format)
+      // Send over Bluetooth SPP (sendMessage ensures trailing \n)
       final requestJson = jsonEncode({
         "command": "get_profile",
-        "uid": uid,
+        "target_uid": uid,
       });
       
-      print('BT_PROFILE: Requesting profile for UID: $uid');
+      print('BT_PROFILE: Requesting profile for target_uid: $uid');
       await _bluetoothService.sendMessage(requestJson);
       addStructuredDebug({
         'source': 'CHAT',
@@ -864,6 +879,23 @@ class ChatProvider with ChangeNotifier {
         'event': 'Profile saved from ESP32',
         'metrics': {'uid': uid, 'name': name}
       });
+
+      // Override "Unknown" in chat UI: any message with this UID that shows Unknown gets the real name
+      final displayName = name.isNotEmpty ? name : 'Unknown';
+      bool updated = false;
+      for (int i = 0; i < _messages.length; i++) {
+        final msg = _messages[i];
+        if (msg.senderUid == uid &&
+            !msg.isMe &&
+            (msg.senderName == null || msg.senderName!.isEmpty || msg.senderName == 'Unknown')) {
+          _messages[i] = msg.copyWith(senderName: displayName);
+          updated = true;
+        }
+      }
+      if (updated) {
+        print('BT_PROFILE: Overrode Unknown with name for UID: $uid in chat UI');
+        notifyListeners();
+      }
     } catch (e) {
       print('BT_PROFILE: Error saving profile: $e');
     }
@@ -878,10 +910,11 @@ class ChatProvider with ChangeNotifier {
       return;
     }
     
-    // Clean the message buffer - remove any MSG_END tags that might have been included
+    // Clean the message buffer - remove any MSG_END tags and header so header never appears in UI
     String completeMessage = _incomingMessageBuffer
         .replaceAll('<MSG_END>', '')
         .replaceAll('&lt;MSG_END&gt;', '')
+        .replaceFirst(RegExp(r'<MSG_START:[^>]*>'), '') // strip header if it leaked into body
         .trim();
     final senderUid = _bufferedMessageSenderUid;
     
@@ -945,14 +978,14 @@ class ChatProvider with ChangeNotifier {
               // Cache it for future use
               await prefs.setString('profile_name_$actualUid', senderName);
             } else {
-              senderName = actualUid; // Fallback to UID
+              senderName = 'Unknown'; // Display profile details only, never UID
             }
           } else {
-            senderName = actualUid; // Fallback to UID
+            senderName = 'Unknown'; // Display profile details only, never UID
           }
         } catch (e) {
           print('Error getting cached name from UID: $e');
-          senderName = actualUid; // Fallback to UID
+          senderName = 'Unknown'; // Display profile details only, never UID
         }
       }
       
@@ -961,12 +994,22 @@ class ChatProvider with ChangeNotifier {
       }
     }
     
-    // Display the complete message with emergency flag ONLY if from hardware SOS button (UIDSOS)
-    // Pinning is based on WHERE it came from, NOT on message content
+    // Display the complete message with emergency flag ONLY if from hardware SOS button (UIDSOS).
+    // UI shows profile details (name) only, never UID. Store senderUid for tap-to-profile.
+    final displayName = (senderName != null && senderName.isNotEmpty && senderName != 'Unknown')
+        ? senderName!
+        : 'Unknown';
+    // Profile we display is sender's. If Unknown: request sender's profile → goes to other nodes (RF);
+    // the node that has this UID (the sender) will send profile back when it receives the request.
+    if (displayName == 'Unknown' && actualUid != null && actualUid.isNotEmpty && actualUid != 'UNKNOWN') {
+      print('BT_PROFILE: Requesting sender profile uid=$actualUid (request to other nodes; sender node will send info)');
+      _requestProfileFromESP32(actualUid);
+    }
     final rawDataForHardwareSos = isSosFromHardware ? {'source': 'sos'} : null;
-    _addMessage(completeMessage, false, senderName: senderName ?? 'ESP', isEmergency: isSosFromHardware, rawData: rawDataForHardwareSos);
+    _addMessage(completeMessage, false, senderName: displayName, senderUid: actualUid, isEmergency: isSosFromHardware, rawData: rawDataForHardwareSos);
     
     print('BT_RX: Complete message displayed (${completeMessage.length} chars) from UID: $senderUid, Name: $senderName');
+    print('BT_RX: RECV_MSG_HEADER_UID=$senderUid'); // log: kaninong UID yung narereceive as msg header (on display)
     addStructuredDebug({
       'source': 'CHAT',
       'event': 'Complete message displayed',
@@ -1188,14 +1231,14 @@ class ChatProvider with ChangeNotifier {
     await _voiceExtension.stopPlayback();
   }
 
-  void _addMessage(String text, bool isMe, {String? senderName, ChatMessage? message, bool isEmergency = false, Map<String, dynamic>? rawData}) {
+  void _addMessage(String text, bool isMe, {String? senderName, String? senderUid, ChatMessage? message, bool isEmergency = false, Map<String, dynamic>? rawData}) {
     if (message == null) {
       // For incoming messages (!isMe), mark as read only if chat screen is visible
       // For outgoing messages (isMe), always mark as read
       final shouldMarkAsRead = isMe || _isLocalChatScreenVisible;
       
       // Generate unique message ID for emergency messages
-      final messageId = isEmergency ? '${DateTime.now().millisecondsSinceEpoch}_${senderName ?? 'unknown'}' : null;
+      final messageId = isEmergency ? '${DateTime.now().millisecondsSinceEpoch}_${senderName ?? senderUid ?? 'unknown'}' : null;
       
       message = ChatMessage(
         text: text,
@@ -1204,16 +1247,18 @@ class ChatProvider with ChangeNotifier {
         status: isMe ? voice.MessageStatus.sent : voice.MessageStatus.delivered,
         type: voice.MessageType.text,
         senderName: senderName,
+        senderUid: senderUid,
         isRead: shouldMarkAsRead, // Mark as read if sent by user or if screen is visible
         isEmergency: isEmergency, // Set emergency flag (from hardware SOS button OR home page SOS button)
         isPinned: isEmergency, // Auto-pin emergency messages (from hardware OR home page SOS button)
         messageId: messageId, // Unique ID for unpinning
         rawData: rawData, // Store raw data for source detection
       );
-    } else if (!isMe && senderName != null) {
-      // Update sender name if provided, preserve isRead status
+    } else if (!isMe && (senderName != null || senderUid != null)) {
+      // Update sender name/UID if provided, preserve isRead status
       message = message.copyWith(
-        senderName: senderName,
+        senderName: senderName ?? message.senderName,
+        senderUid: senderUid ?? message.senderUid,
         isRead: message.isRead || _isLocalChatScreenVisible, // Mark as read if screen is visible
       );
     } else if (!message.isMe) {
@@ -1599,6 +1644,7 @@ class ChatMessage {
   final voice.MessageType type;
   final voice.VoiceMessage? voiceMessage;
   final String? senderName; // Sender's name for received messages
+  final String? senderUid;   // Sender's UID (from <MSG_START:UID>) for received messages
   bool isRead; // Track if message has been read
   final bool isEmergency; // Flag to indicate emergency message from SOS ring
   bool isPinned; // Flag to indicate pinned emergency message
@@ -1613,6 +1659,7 @@ class ChatMessage {
     this.type = voice.MessageType.text,
     this.voiceMessage,
     this.senderName,
+    this.senderUid,
     this.isRead = false, // Default to unread for incoming messages
     this.isEmergency = false, // Default to false for normal messages
     this.isPinned = false, // Default to false, emergency messages auto-pin
@@ -1628,6 +1675,7 @@ class ChatMessage {
     voice.MessageType? type,
     voice.VoiceMessage? voiceMessage,
     String? senderName,
+    String? senderUid,
     bool? isRead,
     bool? isEmergency,
     bool? isPinned,
@@ -1642,6 +1690,7 @@ class ChatMessage {
       type: type ?? this.type,
       voiceMessage: voiceMessage ?? this.voiceMessage,
       senderName: senderName ?? this.senderName,
+      senderUid: senderUid ?? this.senderUid,
       isRead: isRead ?? this.isRead,
       isEmergency: isEmergency ?? this.isEmergency,
       isPinned: isPinned ?? this.isPinned,

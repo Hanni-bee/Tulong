@@ -24,7 +24,7 @@
  // ----------------- Pins / Config -----------------
  #define CE_PIN         26
  #define CSN_PIN        27
- #define BT_DEVICE_NAME "ESP32_NodeB_VoiceAC"
+ #define BT_DEVICE_NAME "ESP32_NodeA_VoiceAC"
  
  // SOS tactile button (active LOW)
  #define SOS_BTN_PIN    4
@@ -391,10 +391,12 @@
    return "";
  }
  
- // ----------------- Flash save functions -----------------
+// ----------------- Flash save functions -----------------
+ // UPDATE path: app pushes profile to this (connected) device; we save and bump p_cnt.
+ // Request path uses this only when we are the sender; otherwise data comes from other node over RF.
  void saveProfileToFlash(String name, String username, String street, String province, String city, String barangay, String uid, String suffix) {
    flashStorage.begin("tulong", false);
- 
+
    bool savedName     = flashStorage.putString("profile_name", name);
    bool savedUsername = flashStorage.putString("p_user", username);
    bool savedStreet   = flashStorage.putString("profile_street", street);
@@ -469,39 +471,22 @@
    String command = extractJsonValue(msg, "command");
    Serial.println(String("[BT_SYNC] command=") + command);
  
-  if (command == "sync_profile") {
-    String name = extractJsonValue(msg, "name");
-    String username = extractJsonValue(msg, "username");
-    String street = extractJsonValue(msg, "street");
-    String province = extractJsonValue(msg, "province");
-    String city = extractJsonValue(msg, "city");
-    String barangay = extractJsonValue(msg, "barangay");
-    String uid = extractJsonValue(msg, "uid");
-    String suffix = extractJsonValue(msg, "suffix");
-
-    if (name.length() > 0 || username.length() > 0) {
-      // Preserve existing UID - only use new UID if no existing UID
-      String existingUid = readFlashString("profile_uid", "");
-      if (existingUid.length() > 0 && existingUid != "(not set)") {
-        // Keep existing UID, ignore UID from update message
-        uid = existingUid;
-        Serial.println(String("[BT_SYNC] preserving existing UID: ") + uid);
-      } else {
-        // No existing UID - require UID from app (must be fetched from server)
-        if (uid.length() == 0 || uid == "UNKNOWN") {
-          Serial.println("[BT_SYNC_ERR] No UID provided and no existing UID. App must fetch UID first.");
-          Serial.println("[BT_SYNC_ERR] Profile not saved. Please sync UID from app.");
-          return; // Don't save without UID
-        }
-        // First time setup - use UID from message (fetched by app)
-        Serial.println(String("[BT_SYNC] using UID from app: ") + uid);
-      }
-      
-      Serial.println("[BT_SYNC] saving profile...");
-      saveProfileToFlash(name, username, street, province, city, barangay, uid, suffix);
-    } else {
-      Serial.println("[BT_SYNC_ERR] invalid profile: missing name/username");
-    }
+   if (command == "sync_profile") {
+     String name = extractJsonValue(msg, "name");
+     String username = extractJsonValue(msg, "username");
+     String street = extractJsonValue(msg, "street");
+     String province = extractJsonValue(msg, "province");
+     String city = extractJsonValue(msg, "city");
+     String barangay = extractJsonValue(msg, "barangay");
+     String uid = extractJsonValue(msg, "uid");
+     String suffix = extractJsonValue(msg, "suffix");
+ 
+     if (name.length() > 0 || username.length() > 0) {
+       Serial.println("[BT_SYNC] saving profile...");
+       saveProfileToFlash(name, username, street, province, city, barangay, uid, suffix);
+     } else {
+       Serial.println("[BT_SYNC_ERR] invalid profile: missing name/username");
+     }
    } else if (command == "sync_sos") {
      String message = extractJsonValue(msg, "message");
      if (message.length() > 0) {
@@ -511,18 +496,23 @@
        Serial.println("[BT_SYNC_ERR] invalid SOS: empty message");
      }
    } else if (command == "get_profile") {
-     // Request profile details for a UID
-     String targetUid = extractJsonValue(msg, "uid");
+     // Expected JSON: {"command":"get_profile","target_uid":"<REMOTE_UID>"} or with "force_rf":true
+     // REQUEST path (different from UPDATE/sync_profile): see comments below.
+     String targetUid = extractJsonValue(msg, "target_uid");
+     if (targetUid.length() == 0) targetUid = extractJsonValue(msg, "uid"); // backward compat
      targetUid.trim();
-     Serial.println(String("[BT_GET_PROFILE] requested uid=") + targetUid);
- 
+     String forceRfStr = extractJsonValue(msg, "force_rf");
+     bool forceRf = (forceRfStr == "true" || forceRfStr == "1");
+
+     Serial.println(String("[BT_GET_PROFILE] target_uid=") + targetUid + (forceRf ? " force_rf=true" : ""));
+
      String myUid = readFlashString("profile_uid", "");
      if (myUid.length() == 0 || myUid == "(not set)") myUid = "UNKNOWN";
- 
-     // local hit?
-     if (targetUid.length() > 0 && targetUid == myUid) {
-       Serial.println("[BT_GET_PROFILE] local match -> sending profile_response to phone");
- 
+
+     // Local hit: we ARE the sender -> respond from our flash. Skip if force_rf (test RF path).
+     if (targetUid.length() > 0 && targetUid == myUid && !forceRf) {
+       Serial.println("[BT_GET_PROFILE] local match -> sending profile_response from this node's flash");
+
        flashStorage.begin("tulong", true);
        String uid      = flashStorage.getString("profile_uid", "");
        String name     = flashStorage.getString("profile_name", "");
@@ -537,13 +527,13 @@
        String response = String("{") +
          "\"command\":\"profile_response\"," +
          "\"data\":{" +
-           "\"uid\":\"" + jsonEscapeBasic(uid) + "\"," +
-           "\"name\":\"" + jsonEscapeBasic(name) + "\"," +
-           "\"username\":\"" + jsonEscapeBasic(username) + "\"," +
-           "\"street\":\"" + jsonEscapeBasic(street) + "\"," +
-           "\"province\":\"" + jsonEscapeBasic(province) + "\"," +
-           "\"city\":\"" + jsonEscapeBasic(city) + "\"," +
-           "\"barangay\":\"" + jsonEscapeBasic(barangay) + "\"," +
+           "\"uid\":\"" + jsonEscapeBasic(uid) + "\","
+           "\"name\":\"" + jsonEscapeBasic(name) + "\","
+           "\"username\":\"" + jsonEscapeBasic(username) + "\","
+           "\"street\":\"" + jsonEscapeBasic(street) + "\","
+           "\"province\":\"" + jsonEscapeBasic(province) + "\","
+           "\"city\":\"" + jsonEscapeBasic(city) + "\","
+           "\"barangay\":\"" + jsonEscapeBasic(barangay) + "\","
            "\"suffix\":\"" + jsonEscapeBasic(suffix) + "\"" +
          "}" +
        "}";
@@ -551,7 +541,8 @@
        SerialBT.println(response);
        Serial.println("[BT_TX] profile_response (local) sent");
      } else {
-       // broadcast RF request; response will be filtered by destUid (= myUid)
+       // Not us: do NOT use connected device flash or p_cnt. Request over RF only;
+       // the sender (other node) will send the profile; we will forward it when we receive RSP.
        if (targetUid.length() == 0) {
          Serial.println("[BT_GET_PROFILE_ERR] empty target uid");
        } else {
@@ -595,19 +586,21 @@
    // ----------------- VOICE -----------------
    if (hdr->type == VTYPE_START) {
      rxVoice = true; rxExpect = 0; incomingBuffer = "";
-     Serial.println("[RF_VOICE_RX] START");
+     Serial.println("[RF_VOICE_RX] START -> streaming to phone");
      if (txVoice) {
        txVoice = false; isVoice = false;
        SerialBT.println("<VOICE_DENY_BUSY>");
+       return;
      }
+     // Send start marker immediately to phone (streaming mode)
+     SerialBT.println("<VOICE_START>");
      return;
    }
  
    if (hdr->type == VTYPE_END) {
      rxVoice = false;
-     Serial.println("[RF_VOICE_RX] END -> to phone");
-     SerialBT.println("<VOICE_START>");
-     SerialBT.println(incomingBuffer);
+     Serial.println("[RF_VOICE_RX] END -> sending end marker to phone");
+     // Just send end marker (chunks already streamed)
      SerialBT.println("<VOICE_END>");
      incomingBuffer = "";
      return;
@@ -623,7 +616,14 @@
        Serial.println(String("[RF_VOICE_RX_LOSS] got=") + seq + " expect=" + rxExpect);
        rxExpect = seq + 1;
      } else rxExpect++;
-     incomingBuffer += String((char*)payload, payLen);
+     
+     // STREAMING: Forward chunk immediately to phone instead of buffering
+     // This prevents ESP32 memory overflow for long messages
+     SerialBT.write(payload, payLen);
+     SerialBT.write('\n');  // Newline for phone to parse chunks
+     
+     // Keep minimal buffer for timeout recovery (optional, for debugging)
+     // incomingBuffer += String((char*)payload, payLen);
      return;
    }
  
@@ -682,10 +682,10 @@
      if (myUid.length() == 0 || myUid == "(not set)") myUid = "UNKNOWN";
  
      Serial.println(String("[RF_PROF_REQ_RX] reqId=") + reqId + " destUid=" + destUid + " targetUid=" + targetUid + " myUid=" + myUid);
- 
-     // Only the node owning targetUid should answer
+
+     // Only the node that owns targetUid (the sender of the message) should answer with profile
      if (targetUid.length() > 0 && targetUid == myUid) {
-       Serial.println("[RF_PROF_REQ_RX] target matches me -> sending RSP");
+       Serial.println("[RF_PROF_REQ_RX] target matches me (I am sender) -> sending profile RSP");
        rfSendProfileResp(reqId, destUid);
      } else {
        Serial.println("[RF_PROF_REQ_RX] not for me -> ignore");
@@ -762,8 +762,8 @@
    radio.setRetries(5, 15);
  
    // Your existing direction (keep as you used before)
-   radio.openWritingPipe(address[0]);
-   radio.openReadingPipe(1, address[1]);
+   radio.openWritingPipe(address[1]);
+   radio.openReadingPipe(1, address[0]);
    radio.startListening();
  
    Serial.println(String("[RF] Ready ch=") + RF_CHANNEL +
@@ -860,16 +860,13 @@
      }
    }
  
-   // --- Voice timeout flush ---
+   // --- Voice timeout flush (streaming mode) ---
    if (rxVoice && (millis() - lastRxMillis > VOICE_TIMEOUT)) {
      rxVoice = false;
-     Serial.println("[RF_WARN] Voice timeout — assuming end");
-     if (incomingBuffer.length() > 0) {
-       SerialBT.println("<VOICE_START>");
-       SerialBT.println(incomingBuffer);
-       SerialBT.println("<VOICE_END>");
-       incomingBuffer = "";
-     }
+     Serial.println("[RF_WARN] Voice timeout — sending end marker");
+     // Since we're streaming, just send end marker to close the stream
+     SerialBT.println("<VOICE_END>");
+     incomingBuffer = "";
    }
  
    // --- Text completion flush (to phone) ---
@@ -883,19 +880,14 @@
          if (closePos > 0) {
            String header = textBuffer.substring(0, closePos + 1);
            String body = textBuffer.substring(closePos + 1);
- 
+
            Serial.println(String("[BT_TX] header(pass)=") + header);
            SerialBT.println(header);
            SerialBT.println(body);
            SerialBT.println("<MSG_END>");
          } else {
-           // malformed; fallback
-           String myUid = readFlashString("profile_uid", "");
-           if (myUid.length() == 0 || myUid == "(not set)") myUid = "UNKNOWN";
-           String header = String("<MSG_START:") + myUid + ">";
- 
-           Serial.println(String("[BT_TX] header(fallback)=") + header);
-           SerialBT.println(header);
+           // Incomplete header (no '>'): do NOT use myUid - forward as-is so app does not attribute to wrong sender
+           Serial.println(String("[BT_TX] header(incomplete)=") + textBuffer);
            SerialBT.println(textBuffer);
            SerialBT.println("<MSG_END>");
          }
@@ -939,14 +931,14 @@
          Serial.println(String("[RF_PROF_RESP_RX] reqId=") + reqId + " destUid=" + destUid + " myUid=" + myUid);
  
          if (destUid == myUid) {
-           // Forward to phone
+           // Forward to phone: this json was sent by the SENDER (other node), not from our flash
            String phoneResponse = String("{") +
              "\"command\":\"profile_response\"," +
              "\"data\":" + json +
            "}";
- 
+
            SerialBT.println(phoneResponse);
-           Serial.println("[BT_TX] profile_response forwarded to phone");
+           Serial.println("[BT_TX] profile_response forwarded to phone (data from sender node)");
          } else {
            Serial.println("[RF_PROF_RESP_RX] not my destUid -> drop");
          }
@@ -975,4 +967,6 @@
                     " sinceLastEnd=" + (millis() - txLastEnd));
    }
  }
+ 
+ 
  
