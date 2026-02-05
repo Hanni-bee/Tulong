@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 import 'package:camera/camera.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../constants/app_colors.dart';
 import '../constants/app_typography.dart';
 import '../constants/soft_ui_design.dart';
@@ -19,6 +21,7 @@ import '../services/ml_model_service.dart';
 import '../services/disaster_classification_service.dart';
 import '../services/model_test_service.dart';
 import '../services/model_verification_service.dart';
+import '../services/model_diagnostic_service.dart';
 import '../services/detection_history_service.dart';
 import '../providers/chat_provider.dart';
 import 'local_chat_screen.dart';
@@ -117,6 +120,12 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
     _loadMLModel();
     
     _initializeCamera();
+    
+    // CRITICAL: Request storage permission immediately on screen load
+    // This ensures permission is ready when user clicks upload button
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _requestStoragePermissionIfNeeded();
+    });
     
     // Load history from SQLite
     _loadHistory();
@@ -467,36 +476,328 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
         return;
       }
       
-      EmergencyDetectionResult result;
-      Map<String, dynamic>? detailedAssessment;
-
-      if (_isMLModelLoaded && _mlClassificationService.isModelLoaded) {
-        debugPrint('🔍 Using ML classification');
-        result = await _mlClassificationService.classifyDisaster(imagePath);
-        detailedAssessment = _mlClassificationService.getDetailedAssessment(
-          result.type,
-          result.confidence,
+      // Process the captured image - skip ML detection, show "No Emergency" only
+      await _processImageForClassification(imagePath, isFromCamera: true);
+    } catch (e) {
+      debugPrint('Error capturing photo: $e');
+      if (mounted) {
+        setState(() {
+          _isProcessing = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${e.toString()}'),
+            backgroundColor: AppColors.error,
+          ),
         );
-      } else {
-        debugPrint('🔍 Using fallback detection');
-        final preprocessed = await _preprocessingService.preprocessImage(imagePath);
-        
-        if (preprocessed == null) {
+      }
+    }
+  }
+
+  /// Pick image from gallery for testing
+  /// ENHANCED: Always requests permission when button is clicked (depends on phone/Android version)
+  /// CRITICAL: Re-asks permission if not granted, handles all Android versions
+  Future<void> _pickImageFromGallery() async {
+    try {
+      debugPrint('📸 Upload image button clicked - checking permission...');
+      
+      // Determine which permission to check based on Android version
+      Permission permission = Permission.storage;
+      bool usePhotos = false;
+      
+      // Check photos and videos permission first (Android 13+)
+      // Note: Android 13+ uses "Photos and Videos" permission for gallery access
+      try {
+        // Try photos permission (Android 13+)
+        final photosStatus = await Permission.photos.status;
+        if (photosStatus.isGranted || photosStatus.isLimited) {
+          debugPrint('✅ Photos and Videos permission already granted');
+          usePhotos = true;
+          permission = Permission.photos;
+        } else {
+          // Photos permission exists but not granted - use it for request
+          usePhotos = true;
+          permission = Permission.photos;
+          debugPrint('📸 Will request Photos and Videos permission (Android 13+)');
+        }
+      } catch (e) {
+        // Photos permission not available, use storage (Android < 13)
+        final storageStatus = await Permission.storage.status;
+        if (storageStatus.isGranted) {
+          debugPrint('✅ Storage permission already granted');
+        } else {
+          debugPrint('📁 Will request storage permission (Android < 13)');
+        }
+        permission = Permission.storage;
+      }
+      
+      // Check current status
+      final status = await permission.status;
+      debugPrint('📊 Current permission status: $status');
+      
+      // If not granted, request it (will show system dialog)
+      if (!status.isGranted && !status.isLimited) {
+        if (status.isPermanentlyDenied) {
+          // Permanently denied - show dialog to open settings
+          debugPrint('⚠️ Permission permanently denied - showing settings dialog');
           if (mounted) {
-            setState(() {
-              _isProcessing = false;
-            });
+            final shouldOpen = await showDialog<bool>(
+              context: context,
+              barrierDismissible: false,
+              builder: (context) => AlertDialog(
+                title: const Text('Gallery Access Required'),
+                content: Text(
+                  usePhotos
+                      ? 'Photos and Videos permission is required to select images from gallery.\n\n'
+                          'Please enable it in Settings → Apps → TULONG → Permissions → Photos and Videos.'
+                      : 'Storage permission is required to select images from gallery.\n\n'
+                          'Please enable it in Settings → Apps → TULONG → Permissions → Storage.',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    child: const Text('Cancel'),
+                  ),
+                  ElevatedButton(
+                    onPressed: () => Navigator.pop(context, true),
+                    child: const Text('Open Settings'),
+                  ),
+                ],
+              ),
+            );
+            
+            if (shouldOpen == true) {
+              await openAppSettings();
+            }
+          }
+          return;
+        }
+        
+        // Request permission - system dialog will appear
+        debugPrint('🔄 Requesting permission (system dialog will appear)...');
+        final result = await permission.request();
+        debugPrint('📊 Permission request result: $result');
+        
+        // Check final status
+        final finalStatus = await permission.status;
+        if (!finalStatus.isGranted && !finalStatus.isLimited) {
+          debugPrint('❌ Permission denied by user');
+          if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Failed to process image'),
+              SnackBar(
+                content: Text(
+                  usePhotos
+                      ? 'Photos and Videos permission is required to select images'
+                      : 'Storage permission is required to select images',
+                ),
                 backgroundColor: AppColors.error,
+                duration: const Duration(seconds: 3),
               ),
             );
           }
           return;
         }
         
-        result = await _detectionService.detectEmergency(preprocessed, imagePath);
+        debugPrint('✅ Permission granted!');
+      }
+      
+      // Permission is granted - proceed with image picker
+      debugPrint('📸 Opening gallery...');
+      final ImagePicker picker = ImagePicker();
+      final XFile? image = await picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 90, // Good quality for classification
+        maxWidth: 1920, // Limit size for performance
+        maxHeight: 1920,
+      );
+
+      if (image == null) {
+        // User cancelled
+        debugPrint('❌ User cancelled image selection');
+        return;
+      }
+
+      debugPrint('✅ Image selected: ${image.path}');
+      
+      // Set processing state
+      if (mounted) {
+        setState(() {
+          _isProcessing = true;
+        });
+      }
+
+      // Process the selected image - full ML classification for gallery upload
+      await _processImageForClassification(image.path, isFromCamera: false);
+    } catch (e) {
+      debugPrint('❌ Error picking image from gallery: $e');
+      if (mounted) {
+        setState(() {
+          _isProcessing = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error selecting image: ${e.toString()}'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
+  }
+
+  /// Process image for classification (shared by camera and gallery)
+  /// ENHANCED: Camera capture shows "No Emergency", gallery upload does full ML classification
+  /// isFromCamera: true = camera capture (skip detection, show "No Emergency")
+  /// isFromCamera: false = gallery upload (full ML classification)
+  Future<void> _processImageForClassification(String imagePath, {bool isFromCamera = false}) async {
+    try {
+      EmergencyDetectionResult result;
+      Map<String, dynamic>? detailedAssessment;
+
+      // TEMPORARY: Camera capture skips ML detection, shows "No Emergency" only
+      if (isFromCamera) {
+        debugPrint('📸 Camera capture detected - skipping ML classification');
+        debugPrint('   Showing "No Emergency" result only');
+        
+        // Create "No Emergency" result for camera capture
+        result = EmergencyDetectionResult(
+          type: EmergencyType.noEmergency,
+          severity: SeverityLevel.low,
+          confidence: 0.0,
+          timestamp: DateTime.now(),
+          imagePath: imagePath,
+        );
+        detailedAssessment = _mlClassificationService.getDetailedAssessment(
+          result.type,
+          result.confidence,
+        );
+      } else {
+        // Gallery upload - full ML classification
+        debugPrint('🔍 Gallery upload detected - attempting ML classification');
+        debugPrint('   _isMLModelLoaded: $_isMLModelLoaded');
+        debugPrint('   _mlClassificationService.isModelLoaded: ${_mlClassificationService.isModelLoaded}');
+        
+        // CRITICAL: Force model loading if not loaded yet
+        if (!_isMLModelLoaded || !_mlClassificationService.isModelLoaded) {
+          debugPrint('⚠️ Model not loaded, attempting to load now...');
+          
+          if (mounted) {
+            setState(() {
+              _isProcessing = true; // Keep processing state
+            });
+          }
+          
+          // Try to load model
+          final loadSuccess = await _mlClassificationService.loadModel().timeout(
+            const Duration(seconds: 60),
+            onTimeout: () {
+              debugPrint('❌ Model loading timeout');
+              return false;
+            },
+          );
+          
+          if (mounted) {
+            setState(() {
+              _isMLModelLoaded = loadSuccess && _mlClassificationService.isModelLoaded;
+            });
+          }
+          
+          debugPrint('   Model load result: $loadSuccess');
+          debugPrint('   isModelLoaded after load: ${_mlClassificationService.isModelLoaded}');
+        }
+        
+        // Now try classification
+        if (_mlClassificationService.isModelLoaded) {
+          debugPrint('✅ Model is loaded, proceeding with ML classification');
+          try {
+            result = await _mlClassificationService.classifyDisaster(imagePath);
+            
+            // CRITICAL: Check if classification actually worked
+            if (result.type == EmergencyType.noEmergency && result.confidence == 0.0) {
+              // This might indicate inference failed silently
+              debugPrint('⚠️ WARNING: Classification returned No Emergency with 0% confidence');
+              debugPrint('   This might indicate inference failed');
+              debugPrint('   Checking ML service error...');
+              final mlService = MLModelService.instance;
+              if (mlService.lastError != null) {
+                debugPrint('   ML Service error: ${mlService.lastError}');
+              }
+            }
+            
+            detailedAssessment = _mlClassificationService.getDetailedAssessment(
+              result.type,
+              result.confidence,
+            );
+            debugPrint('✅ ML classification complete: ${result.type.label} (${(result.confidence * 100).toStringAsFixed(1)}%)');
+          } catch (e, stackTrace) {
+            debugPrint('❌ ML classification error: $e');
+            debugPrint('   Stack trace: $stackTrace');
+            
+            // Run diagnostics to understand the failure
+            debugPrint('');
+            debugPrint('🔍 Running model diagnostics to understand failure...');
+            try {
+              final diagnosticService = ModelDiagnosticService.instance;
+              final diagnostics = await diagnosticService.runDiagnostics();
+              debugPrint('   Diagnostic results:');
+              debugPrint('   - Can load model: ${diagnostics['canLoadModel']}');
+              debugPrint('   - Can allocate tensors: ${diagnostics['canAllocateTensors']}');
+              debugPrint('   - Can run inference: ${diagnostics['canRunInference']}');
+              if (diagnostics['errors'].isNotEmpty) {
+                debugPrint('   - Errors: ${diagnostics['errors']}');
+              }
+            } catch (diagError) {
+              debugPrint('   Failed to run diagnostics: $diagError');
+            }
+            
+            // Show error to user
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('AI classification failed: ${e.toString()}'),
+                  backgroundColor: AppColors.error,
+                  duration: const Duration(seconds: 5),
+                ),
+              );
+            }
+            
+            // Fallback to "No Emergency" if classification fails
+            result = EmergencyDetectionResult(
+              type: EmergencyType.noEmergency,
+              severity: SeverityLevel.low,
+              confidence: 0.0,
+              timestamp: DateTime.now(),
+              imagePath: imagePath,
+            );
+            detailedAssessment = _mlClassificationService.getDetailedAssessment(
+              result.type,
+              result.confidence,
+            );
+          }
+        } else {
+          debugPrint('❌ Model still not loaded after attempt, showing error');
+          // Show error to user
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('AI model not loaded. Please try again.'),
+                backgroundColor: AppColors.error,
+                duration: Duration(seconds: 3),
+              ),
+            );
+          }
+          // Return "No Emergency" as fallback
+          result = EmergencyDetectionResult(
+            type: EmergencyType.noEmergency,
+            severity: SeverityLevel.low,
+            confidence: 0.0,
+            timestamp: DateTime.now(),
+            imagePath: imagePath,
+          );
+          detailedAssessment = _mlClassificationService.getDetailedAssessment(
+            result.type,
+            result.confidence,
+          );
+        }
       }
 
       if (mounted) {
@@ -519,18 +820,125 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
         _showDetectionResult(result, detailedAssessment);
       }
     } catch (e) {
-      debugPrint('Error capturing photo: $e');
+      debugPrint('Error processing image: $e');
       if (mounted) {
         setState(() {
           _isProcessing = false;
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error: ${e.toString()}'),
+            content: Text('Error processing image: ${e.toString()}'),
             backgroundColor: AppColors.error,
           ),
         );
       }
+    }
+  }
+
+  /// Request storage permission if not already granted
+  /// ENHANCED: Automatically requests permission on screen load for direct gallery access
+  /// CRITICAL: Shows system permission dialog immediately if not granted
+  Future<void> _requestStoragePermissionIfNeeded() async {
+    try {
+      debugPrint('🔄 Auto-requesting storage permission for gallery access...');
+      
+      // Determine which permission to use (photos for Android 13+, storage for older)
+      Permission permission = Permission.storage;
+      
+      // Try photos and videos permission (Android 13+)
+      // Note: Android 13+ uses "Photos and Videos" permission for gallery access
+      try {
+        final photosStatus = await Permission.photos.status;
+        if (photosStatus.isGranted || photosStatus.isLimited) {
+          debugPrint('✅ Photos and Videos permission already granted - gallery access ready');
+          return;
+        }
+        permission = Permission.photos;
+        debugPrint('📸 Using Photos and Videos permission (Android 13+)');
+      } catch (e) {
+        // Photos permission not available, check storage (Android < 13)
+        final storageStatus = await Permission.storage.status;
+        if (storageStatus.isGranted) {
+          debugPrint('✅ Storage permission already granted - gallery access ready');
+          return;
+        }
+        debugPrint('📁 Using storage permission (Android < 13)');
+      }
+      
+      // Check current status
+      final status = await permission.status;
+      debugPrint('📊 Current permission status: $status');
+      
+      // If already granted, no need to request
+      if (status.isGranted || status.isLimited) {
+        debugPrint('✅ Permission already granted - gallery access ready');
+        return;
+      }
+      
+      // If permanently denied, show dialog to open settings
+      if (status.isPermanentlyDenied) {
+        debugPrint('⚠️ Permission permanently denied - showing settings dialog');
+        if (mounted) {
+          await showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => AlertDialog(
+              title: const Text('Gallery Access Required'),
+              content: const Text(
+                'To select images from gallery, please enable storage permission in Settings.\n\n'
+                'This allows you to test disaster detection with your saved images.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Later'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    openAppSettings();
+                  },
+                  child: const Text('Open Settings'),
+                ),
+              ],
+            ),
+          );
+        }
+        return;
+      }
+      
+      // CRITICAL: Automatically request permission - system dialog will appear
+      // This happens automatically when screen loads, so user can approve immediately
+      debugPrint('🔄 Auto-requesting permission (system dialog will appear)...');
+      final result = await permission.request();
+      debugPrint('📊 Permission request result: $result');
+      
+      // Check final status after request
+      final finalStatus = await permission.status;
+      if (finalStatus.isGranted || finalStatus.isLimited) {
+        debugPrint('✅ Permission granted - gallery access ready!');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Gallery access granted - you can now upload images'),
+              duration: Duration(seconds: 2),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } else {
+        debugPrint('❌ Permission denied - user needs to grant manually');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Gallery access denied - please grant permission in Settings'),
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ Error requesting storage permission: $e');
     }
   }
 
@@ -1622,45 +2030,88 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                       ),
                     )
                   else
-                    AnimatedBuilder(
-                      animation: _captureButtonScale,
-                      builder: (context, child) {
-                        return Transform.scale(
-                          scale: _captureButtonScale.value,
-                          child: GestureDetector(
-                            onTapDown: (_) {
-                              _captureButtonController.forward();
-                            },
-                            onTapUp: (_) {
-                              _captureButtonController.reverse();
-                              _capturePhoto();
-                            },
-                            onTapCancel: () {
-                              _captureButtonController.reverse();
-                            },
-                            child: Container(
-                              width: 80,
-                              height: 80,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: AppColors.primaryRed,
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: AppColors.primaryRed.withOpacity(0.4),
-                                    blurRadius: 20,
-                                    spreadRadius: 5,
-                                  ),
-                                ],
-                              ),
-                              child: const Icon(
-                                Icons.camera_alt,
-                                color: Colors.white,
-                                size: 40,
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        // Upload Image Button (for testing - avoids phone camera pixel issues)
+                        Container(
+                          margin: const EdgeInsets.only(right: 20),
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              onTap: _isProcessing ? null : _pickImageFromGallery,
+                              borderRadius: BorderRadius.circular(40),
+                              child: Container(
+                                width: 70,
+                                height: 70,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: _isProcessing 
+                                      ? AppColors.lightGray 
+                                      : Colors.blue.shade600,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: (_isProcessing 
+                                          ? AppColors.lightGray 
+                                          : Colors.blue.shade600).withOpacity(0.4),
+                                      blurRadius: 15,
+                                      spreadRadius: 3,
+                                    ),
+                                  ],
+                                ),
+                                child: Icon(
+                                  Icons.photo_library,
+                                  color: _isProcessing 
+                                      ? Colors.grey 
+                                      : Colors.white,
+                                  size: 32,
+                                ),
                               ),
                             ),
                           ),
-                        );
-                      },
+                        ),
+                        // Capture Button
+                        AnimatedBuilder(
+                          animation: _captureButtonScale,
+                          builder: (context, child) {
+                            return Transform.scale(
+                              scale: _captureButtonScale.value,
+                              child: GestureDetector(
+                                onTapDown: (_) {
+                                  _captureButtonController.forward();
+                                },
+                                onTapUp: (_) {
+                                  _captureButtonController.reverse();
+                                  _capturePhoto();
+                                },
+                                onTapCancel: () {
+                                  _captureButtonController.reverse();
+                                },
+                                child: Container(
+                                  width: 80,
+                                  height: 80,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: AppColors.primaryRed,
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: AppColors.primaryRed.withOpacity(0.4),
+                                        blurRadius: 20,
+                                        spreadRadius: 5,
+                                      ),
+                                    ],
+                                  ),
+                                  child: const Icon(
+                                    Icons.camera_alt,
+                                    color: Colors.white,
+                                    size: 40,
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ],
                     ),
                 ],
               ),

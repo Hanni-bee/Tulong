@@ -70,7 +70,7 @@ class _EmergencyBadgeState extends State<EmergencyBadge>
       case EmergencyType.accident:
         baseColor = AppColors.warning;
         break;
-      case EmergencyType.calamity:
+      case EmergencyType.cyclone:
         baseColor = AppColors.purple;
         break;
       case EmergencyType.general:

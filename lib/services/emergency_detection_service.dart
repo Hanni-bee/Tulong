@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:math' as math;
 import 'package:image/image.dart' as img;
 import 'package:flutter/foundation.dart';
@@ -54,20 +53,10 @@ class EmergencyDetectionService {
     fullAnalysis.addAll(adaptiveThresholds);
     
     // PASS 0.5: ML Model feature extraction (if enabled and available)
+    // Note: extractFeatures method removed - using classify() instead for ML-based detection
+    // ML features are now handled by DisasterClassificationService
     if (_useMLModel && _mlModelService.isLoaded) {
-      try {
-        final mlFeatures = await _mlModelService.extractFeatures(preprocessedImage);
-        if (mlFeatures != null) {
-          // Add ML features to analysis
-          fullAnalysis['ml_features_mean'] = mlFeatures.reduce((a, b) => a + b) / mlFeatures.length;
-          fullAnalysis['ml_features_max'] = mlFeatures.reduce((a, b) => a > b ? a : b);
-          fullAnalysis['ml_features_min'] = mlFeatures.reduce((a, b) => a < b ? a : b);
-          fullAnalysis['ml_features_variance'] = _calculateVariance(mlFeatures);
-          debugPrint('✅ ML features extracted: ${mlFeatures.length} features');
-        }
-      } catch (e) {
-        debugPrint('⚠️ ML feature extraction failed, using rule-based only: $e');
-      }
+      debugPrint('✅ ML model is loaded and available for classification');
     }
     
     // PASS 1.5: Multi-scale analysis (enhanced)
@@ -745,8 +734,8 @@ class EmergencyDetectionService {
     
     // STRICT minimum confidence threshold - prevent false alarms
     if (finalType != EmergencyType.noEmergency && finalType != EmergencyType.general) {
-      // Higher threshold for calamity (most serious, most prone to false positives)
-      if (finalType == EmergencyType.calamity && confidence < 0.80) {
+      // Higher threshold for cyclone (most serious, most prone to false positives)
+      if (finalType == EmergencyType.cyclone && confidence < 0.80) {
         finalType = EmergencyType.noEmergency; // Changed from general to noEmergency
         confidence = 0.4;
       }
@@ -1137,7 +1126,7 @@ class EmergencyDetectionService {
       EmergencyType.flood: 0.0,
       EmergencyType.earthquake: 0.0,
       EmergencyType.accident: 0.0,
-      EmergencyType.calamity: 0.0,
+      EmergencyType.cyclone: 0.0,
       EmergencyType.general: 0.0,
     };
     
@@ -1205,13 +1194,13 @@ class EmergencyDetectionService {
         (brightness > 0.4 && brightness < 0.8 ? 0.8 : 0.0) +
         (textureContrast > 15 ? 0.3 : 0.0);
     
-    // Calamity scoring: STRICT - requires multiple strong indicators
-    // Calamity is the most serious, so we need VERY strong evidence
+    // Cyclone scoring: STRICT - requires multiple strong indicators
+    // Cyclone is the most serious, so we need VERY strong evidence
     final hasMultipleIndicators = (redRatio > 0.1 || orangeRatio > 0.1) &&
                                    (blueRatio > 0.15 || grayRatio > 0.15) &&
                                    (edgeDensity > 0.12 || strongEdgeDensity > 0.08);
     
-    scores[EmergencyType.calamity] = 
+    scores[EmergencyType.cyclone] = 
         (hasMultipleIndicators ? 1.5 : 0.0) + // Base requirement
         (textureVariance > 3000 ? (textureVariance / 800) : 0.0) + // Higher threshold
         ((redRatio + blueRatio + grayRatio) * 2.5) + // Stronger weighting
@@ -1373,8 +1362,8 @@ class EmergencyDetectionService {
           highContrastRatio * 2.5 +
           (textureVariance > 1500 ? 0.4 : 0.0);
     }
-    // Calamity severity: Overall chaos level
-    else if (type == EmergencyType.calamity) {
+    // Cyclone severity: Overall chaos level
+    else if (type == EmergencyType.cyclone) {
       severityScore = 
           (textureVariance / 600) +
           (edgeDensity * 2.5) +
@@ -1449,7 +1438,7 @@ class EmergencyDetectionService {
             (textureContrast > 15 ? 0.15 : 0.0) +
             (highContrastRatio > 0.1 ? 0.1 : 0.0);
         break;
-      case EmergencyType.calamity:
+      case EmergencyType.cyclone:
         confidence = 0.4 + 
             (textureVariance / 2500) +
             ((redRatio + blueRatio + grayRatio) * 1.5) +
@@ -1562,14 +1551,6 @@ class EmergencyDetectionService {
       'adaptive_water_threshold': waterThreshold,
       'adaptive_edge_threshold': edgeThreshold,
     };
-  }
-  
-  /// Calculate variance of a list of numbers
-  double _calculateVariance(List<double> values) {
-    if (values.isEmpty) return 0.0;
-    final mean = values.reduce((a, b) => a + b) / values.length;
-    final variance = values.map((v) => (v - mean) * (v - mean)).reduce((a, b) => a + b) / values.length;
-    return variance;
   }
   
   /// Create default result when detection fails

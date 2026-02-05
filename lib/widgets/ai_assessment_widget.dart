@@ -313,21 +313,8 @@ class AIAssessmentWidget extends StatelessWidget {
               ),
             ),
 
-            // Probability breakdown if available
-            if (assessment['probabilityBreakdown'] != null) ...[
-              const SizedBox(height: 20),
-              Text(
-                'Classification Breakdown',
-                style: AppTypography.bodyLarge.copyWith(
-                  color: AppColors.darkGray,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 12),
-              ..._buildProbabilityBreakdown(
-                assessment['probabilityBreakdown'] as Map<String, double>,
-              ),
-            ],
+            // REMOVED: Probability breakdown - focus only on classified result
+            // User requested to remove probability breakdown display
           ],
         ),
       ),
@@ -411,7 +398,7 @@ class AIAssessmentWidget extends StatelessWidget {
       case 'earthquake':
         return EmergencyType.earthquake;
       case 'cyclone':
-        return EmergencyType.calamity;
+        return EmergencyType.cyclone;
       default:
         return EmergencyType.general;
     }
@@ -438,7 +425,7 @@ class AIAssessmentWidget extends StatelessWidget {
         return Colors.red;
       case EmergencyType.earthquake:
         return Colors.brown;
-      case EmergencyType.calamity:
+      case EmergencyType.cyclone:
         return Colors.orange;
       case EmergencyType.noEmergency:
         return AppColors.success;
@@ -459,7 +446,7 @@ class AIAssessmentWidget extends StatelessWidget {
         return Icons.local_fire_department;
       case EmergencyType.earthquake:
         return Icons.warning;
-      case EmergencyType.calamity:
+      case EmergencyType.cyclone:
         return Icons.storm;
       case EmergencyType.noEmergency:
         return Icons.check_circle;

@@ -1,9 +1,10 @@
 /// Emergency types that can be detected by AI/ML
+/// Based on PyImageSearch natural disaster detection (4 classes only)
 enum EmergencyType {
-  calamity('Calamity', '🌋'),
-  earthquake('Earthquake', '🌍'),
-  flood('Flood', '🌧️'),
-  fire('Fire', '🔥'),
+  cyclone('Cyclone', '🌀'),      // Index 0 - Cyclone/Hurricane
+  earthquake('Earthquake', '🌍'), // Index 1 - Earthquake
+  flood('Flood', '🌧️'),         // Index 2 - Flood
+  fire('Fire', '🔥'),            // Index 3 - Wildfire
   accident('Accident', '🚑'),
   general('General Emergency', '⚠️'),
   noEmergency('No Emergency', '✅'); // Positive result - no emergency detected

@@ -16,17 +16,30 @@ class PermissionHelper {
       Permission.bluetoothScan,
       Permission.location,
       Permission.locationWhenInUse,
-      Permission.storage,
+      Permission.storage, // For older Android versions
       Permission.microphone,
       Permission.notification,
       Permission.camera, // For emergency detection feature
     ];
     
+    // ENHANCED: For Android 13+, also check photos permission
+    // Try to add photos permission (Android 13+) if available
+    try {
+      final photosStatus = await Permission.photos.status;
+      // If photos permission exists, add it to the list
+      if (!photosStatus.isGranted && !photosStatus.isLimited) {
+        permissions.add(Permission.photos);
+      }
+    } catch (e) {
+      // Photos permission not available on this platform/version, skip it
+      debugPrint('Photos permission not available: $e');
+    }
+    
     // Check which permissions are not granted
     List<Permission> permissionsToRequest = [];
     for (var permission in permissions) {
       final status = await permission.status;
-      if (!status.isGranted) {
+      if (!status.isGranted && !status.isLimited) {
         permissionsToRequest.add(permission);
       }
     }
@@ -270,6 +283,105 @@ class PermissionHelper {
     
     final result = await Permission.camera.request();
     return result.isGranted;
+  }
+
+  /// Request storage permission for gallery image selection
+  /// ENHANCED: Handles both Android 13+ (photos) and older versions (storage)
+  /// CRITICAL: Always requests permission with proper dialog if needed
+  static Future<bool> requestStoragePermission(BuildContext context) async {
+    // For Android 13+, use photos permission
+    // For older versions, use storage permission
+    Permission permission = Permission.storage;
+    
+    // Try photos and videos permission (Android 13+)
+    // Note: Android 13+ uses "Photos and Videos" permission for gallery access
+    // If it fails or is not available, we'll use storage
+    try {
+      final photosStatus = await Permission.photos.status;
+      // If photos permission exists, use it
+      if (photosStatus.isGranted || photosStatus.isLimited || photosStatus.isDenied || photosStatus.isPermanentlyDenied) {
+        permission = Permission.photos;
+        debugPrint('📸 Using Photos and Videos permission (Android 13+)');
+      }
+    } catch (e) {
+      // Photos permission not available on this platform/version, use storage
+      debugPrint('📁 Photos and Videos permission not available, using storage permission (Android < 13)');
+      permission = Permission.storage;
+    }
+    
+    // Check current status
+    final status = await permission.status;
+    debugPrint('📊 Current permission status: $status');
+    
+    // If already granted or limited, return true
+    if (status.isGranted || status.isLimited) {
+      debugPrint('✅ Permission already granted');
+      return true;
+    }
+    
+    // If permanently denied, show settings dialog
+    if (status.isPermanentlyDenied) {
+      debugPrint('⚠️ Permission permanently denied, showing settings dialog');
+      if (context.mounted) {
+        final shouldOpenSettings = await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => AlertDialog(
+            backgroundColor: Colors.white,
+            title: const Text('Storage Permission Required'),
+            content: const Text(
+              'Storage access is needed to select images from gallery.\n\n'
+              'Please enable it in:\n'
+              'Settings → Apps → TULONG → Permissions → Photos and Videos (Android 13+)\n'
+              'or Storage (Android < 13)',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context, true);
+                },
+                child: const Text('Open Settings'),
+              ),
+            ],
+          ),
+        );
+        
+        if (shouldOpenSettings == true) {
+          await openAppSettings();
+        }
+      }
+      return false;
+    }
+    
+    // Request permission (this will show system dialog)
+    debugPrint('🔄 Requesting permission...');
+    final result = await permission.request();
+    debugPrint('📊 Permission request result: $result');
+    
+    // Check final status
+    final finalStatus = await permission.status;
+    final granted = finalStatus.isGranted || finalStatus.isLimited;
+    
+    if (granted) {
+      debugPrint('✅ Permission granted');
+    } else {
+      debugPrint('❌ Permission denied');
+      if (context.mounted && !finalStatus.isPermanentlyDenied) {
+        // Show explanation if denied but not permanently
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Storage permission is required to select images from gallery'),
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+    
+    return granted;
   }
 }
 

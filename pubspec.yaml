@@ -53,6 +53,7 @@ dependencies:
   # Camera and Image Processing dependencies
   camera: ^0.10.5+5
   image: ^4.1.3
+  image_picker: ^1.0.7  # For gallery image selection (testing)
   
   # ML Model dependencies
   tflite_flutter: ^0.12.1  # Updated to support TensorFlow 2.x models (FULLY_CONNECTED v12)

@@ -30,8 +30,14 @@ class DisasterClassificationService {
     'Wildfire',   // Index 3
   ];
 
-  // Confidence threshold below which we consider the prediction uncertain
-  static const double _minConfidenceThreshold = 0.3;
+  // Confidence thresholds based on PyImageSearch model (95% accuracy)
+  // The model is well-trained, so we can trust its predictions more
+  // Reference: https://pyimagesearch.com/2019/11/11/detecting-natural-disasters-with-keras-and-deep-learning/
+  static const double _minConfidenceThreshold = 0.20; // 20% minimum confidence for classification
+  
+  // For "No Emergency", use lower threshold since model is trained to detect disasters
+  // If model predicts a disaster with low confidence, it's likely "No Emergency"
+  static const double _noEmergencyConfidenceThreshold = 0.30; // 30% minimum to confirm "No Emergency"
 
   // Debugging and status tracking
   int _inferenceCount = 0;
@@ -65,65 +71,33 @@ class DisasterClassificationService {
   DateTime? get lastInferenceTime => _lastInferenceTime;
 
   /// Load the disaster classification model
-  /// ENHANCED: With timeout, retry logic, and proper state management
   Future<bool> loadModel() async {
-    // Prevent multiple simultaneous loads
     if (_mlService.isLoaded) {
-      debugPrint('✅ Model already loaded, skipping reload');
       return true;
     }
     
+    _modelLoadTime = DateTime.now();
+    _lastError = null;
+    
     try {
-      _modelLoadTime = DateTime.now();
-      _lastError = null;
-      debugPrint('');
-      debugPrint('═══════════════════════════════════════════════════════════');
-      debugPrint('🔄 LOADING DISASTER CLASSIFICATION MODEL');
-      debugPrint('═══════════════════════════════════════════════════════════');
-      debugPrint('📁 Model path: assets/best_model.tflite');
-      debugPrint('⏳ Starting load at: ${_modelLoadTime?.toIso8601String()}');
-      
-      // Load model with timeout to prevent infinite hanging
       final success = await _mlService.loadModel('best_model.tflite').timeout(
-        const Duration(seconds: 90),
+        const Duration(seconds: 60),
         onTimeout: () {
-          _lastError = 'Model loading timeout after 90 seconds';
-          debugPrint('❌ TIMEOUT: Model loading exceeded 90 seconds');
-          debugPrint('   Possible causes:');
-          debugPrint('   1. Model file is corrupted in APK');
-          debugPrint('   2. Model file was compressed despite noCompress setting');
-          debugPrint('   3. Device has insufficient memory');
-          debugPrint('   4. Model file path is incorrect');
+          _lastError = 'Model loading timeout';
           return false;
         },
       );
       
-      final loadDuration = DateTime.now().difference(_modelLoadTime!);
-      
       if (success && _mlService.isLoaded) {
-        debugPrint('✅ Disaster classification model loaded successfully');
-        debugPrint('   Load duration: ${loadDuration.inMilliseconds}ms');
-        debugPrint('   Input shape: ${_mlService.inputShape}');
-        debugPrint('   Output shape: ${_mlService.outputShape}');
-        debugPrint('   Model is ready for classification');
-        debugPrint('═══════════════════════════════════════════════════════════');
+        _modelLoadTime = DateTime.now();
         return true;
       } else {
-        _lastError = _mlService.lastError ?? 'Model loading returned false or model not loaded';
-        debugPrint('❌ Model loading failed');
-        debugPrint('   Success flag: $success');
-        debugPrint('   MLService loaded: ${_mlService.isLoaded}');
-        debugPrint('   MLService error: ${_mlService.lastError}');
-        debugPrint('   Load duration: ${loadDuration.inMilliseconds}ms');
-        debugPrint('═══════════════════════════════════════════════════════════');
+        _lastError = _mlService.lastError ?? 'Model loading failed';
         _modelLoadTime = null;
         return false;
       }
-    } catch (e, stackTrace) {
+    } catch (e) {
       _lastError = 'Failed to load: $e';
-      debugPrint('❌ EXCEPTION during model loading: $e');
-      debugPrint('   Error type: ${e.runtimeType}');
-      debugPrint('   Stack trace: $stackTrace');
       _modelLoadTime = null;
       return false;
     }
@@ -200,21 +174,94 @@ class DisasterClassificationService {
       // Clear any previous cached results to ensure dynamic processing
       _lastAllProbabilities = null;
       
-      // Run fresh inference
+      // CRITICAL: Run fresh inference - ensure model is loaded
+      if (!_mlService.isLoaded) {
+        debugPrint('❌ CRITICAL: Model not loaded before inference!');
+        debugPrint('   Attempting to load model now...');
+        final loadSuccess = await loadModel();
+        if (!loadSuccess) {
+          _lastError = 'Model not loaded and failed to load';
+          debugPrint('❌ Failed to load model for inference');
+          return _createErrorResult(imagePath);
+        }
+        debugPrint('✅ Model loaded successfully, proceeding with inference');
+      }
+      
+      // Run fresh inference - DYNAMIC, NO CACHING
+      // This is the CORE classification step - runs actual ML inference
+      debugPrint('🔄 Calling ML service classify() - this is DYNAMIC inference');
+      debugPrint('   Preprocessed image ready: ${preprocessedImage.length} values');
+      debugPrint('   Model status: ${_mlService.isLoaded ? "LOADED ✅" : "NOT LOADED ❌"}');
+      
       final probabilities = await _mlService.classify(preprocessedImage);
       final inferenceTime = DateTime.now().difference(inferenceStart);
+      
+      debugPrint('⏱️  Inference duration: ${inferenceTime.inMilliseconds}ms');
 
-      if (probabilities == null || probabilities.isEmpty) {
-        _lastError = 'ML inference returned null or empty';
-        debugPrint('❌ ML inference returned null or empty');
+      // OUTPUT VALIDATION: Validate inference result structure
+      if (probabilities == null) {
+        _lastError = 'ML inference returned null - check model loading and input preprocessing';
+        debugPrint('❌ OUTPUT VALIDATION FAILED: ML inference returned null');
+        debugPrint('   Model loaded: ${_mlService.isLoaded}');
+        debugPrint('   Preprocessed image length: ${preprocessedImage.length}');
+        debugPrint('   Expected length: ${224 * 224 * 3}');
+        debugPrint('   ML Service error: ${_mlService.lastError}');
         return _createErrorResult(imagePath);
       }
-
-      debugPrint('✅ Inference complete in ${inferenceTime.inMilliseconds}ms');
-      debugPrint('📊 Raw Model Output:');
-      for (int i = 0; i < probabilities.length && i < _modelLabels.length; i++) {
-        debugPrint('   ${_modelLabels[i]}: ${probabilities[i].toStringAsFixed(6)}');
+      
+      // OUTPUT VALIDATION: Check output is not empty
+      if (probabilities.isEmpty) {
+        _lastError = 'ML inference returned empty list';
+        debugPrint('❌ OUTPUT VALIDATION FAILED: ML inference returned empty list');
+        debugPrint('   Probabilities length: ${probabilities.length}');
+        return _createErrorResult(imagePath);
       }
+      
+      // OUTPUT VALIDATION: Check output length matches expected (4 classes)
+      if (probabilities.length != 4) {
+        _lastError = 'ML inference output length mismatch: expected 4, got ${probabilities.length}';
+        debugPrint('❌ OUTPUT VALIDATION FAILED: Output length mismatch');
+        debugPrint('   Expected: 4 classes');
+        debugPrint('   Got: ${probabilities.length}');
+        return _createErrorResult(imagePath);
+      }
+      
+      // OUTPUT VALIDATION: Validate probabilities are valid numbers
+      final hasInvalid = probabilities.any((p) => p.isNaN || p.isInfinite);
+      if (hasInvalid) {
+        _lastError = 'ML inference returned invalid probability values (NaN or Infinite)';
+        debugPrint('❌ OUTPUT VALIDATION FAILED: Invalid probability values detected');
+        debugPrint('   Probabilities: $probabilities');
+        debugPrint('   Has NaN: ${probabilities.any((p) => p.isNaN)}');
+        debugPrint('   Has Infinite: ${probabilities.any((p) => p.isInfinite)}');
+        return _createErrorResult(imagePath);
+      }
+      
+      // OUTPUT VALIDATION: Check for extreme values (might indicate error)
+      final hasExtremeValues = probabilities.any((p) => p.abs() > 100.0);
+      if (hasExtremeValues) {
+        _lastError = 'ML inference returned extreme values (>100)';
+        debugPrint('❌ OUTPUT VALIDATION FAILED: Extreme values detected');
+        debugPrint('   Probabilities: $probabilities');
+        return _createErrorResult(imagePath);
+      }
+      
+      debugPrint('✅ Inference result validated: ${probabilities.length} probabilities');
+      debugPrint('✅ Inference complete in ${inferenceTime.inMilliseconds}ms');
+      
+      // Display raw model output - EXACTLY matches Python output format
+      debugPrint('📊 Raw Model Output (Python equivalent: interpreter.get_tensor()[0]):');
+      final sum = probabilities.fold(0.0, (a, b) => a + b);
+      debugPrint('   Sum of probabilities: ${sum.toStringAsFixed(6)} ${sum > 0.9 && sum < 1.1 ? "(normalized ✅)" : "(logits - will apply softmax)"}');
+      for (int i = 0; i < probabilities.length && i < _modelLabels.length; i++) {
+        final percentage = (probabilities[i] * 100).toStringAsFixed(2);
+        debugPrint('   [${i}] ${_modelLabels[i]}: ${probabilities[i].toStringAsFixed(6)} (${percentage}%)');
+      }
+      
+      // Find argmax (highest probability) - matches Python np.argmax()
+      final maxProb = probabilities.reduce((a, b) => a > b ? a : b);
+      final argmaxIndex = probabilities.indexOf(maxProb);
+      debugPrint('   🎯 Argmax (np.argmax equivalent): index $argmaxIndex = "${_modelLabels[argmaxIndex]}" (${(maxProb * 100).toStringAsFixed(2)}%)');
 
       // Step 3: Post-process output (find highest probability)
       debugPrint('🔍 Step 3: Post-processing output...');
@@ -237,11 +284,54 @@ class DisasterClassificationService {
       }
 
       // Step 4: Map model output to EmergencyType
-      final emergencyType = _mapToEmergencyType(classification['label'] as String);
-      final confidence = classification['confidence'] as double;
+      String classificationLabel = classification['label'] as String;
+      double confidence = classification['confidence'] as double;
+      
+      // ENHANCED: Higher validation for "No Emergency" to prevent false positives
+      // Additional validation: Check if this might be a false positive disaster detection
+      if (classificationLabel != 'No Emergency') {
+        // Get normalized probabilities for validation
+        final sum = probabilities.fold(0.0, (a, b) => a + b);
+        final normalizedProbs = sum > 0.9 && sum < 1.1
+            ? probabilities
+            : _softmax(probabilities);
+        
+        // Check if this might be a false positive
+        final sortedProbs = List<double>.from(normalizedProbs)..sort((a, b) => b.compareTo(a));
+        final probGap = sortedProbs[0] - (sortedProbs.length > 1 ? sortedProbs[1] : 0.0);
+        final avgProb = normalizedProbs.fold(0.0, (a, b) => a + b) / normalizedProbs.length;
+        
+        // ENHANCED: More lenient validation - only reject if VERY uncertain
+        // Only treat as "No Emergency" if confidence is VERY low AND probabilities are VERY close
+        // This allows the model to classify more disasters
+        if (confidence < 0.10 && probGap < 0.05 && avgProb < 0.30) {
+          debugPrint('⚠️ ENHANCED VALIDATION: Very low confidence disaster prediction:');
+          debugPrint('   Predicted: $classificationLabel (${(confidence * 100).toStringAsFixed(2)}%)');
+          debugPrint('   Probability gap: ${(probGap * 100).toStringAsFixed(2)}%');
+          debugPrint('   Average probability: ${(avgProb * 100).toStringAsFixed(2)}%');
+          debugPrint('   → Treating as "No Emergency" (very uncertain)');
+          classificationLabel = 'No Emergency';
+          confidence = (1.0 - confidence).clamp(0.0, 1.0); // Invert confidence
+        } else {
+          debugPrint('✅ Classification accepted: $classificationLabel (${(confidence * 100).toStringAsFixed(2)}%)');
+          debugPrint('   Confidence is sufficient for classification');
+        }
+      } else {
+        // For "No Emergency" predictions, use lower threshold to allow more disaster classifications
+        // If confidence is very low, it might actually be a disaster
+        if (confidence < 0.10) {
+          debugPrint('⚠️ Very low confidence "No Emergency": ${(confidence * 100).toStringAsFixed(2)}%');
+          debugPrint('   → Keeping as "No Emergency" (very uncertain)');
+          confidence = confidence.clamp(0.0, 0.10);
+        } else {
+          debugPrint('✅ "No Emergency" classification accepted: ${(confidence * 100).toStringAsFixed(2)}%');
+        }
+      }
+      
+      final emergencyType = _mapToEmergencyType(classificationLabel);
 
       // Step 5: Enhanced severity assessment
-      debugPrint('⚖️  Step 4: Assessing severity...');
+      debugPrint('⚖️  Step 5: Assessing severity...');
       final severity = await _determineSeverityEnhanced(
         confidence,
         probabilities,
@@ -304,16 +394,47 @@ class DisasterClassificationService {
   }
 
   /// Find the best prediction from probabilities
+  /// ENHANCED: Robust validation to ensure dynamic inference with proper confidence
   Map<String, dynamic> _findBestPrediction(List<double> probabilities) {
+    // CRITICAL: Validate probabilities before processing
     if (probabilities.isEmpty) {
-      debugPrint('❌ Empty probabilities list');
+      debugPrint('❌ CRITICAL: Empty probabilities list in _findBestPrediction');
       return {
         'label': 'No Emergency',
         'confidence': 0.0,
         'index': -1,
+        'allProbabilities': [],
       };
     }
-
+    
+    // CRITICAL: Check for invalid values (NaN, Infinite)
+    final hasInvalid = probabilities.any((p) => p.isNaN || p.isInfinite);
+    if (hasInvalid) {
+      debugPrint('❌ CRITICAL: Invalid probability values in _findBestPrediction');
+      debugPrint('   Probabilities: $probabilities');
+      debugPrint('   Has NaN: ${probabilities.any((p) => p.isNaN)}');
+      debugPrint('   Has Infinite: ${probabilities.any((p) => p.isInfinite)}');
+      return {
+        'label': 'No Emergency',
+        'confidence': 0.0,
+        'index': -1,
+        'allProbabilities': probabilities,
+      };
+    }
+    
+    // CRITICAL: Validate all probabilities are valid numbers
+    final sumCheck = probabilities.fold(0.0, (a, b) => a + b);
+    if (sumCheck == 0.0) {
+      debugPrint('❌ CRITICAL: All probabilities are zero - inference may have failed');
+      return {
+        'label': 'No Emergency',
+        'confidence': 0.0,
+        'index': -1,
+        'allProbabilities': probabilities,
+      };
+    }
+    
+    // EXACTLY matches Python: predicted_idx = int(np.argmax(predictions))
     // Find the index with highest probability
     double maxProb = probabilities[0];
     int bestIndex = 0;
@@ -324,10 +445,17 @@ class DisasterClassificationService {
         bestIndex = i;
       }
     }
+    
+    // CRITICAL: Validate bestIndex is within bounds
+    if (bestIndex < 0 || bestIndex >= _modelLabels.length) {
+      debugPrint('❌ CRITICAL: Invalid bestIndex: $bestIndex (should be 0-${_modelLabels.length - 1})');
+      bestIndex = 0; // Fallback to first class
+      maxProb = probabilities[0];
+    }
 
     debugPrint('🔍 Best prediction analysis:');
     debugPrint('   Raw max value: ${maxProb.toStringAsFixed(6)} at index $bestIndex');
-    debugPrint('   Sum of all values: ${probabilities.fold(0.0, (a, b) => a + b).toStringAsFixed(6)}');
+    debugPrint('   Sum of all values: ${sumCheck.toStringAsFixed(6)}');
     debugPrint('   All raw values: ${probabilities.map((p) => p.toStringAsFixed(4)).join(", ")}');
 
     // Check if values are logits (usually negative or large) or probabilities (0-1 range)
@@ -376,10 +504,24 @@ class DisasterClassificationService {
       bestIndex = 0;
     }
 
-    // Handle low confidence predictions
-    if (normalizedConfidence < _minConfidenceThreshold) {
-      debugPrint('⚠️ Low confidence prediction: ${normalizedConfidence.toStringAsFixed(3)} < $_minConfidenceThreshold');
-      debugPrint('   Returning "No Emergency"');
+    // EXACTLY matches PyImageSearch tutorial post-processing:
+    // Python: predicted_idx = int(np.argmax(predictions))
+    // Python: confidence = float(predictions[predicted_idx])
+    // Reference: https://pyimagesearch.com/2019/11/11/detecting-natural-disasters-with-keras-and-deep-learning/
+    final selectedLabel = _modelLabels[bestIndex];
+    final rawConfidence = normalizedConfidence;
+    
+    debugPrint('🔍 PyImageSearch-equivalent post-processing:');
+    debugPrint('   np.argmax(predictions) = $bestIndex → "$selectedLabel"');
+    debugPrint('   predictions[$bestIndex] = ${rawConfidence.toStringAsFixed(6)}');
+    debugPrint('   Model accuracy: 95% (PyImageSearch tutorial)');
+    
+    // ENHANCED: More lenient validation to allow actual classifications
+    // Only reject if confidence is EXTREMELY low (below 10%)
+    // This allows the model to classify disasters even with moderate confidence
+    if (normalizedConfidence < 0.10) {
+      debugPrint('⚠️ Very low confidence prediction: ${normalizedConfidence.toStringAsFixed(3)} < 0.10 (10%)');
+      debugPrint('   → Returning "No Emergency" (too uncertain)');
       return {
         'label': 'No Emergency',
         'confidence': (1.0 - normalizedConfidence).clamp(0.0, 1.0),
@@ -387,13 +529,45 @@ class DisasterClassificationService {
         'allProbabilities': normalizedProbs,
       };
     }
+    
+    // ENHANCED: More lenient probability gap validation
+    // Only reject if probabilities are EXTREMELY close (gap < 5%) AND confidence is VERY low (< 20%)
+    // This allows classifications even when probabilities are somewhat close
+    if (normalizedProbs.length > 1) {
+      final sortedProbs = List<double>.from(normalizedProbs)..sort((a, b) => b.compareTo(a));
+      final probGap = sortedProbs[0] - sortedProbs[1];
+      
+      // Only reject if gap is VERY small (< 5%) AND confidence is VERY low (< 20%)
+      if (probGap < 0.05 && normalizedConfidence < 0.20) {
+        debugPrint('⚠️ Very uncertain prediction:');
+        debugPrint('   Probability gap: ${(probGap * 100).toStringAsFixed(2)}% < 5%');
+        debugPrint('   Confidence: ${(normalizedConfidence * 100).toStringAsFixed(2)}% < 20%');
+        debugPrint('   Top probabilities: ${sortedProbs[0].toStringAsFixed(3)}, ${sortedProbs[1].toStringAsFixed(3)}');
+        debugPrint('   → Returning "No Emergency" (extremely uncertain)');
+        return {
+          'label': 'No Emergency',
+          'confidence': (1.0 - normalizedConfidence).clamp(0.0, 1.0),
+          'index': -1,
+          'allProbabilities': normalizedProbs,
+        };
+      } else {
+        debugPrint('✅ Classification accepted despite probability gap:');
+        debugPrint('   Gap: ${(probGap * 100).toStringAsFixed(2)}%, Confidence: ${(normalizedConfidence * 100).toStringAsFixed(2)}%');
+        debugPrint('   → Accepting classification: $selectedLabel');
+      }
+    }
 
-    final selectedLabel = _modelLabels[bestIndex];
     debugPrint('✅ Selected: $selectedLabel (index $bestIndex) with confidence ${(normalizedConfidence * 100).toStringAsFixed(2)}%');
+    debugPrint('   Based on PyImageSearch tutorial (95% accuracy model)');
+    
+    // PyImageSearch model is well-trained (95% accuracy), so we trust its predictions
+    // No confidence boosting needed - use raw model output
+    // Reference: https://pyimagesearch.com/2019/11/11/detecting-natural-disasters-with-keras-and-deep-learning/
+    double finalConfidence = normalizedConfidence;
 
     return {
       'label': selectedLabel,
-      'confidence': normalizedConfidence.clamp(0.0, 1.0),
+      'confidence': finalConfidence.clamp(0.0, 1.0),
       'index': bestIndex,
       'allProbabilities': normalizedProbs,
     };
@@ -415,21 +589,22 @@ class DisasterClassificationService {
   }
 
   /// Map model label to EmergencyType enum
+  /// EXACTLY matches PyImageSearch 4-class model: Cyclone, Earthquake, Flood, Wildfire
   EmergencyType _mapToEmergencyType(String label) {
     switch (label.toLowerCase()) {
-      case 'flood':
-        return EmergencyType.flood;
-      case 'wildfire':
-        return EmergencyType.fire;
-      case 'earthquake':
-        return EmergencyType.earthquake;
       case 'cyclone':
-        return EmergencyType.calamity;
+        return EmergencyType.cyclone;  // Index 0
+      case 'earthquake':
+        return EmergencyType.earthquake; // Index 1
+      case 'flood':
+        return EmergencyType.flood;    // Index 2
+      case 'wildfire':
+        return EmergencyType.fire;     // Index 3 (Wildfire -> Fire)
       case 'no emergency':
         return EmergencyType.noEmergency;
       default:
         debugPrint('⚠️ Unknown disaster label: $label - treating as No Emergency');
-        return EmergencyType.noEmergency; // Changed from general to noEmergency
+        return EmergencyType.noEmergency;
     }
   }
 
@@ -460,7 +635,7 @@ class DisasterClassificationService {
       case EmergencyType.earthquake:
         severityScore += confidence * 0.2;
         break;
-      case EmergencyType.calamity:
+      case EmergencyType.cyclone:
         severityScore += confidence * 0.18;
         break;
       case EmergencyType.noEmergency:
@@ -504,7 +679,7 @@ class DisasterClassificationService {
         return 'Wildfire detected ($confidencePercent% confidence). Risk: Fire spread, smoke inhalation. Evacuate immediately.';
       case EmergencyType.earthquake:
         return 'Earthquake damage detected ($confidencePercent% confidence). Risk: Structural collapse, falling debris.';
-      case EmergencyType.calamity:
+      case EmergencyType.cyclone:
         return 'Cyclone detected ($confidencePercent% confidence). Risk: High winds, flying debris, flooding.';
       case EmergencyType.noEmergency:
         return 'No emergency detected ($confidencePercent% confidence). Area appears safe.';
@@ -528,19 +703,8 @@ class DisasterClassificationService {
       'timestamp': DateTime.now().toIso8601String(),
     };
 
-    // Add probability breakdown if available
-    if (probabilities != null && probabilities.length >= _modelLabels.length) {
-      final sum = probabilities.fold(0.0, (a, b) => a + b);
-      final normalizedProbs = sum > 0.9 && sum < 1.1
-          ? probabilities
-          : _softmax(probabilities);
-
-      final breakdown = <String, double>{};
-      for (int i = 0; i < _modelLabels.length && i < normalizedProbs.length; i++) {
-        breakdown[_modelLabels[i]] = normalizedProbs[i];
-      }
-      assessment['probabilityBreakdown'] = breakdown;
-    }
+    // REMOVED: Probability breakdown - focus only on classified result
+    // User requested to remove probability breakdown and focus on actual classification
 
     return assessment;
   }

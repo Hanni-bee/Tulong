@@ -4,15 +4,15 @@ import '../models/emergency_detection_result.dart';
 /// Utility to parse emergency detection messages from chat
 class EmergencyMessageParser {
   /// Check if a message is an emergency detection message
+  /// Aligned with PyImageSearch 4-class model: Cyclone, Earthquake, Flood, Wildfire
   static bool isEmergencyMessage(String message) {
-    // Check for emergency message pattern
+    // Check for emergency message pattern (4-class model emojis only)
     return message.startsWith('Emergency:') ||
-        message.contains('🌋') ||
-        message.contains('🌍') ||
-        message.contains('🌧️') ||
-        message.contains('🔥') ||
-        message.contains('🚑') ||
-        message.contains('⚠️');
+        message.contains('🌀') || // Cyclone
+        message.contains('🌋') || // Cyclone (alternative)
+        message.contains('🌍') || // Earthquake
+        message.contains('🌧️') || // Flood
+        message.contains('🔥');    // Wildfire
   }
 
   /// Parse emergency detection from message text
@@ -30,16 +30,14 @@ class EmergencyMessageParser {
       EmergencyType? emergencyType;
       SeverityLevel? severity;
       
-      // IMPROVED: Handle multiple emojis with priority-based selection
-      // Priority: Fire > Accident > Flood > Earthquake > Calamity > General
-      // This ensures the most critical emergency is detected if multiple emojis exist
+      // Aligned with PyImageSearch 4-class model: Cyclone, Earthquake, Flood, Wildfire
+      // Only supports the 4 disaster types that the ML model can classify
       final emojiMatches = <String, EmergencyType>{
-        '🔥': EmergencyType.fire,        // Highest priority - immediate danger
-        '🚑': EmergencyType.accident,    // High priority - medical emergency
-        '🌧️': EmergencyType.flood,      // High priority - environmental
-        '🌍': EmergencyType.earthquake,  // High priority - structural
-        '🌋': EmergencyType.calamity,     // Medium priority - natural disaster
-        '⚠️': EmergencyType.general,     // Lowest priority - general warning
+        '🔥': EmergencyType.fire,        // Wildfire (Index 3)
+        '🌧️': EmergencyType.flood,      // Flood (Index 2)
+        '🌍': EmergencyType.earthquake,  // Earthquake (Index 1)
+        '🌀': EmergencyType.cyclone,     // Cyclone (Index 0)
+        '🌋': EmergencyType.cyclone,     // Alternative cyclone emoji
       };
       
       // Find all matching emojis and select by priority
@@ -58,14 +56,16 @@ class EmergencyMessageParser {
       }
       
       // If no emoji found but message starts with "Emergency:", try to extract from text
+      // Aligned with PyImageSearch 4-class model labels only
       if (matchedType == null && message.startsWith('Emergency:')) {
-        // Try to match emergency type from text label
+        // Try to match emergency type from text label (4-class model only)
         final typeLabels = {
-          'fire': EmergencyType.fire,
-          'flood': EmergencyType.flood,
-          'earthquake': EmergencyType.earthquake,
-          'accident': EmergencyType.accident,
-          'calamity': EmergencyType.calamity,
+          'wildfire': EmergencyType.fire,    // Wildfire -> Fire (Index 3)
+          'fire': EmergencyType.fire,        // Fire (Index 3)
+          'flood': EmergencyType.flood,      // Flood (Index 2)
+          'earthquake': EmergencyType.earthquake, // Earthquake (Index 1)
+          'cyclone': EmergencyType.cyclone, // Cyclone (Index 0)
+          'hurricane': EmergencyType.cyclone, // Hurricane -> Cyclone
         };
         
         final lowerMessage = message.toLowerCase();
@@ -117,8 +117,9 @@ class EmergencyMessageParser {
       severity = parsedSeverity;
       
       // Default values if parsing fails
-      emergencyType ??= EmergencyType.general;
-      severity ??= SeverityLevel.medium;
+      // Aligned with ML model: default to "No Emergency" if not one of the 4 disaster types
+      emergencyType ??= EmergencyType.noEmergency;
+      severity ??= SeverityLevel.low;
       
       return EmergencyDetectionResult(
         type: emergencyType,
