@@ -546,16 +546,33 @@ class VoiceChatExtension {
     return base64Encode(bytes);
   }
 
-  /// Send voice message over Bluetooth in 28-byte chunks (ESP32 compatible)
+  /// Send voice message over Bluetooth (ESP32 protocol: VOICE_START -> wait VOICE_READY/VOICE_DENY_BUSY -> chunks -> VOICE_END -> wait VOICE_DONE)
   Future<bool> sendVoiceMessage(String base64Audio, Function(String) sendChunk) async {
     try {
       _debugController.add('[BT_TX] Sending voice message (${base64Audio.length} chars)');
-      
-      // Send start marker
-      await sendChunk('<VOICE_START>\n');
-      _debugController.add('[BT_TX] Sent <VOICE_START>');
+      _isSendingVoice = true;
 
-      // Send audio data in 28-byte chunks (ESP32 compatible)
+      // 1) Send start marker
+      await sendChunk('<VOICE_START>\n');
+      _debugController.add('[BT_TX] Sent <VOICE_START>, waiting for VOICE_READY or VOICE_DENY_BUSY');
+
+      // 2) Wait for ESP32: <VOICE_READY> = ok, <VOICE_DENY_BUSY> = retry later
+      _voiceReadyCompleter = Completer<bool>();
+      final ready = await _voiceReadyCompleter!.future.timeout(
+        _voiceReadyTimeout,
+        onTimeout: () => false,
+      );
+      _voiceReadyCompleter = null;
+
+      if (!ready) {
+        _debugController.add('[BT_TX] Voice denied or timeout (ready=$ready) — do not send chunks');
+        _isSendingVoice = false;
+        return false;
+      }
+
+      _debugController.add('[BT_TX] VOICE_READY — sending chunks');
+
+      // 3) Send base64 chunks (one per line)
       int chunkCount = 0;
       for (int i = 0; i < base64Audio.length; i += VQVConstants.CHUNK_SIZE) {
         final end = (i + VQVConstants.CHUNK_SIZE < base64Audio.length) ? i + VQVConstants.CHUNK_SIZE : base64Audio.length;
@@ -567,17 +584,32 @@ class VoiceChatExtension {
           _debugController.add('[BT_TX] Sent chunk $chunkCount (${((i + VQVConstants.CHUNK_SIZE) / base64Audio.length * 100).toStringAsFixed(1)}%)');
         }
         
-        // Slow pacing for safe Bluetooth SPP transfer
         await Future.delayed(const Duration(milliseconds: 5));
       }
 
-      // Send end marker
+      // 4) Send end marker and wait for <VOICE_DONE>
       await sendChunk('<VOICE_END>\n');
-      _debugController.add('[BT_TX] Sent <VOICE_END> / <VOICE_END> successfully');
+      _debugController.add('[BT_TX] Sent <VOICE_END>, waiting for VOICE_DONE');
+
+      _voiceDoneCompleter = Completer<void>();
+      try {
+        await _voiceDoneCompleter!.future.timeout(
+          _voiceDoneTimeout,
+          onTimeout: () {},
+        );
+        _debugController.add('[BT_TX] VOICE_DONE received');
+      } catch (_) {
+        _debugController.add('[BT_TX] VOICE_DONE timeout (stream may still have completed)');
+      }
+      _voiceDoneCompleter = null;
+      _isSendingVoice = false;
       
       return true;
     } catch (e) {
       _debugController.add('Error sending voice message: $e');
+      _isSendingVoice = false;
+      _voiceReadyCompleter = null;
+      _voiceDoneCompleter = null;
       return false;
     }
   }
@@ -659,7 +691,24 @@ class VoiceChatExtension {
   /// Handle incoming voice data from Bluetooth
   String _voiceBuffer = '';
   bool _isReceivingVoice = false;
+  bool _isSendingVoice = false;
   Timer? _voiceReceiveTimeout;
+
+  /// ESP32 control responses: complete waiting sendVoiceMessage()
+  Completer<bool>? _voiceReadyCompleter;
+  Completer<void>? _voiceDoneCompleter;
+  static const Duration _voiceReadyTimeout = Duration(seconds: 5);
+  static const Duration _voiceDoneTimeout = Duration(seconds: 15);
+
+  void _completeVoiceReady(bool ready) {
+    _voiceReadyCompleter?.complete(ready);
+    _voiceReadyCompleter = null;
+  }
+
+  void _completeVoiceDone() {
+    _voiceDoneCompleter?.complete();
+    _voiceDoneCompleter = null;
+  }
 
   /// Process incoming data and detect voice messages
   List<String> processIncomingData(String data) {
@@ -671,6 +720,23 @@ class VoiceChatExtension {
     for (final line in lines) {
       final trimmedLine = line.trim();
       if (trimmedLine.isEmpty) continue;
+
+      // ESP32 control responses (do not add to messages)
+      if (trimmedLine == '<VOICE_READY>') {
+        _debugController.add('[BT_RX] <VOICE_READY>');
+        _completeVoiceReady(true);
+        continue;
+      }
+      if (trimmedLine == '<VOICE_DENY_BUSY>') {
+        _debugController.add('[BT_RX] <VOICE_DENY_BUSY>');
+        _completeVoiceReady(false);
+        continue;
+      }
+      if (trimmedLine == '<VOICE_DONE>') {
+        _debugController.add('[BT_RX] <VOICE_DONE>');
+        _completeVoiceDone();
+        continue;
+      }
 
       if (trimmedLine == '<VOICE_START>') {
         _isReceivingVoice = true;
@@ -713,6 +779,9 @@ class VoiceChatExtension {
 
     return messages;
   }
+
+  /// True while receiving (<VOICE_START>…<VOICE_END>) or sending (after <VOICE_START> until <VOICE_DONE>)
+  bool get isVoiceActive => _isReceivingVoice || _isSendingVoice;
 
   /// Check if current data is part of a voice message
   bool get isReceivingVoice => _isReceivingVoice;

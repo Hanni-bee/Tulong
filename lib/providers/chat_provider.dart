@@ -45,6 +45,9 @@ class ChatProvider with ChangeNotifier {
   String? _bufferedMessageSenderUid;
   bool _isBufferingMessage = false;
   
+  // Profile requests queued while voice is active (send after VOICE_END / VOICE_DONE)
+  final List<String> _queuedProfileUids = [];
+  
   // Auto-reconnect settings
   bool _isAutoReconnectEnabled = true;
   Timer? _reconnectTimer;
@@ -538,7 +541,7 @@ class ChatProvider with ChangeNotifier {
   }
 
   /// Process incoming Map message (JSON format from ESP32)
-  /// Handles: profile_response (save to cache), SOS/emergency map messages.
+  /// Handles: profile_response (save to cache), profile_queued, SOS/emergency map messages.
   void _processIncomingMapMessage(Map<String, dynamic> data) {
     try {
       // profile_response: save to cache first; later when message comes we check UID in cache before requesting
@@ -548,6 +551,16 @@ class ChatProvider with ChangeNotifier {
           _saveProfileFromESP32(profileData);
           print('BT_PROFILE: profile_response received -> saved to cache (UID=${profileData['uid']})');
         }
+        return;
+      }
+      // profile_queued: ESP32 deferred get_profile due to voice; it may send profile after voice ends
+      if (data['command'] == 'profile_queued' && data['reason'] == 'voice_active') {
+        print('BT_PROFILE: profile_queued (voice_active) — ESP32 will send profile after voice ends');
+        addStructuredDebug({
+          'source': 'CHAT',
+          'event': 'Profile request queued by ESP32 (voice active)',
+          'metrics': {},
+        });
         return;
       }
 
@@ -640,6 +653,8 @@ class ChatProvider with ChangeNotifier {
         String? senderName;
         // For now, we'll extract from message context if available
         _addVoiceMessage(base64Audio, false, senderName: senderName);
+        // Voice RX ended: process any profile requests queued during voice
+        _processQueuedProfileRequests();
       } else if (message.startsWith('<VOICE_START>') || message.startsWith('<VOICE_END>')) {
         // Voice markers, handled by voice extension
         continue;
@@ -658,13 +673,15 @@ class ChatProvider with ChangeNotifier {
             print('BT_RX: Message start from UID: $uid');
             print('BT_RX: RECV_MSG_HEADER_UID=$uid'); // log: kaninong UID yung narereceive as msg header
             
-            // Check if UID is known, if not request profile
-            _isUidKnown(uid).then((isKnown) {
-              if (!isKnown) {
-                print('BT_PROFILE: Unknown UID detected: $uid - Requesting profile');
-                _requestProfileFromESP32(uid);
-              }
-            });
+            // Defer profile lookup until after VOICE_END if voice is active (never during voice stream)
+            if (!_voiceExtension.isVoiceActive) {
+              _isUidKnown(uid).then((isKnown) {
+                if (!isKnown) {
+                  print('BT_PROFILE: Unknown UID detected: $uid - Requesting profile');
+                  _requestProfileFromESP32(uid);
+                }
+              });
+            }
           }
           
           addStructuredDebug({
@@ -749,29 +766,67 @@ class ChatProvider with ChangeNotifier {
   /// Request profile from ESP32 (public for modal tap-to-fetch).
   Future<void> requestProfileFromESP32(String uid) => _requestProfileFromESP32(uid);
 
-  /// Request profile from ESP32
+  /// Request profile from ESP32. Queues request if voice is active (sends after voice ends).
   Future<void> _requestProfileFromESP32(String uid) async {
     if (!_bluetoothService.isConnected) {
       print('BT_PROFILE: Cannot request profile: Not connected');
       return;
     }
-    
+    if (uid.isEmpty || uid == 'UNKNOWN') return;
+
+    // Critical: never send get_profile during active voice stream
+    if (_voiceExtension.isVoiceActive) {
+      if (!_queuedProfileUids.contains(uid)) {
+        _queuedProfileUids.add(uid);
+        print('BT_PROFILE: Voice active — queued profile request for uid=$uid');
+        addStructuredDebug({
+          'source': 'CHAT',
+          'event': 'Profile request queued (voice active)',
+          'metrics': {'uid': uid},
+        });
+      }
+      return;
+    }
+
     try {
-      // Send over Bluetooth SPP (sendMessage ensures trailing \n)
       final requestJson = jsonEncode({
-        "command": "get_profile",
-        "target_uid": uid,
+        'command': 'get_profile',
+        'target_uid': uid,
+        'force_rf': true,
       });
-      
-      print('BT_PROFILE: Requesting profile for target_uid: $uid');
+      print('BT_PROFILE: Requesting profile for target_uid: $uid (force_rf=true)');
       await _bluetoothService.sendMessage(requestJson);
       addStructuredDebug({
         'source': 'CHAT',
         'event': 'Profile request sent',
-        'metrics': {'uid': uid}
+        'metrics': {'uid': uid},
       });
     } catch (e) {
       print('BT_PROFILE: Error requesting profile: $e');
+    }
+  }
+
+  /// Send any profile requests that were queued while voice was active. Call after VOICE_END (RX) or VOICE_DONE (TX).
+  Future<void> _processQueuedProfileRequests() async {
+    if (_queuedProfileUids.isEmpty || _voiceExtension.isVoiceActive) return;
+    final toSend = List<String>.from(_queuedProfileUids);
+    _queuedProfileUids.clear();
+    for (final uid in toSend) {
+      if (_voiceExtension.isVoiceActive) {
+        _queuedProfileUids.add(uid);
+        return;
+      }
+      try {
+        final requestJson = jsonEncode({
+          'command': 'get_profile',
+          'target_uid': uid,
+          'force_rf': true,
+        });
+        await _bluetoothService.sendMessage(requestJson);
+        print('BT_PROFILE: Sent queued profile request for uid=$uid');
+      } catch (e) {
+        print('BT_PROFILE: Error sending queued profile request: $e');
+      }
     }
   }
 
@@ -1190,11 +1245,13 @@ class ChatProvider with ChangeNotifier {
     _messages.add(chatMessage);
     notifyListeners();
 
-    // Send over Bluetooth
+    // Send over Bluetooth (waits for VOICE_READY, then chunks, then VOICE_DONE)
     final success = await _voiceExtension.sendVoiceMessage(
       base64Audio,
       (chunk) => _bluetoothService.sendMessage(chunk),
     );
+    // Voice TX ended: process any profile requests queued during voice
+    _processQueuedProfileRequests();
 
     if (success) {
       chatMessage.status = voice.MessageStatus.sent;
