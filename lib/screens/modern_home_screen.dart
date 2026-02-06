@@ -31,7 +31,7 @@ import '../widgets/enhanced_micro_interactions.dart' as micro;
 import '../widgets/animated_neumorphic_card.dart';
 import '../utils/icon_system.dart';
 import '../utils/enhanced_page_transitions.dart';
-import '../services/simple_bluetooth_service.dart';
+import '../services/user_status_service.dart';
 import 'package:flutter_bluetooth_serial_plus/flutter_bluetooth_serial_plus.dart';
 
 class ModernHomeScreen extends StatefulWidget {
@@ -1692,18 +1692,17 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
       emergencyMessage = '🚨 EMERGENCY: I need immediate assistance!';
     }
     
-    // Check if ESP32 is connected
-    final bluetoothService = SimpleBluetoothService();
-    final isESP32Connected = bluetoothService.isConnected && bluetoothService.isAuthenticated;
-    
-    // If ESP32 not connected, show error and return false
+    // Use same connection as header badge (ChatProvider/BluetoothService)
+    final chatProvider = context.read<ChatProvider>();
+    final isESP32Connected = chatProvider.isConnected;
+
     if (!isESP32Connected) {
       if (context.mounted) {
         _showESP32ConnectionRequiredDialog(context);
       }
       return false;
     }
-    
+
     return await showDialog<bool>(
       context: context,
       barrierDismissible: true,
@@ -1875,15 +1874,26 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
         emergencyMessage = '🚨 EMERGENCY: I need immediate assistance!';
       }
       
-      // Check if ESP32 is connected via SimpleBluetoothService
-      final bluetoothService = SimpleBluetoothService();
-      final isESP32Connected = bluetoothService.isConnected && bluetoothService.isAuthenticated;
-      
+      // Use same connection as header (ChatProvider/BluetoothService)
+      final chatProvider = context.read<ChatProvider>();
+      final isESP32Connected = chatProvider.isConnected;
+
       if (isESP32Connected) {
-        // Send via local chat to ESP32 with emergency flag
+        // Send SOS same way as ESP32 button (send_sos → same RF frame)
         try {
-          await bluetoothService.sendGroupMessage(emergencyMessage, isEmergency: true);
-      
+          String severity = 'noEmergency';
+          int timestampMs = DateTime.now().millisecondsSinceEpoch;
+          final status = await UserStatusService.instance.getCurrentStatus();
+          if (status != null) {
+            severity = (status['severity'] as String?) ?? severity;
+            final ts = status['last_updated_timestamp'] as int?;
+            if (ts != null && ts > 0) timestampMs = ts;
+          }
+          await chatProvider.sendSosAlert(
+            message: emergencyMessage,
+            severity: severity,
+            timestampMs: timestampMs,
+          );
       if (context.mounted) {
         ModernToastManager.showSuccess(
           context,
@@ -2213,15 +2223,26 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                       
                       HapticFeedback.heavyImpact();
                       
-                      // Check ESP32 connection first (offline-first approach)
-                      final bluetoothService = SimpleBluetoothService();
-                      final isESP32Connected = bluetoothService.isConnected && bluetoothService.isAuthenticated;
-                      
+                      // Use same connection as header (ChatProvider/BluetoothService)
+                      final chatProvider = context.read<ChatProvider>();
+                      final isESP32Connected = chatProvider.isConnected;
+
                       if (isESP32Connected) {
-                        // Send via ESP32
+                        // Send SOS same way as ESP32 button (send_sos → same RF frame)
                         try {
-                          await bluetoothService.sendGroupMessage(emergencyMessage, isEmergency: true);
-                      
+                          String severity = 'noEmergency';
+                          int timestampMs = DateTime.now().millisecondsSinceEpoch;
+                          final status = await UserStatusService.instance.getCurrentStatus();
+                          if (status != null) {
+                            severity = (status['severity'] as String?) ?? severity;
+                            final ts = status['last_updated_timestamp'] as int?;
+                            if (ts != null && ts > 0) timestampMs = ts;
+                          }
+                          await chatProvider.sendSosAlert(
+                            message: emergencyMessage,
+                            severity: severity,
+                            timestampMs: timestampMs,
+                          );
                       if (dialogContext.mounted) {
                         Navigator.of(dialogContext).pop();
                             _showSuccessAnimation(context, 'Emergency message sent to local chat network!');

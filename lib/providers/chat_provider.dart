@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/bluetooth_service.dart';
 import '../services/voice_chat_extension.dart' as voice;
 import '../services/sqlite_service.dart';
+import '../services/user_status_service.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import '../utils/enhanced_error_handler.dart';
 import '../services/notification_service.dart';
@@ -765,6 +766,37 @@ class ChatProvider with ChangeNotifier {
 
   /// Request profile from ESP32 (public for modal tap-to-fetch).
   Future<void> requestProfileFromESP32(String uid) => _requestProfileFromESP32(uid);
+
+  /// Send SOS over ESP32 (same RF frame as hardware button). Use when connected via BluetoothService.
+  /// Call from home screen after long-press + confirmation.
+  Future<void> sendSosAlert({
+    required String message,
+    required String severity,
+    required int timestampMs,
+  }) async {
+    if (!_bluetoothService.isConnected) {
+      print('BT_SOS: Cannot send SOS: Not connected');
+      return;
+    }
+    try {
+      final payload = jsonEncode({
+        'command': 'send_sos',
+        'message': message,
+        'severity': severity,
+        'timestamp_ms': timestampMs,
+      });
+      await _bluetoothService.sendMessage(payload);
+      _addMessage(message, true, isEmergency: true);
+      addStructuredDebug({
+        'source': 'CHAT',
+        'event': 'SOS alert sent (same format as ESP32 button)',
+        'metrics': {'len': message.length},
+      });
+    } catch (e) {
+      print('BT_SOS: Error sending SOS: $e');
+      rethrow;
+    }
+  }
 
   /// Request profile from ESP32. Queues request if voice is active (sends after voice ends).
   Future<void> _requestProfileFromESP32(String uid) async {
@@ -1591,32 +1623,54 @@ class ChatProvider with ChangeNotifier {
         print('BT_SYNC: No user logged in — sending TEST payloads');
         _debugLogs.add('BT_SYNC: No user logged in — sending TEST payloads');
         notifyListeners();
-        
+
+        // Derive severity/timestamp for test payloads (same rules as real sync)
+        String severity = 'noEmergency';
+        int timestampMs = DateTime.now().millisecondsSinceEpoch;
+        try {
+          final status = await UserStatusService.instance.getCurrentStatus();
+          if (status != null) {
+            severity = (status['severity'] as String?) ?? severity;
+            final ts = status['last_updated_timestamp'] as int?;
+            if (ts != null && ts > 0) {
+              timestampMs = ts;
+            }
+          }
+        } catch (e) {
+          print('BT_SYNC: Error deriving status for TEST payloads: $e');
+        }
+
         // Send test profile data
         final testProfileJson = jsonEncode({
           "command": "sync_profile",
           "name": "TEST USER",
           "username": "test",
+          "uid": "",
+          "suffix": "",
           "street": "123",
           "province": "NCR",
           "city": "Manila",
-          "barangay": "1"
+          "barangay": "1",
+          "severity": severity,
+          "timestamp_ms": timestampMs,
         });
-        
+
         print('BT_SYNC: Sending TEST profile data: $testProfileJson');
         await _bluetoothService.sendMessage(testProfileJson);
         print('BT_SYNC: TEST profile data sent successfully');
-        
+
         // Send test SOS message
         final testSosJson = jsonEncode({
           "command": "sync_sos",
-          "message": "TEST SOS"
+          "message": "TEST SOS",
+          "severity": severity,
+          "timestamp_ms": timestampMs,
         });
-        
+
         print('BT_SYNC: Sending TEST SOS message: $testSosJson');
         await _bluetoothService.sendMessage(testSosJson);
         print('BT_SYNC: TEST SOS message sent successfully');
-        
+
         print('BT_SYNC: TEST sync completed successfully');
         return;
       }
@@ -1642,7 +1696,25 @@ class ChatProvider with ChangeNotifier {
       print('  barangay: $barangay');
       print('  uid: $uid');
       print('  suffix: $suffix');
-      
+
+      // Derive severity + timestamp_ms from current user status:
+      // - severity: prefer SharedPreferences user_current_status (via UserStatusService)
+      // - timestamp_ms: prefer latest detection timestamp; fallback to now
+      String severity = 'noEmergency';
+      int timestampMs = DateTime.now().millisecondsSinceEpoch;
+      try {
+        final status = await UserStatusService.instance.getCurrentStatus();
+        if (status != null) {
+          severity = (status['severity'] as String?) ?? severity;
+          final ts = status['last_updated_timestamp'] as int?;
+          if (ts != null && ts > 0) {
+            timestampMs = ts;
+          }
+        }
+      } catch (e) {
+        print('BT_SYNC: Error deriving status for profile/SOS sync: $e');
+      }
+
       // Build profile JSON (flat structure as expected by ESP32)
       // Variable names must match ESP32 extractJsonValue() calls exactly
       final profileJson = jsonEncode({
@@ -1655,6 +1727,8 @@ class ChatProvider with ChangeNotifier {
         "province": province,
         "city": city,
         "barangay": barangay,
+        "severity": severity,
+        "timestamp_ms": timestampMs,
       });
       
       print('BT_SYNC: Sending profile data: $profileJson');
@@ -1664,10 +1738,12 @@ class ChatProvider with ChangeNotifier {
       // Get SOS message from SharedPreferences
       final sosMessage = prefs.getString('emergency_message_$username') ?? 
                         'I need help. Please contact me immediately.';
-      
+
       final sosJson = jsonEncode({
         "command": "sync_sos",
         "message": sosMessage,
+        "severity": severity,
+        "timestamp_ms": timestampMs,
       });
       
       print('BT_SYNC: Sending SOS message: $sosJson');
