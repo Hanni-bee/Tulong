@@ -48,7 +48,7 @@ const byte address[][6] = {"1Node", "2Node"};
 
 // ----------------- Packet header -----------------
 enum : uint8_t { VTYPE_START = 0xD0, VTYPE_DATA = 0xD1, VTYPE_END = 0xD2 };
-enum : uint8_t { TTYPE_TEXT  = 0xA0 };
+enum : uint8_t { TTYPE_TEXT  = 0xA0, TTYPE_SEEN = 0xA1 };
 enum : uint8_t { PTYPE_REQ   = 0xB0, PTYPE_RESP = 0xB1 }; // profile req/resp
 
 struct __attribute__((packed)) VoiceHdr {
@@ -288,6 +288,25 @@ uint16_t sendStringPacketSeqBase(uint8_t type, const String &msg, uint16_t seqBa
   return seqBase;
 }
 
+// ----------------- SEEN (app-driven: phone sends send_seen after rendering; no auto-SEEN on flush) -----------------
+// Fast one-shot; must not block voice. Payload "SEEN|msgId" <= 28 bytes.
+bool rfSendSeenSingleFast(const String& msgId) {
+  String payload = String("SEEN|") + msgId;
+  if (payload.length() == 0 || payload.length() > 28) {
+    Serial.println("[SEEN] payload length invalid");
+    return false;
+  }
+  uint8_t buf[sizeof(VoiceHdr) + 28] = {0};
+  VoiceHdr* hdr = (VoiceHdr*)buf;
+  hdr->type = TTYPE_SEEN;
+  hdr->seq  = 0;
+  memcpy(buf + sizeof(VoiceHdr), payload.c_str(), payload.length());
+  hdr->crc8 = crc8_hdr_payload(hdr->type, hdr->seq, buf + sizeof(VoiceHdr), (uint8_t)payload.length());
+  bool ok = sendRfRawVoiceFast(buf, sizeof(VoiceHdr) + (uint8_t)payload.length());
+  Serial.println(String("[RF_SEEN_TX] ") + payload + (ok ? " OK" : " FAIL"));
+  return ok;
+}
+
 // ----------------- SOS framed TX (RF) -----------------
 void sendSosFramedFromFlash() {
   if (voiceActive()) {
@@ -484,6 +503,15 @@ void handleSyncCommand(const String& msg) {
 
   String command = String((const char*)(doc["command"] | ""));
 
+  if (command == "send_seen") {
+    String message_id = String((const char*)(doc["message_id"] | ""));
+    message_id.trim();
+    if (message_id.length() > 0) {
+      rfSendSeenSingleFast(message_id);
+    }
+    return;
+  }
+
   if (command == "sync_profile") {
     String name     = String((const char*)(doc["name"]     | ""));
     String username = String((const char*)(doc["username"] | ""));
@@ -595,6 +623,19 @@ void handleRfPacket() {
   const uint8_t crcExpect = crc8_hdr_payload(hdr->type, hdr->seq, payload, payLen);
   if (crcGot != crcExpect) {
     Serial.println("[RF_ERR] CRC mismatch, dropping packet");
+    return;
+  }
+
+  // ----------------- SEEN RX (forward to sender phone; stops retry when app has displayed message) -----------------
+  if (hdr->type == TTYPE_SEEN) {
+    String s((char*)payload, payLen);
+    s.trim();
+    if (s.startsWith("SEEN|")) {
+      String id = s.substring(5);
+      id.trim();
+      Serial.println(String("[RF_SEEN_RX] msgId=") + id);
+      SerialBT.println(String("{\"command\":\"msg_seen\",\"message_id\":\"") + jsonEscapeBasic(id) + "\"}");
+    }
     return;
   }
 
@@ -854,7 +895,7 @@ void loop() {
     processQueuedProfileReqIfAny();
   }
 
-  // Text completion flush (to phone)
+  // Text completion flush (to phone). SEEN is NOT sent here — only when app sends send_seen after rendering.
   if (rxText && (millis() - lastTextPacketTime > TEXT_TIMEOUT_MS)) {
     if (textBuffer.length() > 0) {
       if (textBuffer.startsWith("<MSG_START:")) {

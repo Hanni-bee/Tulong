@@ -110,6 +110,15 @@ class _EnhancedMessageStatusState extends State<EnhancedMessageStatus>
           .scale(duration: 200.ms, begin: const Offset(0.8, 0.8))
           .fadeIn(duration: 200.ms);
 
+      case voice.MessageStatus.unconfirmed:
+        return Icon(
+          Icons.schedule,
+          color: baseColor,
+          size: widget.size,
+        ).animate()
+          .scale(duration: 200.ms, begin: const Offset(0.8, 0.8))
+          .fadeIn(duration: 200.ms);
+
       case voice.MessageStatus.failed:
         return GestureDetector(
           onTap: widget.onRetry,

@@ -36,7 +36,11 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
   
   bool _isDebugConsoleVisible = false;
   bool _isRecording = false;
-  
+
+  /// Previous message count for smart auto-scroll: only scroll to bottom when a new message is appended AND user is already near bottom.
+  int _prevMessageCount = 0;
+  static const double _nearBottomThresholdPx = 100;
+
   // Pinned banner timer management (30 seconds display duration)
   static const Duration _pinnedRetention = Duration(days: 1); // For history (24 hours)
   static const Duration _pinnedBannerDuration = Duration(seconds: 30); // For banner display
@@ -223,6 +227,20 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
         );
       }
     });
+  }
+
+  /// Auto-scroll only if user is already near bottom (avoids forcing scroll while reading older messages).
+  void _maybeScrollToBottomIfNearBottom() {
+    if (!_scrollController.hasClients) return;
+    final pos = _scrollController.position;
+    final distanceFromBottom = pos.maxScrollExtent - pos.pixels;
+    if (distanceFromBottom <= _nearBottomThresholdPx) {
+      _scrollController.animateTo(
+        pos.maxScrollExtent,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    }
   }
 
   void _showConnectedUsersModal() {
@@ -554,7 +572,15 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
                   
                   // Show messages with refresh indicator overlay
                   final regularMessages = provider.messages.where((msg) => !msg.isPinned).toList();
-                  
+                  final messageCount = provider.messages.length;
+                  if (messageCount > _prevMessageCount) {
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (!mounted) return;
+                      setState(() => _prevMessageCount = messageCount);
+                      _maybeScrollToBottomIfNearBottom();
+                    });
+                  }
+
                   return Column(
                     children: [
                       // Pinned Emergency Alert (only show for 30 seconds)
@@ -569,27 +595,13 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
                               padding: const EdgeInsets.all(16),
                               itemCount: regularMessages.length + (provider.isTyping ? 1 : 0),
                               itemBuilder: (context, index) {
-                                // Show typing indicator at the end
                                 if (index == regularMessages.length && provider.isTyping) {
                                   return _buildTypingIndicator();
                                 }
-                                
-                                // Show regular messages
                                 if (index < regularMessages.length) {
                                   final message = regularMessages[index];
-                                  // Auto-scroll to bottom when new messages arrive
-                                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                                    if (_scrollController.hasClients && index == regularMessages.length - 1) {
-                                      _scrollController.animateTo(
-                                        _scrollController.position.maxScrollExtent,
-                                        duration: const Duration(milliseconds: 300),
-                                        curve: Curves.easeOut,
-                                      );
-                                    }
-                                  });
                                   return _buildMessageBubble(message);
                                 }
-                                
                                 return const SizedBox.shrink();
                               },
                             ),

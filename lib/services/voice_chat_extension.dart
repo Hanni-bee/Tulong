@@ -24,6 +24,8 @@ enum MessageStatus {
   delivered,
   failed,
   received,
+  /// ESP32 msg_timeout: sent but no SEEN ack (best-effort display)
+  unconfirmed,
 }
 
 /// Voice Quality Validator constants

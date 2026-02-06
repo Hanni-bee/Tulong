@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bluetooth_serial_plus/flutter_bluetooth_serial_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -41,11 +42,57 @@ class ChatProvider with ChangeNotifier {
   // Track if local chat screen is currently visible
   bool _isLocalChatScreenVisible = false;
   
-  // Message buffering with start/end markers
+  // ----- Message capture state machine (Bluetooth SPP line parser) -----
+  // CAPTURE mode: after <MSG_START:uid[:msgId]> we buffer body lines until <MSG_END>.
+  // Only on <MSG_END> do we append ONE chat item (and dedup by msgId).
   String _incomingMessageBuffer = '';
   String? _bufferedMessageSenderUid;
+  String? _bufferedMessageMsgId;  // From <MSG_START:uid:msgId> for dedup; null if legacy <MSG_START:uid>
   bool _isBufferingMessage = false;
-  
+  Timer? _captureTimeoutTimer;    // If no <MSG_END> within ~2s, flush anyway (best-effort)
+  static const Duration _captureTimeoutDuration = Duration(milliseconds: 2000);
+  final Set<String> _displayedIncomingMsgIds = {};  // Dedup: do not show same msgId twice (status updates still apply to outgoing)
+
+  // Debounce: batch appends to avoid UI jitter (single append still goes through timer)
+  final List<ChatMessage> _pendingIncomingMessages = [];
+  final List<String?> _pendingIncomingMsgIds = [];
+  Timer? _appendDebounceTimer;
+  static const Duration _appendDebounceDuration = Duration(milliseconds: 80);
+
+  void _scheduleDebouncedAppend() {
+    _appendDebounceTimer?.cancel();
+    _appendDebounceTimer = Timer(_appendDebounceDuration, () {
+      _flushPendingAppends();
+    });
+  }
+
+  void _flushPendingAppends() {
+    _appendDebounceTimer?.cancel();
+    if (_pendingIncomingMessages.isEmpty) return;
+    final idsToSendSeen = <String>[];
+    for (int i = 0; i < _pendingIncomingMessages.length; i++) {
+      final msg = _pendingIncomingMessages[i];
+      _messages.add(msg);
+      final msgId = i < _pendingIncomingMsgIds.length ? _pendingIncomingMsgIds[i] : null;
+      if (msgId != null && msgId.isNotEmpty) {
+        _displayedIncomingMsgIds.add(msgId);
+        idsToSendSeen.add(msgId);
+      }
+      if (!msg.isMe) _showMessageNotification(msg, msg.senderName);
+    }
+    _pendingIncomingMessages.clear();
+    _pendingIncomingMsgIds.clear();
+    _hasCachedMessages = true;
+    if (_isLoadingMessages && _messages.isNotEmpty) _isLoadingMessages = false;
+    notifyListeners();
+    // SEEN only after UI has rendered (receiver phone drives SEEN)
+    if (idsToSendSeen.isNotEmpty) {
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        for (final id in idsToSendSeen) _sendSeenToEsp32(id);
+      });
+    }
+  }
+
   // Profile requests queued while voice is active (send after VOICE_END / VOICE_DONE)
   final List<String> _queuedProfileUids = [];
   
@@ -163,19 +210,25 @@ class ChatProvider with ChangeNotifier {
 
   void _init() {
     _messageSubscription = _bluetoothService.messageStream.listen((message) {
-      print('BT_RX_LINE: $message');
-      // Try to parse as JSON first (for SimpleBluetoothService messages)
+      final trimmed = message.trim();
+      if (trimmed.isEmpty) return;
+      print('BT_RX_LINE: $trimmed');
+      // JSON status events (msg_sent, msg_retry, msg_seen, msg_timeout) must NOT create chat items
       try {
-        final jsonData = json.decode(message);
+        final jsonData = json.decode(trimmed);
         if (jsonData is Map<String, dynamic>) {
+          final cmd = jsonData['command']?.toString() ?? '';
+          if (cmd == 'msg_sent' || cmd == 'msg_retry' || cmd == 'msg_seen' || cmd == 'msg_timeout') {
+            _handleJsonStatusEvent(cmd, jsonData);
+            return;
+          }
           _processIncomingMapMessage(jsonData);
           return;
         }
       } catch (e) {
         // Not JSON, process as regular string message
       }
-      // Process as regular string message (async, but don't await in stream)
-      _processIncomingMessage(message).catchError((error) {
+      _processIncomingMessage(trimmed).catchError((error) {
         print('Error processing incoming message: $error');
       });
     });
@@ -509,11 +562,8 @@ class ChatProvider with ChangeNotifier {
         return false;
       }
 
-      bool success = await _bluetoothService.sendMessage(text);
-      
-      if (success) {
-        message.status = voice.MessageStatus.sent;
-      } else {
+      final success = await _bluetoothService.sendMessage(text);
+      if (!success) {
         message.status = voice.MessageStatus.failed;
         if (context != null) {
           ModernToastManager.show(
@@ -522,9 +572,9 @@ class ChatProvider with ChangeNotifier {
             type: ToastType.error,
           );
         }
+        notifyListeners();
       }
-      
-      notifyListeners();
+      // On success: leave status as sending; ESP32 will send msg_sent with message_id and we update then
       return success;
     } catch (e) {
       message.status = voice.MessageStatus.failed;
@@ -538,6 +588,68 @@ class ChatProvider with ChangeNotifier {
         );
       }
       return false;
+    }
+  }
+
+  /// Handle JSON status events from ESP32. Do NOT create chat items; only update existing outgoing message status.
+  /// msg_sent -> set messageId on last sending message and status "Sent (pending seen)"; msg_retry -> keep Sending, log only; msg_seen -> "Seen"; msg_timeout -> "Unconfirmed".
+  void _handleJsonStatusEvent(String command, Map<String, dynamic> data) {
+    final messageId = data['message_id']?.toString();
+    if (messageId == null || messageId.isEmpty) return;
+
+    if (command == 'msg_sent') {
+      _assignMessageIdToLastSendingAndSetStatus(messageId, voice.MessageStatus.sent);
+      return;
+    }
+    if (command == 'msg_retry') {
+      final count = data['count'];
+      // Keep "Sending…"; log retry count in debug only (do not spam UI)
+      addStructuredDebug({
+        'source': 'CHAT',
+        'event': 'msg_retry',
+        'metrics': {'message_id': messageId, 'count': count},
+      });
+      return;
+    }
+    if (command == 'msg_seen') {
+      _updateOutgoingStatusByMessageId(messageId, voice.MessageStatus.received);
+      return;
+    }
+    if (command == 'msg_timeout') {
+      _updateOutgoingStatusByMessageId(messageId, voice.MessageStatus.unconfirmed);
+      return;
+    }
+  }
+
+  void _assignMessageIdToLastSendingAndSetStatus(String messageId, voice.MessageStatus status) {
+    for (int i = _messages.length - 1; i >= 0; i--) {
+      final m = _messages[i];
+      if (m.isMe && m.status == voice.MessageStatus.sending) {
+        _messages[i] = m.copyWith(messageId: messageId, status: status);
+        notifyListeners();
+        return;
+      }
+    }
+  }
+
+  void _updateOutgoingStatusByMessageId(String messageId, voice.MessageStatus status) {
+    final idx = _messages.indexWhere((m) => m.isMe && m.messageId == messageId);
+    if (idx == -1) return;
+    _messages[idx] = _messages[idx].copyWith(status: status);
+    notifyListeners();
+  }
+
+  /// Send SEEN to ESP32 so it can forward over RF and stop sender retry. Called only after message is displayed (post-frame).
+  /// Sends exactly: {"command":"send_seen","message_id":"<rfMsgId>"}\n
+  void _sendSeenToEsp32(String rfMsgId) {
+    if (rfMsgId.isEmpty) return;
+    if (!_bluetoothService.isConnected) return;
+    try {
+      final payload = '${jsonEncode({'command': 'send_seen', 'message_id': rfMsgId})}\n';
+      _bluetoothService.sendMessage(payload);
+      print('BT_SEEN: send_seen message_id=$rfMsgId');
+    } catch (e) {
+      print('BT_SEEN: Error sending send_seen: $e');
     }
   }
 
@@ -606,99 +718,86 @@ class ChatProvider with ChangeNotifier {
     }
   }
 
-  /// Process incoming message and handle voice messages
+  /// Process incoming message and handle voice messages.
+  /// State machine: IDLE | CAPTURE (buffering body until <MSG_END>). Only append ONE chat item on <MSG_END>; never append partial chunks.
   Future<void> _processIncomingMessage(String data) async {
     addStructuredDebug({
       'source': 'CHAT',
       'event': 'Processing incoming data',
       'metrics': {'dataLength': data.length}
     });
-    
+
     final messages = _voiceExtension.processIncomingData(data);
-    
+
     addStructuredDebug({
       'source': 'CHAT',
       'event': 'Processed messages',
       'metrics': {'messageCount': messages.length}
     });
-    
+
     for (final message in messages) {
       if (message.startsWith('VOICE_MESSAGE:')) {
-        // Extract the Base64 data from the voice message marker
-        final base64Audio = message.substring(14); // Remove 'VOICE_MESSAGE:' prefix
-        
-        // Validate Base64 data
+        final base64Audio = message.substring(14);
         if (base64Audio.isEmpty) {
-          addStructuredDebug({
-            'source': 'CHAT',
-            'event': 'Voice message rejected - empty data',
-            'metrics': {}
-          });
+          addStructuredDebug({'source': 'CHAT', 'event': 'Voice message rejected - empty data', 'metrics': {}});
           continue;
         }
         if (!_isValidBase64(base64Audio)) {
-          addStructuredDebug({
-            'source': 'CHAT',
-            'event': 'Voice message rejected - invalid Base64',
-            'metrics': {'length': base64Audio.length}
-          });
+          addStructuredDebug({'source': 'CHAT', 'event': 'Voice message rejected - invalid Base64', 'metrics': {'length': base64Audio.length}});
           continue;
         }
-        
-        addStructuredDebug({
-          'source': 'CHAT',
-          'event': 'Creating voice message',
-          'metrics': {'base64Length': base64Audio.length}
-        });
-        // Try to extract sender name from previous messages or connected users
+        addStructuredDebug({'source': 'CHAT', 'event': 'Creating voice message', 'metrics': {'base64Length': base64Audio.length}});
         String? senderName;
-        // For now, we'll extract from message context if available
         _addVoiceMessage(base64Audio, false, senderName: senderName);
-        // Voice RX ended: process any profile requests queued during voice
         _processQueuedProfileRequests();
       } else if (message.startsWith('<VOICE_START>') || message.startsWith('<VOICE_END>')) {
-        // Voice markers, handled by voice extension
         continue;
       } else if (message.startsWith('<MSG_START:')) {
-        // New message started - flush previous if any
         await _flushBufferedMessage();
-        
-        // Extract UID from start marker: <MSG_START:UID>
-        final uidMatch = RegExp(r'<MSG_START:(.+?)>').firstMatch(message);
-        if (uidMatch != null) {
-          final uid = uidMatch.group(1);
-          if (uid != null && uid.isNotEmpty) {
-            _bufferedMessageSenderUid = uid;
-            _incomingMessageBuffer = '';
-            _isBufferingMessage = true;
-            print('BT_RX: Message start from UID: $uid');
-            print('BT_RX: RECV_MSG_HEADER_UID=$uid'); // log: kaninong UID yung narereceive as msg header
-            
-            // Defer profile lookup until after VOICE_END if voice is active (never during voice stream)
-            if (!_voiceExtension.isVoiceActive) {
-              _isUidKnown(uid).then((isKnown) {
-                if (!isKnown) {
-                  print('BT_PROFILE: Unknown UID detected: $uid - Requesting profile');
-                  _requestProfileFromESP32(uid);
-                }
-              });
-            }
+        _captureTimeoutTimer?.cancel();
+        // Parse <MSG_START:uid:msgId> (preferred) or <MSG_START:uid> or <MSG_START:uidSOS>
+        final closeBracket = message.indexOf('>');
+        if (closeBracket > 0) {
+          final inside = message.substring(11, closeBracket).trim();
+          final lastColon = inside.lastIndexOf(':');
+          if (lastColon >= 0) {
+            _bufferedMessageSenderUid = inside.substring(0, lastColon).trim();
+            final afterColon = inside.substring(lastColon + 1).trim();
+            _bufferedMessageMsgId = afterColon.isEmpty ? null : afterColon;
+          } else {
+            _bufferedMessageSenderUid = inside;
+            _bufferedMessageMsgId = null;
           }
-          
-          addStructuredDebug({
-            'source': 'CHAT',
-            'event': 'Message buffering started',
-            'metrics': {'uid': uid}
+        } else {
+          _bufferedMessageSenderUid = 'UNKNOWN';
+          _bufferedMessageMsgId = null;
+        }
+        _incomingMessageBuffer = '';
+        _isBufferingMessage = true;
+        print('BT_RX: Message start UID=${_bufferedMessageSenderUid} msgId=${_bufferedMessageMsgId}');
+        _captureTimeoutTimer = Timer(_captureTimeoutDuration, () {
+          if (_isBufferingMessage) {
+            print('BT_RX: Capture timeout - flushing buffer');
+            _flushBufferedMessage();
+          }
+        });
+        if (_bufferedMessageSenderUid != null && _bufferedMessageSenderUid != 'UNKNOWN' && !_voiceExtension.isVoiceActive) {
+          _isUidKnown(_bufferedMessageSenderUid!).then((isKnown) {
+            if (!isKnown) {
+              print('BT_PROFILE: Unknown UID detected: ${_bufferedMessageSenderUid} - Requesting profile');
+              _requestProfileFromESP32(_bufferedMessageSenderUid!);
+            }
           });
         }
-        // Header line never appears in UI — skip adding it as message
+        addStructuredDebug({'source': 'CHAT', 'event': 'Message buffering started', 'metrics': {'uid': _bufferedMessageSenderUid, 'msgId': _bufferedMessageMsgId}});
         continue;
       } else if (message == '<MSG_END>') {
-        // Message complete - flush buffer
+        _captureTimeoutTimer?.cancel();
+        _captureTimeoutTimer = null;
         await _flushBufferedMessage();
-        continue; // End marker never appears in UI
+        continue;
       } else if (_isBufferingMessage) {
-        // Continuation fragment - append to buffer
+        if (_incomingMessageBuffer.isNotEmpty) _incomingMessageBuffer += '\n';
         _incomingMessageBuffer += message;
       } else if (message.startsWith('From A:') || message.startsWith('From B:')) {
         // Extract sender info from ESP32 messages (legacy format)
@@ -988,15 +1087,18 @@ class ChatProvider with ChangeNotifier {
     }
   }
 
-  /// Flush buffered message and display it
+  /// Flush buffered message and display it. Dedup by msgId; append via debounced list so only ONE chat item is added.
   Future<void> _flushBufferedMessage() async {
     if (!_isBufferingMessage || _incomingMessageBuffer.isEmpty) {
       _isBufferingMessage = false;
       _incomingMessageBuffer = '';
       _bufferedMessageSenderUid = null;
+      _bufferedMessageMsgId = null;
       return;
     }
-    
+
+    final msgIdForDedup = _bufferedMessageMsgId;
+
     // Clean the message buffer - remove any MSG_END tags and header so header never appears in UI
     String completeMessage = _incomingMessageBuffer
         .replaceAll('<MSG_END>', '')
@@ -1004,11 +1106,20 @@ class ChatProvider with ChangeNotifier {
         .replaceFirst(RegExp(r'<MSG_START:[^>]*>'), '') // strip header if it leaked into body
         .trim();
     final senderUid = _bufferedMessageSenderUid;
-    
-    // Clear buffer
+
+    // Clear buffer and capture state
     _incomingMessageBuffer = '';
     _bufferedMessageSenderUid = null;
+    _bufferedMessageMsgId = null;
     _isBufferingMessage = false;
+
+    // Dedup: if we already displayed this msgId, do not append duplicate — but still send SEEN so sender stops retrying
+    if (msgIdForDedup != null && msgIdForDedup.isNotEmpty && _displayedIncomingMsgIds.contains(msgIdForDedup)) {
+      print('BT_RX: Dedup skip msgId=$msgIdForDedup (still sending SEEN)');
+      SchedulerBinding.instance.addPostFrameCallback((_) => _sendSeenToEsp32(msgIdForDedup!));
+      return;
+    }
+    if (completeMessage.isEmpty) return;
     
     // Check if this is an SOS message from hardware physical button
     // ESP32 sends: <MSG_START:UIDSOS> + message + <MSG_END>
@@ -1093,10 +1204,26 @@ class ChatProvider with ChangeNotifier {
       _requestProfileFromESP32(actualUid);
     }
     final rawDataForHardwareSos = isSosFromHardware ? {'source': 'sos'} : null;
-    _addMessage(completeMessage, false, senderName: displayName, senderUid: actualUid, isEmergency: isSosFromHardware, rawData: rawDataForHardwareSos);
-    
-    print('BT_RX: Complete message displayed (${completeMessage.length} chars) from UID: $senderUid, Name: $senderName');
-    print('BT_RX: RECV_MSG_HEADER_UID=$senderUid'); // log: kaninong UID yung narereceive as msg header (on display)
+    // Store RF msgId on ChatMessage for normal chat; SOS/legacy without msgId use null (do not generate local IDs for SEEN)
+    final chatMsg = ChatMessage(
+      text: completeMessage,
+      isMe: false,
+      timestamp: DateTime.now(),
+      status: voice.MessageStatus.delivered,
+      type: voice.MessageType.text,
+      senderName: displayName,
+      senderUid: actualUid,
+      isRead: _isLocalChatScreenVisible,
+      isEmergency: isSosFromHardware,
+      isPinned: isSosFromHardware,
+      messageId: isSosFromHardware ? null : msgIdForDedup,
+      rawData: rawDataForHardwareSos,
+    );
+    _pendingIncomingMessages.add(chatMsg);
+    _pendingIncomingMsgIds.add(msgIdForDedup);
+    _scheduleDebouncedAppend();
+
+    print('BT_RX: Complete message queued (${completeMessage.length} chars) from UID: $senderUid, Name: $senderName');
     addStructuredDebug({
       'source': 'CHAT',
       'event': 'Complete message displayed',
