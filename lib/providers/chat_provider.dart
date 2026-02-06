@@ -11,6 +11,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import '../utils/enhanced_error_handler.dart';
 import '../services/notification_service.dart';
 import '../widgets/modern_toast.dart';
+import '../constants/storage_keys.dart';
 import '../models/emergency_type.dart';
 import '../utils/emergency_message_parser.dart';
 
@@ -503,6 +504,18 @@ class ChatProvider with ChangeNotifier {
     EmergencyType? emergencyType,
   }) async {
     if (text.trim().isEmpty) return false;
+
+    if (severityLevel != null || emergencyType != null) {
+      addStructuredDebug({
+        'source': 'CHAT',
+        'event': 'Sending severity message',
+        'metrics': {
+          'severity': severityLevel?.name,
+          'emergencyType': emergencyType?.name,
+          'textLength': text.length,
+        },
+      });
+    }
 
     ChatMessage message = ChatMessage(
       text: text.trim(),
@@ -1525,15 +1538,27 @@ class ChatProvider with ChangeNotifier {
       print('BT_SYNC: Syncing SOS for user: $username');
       
       // Get SOS message from SharedPreferences
-      final sosMessage = prefs.getString('emergency_message_$username') ?? 
-                        'I need help. Please contact me immediately.';
-      
+      final sosMessage = prefs.getString('emergency_message_$username') ??
+          'I need help. Please contact me immediately.';
+
+      // Retrieve AI severity and timestamp (same keys as detection pipeline)
+      final severity = prefs.getString(StorageKeys.userCurrentStatus)?.trim();
+      final timestampMs = prefs.getInt(StorageKeys.userStatusLastUpdated);
+      final severityValue = (severity != null && severity.isNotEmpty)
+          ? severity.toUpperCase()
+          : 'LOW';
+      final timestampValue = (timestampMs != null && timestampMs > 0)
+          ? timestampMs
+          : DateTime.now().millisecondsSinceEpoch;
+
       final sosJson = jsonEncode({
         "command": "sync_sos",
         "message": sosMessage,
+        "severity": severityValue,
+        "timestamp_ms": timestampValue,
       });
-      
-      print('BT_SYNC: Sending SOS message: $sosJson');
+
+      print('BT_SYNC: Sending SOS message (severity=$severityValue, timestamp_ms=$timestampValue): $sosJson');
       await _bluetoothService.sendMessage(sosJson);
       print('BT_SYNC: SOS message sent successfully');
     } catch (e) {
@@ -1631,18 +1656,30 @@ class ChatProvider with ChangeNotifier {
       print('BT_SYNC: Profile data sent successfully');
       
       // Get SOS message from SharedPreferences
-      final sosMessage = prefs.getString('emergency_message_$username') ?? 
-                        'I need help. Please contact me immediately.';
-      
+      final sosMessage = prefs.getString('emergency_message_$username') ??
+          'I need help. Please contact me immediately.';
+
+      // Retrieve AI severity and timestamp (same keys as detection pipeline)
+      final severity = prefs.getString(StorageKeys.userCurrentStatus)?.trim();
+      final timestampMs = prefs.getInt(StorageKeys.userStatusLastUpdated);
+      final severityValue = (severity != null && severity.isNotEmpty)
+          ? severity.toUpperCase()
+          : 'LOW';
+      final timestampValue = (timestampMs != null && timestampMs > 0)
+          ? timestampMs
+          : DateTime.now().millisecondsSinceEpoch;
+
       final sosJson = jsonEncode({
         "command": "sync_sos",
         "message": sosMessage,
+        "severity": severityValue,
+        "timestamp_ms": timestampValue,
       });
-      
-      print('BT_SYNC: Sending SOS message: $sosJson');
+
+      print('BT_SYNC: Sending SOS message (severity=$severityValue, timestamp_ms=$timestampValue): $sosJson');
       await _bluetoothService.sendMessage(sosJson);
       print('BT_SYNC: SOS message sent successfully');
-      
+
       print('BT_SYNC: Sync completed successfully');
     } catch (e) {
       print('BT_SYNC: Error during sync: $e');

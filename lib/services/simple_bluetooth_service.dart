@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../constants/storage_keys.dart';
 import '../providers/auth_provider.dart';
 import '../utils/emergency_message_parser.dart';
 import '../services/sqlite_service.dart';
@@ -847,25 +848,38 @@ class SimpleBluetoothService extends ChangeNotifier {
     }
   }
   
-  /// Sync SOS message to ESP32 flash memory
+  /// Sync SOS message to ESP32 flash memory (includes AI severity and timestamp for [SOS_META])
   Future<void> syncSosMessageToESP32() async {
     if (!_isConnected || !_isAuthenticated) {
       _addErrorLog('Cannot sync SOS: Not connected or authenticated');
       return;
     }
-    
+
     try {
       final authProvider = AuthProvider();
       final sosMessage = authProvider.emergencyMessage ?? 'I need help. Please contact me immediately.';
-      
+
+      final prefs = await SharedPreferences.getInstance();
+      final severity = prefs.getString(StorageKeys.userCurrentStatus)?.trim();
+      final timestampMs = prefs.getInt(StorageKeys.userStatusLastUpdated);
+      final severityValue = (severity != null && severity.isNotEmpty)
+          ? severity.toUpperCase()
+          : 'LOW';
+      final timestampValue = (timestampMs != null && timestampMs > 0)
+          ? timestampMs
+          : DateTime.now().millisecondsSinceEpoch;
+
       final sosData = {
         'command': 'sync_sos',
         'message': sosMessage,
+        'severity': severityValue,
+        'timestamp_ms': timestampValue,
       };
-      
+
       // Log SOS message being forwarded
       _addStatusLog('📤 FORWARDING SOS MESSAGE TO ESP32 FLASH MEMORY');
       _addStatusLog('   Message: "$sosMessage"');
+      _addStatusLog('   severity=$severityValue timestamp_ms=$timestampValue');
       _addStatusLog('   Message length: ${sosMessage.length} characters');
       
       // Debug: Print exact JSON being sent

@@ -589,6 +589,10 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
                                       );
                                     }
                                   });
+                                  // From Emergency Detection: show status line (dot + name + status), not bubble
+                                  if (message.emergencyType != null) {
+                                    return _buildEmergencyStatusLine(message);
+                                  }
                                   return _buildMessageBubble(message);
                                 }
                                 
@@ -891,7 +895,158 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
       },
     );
   }
-  
+
+  /// Emergency Detection messages: centered status line (dot by severity + "Detection Status: Low/Medium/High")
+  Widget _buildEmergencyStatusLine(ChatMessage message) {
+    final severity = message.severityLevel;
+    final severityColor = severity != null
+        ? SeverityColors.color(severity)
+        : ThemeColors.textTertiary(context);
+    final severityLabel = severity?.label ?? 'Unknown';
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: GestureDetector(
+        onTap: () => _showEmergencyStatusDetails(message),
+        behavior: HitTestBehavior.opaque,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Center(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Detection Result $severityLabel',
+                  style: AppTypography.bodySmall.copyWith(
+                    color: ThemeColors.textSecondary(context),
+                    fontWeight: FontWeight.w500,
+                    fontSize: 13,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(width: 10),
+                Container(
+                  width: 10,
+                  height: 10,
+                  decoration: BoxDecoration(
+                    color: severityColor,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: severityColor.withOpacity(0.4),
+                        blurRadius: 4,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showEmergencyStatusDetails(ChatMessage message) {
+    final severity = message.severityLevel;
+    final type = message.emergencyType;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return Container(
+          margin: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
+          decoration: BoxDecoration(
+            color: ThemeColors.surface(context),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: ThemeColors.border(context)),
+            boxShadow: [
+              BoxShadow(
+                color: ThemeColors.shadow(context, opacity: 0.18),
+                blurRadius: 22,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Detection',
+                  style: AppTypography.titleMedium.copyWith(
+                    color: ThemeColors.textPrimary(context),
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  message.text,
+                  style: AppTypography.bodyLarge.copyWith(
+                    color: ThemeColors.textPrimary(context),
+                  ),
+                ),
+                if (severity != null || type != null) ...[
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    children: [
+                      if (severity != null)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: SeverityColors.color(severity).withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: SeverityColors.color(severity).withOpacity(0.4),
+                            ),
+                          ),
+                          child: Text(
+                            'Status: ${severity.label}',
+                            style: AppTypography.labelMedium.copyWith(
+                              color: SeverityColors.color(severity),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      if (type != null)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: ThemeColors.textTertiary(context).withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            type.label,
+                            style: AppTypography.labelMedium.copyWith(
+                              color: ThemeColors.textSecondary(context),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+                const SizedBox(height: 16),
+                Text(
+                  _formatDateTime(message.timestamp),
+                  style: AppTypography.bodySmall.copyWith(
+                    color: ThemeColors.textTertiary(context),
+                  ),
+                ),
+                const SizedBox(height: 20),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
 
   Widget _buildMessageBubble(ChatMessage message) {
     return TweenAnimationBuilder<double>(

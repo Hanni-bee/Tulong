@@ -139,11 +139,15 @@ class EmergencyMessageParser {
       }
       
       severity = parsedSeverity;
-      
+
+      // No-emergency must be Low severity when not parsed from text
+      if (emergencyType == EmergencyType.noEmergency && severity == null) {
+        severity = SeverityLevel.low;
+      }
       // Default values if parsing fails
       emergencyType ??= EmergencyType.general;
       severity ??= SeverityLevel.medium;
-      
+
       return EmergencyDetectionResult(
         type: emergencyType,
         severity: severity,

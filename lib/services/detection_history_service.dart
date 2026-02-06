@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../constants/storage_keys.dart';
 import '../models/emergency_detection_result.dart';
 import '../models/emergency_type.dart';
 
@@ -79,7 +80,7 @@ class DetectionHistoryService {
         await db.execute('ALTER TABLE $_tableName ADD COLUMN user_uid TEXT');
         // Update existing records with default UID (if available from SharedPreferences)
         final prefs = await SharedPreferences.getInstance();
-        final defaultUid = prefs.getString('session_uid') ?? 'unknown';
+        final defaultUid = prefs.getString(StorageKeys.sessionUid) ?? 'unknown';
         await db.update(
           _tableName,
           {'user_uid': defaultUid},
@@ -100,7 +101,7 @@ class DetectionHistoryService {
     
     // Get user UID from SharedPreferences
     final prefs = await SharedPreferences.getInstance();
-    final userUid = prefs.getString('session_uid') ?? 'unknown';
+    final userUid = prefs.getString(StorageKeys.sessionUid) ?? 'unknown';
     
     // Ensure migration is applied
     await _migrateTable(db);
@@ -118,18 +119,23 @@ class DetectionHistoryService {
       },
     );
     
-    // Update user's current status in SharedPreferences
-    await prefs.setString('user_current_status', result.severity.name);
-    await prefs.setString('user_current_emergency_type', result.type.name);
-    await prefs.setInt('user_status_last_updated', result.timestamp.millisecondsSinceEpoch);
-    
+    // Update user's current status in SharedPreferences (enum names for consistency)
+    final severityKey = result.severity.name;
+    final typeKey = result.type.name;
+    final ts = result.timestamp.millisecondsSinceEpoch;
+    await prefs.setString(StorageKeys.userCurrentStatus, severityKey);
+    await prefs.setString(StorageKeys.userCurrentEmergencyType, typeKey);
+    await prefs.setInt(StorageKeys.userStatusLastUpdated, ts);
+    if (kDebugMode) {
+      debugPrint('📦 [SEVERITY] Saved to prefs: severity=$severityKey, emergencyType=$typeKey, ts=$ts');
+    }
     return id;
   }
   
   /// Get current user's latest status
   Future<Map<String, dynamic>?> getCurrentUserStatus() async {
     final prefs = await SharedPreferences.getInstance();
-    final userUid = prefs.getString('session_uid');
+    final userUid = prefs.getString(StorageKeys.sessionUid);
     
     if (userUid == null) return null;
     
@@ -157,7 +163,7 @@ class DetectionHistoryService {
   /// Get user's detection history
   Future<List<EmergencyDetectionResult>> getUserDetections({int? limit}) async {
     final prefs = await SharedPreferences.getInstance();
-    final userUid = prefs.getString('session_uid');
+    final userUid = prefs.getString(StorageKeys.sessionUid);
     
     if (userUid == null) return [];
     
@@ -227,13 +233,18 @@ class DetectionHistoryService {
     return await db.delete(_tableName);
   }
   
-  /// Convert database map to EmergencyDetectionResult
+  /// Convert database map to EmergencyDetectionResult (defensive: null/empty use enum defaults)
   EmergencyDetectionResult _mapToResult(Map<String, dynamic> map) {
+    final typeStr = (map['emergency_type'] as String?)?.trim();
+    final severityStr = (map['severity'] as String?)?.trim();
+    final ts = map['timestamp'] as int?;
     return EmergencyDetectionResult(
-      type: EmergencyType.fromString(map['emergency_type'] as String),
-      severity: SeverityLevel.fromString(map['severity'] as String),
-      confidence: (map['confidence'] as num).toDouble(),
-      timestamp: DateTime.fromMillisecondsSinceEpoch(map['timestamp'] as int),
+      type: EmergencyType.fromString(typeStr?.isNotEmpty == true ? typeStr! : 'noEmergency'),
+      severity: SeverityLevel.fromString(severityStr?.isNotEmpty == true ? severityStr! : 'medium'),
+      confidence: ((map['confidence'] as num?)?.toDouble()) ?? 0.0,
+      timestamp: ts != null && ts > 0
+          ? DateTime.fromMillisecondsSinceEpoch(ts)
+          : DateTime.now(),
       imagePath: map['image_path'] as String?,
     );
   }

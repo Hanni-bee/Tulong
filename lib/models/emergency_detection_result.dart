@@ -34,10 +34,13 @@ class EmergencyDetectionResult {
   }
   
   /// Create from JSON (for ESP32/radio transmission)
+  /// Expects keys: emergency_type, severity (enum names); timestamp (ISO8601 optional).
   factory EmergencyDetectionResult.fromJson(Map<String, dynamic> json) {
+    final typeStr = (json['emergency_type'] as String?)?.trim();
+    final severityStr = (json['severity'] as String?)?.trim();
     return EmergencyDetectionResult(
-      type: EmergencyType.fromString(json['emergency_type'] as String? ?? 'general'),
-      severity: SeverityLevel.fromString(json['severity'] as String? ?? 'medium'),
+      type: EmergencyType.fromString(typeStr?.isNotEmpty == true ? typeStr! : 'general'),
+      severity: SeverityLevel.fromString(severityStr?.isNotEmpty == true ? severityStr! : 'medium'),
       confidence: (json['confidence'] as num?)?.toDouble() ?? 0.0,
       timestamp: json['timestamp'] != null
           ? DateTime.parse(json['timestamp'] as String)
