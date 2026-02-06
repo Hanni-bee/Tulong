@@ -54,17 +54,15 @@ class ImagePreprocessingService {
   }
   
   /// Resize image maintaining aspect ratio, then crop center to 224x224
-  /// This ensures the model receives exactly 224x224 pixels as required
+  /// Scale by SHORTER side so both dimensions >= size, then crop center
   img.Image _resizeAndCrop(img.Image image, int size) {
     final int width = image.width;
     final int height = image.height;
     
     debugPrint('Original image size: ${width}x${height}');
     
-    // Calculate scaling factor to ensure the longer side becomes 'size'
-    final double scale = size / (width > height ? width : height);
-    
-    // Resize maintaining aspect ratio
+    // Scale by SHORTER side so both dimensions are >= size (enables valid center crop)
+    final double scale = size / (width < height ? width : height);
     final int newWidth = (width * scale).round();
     final int newHeight = (height * scale).round();
     final img.Image resized = img.copyResize(image, width: newWidth, height: newHeight);

@@ -52,7 +52,7 @@ class EmergencyDetectionResult {
       'type': 'emergency_detection',
       'emergency_type': type.name,
       'severity': severity.name,
-      'message': 'Emergency: ${type.label} - ${severity.label} Severity',
+      'message': 'Emergency: ${type.emoji} ${type.label} - ${severity.label} Severity',
       'timestamp': timestamp.toIso8601String(),
       'confidence': confidence,
       // Note: image_path is NOT included - hardware can't transmit images
@@ -62,17 +62,17 @@ class EmergencyDetectionResult {
   /// Get formatted message for chat display
   String getFormattedMessage() {
     if (type == EmergencyType.noEmergency) {
-      return '${type.label} - No emergency detected. Area appears safe.';
+      return '${type.emoji} ${type.label} - No emergency detected. Area appears safe.';
     }
-    return 'Emergency: ${type.label} - ${severity.label} Severity';
+    return 'Emergency: ${type.emoji} ${type.label} - ${severity.label} Severity';
   }
   
   /// Get badge text for UI display
   String getBadgeText() {
     if (type == EmergencyType.noEmergency) {
-      return type.label;
+      return '${type.emoji} ${type.label}';
     }
-    return '${type.label} - ${severity.label}';
+    return '${type.emoji} ${type.label} - ${severity.label}';
   }
   
   @override

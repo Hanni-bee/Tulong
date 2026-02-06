@@ -20,6 +20,7 @@ class PermissionHelper {
       Permission.microphone,
       Permission.notification,
       Permission.camera, // For emergency detection feature
+      Permission.photos, // For gallery upload - AI detection from saved photos
     ];
     
     // Check which permissions are not granted
@@ -139,6 +140,7 @@ class PermissionHelper {
           '• Storage - To save messages and media\n'
           '• Microphone - For walkie-talkie feature\n'
           '• Camera - For emergency detection feature\n'
+          '• Photos - To pick images from gallery for AI detection\n'
           '• Notifications - For emergency alerts\n\n'
           'These permissions are essential for disaster communication.',
         ),
@@ -269,6 +271,48 @@ class PermissionHelper {
     }
     
     final result = await Permission.camera.request();
+    return result.isGranted;
+  }
+
+  /// Request photos permission for gallery image pick (AI detection)
+  static Future<bool> requestPhotosPermission(BuildContext context) async {
+    // On Android 12 and below, use storage. On Android 13+, use photos.
+    final permission = Permission.photos;
+    final status = await permission.status;
+    if (status.isGranted) {
+      return true;
+    }
+    if (status.isPermanentlyDenied) {
+      if (context.mounted) {
+        await showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            backgroundColor: Colors.white,
+            title: const Text('Photos Permission Required'),
+            content: const Text(
+              'Photos access is needed to pick images from gallery for AI emergency detection.\n\n'
+              'Please enable it in:\n'
+              'Settings → Apps → TULONG → Permissions → Photos',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  openAppSettings();
+                },
+                child: const Text('Open Settings'),
+              ),
+            ],
+          ),
+        );
+      }
+      return false;
+    }
+    final result = await permission.request();
     return result.isGranted;
   }
 }

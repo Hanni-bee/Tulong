@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:camera/camera.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/app_colors.dart';
@@ -463,6 +464,94 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
             content: Text('Failed to initialize camera'),
             backgroundColor: AppColors.error,
           ),
+        );
+      }
+    }
+  }
+
+  /// Handle pick from gallery - runs same AI detection pipeline
+  Future<void> _pickFromGallery() async {
+    if (_isOnCooldown) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Please wait ${_cooldownSecondsRemaining}s'),
+            backgroundColor: AppColors.warning,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+      return;
+    }
+
+    final hasPermission = await PermissionHelper.requestPhotosPermission(context);
+    if (!hasPermission) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Photos permission is required to pick images'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+      return;
+    }
+
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(source: ImageSource.gallery, maxWidth: 2048, imageQuality: 85);
+    if (picked == null || !mounted) return;
+
+    _lastCaptureTime = DateTime.now();
+    await _saveLastCaptureTime();
+    _updateCooldownState();
+
+    setState(() {
+      _isProcessing = true;
+    });
+
+    try {
+      final imagePath = picked.path;
+      EmergencyDetectionResult result;
+      Map<String, dynamic>? detailedAssessment;
+
+      if (_isMLModelLoaded && _mlClassificationService.isModelLoaded) {
+        debugPrint('🔍 Using ML classification (from gallery)');
+        result = await _mlClassificationService.classifyDisaster(imagePath);
+        detailedAssessment = _mlClassificationService.getDetailedAssessment(
+          result.type,
+          result.confidence,
+        );
+      } else {
+        debugPrint('🔍 Using fallback detection (from gallery)');
+        final preprocessed = await _preprocessingService.preprocessImage(imagePath);
+        if (preprocessed == null) {
+          if (mounted) {
+            setState(() => _isProcessing = false);
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Failed to process image'), backgroundColor: AppColors.error),
+            );
+          }
+          return;
+        }
+        result = await _detectionService.detectEmergency(preprocessed, imagePath);
+        detailedAssessment = _mlClassificationService.getDetailedAssessment(result.type, result.confidence);
+      }
+
+      if (mounted) {
+        try {
+          await _historyService.saveDetection(result);
+        } catch (e) {
+          debugPrint('❌ Failed to save detection: $e');
+        }
+        setState(() => _isProcessing = false);
+        _showDetectionResult(result, detailedAssessment);
+      }
+    } catch (e) {
+      debugPrint('❌ Gallery pick detection failed: $e');
+      if (mounted) {
+        setState(() => _isProcessing = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Detection failed: $e'), backgroundColor: AppColors.error),
         );
       }
     }
@@ -1735,50 +1824,84 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                               ),
                             ),
                       
-                      // Camera overlay - pill hint
+                      // Dynamic AI Detection badge + Camera overlay hint
                       if (_isCameraInitialized && _cameraService.isReady && !_isProcessing)
                         Positioned(
                           top: 14,
                           left: 14,
                           right: 14,
-                          child: Center(
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                              decoration: BoxDecoration(
-                                color: Colors.black.withOpacity(0.65),
-                                borderRadius: BorderRadius.circular(28),
-                                border: Border.all(
-                                  color: Colors.white.withOpacity(0.15),
-                                  width: 1,
-                                ),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withOpacity(0.2),
-                                    blurRadius: 8,
-                                    offset: const Offset(0, 2),
-                                  ),
-                                ],
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    Icons.camera_alt_rounded,
-                                    size: 18,
-                                    color: Colors.white.withOpacity(0.95),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Text(
-                                    'Point camera at emergency scene',
-                                    style: AppTypography.bodySmall.copyWith(
-                                      color: Colors.white.withOpacity(0.95),
-                                      fontWeight: FontWeight.w500,
-                                      letterSpacing: 0.2,
+                          child: Column(
+                            children: [
+                              // Dynamic AI Detection indicator
+                              if (_isMLModelLoaded)
+                                Container(
+                                  margin: const EdgeInsets.only(bottom: 10),
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      colors: [
+                                        Colors.purple.withOpacity(0.9),
+                                        Colors.blue.withOpacity(0.9),
+                                      ],
                                     ),
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(color: Colors.white.withOpacity(0.3), width: 1),
                                   ),
-                                ],
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.psychology, size: 16, color: Colors.white.withOpacity(0.95)),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        'Dynamic AI Detection Active',
+                                        style: AppTypography.labelMedium.copyWith(
+                                          color: Colors.white.withOpacity(0.95),
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 11,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              // Point camera hint
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withOpacity(0.65),
+                                  borderRadius: BorderRadius.circular(28),
+                                  border: Border.all(
+                                    color: Colors.white.withOpacity(0.15),
+                                    width: 1,
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.2),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.camera_alt_rounded,
+                                      size: 18,
+                                      color: Colors.white.withOpacity(0.95),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Text(
+                                      'Point camera at emergency scene',
+                                      style: AppTypography.bodySmall.copyWith(
+                                        color: Colors.white.withOpacity(0.95),
+                                        fontWeight: FontWeight.w500,
+                                        letterSpacing: 0.2,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ),
+                            ],
                           ),
                         ),
                       
@@ -1882,55 +2005,92 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                       ),
                     )
                   else
-                    AnimatedBuilder(
-                      animation: _captureButtonScale,
-                      builder: (context, child) {
-                        return Transform.scale(
-                          scale: _captureButtonScale.value,
-                          child: GestureDetector(
-                            onTapDown: (_) {
-                              _captureButtonController.forward();
-                            },
-                            onTapUp: (_) {
-                              _captureButtonController.reverse();
-                              _capturePhoto();
-                            },
-                            onTapCancel: () {
-                              _captureButtonController.reverse();
-                            },
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        // Upload from Gallery button
+                        Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: _pickFromGallery,
+                            borderRadius: BorderRadius.circular(24),
                             child: Container(
-                              width: 88,
-                              height: 88,
+                              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
                               decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: ThemeColors.primary(context),
-                                border: Border.all(
-                                  color: Colors.white.withOpacity(0.25),
-                                  width: 2,
-                                ),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: ThemeColors.primary(context).withOpacity(0.35),
-                                    blurRadius: 20,
-                                    spreadRadius: 2,
-                                    offset: const Offset(0, 4),
-                                  ),
-                                  BoxShadow(
-                                    color: Colors.black.withOpacity(0.2),
-                                    blurRadius: 12,
-                                    offset: const Offset(0, 4),
+                                color: ThemeColors.surfaceContainer(context),
+                                borderRadius: BorderRadius.circular(24),
+                                border: Border.all(color: ThemeColors.border(context), width: 1.5),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.photo_library_rounded, color: ThemeColors.primary(context), size: 24),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Upload Image',
+                                    style: AppTypography.labelLarge.copyWith(
+                                      color: ThemeColors.textPrimary(context),
+                                      fontWeight: FontWeight.w600,
+                                    ),
                                   ),
                                 ],
                               ),
-                              child: const Icon(
-                                Icons.camera_alt_rounded,
-                                color: Colors.white,
-                                size: 42,
-                              ),
                             ),
                           ),
-                        );
-                      },
+                        ),
+                        const SizedBox(width: 16),
+                        // Capture button
+                        AnimatedBuilder(
+                          animation: _captureButtonScale,
+                          builder: (context, child) {
+                            return Transform.scale(
+                              scale: _captureButtonScale.value,
+                              child: GestureDetector(
+                                onTapDown: (_) {
+                                  _captureButtonController.forward();
+                                },
+                                onTapUp: (_) {
+                                  _captureButtonController.reverse();
+                                  _capturePhoto();
+                                },
+                                onTapCancel: () {
+                                  _captureButtonController.reverse();
+                                },
+                                child: Container(
+                                  width: 88,
+                                  height: 88,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: ThemeColors.primary(context),
+                                    border: Border.all(
+                                      color: Colors.white.withOpacity(0.25),
+                                      width: 2,
+                                    ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: ThemeColors.primary(context).withOpacity(0.35),
+                                        blurRadius: 20,
+                                        spreadRadius: 2,
+                                        offset: const Offset(0, 4),
+                                      ),
+                                      BoxShadow(
+                                        color: Colors.black.withOpacity(0.2),
+                                        blurRadius: 12,
+                                        offset: const Offset(0, 4),
+                                      ),
+                                    ],
+                                  ),
+                                  child: const Icon(
+                                    Icons.camera_alt_rounded,
+                                    color: Colors.white,
+                                    size: 42,
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ],
                     ),
                   // Flash toggle - compact pill
                   const SizedBox(height: 14),
