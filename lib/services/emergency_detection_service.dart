@@ -186,11 +186,11 @@ class EmergencyDetectionService {
         );
       }
       
-      // Ambiguous - use noEmergency as fallback (but this should be rare now)
+      // Ambiguous - use noEmergency as fallback with default 70-75% confidence
       return EmergencyDetectionResult(
-        type: EmergencyType.noEmergency, // Changed from general to noEmergency
+        type: EmergencyType.noEmergency,
         severity: SeverityLevel.low,
-        confidence: confidence,
+        confidence: EmergencyDetectionResult.defaultNoEmergencyConfidence,
         timestamp: DateTime.now(),
         imagePath: originalImagePath,
       );
@@ -1572,12 +1572,12 @@ class EmergencyDetectionService {
     return variance;
   }
   
-  /// Create default result when detection fails
+  /// Create default result when detection fails (no detection / no emergency)
   EmergencyDetectionResult _createDefaultResult() {
     return EmergencyDetectionResult(
-      type: EmergencyType.noEmergency, // Changed from general to noEmergency
-      severity: SeverityLevel.medium,
-      confidence: 0.5,
+      type: EmergencyType.noEmergency,
+      severity: SeverityLevel.low,
+      confidence: EmergencyDetectionResult.defaultNoEmergencyConfidence, // 70-75% default
       timestamp: DateTime.now(),
     );
   }

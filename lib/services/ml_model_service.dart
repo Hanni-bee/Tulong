@@ -17,6 +17,8 @@ class MLModelService {
   tflite.Interpreter? _interpreter;
   bool _isLoaded = false;
   String? _lastError;
+  /// Ensures only one inference runs at a time (avoids "failed precondition" / interpreter busy).
+  Completer<void>? _inferenceLock = Completer<void>()..complete();
   
   /// Check if ML model is loaded and available
   bool get isLoaded => _isLoaded && _interpreter != null;
@@ -353,48 +355,78 @@ class MLModelService {
       
       debugPrint('✅ Input size verified: ${preprocessedImage.length} elements (matches $expectedNonBatchSize)');
       
-      // Prepare output buffer
-      final outputSize = outputTensor.shape.reduce((a, b) => a * b);
-      final outputBuffer = [Float32List(outputSize)];
+      // Match input buffer type to model (fixes "failed precondition" when model is quantized)
+      final inputType = inputTensor.type;
+      final inputTypeStr = inputType.toString().toLowerCase();
+      debugPrint('📐 Input tensor type: $inputType');
+      List<Object> runInputBuffer;
+      final isQuantizedInput = inputTypeStr.contains('uint8') || inputTypeStr.contains('int8');
+      if (isQuantizedInput) {
+        // Quantized model: convert float [0,1] to uint8 [0,255]
+        final uint8List = Uint8List(preprocessedImage.length);
+        for (int i = 0; i < preprocessedImage.length; i++) {
+          uint8List[i] = (preprocessedImage[i].clamp(0.0, 1.0) * 255).round().clamp(0, 255);
+        }
+        runInputBuffer = [uint8List];
+        debugPrint('   Using Uint8List input (quantized model)');
+      } else {
+        runInputBuffer = inputBuffer;
+      }
       
-      // Run inference - THIS IS DYNAMIC, RUNS FRESH EVERY TIME
+      // Prepare output buffer (type must match model output: float32 or uint8)
+      final outputSize = outputTensor.shape.reduce((a, b) => a * b);
+      final outputTypeStr = outputTensor.type.toString().toLowerCase();
+      final isQuantizedOutput = outputTypeStr.contains('uint8') || outputTypeStr.contains('int8');
+      List<Object> outputBuffer;
+      if (isQuantizedOutput) {
+        outputBuffer = [Uint8List(outputSize)];
+        debugPrint('   Output tensor type: quantized (uint8/int8)');
+      } else {
+        outputBuffer = [Float32List(outputSize)];
+      }
+      
+      // Run inference - one at a time to avoid "failed precondition" / interpreter busy
+      await _inferenceLock!.future;
+      _inferenceLock = Completer<void>();
       debugPrint('🔄 Running TFLite inference (dynamic, no caching)...');
-      debugPrint('   Input buffer size: ${inputBuffer[0].length}');
+      debugPrint('   Input buffer size: ${runInputBuffer[0] is List ? (runInputBuffer[0] as List).length : 0}');
       debugPrint('   Output buffer size: ${outputBuffer[0].length}');
       final inferenceStartTime = DateTime.now();
       
       try {
-        _interpreter!.run(inputBuffer, outputBuffer);
+        _interpreter!.run(runInputBuffer, outputBuffer);
       } catch (e, stackTrace) {
         debugPrint('❌ CRITICAL: Inference failed with error: $e');
         debugPrint('   Stack trace: $stackTrace');
         debugPrint('   Input shape: $inputShape');
-        debugPrint('   Input buffer length: ${inputBuffer[0].length}');
+        debugPrint('   Input tensor type: $inputType');
+        debugPrint('   Input buffer length: ${runInputBuffer[0] is List ? (runInputBuffer[0] as List).length : 0}');
         debugPrint('   Output shape: ${outputTensor.shape}');
         return null;
+      } finally {
+        if (_inferenceLock != null && !_inferenceLock!.isCompleted) _inferenceLock!.complete();
       }
       
       final inferenceDuration = DateTime.now().difference(inferenceStartTime);
       debugPrint('✅ TFLite inference completed in ${inferenceDuration.inMilliseconds}ms');
       
-      // Extract probabilities (handle batch dimension if present)
+      // Extract probabilities (handle batch dimension and quantized output)
       final output = outputBuffer[0];
+      final numClasses = outputTensor.shape.length > 1 && outputTensor.shape[0] == 1
+          ? outputTensor.shape.sublist(1).reduce((a, b) => a * b)
+          : outputSize;
+      List<double> probabilities;
+      if (output is Float32List) {
+        probabilities = output.sublist(0, numClasses).map((e) => e.toDouble()).toList();
+      } else if (output is Uint8List) {
+        probabilities = output.sublist(0, numClasses).map((e) => e / 255.0).toList();
+        debugPrint('📊 Dequantized ${probabilities.length} probabilities from uint8 output');
+      } else {
+        probabilities = output.sublist(0, numClasses).map((e) => (e as num).toDouble()).toList();
+      }
       debugPrint('📊 Raw output buffer size: ${output.length}');
       debugPrint('📊 Output tensor shape: ${outputTensor.shape}');
-      
-      // If output has batch dimension [1, num_classes], take first element
-      // Otherwise, use output directly
-      List<double> probabilities;
-      if (outputTensor.shape.length > 1 && outputTensor.shape[0] == 1) {
-        // Has batch dimension, extract first batch
-        final numClasses = outputTensor.shape.sublist(1).reduce((a, b) => a * b);
-        probabilities = output.sublist(0, numClasses).map((e) => e.toDouble()).toList();
-        debugPrint('📊 Extracted ${probabilities.length} probabilities from batch dimension');
-      } else {
-        // No batch dimension, use directly
-        probabilities = output.map((e) => e.toDouble()).toList();
-        debugPrint('📊 Using ${probabilities.length} probabilities directly');
-      }
+      debugPrint('📊 Extracted ${probabilities.length} probabilities');
       
       // Log raw output for verification
       debugPrint('📊 Raw Model Output Values:');

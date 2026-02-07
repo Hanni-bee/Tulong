@@ -309,7 +309,7 @@ class DisasterClassificationService {
       debugPrint('❌ Empty probabilities list');
       return {
         'label': 'No Emergency',
-        'confidence': 0.0,
+        'confidence': EmergencyDetectionResult.defaultNoEmergencyConfidence,
         'index': -1,
       };
     }
@@ -376,13 +376,13 @@ class DisasterClassificationService {
       bestIndex = 0;
     }
 
-    // Handle low confidence predictions
+    // Handle low confidence predictions - use default 70-75% for "no emergency"
     if (normalizedConfidence < _minConfidenceThreshold) {
       debugPrint('⚠️ Low confidence prediction: ${normalizedConfidence.toStringAsFixed(3)} < $_minConfidenceThreshold');
-      debugPrint('   Returning "No Emergency"');
+      debugPrint('   Returning "No Emergency" with default confidence');
       return {
         'label': 'No Emergency',
-        'confidence': (1.0 - normalizedConfidence).clamp(0.0, 1.0),
+        'confidence': EmergencyDetectionResult.defaultNoEmergencyConfidence,
         'index': -1,
         'allProbabilities': normalizedProbs,
       };
@@ -482,12 +482,12 @@ class DisasterClassificationService {
     }
   }
 
-  /// Create error result when classification fails
+  /// Create error result when classification fails (no detection)
   EmergencyDetectionResult _createErrorResult(String imagePath) {
     return EmergencyDetectionResult(
-      type: EmergencyType.noEmergency, // Changed from general to noEmergency
+      type: EmergencyType.noEmergency,
       severity: SeverityLevel.low,
-      confidence: 0.0,
+      confidence: EmergencyDetectionResult.defaultNoEmergencyConfidence,
       timestamp: DateTime.now(),
       imagePath: imagePath,
     );
