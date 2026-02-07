@@ -16,6 +16,7 @@ import 'screens/update_profile_screen.dart';
 import 'screens/esp32_auth_screen.dart';
 import 'screens/esp32_device_scanner.dart';
 import 'screens/main_navigation.dart';
+import 'screens/local_chat_screen.dart';
 import 'providers/auth_provider.dart';
 import 'providers/network_provider.dart';
 import 'providers/power_provider.dart';
@@ -137,6 +138,7 @@ class _TulongAppState extends State<TulongApp> with WidgetsBindingObserver {
               '/esp32-scanner': (context) => const ESP32DeviceScanner(), // ESP32 device scanner with pairing
               '/disaster-demo': (context) => const DisasterDemoScreen(),
               '/main': (context) => const MainNavigation(),
+              '/chat': (context) => const LocalChatScreen(),
             },
           );
         },

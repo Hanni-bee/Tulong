@@ -65,6 +65,9 @@ class CameraService {
       // Initialize controller
       await _controller!.initialize();
       
+      // Disable automatic flash; user controls via toggle
+      await setFlashMode(FlashMode.off);
+      
       _isInitialized = true;
       debugPrint('Camera initialized successfully');
       return true;
@@ -72,6 +75,16 @@ class CameraService {
       debugPrint('Error initializing camera: $e');
       _isInitialized = false;
       return false;
+    }
+  }
+  
+  /// Set flash mode (off, auto, always, torch). Use off/always for manual control.
+  Future<void> setFlashMode(FlashMode mode) async {
+    if (!_isInitialized || _controller == null || !_controller!.value.isInitialized) return;
+    try {
+      await _controller!.setFlashMode(mode);
+    } catch (e) {
+      debugPrint('Error setting flash mode: $e');
     }
   }
   

@@ -4,6 +4,7 @@ import '../constants/app_colors.dart';
 import '../utils/theme_colors.dart';
 import '../utils/navigation_helper.dart';
 import '../utils/performance_optimizer.dart';
+import '../models/emergency_type.dart';
 import '../widgets/modern_message_bubble.dart';
 import '../widgets/typing_indicator.dart';
 import 'private_call_screen.dart';
@@ -483,6 +484,8 @@ class _ModernPersonalChatScreenState extends State<ModernPersonalChatScreen> {
                     isMe: message['isMe'],
                     isEmergency: message['isEmergency'] ?? false,
                     isRead: message['isRead'] ?? false,
+                    messageData: message['messageData'] as Map<String, dynamic>?,
+                    severityLevel: message['severityLevel'] as SeverityLevel?,
                     onLongPress: () {
                       _showMessageOptions(message);
                     },

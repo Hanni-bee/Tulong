@@ -186,9 +186,9 @@ class EmergencyDetectionService {
         );
       }
       
-      // Ambiguous - use general as fallback (but this should be rare now)
+      // Ambiguous - use noEmergency as fallback (but this should be rare now)
       return EmergencyDetectionResult(
-        type: EmergencyType.general,
+        type: EmergencyType.noEmergency, // Changed from general to noEmergency
         severity: SeverityLevel.low,
         confidence: confidence,
         timestamp: DateTime.now(),
@@ -705,11 +705,11 @@ class EmergencyDetectionService {
       if (initialType == EmergencyType.fire) {
         final initialConfidence = _calculateConfidence(fullAnalysis, initialType);
         if (initialConfidence < 0.85) {
-          finalType = EmergencyType.general;
+          finalType = EmergencyType.noEmergency; // Changed from general to noEmergency
         }
       } else {
         // For all other types, downgrade if false positive risk
-        finalType = EmergencyType.general;
+        finalType = EmergencyType.noEmergency; // Changed from general to noEmergency
       }
     }
     
@@ -725,15 +725,15 @@ class EmergencyDetectionService {
         orangeRatio < 0.1 && 
         blueRatio < 0.15 && 
         edgeDensity < 0.12) {
-      // This is definitely a normal scene - force to general
-      finalType = EmergencyType.general;
+      // This is definitely a normal scene - force to noEmergency
+      finalType = EmergencyType.noEmergency; // Changed from general to noEmergency
     }
     
     // Validate with region analysis
     final regionValidation = _validateWithRegions(initialType, regionAnalysis);
     if (!regionValidation['valid']) {
-      // Regions don't support the classification
-      finalType = EmergencyType.general;
+      // Regions don't support the classification - treat as noEmergency
+      finalType = EmergencyType.noEmergency; // Changed from general to noEmergency
     }
     
     // Calculate confidence FIRST (before severity)
@@ -744,29 +744,29 @@ class EmergencyDetectionService {
     confidence *= regionValidation['confidence_multiplier'] as double;
     
     // STRICT minimum confidence threshold - prevent false alarms
-    if (finalType != EmergencyType.general) {
+    if (finalType != EmergencyType.noEmergency && finalType != EmergencyType.general) {
       // Higher threshold for calamity (most serious, most prone to false positives)
       if (finalType == EmergencyType.calamity && confidence < 0.80) {
-        finalType = EmergencyType.general;
+        finalType = EmergencyType.noEmergency; // Changed from general to noEmergency
         confidence = 0.4;
       }
       // High threshold for other emergencies
       else if (confidence < 0.70) {
-        finalType = EmergencyType.general;
+        finalType = EmergencyType.noEmergency; // Changed from general to noEmergency
         confidence = 0.4; // Lower confidence for ambiguous cases
       }
     }
     
-    // FINAL SAFETY CHECK: If normal scene likelihood is very high, force general
+    // FINAL SAFETY CHECK: If normal scene likelihood is very high, force noEmergency
     if (normalSceneLikelihood > 0.70) { // Lowered threshold from 0.75
-      finalType = EmergencyType.general;
+      finalType = EmergencyType.noEmergency; // Changed from general to noEmergency
       confidence = 0.35; // Very low confidence for normal scenes
     }
     
     // Calculate severity AFTER type is finalized
-    // IMPORTANT: General emergencies should ALWAYS be Low severity
+    // IMPORTANT: No Emergency should ALWAYS be Low severity
     SeverityLevel severity;
-    if (finalType == EmergencyType.general) {
+    if (finalType == EmergencyType.noEmergency || finalType == EmergencyType.general) {
       // General emergency = always Low severity (prevents false alarms)
       severity = SeverityLevel.low;
       // If confidence is very low, reduce it further
@@ -1278,7 +1278,7 @@ class EmergencyDetectionService {
     scores[EmergencyType.noEmergency] = noEmergencyScore;
     
     // Find highest scoring type
-    EmergencyType bestType = EmergencyType.general;
+    EmergencyType bestType = EmergencyType.noEmergency; // Changed from general to noEmergency
     double bestScore = 0.0;
     
     scores.forEach((type, score) {
@@ -1313,8 +1313,8 @@ class EmergencyDetectionService {
       if (normalSceneScore > 0.6 || organizedPatterns > 0.25) {
         return EmergencyType.noEmergency;
       }
-      // Ambiguous case - use general as fallback but with low confidence
-      return EmergencyType.general;
+      // Ambiguous case - use noEmergency as fallback but with low confidence
+      return EmergencyType.noEmergency; // Changed from general to noEmergency
     }
     
     return bestType;
@@ -1575,7 +1575,7 @@ class EmergencyDetectionService {
   /// Create default result when detection fails
   EmergencyDetectionResult _createDefaultResult() {
     return EmergencyDetectionResult(
-      type: EmergencyType.general,
+      type: EmergencyType.noEmergency, // Changed from general to noEmergency
       severity: SeverityLevel.medium,
       confidence: 0.5,
       timestamp: DateTime.now(),

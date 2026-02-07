@@ -13,6 +13,9 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import '../utils/enhanced_error_handler.dart';
 import '../services/notification_service.dart';
 import '../widgets/modern_toast.dart';
+import '../constants/storage_keys.dart';
+import '../models/emergency_type.dart';
+import '../utils/emergency_message_parser.dart';
 
 class ChatProvider with ChangeNotifier {
   // Static instance for access from services without context
@@ -198,6 +201,16 @@ class ChatProvider with ChangeNotifier {
   StreamSubscription<String>? _messageSubscription;
   StreamSubscription<bool>? _connectionSubscription;
   StreamSubscription<String>? _debugSubscription;
+  StreamSubscription<bool>? _playingSubscription;
+  
+  // Track currently playing voice message ID
+  String? _currentlyPlayingVoiceMessageId;
+  String? get currentlyPlayingVoiceMessageId => _currentlyPlayingVoiceMessageId;
+  
+  // Check if a specific voice message is currently playing
+  bool isVoiceMessagePlaying(String voiceMessageId) {
+    return _currentlyPlayingVoiceMessageId == voiceMessageId && isPlaying;
+  }
 
   ChatProvider() {
     _instance = this; // Store static instance
@@ -270,6 +283,14 @@ class ChatProvider with ChangeNotifier {
         _debugLogs.removeAt(0);
       }
       notifyListeners();
+    });
+    
+    // Listen to voice playback completion to clear currently playing ID
+    _playingSubscription = _voiceExtension.playingStream.listen((isPlaying) {
+      if (!isPlaying) {
+        _currentlyPlayingVoiceMessageId = null;
+        notifyListeners();
+      }
     });
   }
 
@@ -533,8 +554,25 @@ class ChatProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  Future<bool> sendMessage(String text, {BuildContext? context}) async {
+  Future<bool> sendMessage(
+    String text, {
+    BuildContext? context,
+    SeverityLevel? severityLevel,
+    EmergencyType? emergencyType,
+  }) async {
     if (text.trim().isEmpty) return false;
+
+    if (severityLevel != null || emergencyType != null) {
+      addStructuredDebug({
+        'source': 'CHAT',
+        'event': 'Sending severity message',
+        'metrics': {
+          'severity': severityLevel?.name,
+          'emergencyType': emergencyType?.name,
+          'textLength': text.length,
+        },
+      });
+    }
 
     ChatMessage message = ChatMessage(
       text: text.trim(),
@@ -542,6 +580,8 @@ class ChatProvider with ChangeNotifier {
       timestamp: DateTime.now(),
       status: voice.MessageStatus.sending,
       type: voice.MessageType.text,
+      severityLevel: severityLevel,
+      emergencyType: emergencyType,
     );
 
     _addMessage(message.text, true, message: message);
@@ -695,9 +735,17 @@ class ChatProvider with ChangeNotifier {
         rawDataWithSource['source'] = 'sos';
       }
       
-      // Add message with emergency flag and rawData
-      // Messages from home page SOS button (isEmergency: true) will be auto-pinned here
-      _addMessage(messageText, false, senderName: senderName, isEmergency: isEmergency, rawData: rawDataWithSource);
+      // If message has emergency_detection metadata (from Emergency Detection page), pass type/severity so UI shows "From Emergency Detection"
+      SeverityLevel? severityLevel;
+      EmergencyType? emergencyType;
+      final detection = EmergencyMessageParser.parseFromMessageData(rawDataWithSource);
+      if (detection != null) {
+        severityLevel = detection.severity;
+        emergencyType = detection.type;
+      }
+      
+      // Add message with emergency flag and rawData (and optional detection metadata for badge)
+      _addMessage(messageText, false, senderName: senderName, isEmergency: isEmergency, rawData: rawDataWithSource, severityLevel: severityLevel, emergencyType: emergencyType);
       
       // Trigger haptic feedback and sound for emergency messages
       if (isEmergency) {
@@ -828,9 +876,18 @@ class ChatProvider with ChangeNotifier {
           // Not JSON, continue normal processing
         }
         
-        // Regular text message - try to extract user info
+        // Regular text message - try to extract user info and optional Emergency Detection metadata
         String? extractedSender = _extractUserFromMessage(message);
-        _addMessage(message, false, senderName: extractedSender);
+        SeverityLevel? severityLevel;
+        EmergencyType? emergencyType;
+        if (EmergencyMessageParser.isEmergencyMessage(message)) {
+          final detection = EmergencyMessageParser.parseFromMessage(message);
+          if (detection != null) {
+            severityLevel = detection.severity;
+            emergencyType = detection.type;
+          }
+        }
+        _addMessage(message, false, senderName: extractedSender, severityLevel: severityLevel, emergencyType: emergencyType);
       }
     }
   }
@@ -1439,15 +1496,40 @@ class ChatProvider with ChangeNotifier {
 
   /// Play voice message
   Future<bool> playVoiceMessage(voice.VoiceMessage voiceMessage) async {
-    return await _voiceExtension.playVoiceMessage(voiceMessage.base64Audio);
+    // Stop any currently playing message first
+    if (_currentlyPlayingVoiceMessageId != null && isPlaying) {
+      await stopPlayback();
+    }
+    
+    // Set the currently playing voice message ID
+    _currentlyPlayingVoiceMessageId = voiceMessage.id;
+    
+    final success = await _voiceExtension.playVoiceMessage(voiceMessage.base64Audio);
+    
+    if (!success) {
+      _currentlyPlayingVoiceMessageId = null;
+    }
+    
+    notifyListeners();
+    return success;
   }
 
   /// Stop current playback
   Future<void> stopPlayback() async {
     await _voiceExtension.stopPlayback();
+    _currentlyPlayingVoiceMessageId = null;
+    notifyListeners();
   }
 
-  void _addMessage(String text, bool isMe, {String? senderName, String? senderUid, ChatMessage? message, bool isEmergency = false, Map<String, dynamic>? rawData}) {
+  void _addMessage(String text, bool isMe, {
+    String? senderName,
+    String? senderUid,
+    ChatMessage? message,
+    bool isEmergency = false,
+    Map<String, dynamic>? rawData,
+    SeverityLevel? severityLevel,
+    EmergencyType? emergencyType,
+  }) {
     if (message == null) {
       // For incoming messages (!isMe), mark as read only if chat screen is visible
       // For outgoing messages (isMe), always mark as read
@@ -1466,21 +1548,23 @@ class ChatProvider with ChangeNotifier {
         senderUid: senderUid,
         isRead: shouldMarkAsRead, // Mark as read if sent by user or if screen is visible
         isEmergency: isEmergency, // Set emergency flag (from hardware SOS button OR home page SOS button)
-        isPinned: isEmergency, // Auto-pin emergency messages (from hardware OR home page SOS button)
+        isPinned: isEmergency && !isMe, // Auto-pin emergency messages ONLY for received messages (not sender's own messages)
         messageId: messageId, // Unique ID for unpinning
         rawData: rawData, // Store raw data for source detection
+        severityLevel: severityLevel, // From Emergency Detection (AI) so receivers see "From Emergency Detection"
+        emergencyType: emergencyType,
       );
     } else if (!isMe && (senderName != null || senderUid != null)) {
-      // Update sender name/UID if provided, preserve isRead status
+      // Update sender name/UID if provided; only mark as read if screen is visible and message wasn't already read
       message = message.copyWith(
         senderName: senderName ?? message.senderName,
         senderUid: senderUid ?? message.senderUid,
-        isRead: message.isRead || _isLocalChatScreenVisible, // Mark as read if screen is visible
+        isRead: message.isRead || (_isLocalChatScreenVisible && !message.isRead),
       );
     } else if (!message.isMe) {
-      // For existing incoming messages, update isRead based on screen visibility
+      // For existing incoming messages, only mark as read if screen is visible AND message wasn't already read
       message = message.copyWith(
-        isRead: message.isRead || _isLocalChatScreenVisible,
+        isRead: message.isRead || (_isLocalChatScreenVisible && !message.isRead),
       );
     }
     
@@ -1715,15 +1799,27 @@ class ChatProvider with ChangeNotifier {
       print('BT_SYNC: Syncing SOS for user: $username');
       
       // Get SOS message from SharedPreferences
-      final sosMessage = prefs.getString('emergency_message_$username') ?? 
-                        'I need help. Please contact me immediately.';
-      
+      final sosMessage = prefs.getString('emergency_message_$username') ??
+          'I need help. Please contact me immediately.';
+
+      // Retrieve AI severity and timestamp (same keys as detection pipeline)
+      final severity = prefs.getString(StorageKeys.userCurrentStatus)?.trim();
+      final timestampMs = prefs.getInt(StorageKeys.userStatusLastUpdated);
+      final severityValue = (severity != null && severity.isNotEmpty)
+          ? severity.toUpperCase()
+          : 'LOW';
+      final timestampValue = (timestampMs != null && timestampMs > 0)
+          ? timestampMs
+          : DateTime.now().millisecondsSinceEpoch;
+
       final sosJson = jsonEncode({
         "command": "sync_sos",
         "message": sosMessage,
+        "severity": severityValue,
+        "timestamp_ms": timestampValue,
       });
-      
-      print('BT_SYNC: Sending SOS message: $sosJson');
+
+      print('BT_SYNC: Sending SOS message (severity=$severityValue, timestamp_ms=$timestampValue): $sosJson');
       await _bluetoothService.sendMessage(sosJson);
       print('BT_SYNC: SOS message sent successfully');
     } catch (e) {
@@ -1863,8 +1959,8 @@ class ChatProvider with ChangeNotifier {
       print('BT_SYNC: Profile data sent successfully');
       
       // Get SOS message from SharedPreferences
-      final sosMessage = prefs.getString('emergency_message_$username') ?? 
-                        'I need help. Please contact me immediately.';
+      final sosMessage = prefs.getString('emergency_message_$username') ??
+          'I need help. Please contact me immediately.';
 
       final sosJson = jsonEncode({
         "command": "sync_sos",
@@ -1872,11 +1968,11 @@ class ChatProvider with ChangeNotifier {
         "severity": severity,
         "timestamp_ms": timestampMs,
       });
-      
-      print('BT_SYNC: Sending SOS message: $sosJson');
+
+      print('BT_SYNC: Sending SOS message (severity=$severity, timestamp_ms=$timestampMs): $sosJson');
       await _bluetoothService.sendMessage(sosJson);
       print('BT_SYNC: SOS message sent successfully');
-      
+
       print('BT_SYNC: Sync completed successfully');
     } catch (e) {
       print('BT_SYNC: Error during sync: $e');
@@ -1890,6 +1986,7 @@ class ChatProvider with ChangeNotifier {
     _messageSubscription?.cancel();
     _connectionSubscription?.cancel();
     _debugSubscription?.cancel();
+    _playingSubscription?.cancel();
     _bluetoothService.dispose();
     _voiceExtension.dispose();
     super.dispose();
@@ -1910,6 +2007,8 @@ class ChatMessage {
   bool isPinned; // Flag to indicate pinned emergency message
   final String? messageId; // Unique ID for message (for unpinning)
   final Map<String, dynamic>? rawData; // Raw message data for source detection
+  final SeverityLevel? severityLevel; // Severity level for AI-detected emergencies (for unique UI styling)
+  final EmergencyType? emergencyType; // Emergency type for AI-detected emergencies
 
   ChatMessage({
     required this.text,
@@ -1924,7 +2023,9 @@ class ChatMessage {
     this.isEmergency = false, // Default to false for normal messages
     this.isPinned = false, // Default to false, emergency messages auto-pin
     this.messageId,
-    this.rawData,
+    this.rawData, // Raw data for message (e.g., for SOS source)
+    this.severityLevel, // Severity level for styling
+    this.emergencyType, // Emergency type
   });
   
   ChatMessage copyWith({
@@ -1941,6 +2042,8 @@ class ChatMessage {
     bool? isPinned,
     String? messageId,
     Map<String, dynamic>? rawData,
+    SeverityLevel? severityLevel,
+    EmergencyType? emergencyType,
   }) {
     return ChatMessage(
       text: text ?? this.text,
@@ -1956,6 +2059,8 @@ class ChatMessage {
       isPinned: isPinned ?? this.isPinned,
       messageId: messageId ?? this.messageId,
       rawData: rawData ?? this.rawData,
+      severityLevel: severityLevel ?? this.severityLevel,
+      emergencyType: emergencyType ?? this.emergencyType,
     );
   }
 }

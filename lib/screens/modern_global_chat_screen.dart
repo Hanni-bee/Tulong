@@ -3,6 +3,7 @@ import '../constants/app_colors.dart';
 import '../utils/theme_colors.dart';
 import '../constants/soft_ui_design.dart';
 import '../utils/performance_optimizer.dart';
+import '../models/emergency_type.dart';
 import '../widgets/modern_message_bubble.dart';
 import '../widgets/typing_indicator.dart';
 import '../widgets/modern_floating_layout.dart';
@@ -391,6 +392,8 @@ class _ModernGlobalChatScreenState extends State<ModernGlobalChatScreen> {
                     isMe: message['senderId'] == 'me',
                     isEmergency: message['isEmergency'] ?? false,
                     isRead: message['isRead'] ?? false,
+                    messageData: message['messageData'] as Map<String, dynamic>?,
+                    severityLevel: message['severityLevel'] as SeverityLevel?,
                     onLongPress: () {
                       // Show message options
                       _showMessageOptions(message);

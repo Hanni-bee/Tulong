@@ -796,11 +796,14 @@ class _AnimatedNavItemState extends State<_AnimatedNavItem>
                               : Colors.transparent,
                           borderRadius: BorderRadius.circular(8),
                         ),
-                        child: Text(
-                          widget.item.label,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.center,
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            widget.item.label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.center,
+                          ),
                         ),
                       ),
                     ),

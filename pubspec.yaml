@@ -53,9 +53,10 @@ dependencies:
   # Camera and Image Processing dependencies
   camera: ^0.10.5+5
   image: ^4.1.3
+  image_picker: ^1.0.7  # For gallery upload - AI detection from saved photos
   
   # ML Model dependencies
-  tflite_flutter: ^0.11.0
+  tflite_flutter: ^0.12.1  # TensorFlow 2.x models (FULLY_CONNECTED v12) - matches jhunel-AIntegration-w/status-2-5-26
 
 dev_dependencies:
   flutter_test:

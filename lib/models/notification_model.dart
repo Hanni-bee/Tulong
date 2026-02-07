@@ -142,13 +142,28 @@ class NotificationAction {
       id: map['id'] as String,
       label: map['label'] as String,
       icon: map['icon'] != null
-          ? IconData(map['icon'] as int, fontFamily: 'MaterialIcons')
+          ? _constantIconForCodePoint(map['icon'] as int)
           : null,
       style: NotificationActionStyle.values.firstWhere(
         (e) => e.name == map['style'],
         orElse: () => NotificationActionStyle.primary,
       ),
     );
+  }
+
+  /// Returns constant IconData for tree-shaking. Only known code points are supported.
+  static IconData? _constantIconForCodePoint(int codePoint) {
+    if (codePoint == Icons.check.codePoint) return Icons.check;
+    if (codePoint == Icons.close.codePoint) return Icons.close;
+    if (codePoint == Icons.open_in_new.codePoint) return Icons.open_in_new;
+    if (codePoint == Icons.info_outline.codePoint) return Icons.info_outline;
+    if (codePoint == Icons.notification_important.codePoint) return Icons.notification_important;
+    if (codePoint == Icons.visibility.codePoint) return Icons.visibility;
+    if (codePoint == Icons.send.codePoint) return Icons.send;
+    if (codePoint == Icons.reply.codePoint) return Icons.reply;
+    if (codePoint == Icons.delete_outline.codePoint) return Icons.delete_outline;
+    if (codePoint == Icons.settings.codePoint) return Icons.settings;
+    return Icons.notification_important;
   }
 }
 

@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
 import '../constants/app_typography.dart';
+import '../constants/severity_colors.dart';
 import '../models/emergency_type.dart';
 import '../models/emergency_detection_result.dart';
 import '../services/disaster_classification_service.dart';
+import '../utils/theme_colors.dart';
 
 /// Widget for displaying AI-based disaster assessment results
 class AIAssessmentWidget extends StatelessWidget {
@@ -21,15 +23,24 @@ class AIAssessmentWidget extends StatelessWidget {
     final screenSize = MediaQuery.of(context).size;
     final isSmallScreen = screenSize.width < 360;
     final isLargeScreen = screenSize.width > 600;
-
+    
     final classificationService = DisasterClassificationService.instance;
     final assessment = detailedAssessment ?? classificationService.getDetailedAssessment(
       result.type,
       result.confidence,
     );
 
-    final severityColor = _getSeverityColor(result.severity);
+    final severityColor = SeverityColors.color(result.severity);
     final typeColor = _getTypeColor(result.type);
+    final isDark = ThemeColors.isDark(context);
+
+    // Theme-adaptive background: surface container in dark, severity tint in light
+    final cardBackground = isDark
+        ? ThemeColors.surfaceContainerHigh(context)
+        : SeverityColors.background(result.severity);
+    final borderColor = SeverityColors.border(result.severity);
+    final textPrimary = ThemeColors.textPrimary(context);
+    final trackColor = ThemeColors.textTertiary(context).withOpacity(isDark ? 0.35 : 0.45);
 
     return Container(
       margin: EdgeInsets.symmetric(
@@ -37,258 +48,188 @@ class AIAssessmentWidget extends StatelessWidget {
         vertical: isSmallScreen ? 10 : 12,
       ),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            AppColors.white,
-            typeColor.withOpacity(0.05),
-          ],
-        ),
+        color: cardBackground,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: typeColor.withOpacity(0.2),
-          width: 2,
+          color: borderColor,
+          width: isDark ? 1.5 : 2,
         ),
         boxShadow: [
           BoxShadow(
-            color: typeColor.withOpacity(0.15),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
+            color: ThemeColors.shadow(context, opacity: isDark ? 0.25 : 0.1),
+            blurRadius: isDark ? 16 : 12,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
       child: Padding(
-        padding: EdgeInsets.all(isSmallScreen ? 16 : 20),
+        padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            // AI Badge
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    Colors.purple.shade400,
-                    Colors.blue.shade400,
-                  ],
-                ),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(
-                    Icons.psychology,
-                    color: AppColors.white,
-                    size: 16,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    'AI DYNAMIC ASSESSMENT',
-                    style: AppTypography.captionText.copyWith(
-                      color: AppColors.white,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Container(
-                    width: 8,
-                    height: 8,
-                    decoration: BoxDecoration(
-                      color: Colors.green.shade300,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 20),
-
-            // Header
+            // Compact row: AI badge + icon + title + severity (fits small screens)
             Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
+                // AI badge - compact
                 Container(
-                  width: isSmallScreen ? 56 : (isLargeScreen ? 80 : 70),
-                  height: isSmallScreen ? 56 : (isLargeScreen ? 80 : 70),
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
                   decoration: BoxDecoration(
-                    gradient: RadialGradient(
-                      colors: [
-                        typeColor.withOpacity(0.3),
-                        typeColor.withOpacity(0.1),
-                        Colors.transparent,
-                      ],
-                    ),
-                    shape: BoxShape.circle,
+                    color: Colors.purple.shade600,
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Center(
-                  child: Text(
-                    result.type.emoji,
-                    style: TextStyle(
-                      fontSize: isSmallScreen ? 28 : (isLargeScreen ? 40 : 36),
-                    ),
-                  ),
-                  ),
-                ),
-                SizedBox(width: isSmallScreen ? 10 : 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      const Icon(Icons.psychology, color: AppColors.white, size: 12),
+                      const SizedBox(width: 3),
                       Text(
-                        result.type.label.toUpperCase(),
-                        style: AppTypography.titleLarge.copyWith(
-                          color: AppColors.darkGray,
-                          fontWeight: FontWeight.bold,
-                          fontSize: isSmallScreen ? 14 : (isLargeScreen ? 20 : 18),
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: severityColor.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
-                            color: severityColor.withOpacity(0.3),
-                            width: 1,
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.analytics,
-                              size: 14,
-                              color: severityColor,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              '${(result.confidence * 100).toStringAsFixed(1)}%',
-                              style: AppTypography.bodySmall.copyWith(
-                                color: severityColor,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        severityColor,
-                        severityColor.withOpacity(0.8),
-                      ],
-                    ),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        _getSeverityIcon(result.severity),
-                        color: AppColors.white,
-                        size: 18,
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        result.severity.label,
+                        'AI ASSESSMENT',
                         style: AppTypography.captionText.copyWith(
                           color: AppColors.white,
                           fontWeight: FontWeight.bold,
                           fontSize: 9,
+                          letterSpacing: 0.2,
                         ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ],
+                  ),
+                ),
+                SizedBox(width: isSmallScreen ? 6 : 8),
+                // Icon - smaller so row fits
+                Container(
+                  width: isSmallScreen ? 36 : 42,
+                  height: isSmallScreen ? 36 : 42,
+                  decoration: BoxDecoration(
+                    color: typeColor.withOpacity(0.2),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: typeColor.withOpacity(0.5), width: 1.5),
+                  ),
+                  child: Icon(
+                    result.type.icon,
+                    size: isSmallScreen ? 20 : 24,
+                    color: typeColor,
+                  ),
+                ),
+                SizedBox(width: isSmallScreen ? 6 : 8),
+                // Title - scale down to fit
+                Expanded(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      result.type.label.toUpperCase(),
+                      style: AppTypography.titleLarge.copyWith(
+                        color: textPrimary,
+                        fontWeight: FontWeight.bold,
+                        fontSize: isSmallScreen ? 12 : (isLargeScreen ? 16 : 14),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                // Severity pill - Flexible to avoid overflow, compact padding
+                Flexible(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: severityColor,
+                      borderRadius: BorderRadius.circular(8),
+                      boxShadow: [
+                        BoxShadow(
+                          color: severityColor.withOpacity(0.35),
+                          blurRadius: 3,
+                          offset: const Offset(0, 1),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(_getSeverityIcon(result.severity), color: AppColors.white, size: 12),
+                        const SizedBox(width: 3),
+                        Flexible(
+                          child: Text(
+                            result.severity.label,
+                            style: AppTypography.captionText.copyWith(
+                              color: AppColors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 10,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],
             ),
 
-            const SizedBox(height: 24),
+            const SizedBox(height: 16),
 
-            // Confidence progress bar
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            // Confidence row - theme-aware label and track for readability
+            Row(
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Confidence Level',
-                      style: AppTypography.bodyMedium.copyWith(
-                        color: AppColors.mediumGray,
-                      ),
-                    ),
-                    Text(
-                      '${(result.confidence * 100).toStringAsFixed(0)}%',
-                      style: AppTypography.bodyMedium.copyWith(
-                        color: AppColors.darkGray,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
+                Text(
+                  'Confidence ',
+                  style: AppTypography.bodyMedium.copyWith(
+                    color: textPrimary,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
-                const SizedBox(height: 12),
-                Stack(
-                  children: [
-                    Container(
-                      height: 12,
-                      decoration: BoxDecoration(
-                        color: AppColors.lightGray.withOpacity(0.3),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    FractionallySizedBox(
-                      widthFactor: result.confidence,
-                      alignment: Alignment.centerLeft,
-                      child: Container(
-                        height: 12,
+                Expanded(
+                  child: Stack(
+                    children: [
+                      Container(
+                        height: 10,
                         decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [
-                              severityColor,
-                              severityColor.withOpacity(0.7),
-                            ],
-                          ),
-                          borderRadius: BorderRadius.circular(12),
+                          color: trackColor,
+                          borderRadius: BorderRadius.circular(10),
                         ),
                       ),
-                    ),
-                  ],
+                      FractionallySizedBox(
+                        widthFactor: result.confidence,
+                        child: Container(
+                          height: 10,
+                          decoration: BoxDecoration(
+                            color: severityColor,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  '${(result.confidence * 100).toStringAsFixed(0)}%',
+                  style: AppTypography.bodyMedium.copyWith(
+                    color: textPrimary,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
                 ),
               ],
             ),
 
-            const SizedBox(height: 20),
+            const SizedBox(height: 14),
 
-            // Risk assessment
+            // Risk message - theme-aware; accent border so it pops
             Container(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               decoration: BoxDecoration(
-                color: _getRiskBackgroundColor(result.type).withOpacity(0.1),
+                color: _getRiskBackgroundColor(result.type).withOpacity(isDark ? 0.2 : 0.15),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: _getRiskBackgroundColor(result.type).withOpacity(0.3),
+                  color: _getRiskBackgroundColor(result.type).withOpacity(isDark ? 0.5 : 0.4),
                   width: 1,
                 ),
               ),
@@ -298,15 +239,16 @@ class AIAssessmentWidget extends StatelessWidget {
                   Icon(
                     _getRiskIcon(result.type),
                     color: _getRiskBackgroundColor(result.type),
-                    size: 24,
+                    size: 22,
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 10),
                   Expanded(
                     child: Text(
                       assessment['riskMessage'] as String? ?? classificationService.getRiskAssessmentMessage(result.type, result.confidence),
                       style: AppTypography.bodyMedium.copyWith(
-                        color: AppColors.mediumGray,
-                        height: 1.5,
+                        color: textPrimary,
+                        height: 1.45,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                   ),
@@ -314,18 +256,19 @@ class AIAssessmentWidget extends StatelessWidget {
               ),
             ),
 
-            // Probability breakdown if available
+            // Probability breakdown if available - theme-aware
             if (assessment['probabilityBreakdown'] != null) ...[
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
               Text(
                 'Classification Breakdown',
                 style: AppTypography.bodyLarge.copyWith(
-                  color: AppColors.darkGray,
+                  color: textPrimary,
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 10),
               ..._buildProbabilityBreakdown(
+                context,
                 assessment['probabilityBreakdown'] as Map<String, double>,
               ),
             ],
@@ -335,8 +278,12 @@ class AIAssessmentWidget extends StatelessWidget {
     );
   }
 
-  List<Widget> _buildProbabilityBreakdown(Map<String, double> breakdown) {
+  List<Widget> _buildProbabilityBreakdown(BuildContext context, Map<String, double> breakdown) {
     if (breakdown.isEmpty) return [];
+    final isDark = ThemeColors.isDark(context);
+    final textPrimary = ThemeColors.textPrimary(context);
+    final textSecondary = ThemeColors.textSecondary(context);
+    final trackBg = ThemeColors.textTertiary(context).withOpacity(isDark ? 0.25 : 0.35);
 
     final sortedEntries = breakdown.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
@@ -350,8 +297,8 @@ class AIAssessmentWidget extends StatelessWidget {
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: isSelected
-              ? barColor.withOpacity(0.1)
-              : AppColors.lightGray.withOpacity(0.3),
+              ? barColor.withOpacity(isDark ? 0.2 : 0.1)
+              : trackBg,
           borderRadius: BorderRadius.circular(8),
           border: isSelected
               ? Border.all(
@@ -367,7 +314,7 @@ class AIAssessmentWidget extends StatelessWidget {
               child: Text(
                 entry.key,
                 style: AppTypography.bodyMedium.copyWith(
-                  color: isSelected ? AppColors.darkGray : AppColors.mediumGray,
+                  color: isSelected ? textPrimary : textSecondary,
                   fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
                 ),
               ),
@@ -380,7 +327,7 @@ class AIAssessmentWidget extends StatelessWidget {
                 child: LinearProgressIndicator(
                   value: entry.value,
                   minHeight: 8,
-                  backgroundColor: AppColors.lightGray.withOpacity(0.3),
+                  backgroundColor: trackBg,
                   valueColor: AlwaysStoppedAnimation<Color>(barColor),
                 ),
               ),
@@ -392,7 +339,7 @@ class AIAssessmentWidget extends StatelessWidget {
                 '${(entry.value * 100).toStringAsFixed(1)}%',
                 textAlign: TextAlign.right,
                 style: AppTypography.bodySmall.copyWith(
-                  color: isSelected ? barColor : AppColors.mediumGray,
+                  color: isSelected ? barColor : textSecondary,
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -415,19 +362,6 @@ class AIAssessmentWidget extends StatelessWidget {
         return EmergencyType.calamity;
       default:
         return EmergencyType.general;
-    }
-  }
-
-  Color _getSeverityColor(SeverityLevel severity) {
-    switch (severity) {
-      case SeverityLevel.critical:
-        return AppColors.error;
-      case SeverityLevel.high:
-        return AppColors.warning;
-      case SeverityLevel.medium:
-        return AppColors.info;
-      case SeverityLevel.low:
-        return AppColors.success;
     }
   }
 

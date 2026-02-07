@@ -23,7 +23,7 @@ class _InteractiveTutorialScreenState extends State<InteractiveTutorialScreen>
   late AnimationController _progressController;
 
   int _currentPage = 0;
-  final int _totalPages = 5;
+  final int _totalPages = 6;
   bool _isLastPage = false;
 
   final List<TutorialPageData> _pages = [
@@ -52,26 +52,48 @@ class _InteractiveTutorialScreenState extends State<InteractiveTutorialScreen>
       ],
     ),
     TutorialPageData(
-      title: 'Emergency\nAlerts',
+      title: 'SOS\nAlert',
       description:
           'Receive critical warnings about typhoons, earthquakes, fires, and floods in your area.',
-      icon: Icons.warning_amber_rounded,
-      iconColor: Colors.orange,
+      icon: Icons.sos_rounded,
+      iconColor: AppColors.primaryRed,
       features: [
         TutorialFeature(
-          icon: Icons.thunderstorm,
-          title: 'Weather Alerts',
-          description: 'Typhoon and storm warnings',
+          icon: Icons.campaign_rounded,
+          title: 'Emergency Message Trigger',
+          description: 'Sends a pre-set emergency message when the device button is pressed.',
         ),
         TutorialFeature(
-          icon: Icons.terrain,
-          title: 'Earthquake Updates',
-          description: 'Real-time seismic activity',
+          icon: Icons.notifications_active_rounded,
+          title: 'Instant SoS Notification',
+          description: 'Delivers an emergency alert from a nearby device.',
         ),
         TutorialFeature(
-          icon: Icons.water_damage,
-          title: 'Flood Warnings',
-          description: 'Water level monitoring',
+          icon: Icons.emergency_rounded,
+          title: 'One-Press Safety Alert',
+          description: 'Sends an emergency message with one button press.',
+        ),
+      ],
+      howToSteps: [
+        TutorialHowToStep(
+          stepNumber: 1,
+          icon: Icons.bluetooth_connected_rounded,
+          text: 'Ensure that your mobile phone is connected to the device',
+        ),
+        TutorialHowToStep(
+          stepNumber: 2,
+          icon: Icons.edit_note_rounded,
+          text: 'Enter your emergency message in the pre-set text field.',
+        ),
+        TutorialHowToStep(
+          stepNumber: 3,
+          icon: Icons.touch_app_rounded,
+          text: 'In case of emergency, long-press the SOS button.',
+        ),
+        TutorialHowToStep(
+          stepNumber: 4,
+          icon: Icons.check_circle_outline_rounded,
+          text: 'Confirm the action to send your emergency message to nearby devices.',
         ),
       ],
     ),
@@ -98,6 +120,64 @@ class _InteractiveTutorialScreenState extends State<InteractiveTutorialScreen>
           description: 'Send and receive messages',
         ),
       ],
+      howToSteps: [
+        TutorialHowToStep(
+          stepNumber: 1,
+          icon: Icons.bluetooth_connected_rounded,
+          text: 'Make sure your mobile phone is connected to the device.',
+        ),
+        TutorialHowToStep(
+          stepNumber: 2,
+          icon: Icons.chat_bubble_outline_rounded,
+          text: 'Once connected, type your message in the text field and send it to other nearby nodes.',
+        ),
+        TutorialHowToStep(
+          stepNumber: 3,
+          icon: Icons.mic_rounded,
+          text: 'For voice messages, tap and hold the voice message icon while speaking, then release it to send.',
+        ),
+      ],
+    ),
+    TutorialPageData(
+      title: 'AI Severity\nAssessment',
+      description:
+          'Capture the scene, get an instant severity assessment, and share it with your community for awareness.',
+      icon: Icons.psychology_rounded,
+      iconColor: Colors.deepOrange,
+      features: [
+        TutorialFeature(
+          icon: Icons.photo_camera_rounded,
+          title: 'Disaster Detection',
+          description: 'Captures the current situation and analyzes the severity of the disaster.',
+        ),
+        TutorialFeature(
+          icon: Icons.analytics_rounded,
+          title: 'Severity Analysis',
+          description: 'Provides an instant assessment of how serious the situation is.',
+        ),
+        TutorialFeature(
+          icon: Icons.share_rounded,
+          title: 'Community Information Sharing',
+          description: 'Sends the analyzed information directly to the Community Chat to inform other nodes.',
+        ),
+      ],
+      howToSteps: [
+        TutorialHowToStep(
+          stepNumber: 1,
+          icon: Icons.bluetooth_connected_rounded,
+          text: 'Make sure your mobile phone is connected to the device.',
+        ),
+        TutorialHowToStep(
+          stepNumber: 2,
+          icon: Icons.photo_camera_rounded,
+          text: 'Tap the camera icon and capture the current disaster in front of you.',
+        ),
+        TutorialHowToStep(
+          stepNumber: 3,
+          icon: Icons.send_rounded,
+          text: 'Once the severity result appears, you can choose to send it to other nearby nodes through the Community Chat for awareness.',
+        ),
+      ],
     ),
     TutorialPageData(
       title: 'Offline\nMode',
@@ -112,11 +192,6 @@ class _InteractiveTutorialScreenState extends State<InteractiveTutorialScreen>
           description: 'Messages stored locally',
         ),
         TutorialFeature(
-          icon: Icons.sync,
-          title: 'Auto-Sync',
-          description: 'Syncs when online',
-        ),
-        TutorialFeature(
           icon: Icons.battery_charging_full,
           title: 'Low Power Mode',
           description: 'Optimized for emergencies',
@@ -126,24 +201,24 @@ class _InteractiveTutorialScreenState extends State<InteractiveTutorialScreen>
     TutorialPageData(
       title: 'You\'re\nAll Set!',
       description:
-          'You\'re ready to use T.U.L.O.N.G. Stay safe and connected during emergencies.',
+          'You\'re ready to use Tulong, stay safe and follow these reminders and keep your device connected.',
       icon: Icons.check_circle_outline,
       iconColor: Colors.green,
       features: [
         TutorialFeature(
-          icon: Icons.safety_check,
-          title: 'Stay Prepared',
-          description: 'Keep emergency contacts updated',
+          icon: Icons.notifications_active_rounded,
+          title: 'Turn on Notifications',
+          description: 'To receive all emergency messages',
         ),
         TutorialFeature(
-          icon: Icons.location_on,
-          title: 'Enable Location',
-          description: 'For accurate alerts',
+          icon: Icons.bluetooth_rounded,
+          title: 'Keep Bluetooth On',
+          description: 'To stay connected to your hardware device',
         ),
         TutorialFeature(
-          icon: Icons.notifications,
-          title: 'Allow Notifications',
-          description: 'Never miss critical alerts',
+          icon: Icons.phone_android_rounded,
+          title: 'Carry Your Device',
+          description: 'Make sure your hardware device is always with you',
         ),
       ],
     ),
@@ -295,21 +370,22 @@ class _InteractiveTutorialScreenState extends State<InteractiveTutorialScreen>
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // Logo
+          // App logo – red square with logo inside (match reference)
           Row(
             children: [
               Container(
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  gradient: NeumorphicUtils.getModernGradient(),
+                  color: AppColors.primaryRed,
                   borderRadius: BorderRadius.circular(10),
                   boxShadow: NeumorphicUtils.getCardElevation(2),
                 ),
-                child: Icon(
-                  Icons.shield,
-                  color: ThemeColors.surface(context),
-                  size: 24,
+                padding: const EdgeInsets.all(6),
+                clipBehavior: Clip.antiAlias,
+                child: Image.asset(
+                  'assets/images/app_logo (3).png',
+                  fit: BoxFit.contain,
                 ),
               ),
               const SizedBox(width: 12),
@@ -497,7 +573,125 @@ class _InteractiveTutorialScreenState extends State<InteractiveTutorialScreen>
             );
           }),
 
+          // How to Use this feature (when steps are provided)
+          if (page.howToSteps != null && page.howToSteps!.isNotEmpty) ...[
+            const SizedBox(height: 28),
+            TweenAnimationBuilder<double>(
+              duration: const Duration(milliseconds: 500),
+              tween: Tween(begin: 0.0, end: 1.0),
+              curve: Curves.easeOut,
+              builder: (context, value, child) {
+                return Opacity(
+                  opacity: value,
+                  child: Text(
+                    'How to Use This Feature',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      color: ThemeColors.textPrimary(context),
+                      letterSpacing: -0.3,
+                    ),
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 16),
+            ...page.howToSteps!.asMap().entries.map((entry) {
+              final stepIndex = entry.key;
+              final step = entry.value;
+              return TweenAnimationBuilder<double>(
+                duration: Duration(milliseconds: 500 + (stepIndex * 80)),
+                tween: Tween(begin: 0.0, end: 1.0),
+                curve: Curves.easeOut,
+                builder: (context, value, child) {
+                  return Opacity(
+                    opacity: value,
+                    child: Transform.translate(
+                      offset: Offset(0, 12 * (1 - value)),
+                      child: _buildHowToStepCard(context, step, page.iconColor),
+                    ),
+                  );
+                },
+              );
+            }),
+          ],
+
+          // Optional attribution
+          if (page.attribution != null && page.attribution!.isNotEmpty) ...[
+            const SizedBox(height: 20),
+            Text(
+              page.attribution!,
+              style: TextStyle(
+                fontSize: 12,
+                color: ThemeColors.textTertiary(context),
+                fontStyle: FontStyle.italic,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+
           const SizedBox(height: 20),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHowToStepCard(BuildContext context, TutorialHowToStep step, Color accentColor) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: ThemeColors.surface(context),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: accentColor.withOpacity(0.25),
+          width: 1,
+        ),
+        boxShadow: NeumorphicUtils.getNeumorphicShadow(depth: 3),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: accentColor.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+              step.icon,
+              color: accentColor,
+              size: 22,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Step ${step.stepNumber}:',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: accentColor,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  step.text,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: ThemeColors.textPrimary(context),
+                    height: 1.4,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -554,7 +748,10 @@ class _InteractiveTutorialScreenState extends State<InteractiveTutorialScreen>
                     fontSize: 13,
                     color: ThemeColors.textSecondary(context),
                     fontWeight: FontWeight.w500,
+                    height: 1.35,
                   ),
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
@@ -609,6 +806,8 @@ class TutorialPageData {
   final IconData icon;
   final Color iconColor;
   final List<TutorialFeature> features;
+  final List<TutorialHowToStep>? howToSteps;
+  final String? attribution;
 
   TutorialPageData({
     required this.title,
@@ -616,6 +815,8 @@ class TutorialPageData {
     required this.icon,
     required this.iconColor,
     required this.features,
+    this.howToSteps,
+    this.attribution,
   });
 }
 
@@ -628,6 +829,18 @@ class TutorialFeature {
     required this.icon,
     required this.title,
     required this.description,
+  });
+}
+
+class TutorialHowToStep {
+  final int stepNumber;
+  final IconData icon;
+  final String text;
+
+  TutorialHowToStep({
+    required this.stepNumber,
+    required this.icon,
+    required this.text,
   });
 }
 

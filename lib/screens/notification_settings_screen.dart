@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
 import '../utils/theme_colors.dart';
 import '../services/notification_service.dart';
-import '../services/offline_sync_service.dart';
 import '../widgets/accessible_text.dart';
 import '../utils/standardized_spacing.dart';
 import '../utils/icon_system.dart';
@@ -16,18 +15,14 @@ class NotificationSettingsScreen extends StatefulWidget {
 
 class _NotificationSettingsScreenState extends State<NotificationSettingsScreen> {
   final NotificationService _notificationService = NotificationService();
-  final OfflineSyncService _syncService = OfflineSyncService();
   
   Map<String, bool> _settings = {};
   bool _isLoading = true;
-  bool _isSyncing = false;
-  int _pendingOperations = 0;
 
   @override
   void initState() {
     super.initState();
     _loadSettings();
-    _loadSyncStatus();
   }
 
   Future<void> _loadSettings() async {
@@ -43,19 +38,12 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
     }
   }
 
-  Future<void> _loadSyncStatus() async {
-    _pendingOperations = _syncService.pendingOperationsCount;
-    _isSyncing = _syncService.isSyncing;
-    setState(() {});
-  }
-
   Future<void> _updateSetting(String key, bool value) async {
     try {
       await _notificationService.updateNotificationSettings(
         emergencyEnabled: key == 'emergency' ? value : null,
         messageEnabled: key == 'messages' ? value : null,
         systemEnabled: key == 'system' ? value : null,
-        reminderEnabled: key == 'reminders' ? value : null,
         soundEnabled: key == 'sound' ? value : null,
         vibrationEnabled: key == 'vibration' ? value : null,
       );
@@ -78,41 +66,6 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
       _showSuccessSnackBar('Test notification sent!');
     } catch (e) {
       _showErrorSnackBar('Failed to send test notification');
-    }
-  }
-
-  Future<void> _performSync() async {
-    if (!_syncService.isOnline) {
-      _showErrorSnackBar('You are currently offline');
-      return;
-    }
-
-    try {
-      setState(() => _isSyncing = true);
-      await _syncService.forceSync();
-      _showSuccessSnackBar('Sync completed successfully!');
-    } catch (e) {
-      _showErrorSnackBar('Sync failed: ${e.toString()}');
-    } finally {
-      setState(() => _isSyncing = false);
-      _loadSyncStatus();
-    }
-  }
-
-  Future<void> _downloadOfflineData() async {
-    if (!_syncService.isOnline) {
-      _showErrorSnackBar('You are currently offline');
-      return;
-    }
-
-    try {
-      setState(() => _isSyncing = true);
-      await _syncService.downloadOfflineData();
-      _showSuccessSnackBar('Offline data downloaded successfully!');
-    } catch (e) {
-      _showErrorSnackBar('Failed to download offline data: ${e.toString()}');
-    } finally {
-      setState(() => _isSyncing = false);
     }
   }
 
@@ -140,7 +93,7 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
       backgroundColor: ThemeColors.background(context),
       appBar: AppBar(
         title: AccessibleHeading(
-          'Notifications & Sync',
+          'Notifications',
           level: HeadingLevel.h2,
           color: ThemeColors.textPrimary(context),
           backgroundColor: ThemeColors.background(context),
@@ -169,19 +122,6 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
                   const SizedBox(height: 16),
                   
                   _buildNotificationCard(),
-                  
-                  const SizedBox(height: 32),
-                  
-                  // Sync Settings Section
-                  _buildSectionHeader(
-                    'Offline Sync',
-                    IconSystem.refresh,
-                    Colors.blue,
-                  ),
-                  
-                  const SizedBox(height: 16),
-                  
-                  _buildSyncCard(),
                   
                   const SizedBox(height: 32),
                   
@@ -264,14 +204,6 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
           ),
           Divider(height: 24, color: ThemeColors.divider(context)),
           _buildSettingTile(
-            'Reminders',
-            'Scheduled reminders and alerts',
-            IconSystem.clock,
-            Colors.green,
-            'reminders',
-          ),
-          Divider(height: 24, color: ThemeColors.divider(context)),
-          _buildSettingTile(
             'Sound',
             'Play notification sounds',
             IconSystem.volume,
@@ -335,176 +267,6 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
           activeThumbColor: ThemeColors.primary(context),
         ),
       ],
-    );
-  }
-
-  Widget _buildSyncCard() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: ThemeColors.surface(context),
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: ThemeColors.shadow(context, opacity: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          // Connection Status
-          Row(
-            children: [
-              Icon(
-                _syncService.isOnline ? Icons.wifi : Icons.wifi_off,
-                color: _syncService.isOnline ? Colors.green : Colors.red,
-                size: 24,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _syncService.isOnline ? 'Connected' : 'Offline',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: _syncService.isOnline ? Colors.green : Colors.red,
-                      ),
-                    ),
-                    Text(
-                      _syncService.isOnline 
-                          ? 'Changes will sync automatically'
-                          : 'Changes will sync when you go online',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: ThemeColors.textSecondary(context),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          
-          const SizedBox(height: 20),
-          
-          // Pending Operations
-          Row(
-            children: [
-              Icon(
-                Icons.pending_actions,
-                color: Colors.orange,
-                size: 24,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Pending Operations',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: ThemeColors.textPrimary(context),
-                      ),
-                    ),
-                    Text(
-                      '$_pendingOperations items waiting to sync',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: ThemeColors.textSecondary(context),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              if (_pendingOperations > 0)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.orange,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    '$_pendingOperations',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-          
-          const SizedBox(height: 20),
-          
-          // Sync Button
-          SizedBox(
-            width: double.infinity,
-            height: 48,
-            child: ElevatedButton.icon(
-              onPressed: _syncService.isOnline && !_isSyncing ? _performSync : null,
-              icon: _isSyncing
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        color: Colors.white,
-                        strokeWidth: 2,
-                      ),
-                    )
-                  : const Icon(Icons.sync),
-              label: Text(
-                _isSyncing ? 'Syncing...' : 'Sync Now',
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                elevation: 0,
-              ),
-            ),
-          ),
-          
-          const SizedBox(height: 12),
-          
-          // Download Offline Data Button
-          SizedBox(
-            width: double.infinity,
-            height: 48,
-            child: OutlinedButton.icon(
-              onPressed: _syncService.isOnline && !_isSyncing ? _downloadOfflineData : null,
-              icon: const Icon(Icons.download),
-              label: const Text(
-                'Download Offline Data',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: ThemeColors.info(context),
-                side: BorderSide(color: ThemeColors.info(context)),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 

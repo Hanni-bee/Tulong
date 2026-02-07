@@ -21,11 +21,6 @@ android {
         jvmTarget = JavaVersion.VERSION_11.toString()
     }
 
-    // CRITICAL: Do not compress .tflite files (required for ML model loading)
-    androidResources {
-        noCompress += listOf("tflite", "lite")
-    }
-
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.activity2.tulong2"
@@ -61,6 +56,27 @@ android {
             isMinifyEnabled = false
             isShrinkResources = false
             // proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+        }
+    }
+
+    // CRITICAL: Prevent TFLite model compression
+    // TFLite models MUST NOT be compressed, otherwise they can't be loaded at runtime
+    androidResources {
+        noCompress += listOf("tflite", "lite")
+    }
+
+    packaging {
+        resources {
+            excludes += listOf(
+                "META-INF/DEPENDENCIES",
+                "META-INF/LICENSE",
+                "META-INF/LICENSE.txt",
+                "META-INF/license.txt",
+                "META-INF/NOTICE",
+                "META-INF/NOTICE.txt",
+                "META-INF/notice.txt",
+                "META-INF/ASL2.0"
+            )
         }
     }
 }

@@ -66,7 +66,7 @@ class _UnifiedTopBarState extends State<UnifiedTopBar>
     );
 
     _floatingBarSlide = Tween<Offset>(
-      begin: const Offset(0, -0.05), // -20px from top
+      begin: Offset.zero,
       end: Offset.zero,
     ).animate(CurvedAnimation(
       parent: _floatingBarController,
@@ -115,7 +115,7 @@ class _UnifiedTopBarState extends State<UnifiedTopBar>
             margin: const EdgeInsets.fromLTRB(16, 12, 16, 8),
             constraints: BoxConstraints(
               minHeight: containerHeight,
-              maxHeight: containerHeight + 2,
+              maxHeight: widget.compact ? 80 : 110,
             ),
             padding: containerPadding,
             decoration: BoxDecoration(
@@ -142,6 +142,7 @@ class _UnifiedTopBarState extends State<UnifiedTopBar>
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     if (widget.showBackButton) ...[
                       Material(
@@ -244,16 +245,19 @@ class _UnifiedTopBarState extends State<UnifiedTopBar>
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Flexible(
-                        child: Text(
-                          widget.title,
-                          overflow: TextOverflow.ellipsis,
-                          maxLines: 1,
-                          style: UnifiedTypography.appBarTitle.copyWith(
-                            color: ThemeColors.textPrimary(context),
-                            fontSize: titleFontSize,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: -0.3,
-                            height: 1.2,
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            widget.title,
+                            maxLines: 1,
+                            style: UnifiedTypography.appBarTitle.copyWith(
+                              color: ThemeColors.textPrimary(context),
+                              fontSize: titleFontSize,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: -0.3,
+                              height: 1.2,
+                            ),
                           ),
                         ),
                       ),
@@ -262,7 +266,7 @@ class _UnifiedTopBarState extends State<UnifiedTopBar>
                         Row(
                           children: [
                             if (widget.subtitle != null && widget.subtitle!.isNotEmpty)
-                              Expanded(
+                              Flexible(
                                 child: GestureDetector(
                                   onTap: widget.onSubtitleTap,
                                   child: Container(

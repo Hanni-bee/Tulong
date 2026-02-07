@@ -7,7 +7,9 @@ import 'package:flutter_animate/flutter_animate.dart';
 import '../constants/app_colors.dart';
 import '../constants/app_typography.dart';
 import '../constants/soft_ui_design.dart';
+import '../constants/severity_colors.dart';
 import '../utils/theme_colors.dart';
+import '../models/emergency_type.dart';
 import '../providers/chat_provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/voice_chat_extension.dart' as voice;
@@ -600,6 +602,20 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
                                 }
                                 if (index < regularMessages.length) {
                                   final message = regularMessages[index];
+                                  // Auto-scroll to bottom when new messages arrive
+                                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                                    if (_scrollController.hasClients && index == regularMessages.length - 1) {
+                                      _scrollController.animateTo(
+                                        _scrollController.position.maxScrollExtent,
+                                        duration: const Duration(milliseconds: 300),
+                                        curve: Curves.easeOut,
+                                      );
+                                    }
+                                  });
+                                  // From Emergency Detection: show status line (dot + name + status), not bubble
+                                  if (message.emergencyType != null) {
+                                    return _buildEmergencyStatusLine(message);
+                                  }
                                   return _buildMessageBubble(message);
                                 }
                                 return const SizedBox.shrink();
@@ -901,7 +917,158 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
       },
     );
   }
-  
+
+  /// Emergency Detection messages: centered status line (dot by severity + "Detection Status: Low/Medium/High")
+  Widget _buildEmergencyStatusLine(ChatMessage message) {
+    final severity = message.severityLevel;
+    final severityColor = severity != null
+        ? SeverityColors.color(severity)
+        : ThemeColors.textTertiary(context);
+    final severityLabel = severity?.label ?? 'Unknown';
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: GestureDetector(
+        onTap: () => _showEmergencyStatusDetails(message),
+        behavior: HitTestBehavior.opaque,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Center(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Detection Result $severityLabel',
+                  style: AppTypography.bodySmall.copyWith(
+                    color: ThemeColors.textSecondary(context),
+                    fontWeight: FontWeight.w500,
+                    fontSize: 13,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(width: 10),
+                Container(
+                  width: 10,
+                  height: 10,
+                  decoration: BoxDecoration(
+                    color: severityColor,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: severityColor.withOpacity(0.4),
+                        blurRadius: 4,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showEmergencyStatusDetails(ChatMessage message) {
+    final severity = message.severityLevel;
+    final type = message.emergencyType;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return Container(
+          margin: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
+          decoration: BoxDecoration(
+            color: ThemeColors.surface(context),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: ThemeColors.border(context)),
+            boxShadow: [
+              BoxShadow(
+                color: ThemeColors.shadow(context, opacity: 0.18),
+                blurRadius: 22,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Detection',
+                  style: AppTypography.titleMedium.copyWith(
+                    color: ThemeColors.textPrimary(context),
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  message.text,
+                  style: AppTypography.bodyLarge.copyWith(
+                    color: ThemeColors.textPrimary(context),
+                  ),
+                ),
+                if (severity != null || type != null) ...[
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    children: [
+                      if (severity != null)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: SeverityColors.color(severity).withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: SeverityColors.color(severity).withOpacity(0.4),
+                            ),
+                          ),
+                          child: Text(
+                            'Status: ${severity.label}',
+                            style: AppTypography.labelMedium.copyWith(
+                              color: SeverityColors.color(severity),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      if (type != null)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: ThemeColors.textTertiary(context).withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            type.label,
+                            style: AppTypography.labelMedium.copyWith(
+                              color: ThemeColors.textSecondary(context),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+                const SizedBox(height: 16),
+                Text(
+                  _formatDateTime(message.timestamp),
+                  style: AppTypography.bodySmall.copyWith(
+                    color: ThemeColors.textTertiary(context),
+                  ),
+                ),
+                const SizedBox(height: 20),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
 
   Widget _buildMessageBubble(ChatMessage message) {
     return TweenAnimationBuilder<double>(
@@ -920,8 +1087,30 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
     );
   }
 
+  Color _severityBubbleColor(SeverityLevel? severity, bool isMe, bool isEmergency) {
+    if (severity != null) {
+      return isMe
+          ? SeverityColors.color(severity).withOpacity(0.75)
+          : SeverityColors.background(severity);
+    }
+    if (isMe) return isEmergency ? AppColors.error : AppColors.primaryRed;
+    return isEmergency ? AppColors.error.withOpacity(0.18) : ThemeColors.surface(context);
+  }
+
+  Color _severityBorderColor(SeverityLevel? severity, bool isMe, bool isEmergency) {
+    if (severity != null) return SeverityColors.border(severity);
+    if (isEmergency) return AppColors.error.withOpacity(0.8);
+    if (isMe) return Colors.white.withOpacity(0.2);
+    return AppColors.lightGray.withOpacity(0.5);
+  }
+
   Widget _buildMessageBubbleContent(ChatMessage message) {
     final isEmergency = message.isEmergency;
+    final severity = message.severityLevel;
+    final emergencyType = message.emergencyType;
+    final isFromEmergencyDetection = emergencyType != null;
+    final bubbleColor = _severityBubbleColor(severity, message.isMe, isEmergency);
+    final borderColor = _severityBorderColor(severity, message.isMe, isEmergency);
     final row = Row(
         mainAxisAlignment: message.isMe 
             ? MainAxisAlignment.end 
@@ -983,24 +1172,18 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
               vertical: isEmergency ? 14 : 12,
             ),
             decoration: BoxDecoration(
-              color: isEmergency
-                  ? (message.isMe ? AppColors.error : AppColors.error.withOpacity(0.18))
-                  : (message.isMe ? AppColors.primaryRed : ThemeColors.surface(context)),
+              color: bubbleColor,
               borderRadius: BorderRadius.circular(20).copyWith(
                 bottomLeft: message.isMe ? const Radius.circular(20) : const Radius.circular(4),
                 bottomRight: message.isMe ? const Radius.circular(4) : const Radius.circular(20),
               ),
               border: Border.all(
-                color: isEmergency
-                    ? AppColors.error.withOpacity(0.8)
-                    : (message.isMe 
-                        ? Colors.white.withOpacity(0.2)
-                        : AppColors.lightGray.withOpacity(0.5)),
-                width: isEmergency ? 2.5 : 1.5,
+                color: borderColor,
+                width: (severity != null || isEmergency) ? 2.5 : 1.5,
               ),
-              boxShadow: isEmergency ? [
+              boxShadow: (severity != null || isEmergency) ? [
                 BoxShadow(
-                  color: AppColors.error.withOpacity(0.3),
+                  color: borderColor.withOpacity(0.3),
                   blurRadius: 12,
                   spreadRadius: 2,
                   offset: const Offset(0, 4),
@@ -1010,8 +1193,8 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Emergency badge
-                if (isEmergency) ...[
+                // SOS Emergency badge (hardware/home SOS)
+                if (isEmergency && !isFromEmergencyDetection) ...[
                   Row(
                     children: [
                       const Icon(
@@ -1032,6 +1215,29 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
                     ],
                   ),
                   const SizedBox(height: 8),
+                ],
+                // "From Emergency Detection" badge – so others know it's AI-verified, not copy-paste
+                if (isFromEmergencyDetection) ...[
+                  Row(
+                    children: [
+                      Icon(
+                        emergencyType.icon,
+                        size: 16,
+                        color: severity != null ? borderColor : ThemeColors.primary(context),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        'FROM EMERGENCY DETECTION',
+                        style: AppTypography.bodySmall.copyWith(
+                          color: severity != null ? borderColor : ThemeColors.primary(context),
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.6,
+                          fontSize: 10,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
                 ],
                 // Message content
                 if (message.type == voice.MessageType.voice && message.voiceMessage != null)
