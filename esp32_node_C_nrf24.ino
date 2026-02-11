@@ -29,7 +29,7 @@
 #define CSN_PIN        27
 
 // Change per node to avoid phone connecting to wrong ESP32
-#define BT_DEVICE_NAME "ESP32_NodeA_VoiceAC"   // NodeB example: "ESP32_NodeB_VoiceAC"
+#define BT_DEVICE_NAME "ESP32_NodeC_VoiceAC"   // NodeB example: "ESP32_NodeB_VoiceAC"
 
 // SOS tactile button (active LOW)
 #define SOS_BTN_PIN    4

@@ -390,7 +390,7 @@ class MLModelService {
       _inferenceLock = Completer<void>();
       debugPrint('🔄 Running TFLite inference (dynamic, no caching)...');
       debugPrint('   Input buffer size: ${runInputBuffer[0] is List ? (runInputBuffer[0] as List).length : 0}');
-      debugPrint('   Output buffer size: ${outputBuffer[0].length}');
+      debugPrint('   Output buffer size: ${(outputBuffer[0] as List).length}');
       final inferenceStartTime = DateTime.now();
       
       try {
@@ -422,9 +422,9 @@ class MLModelService {
         probabilities = output.sublist(0, numClasses).map((e) => e / 255.0).toList();
         debugPrint('📊 Dequantized ${probabilities.length} probabilities from uint8 output');
       } else {
-        probabilities = output.sublist(0, numClasses).map((e) => (e as num).toDouble()).toList();
+        probabilities = (output as List).sublist(0, numClasses).map((e) => (e as num).toDouble()).toList();
       }
-      debugPrint('📊 Raw output buffer size: ${output.length}');
+      debugPrint('📊 Raw output buffer size: ${(output as List).length}');
       debugPrint('📊 Output tensor shape: ${outputTensor.shape}');
       debugPrint('📊 Extracted ${probabilities.length} probabilities');
       
