@@ -554,6 +554,17 @@ class ChatProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  /// Send RF channel to ESP32 (only when connected). Call when user selects Channel 1–5 (RF 108, 100, 104, 112, 120).
+  Future<void> setRfChannel(int rfChannelValue) async {
+    if (!_bluetoothService.isConnected) return;
+    try {
+      final payload = '${jsonEncode({'command': 'set_rf_channel', 'rf_channel': rfChannelValue})}\n';
+      await _bluetoothService.sendMessage(payload);
+    } catch (e) {
+      print('Error sending set_rf_channel: $e');
+    }
+  }
+
   Future<bool> sendMessage(
     String text, {
     BuildContext? context,
