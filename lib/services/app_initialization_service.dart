@@ -22,9 +22,8 @@ class AppInitializationService {
       
       _isInitialized = true;
       debugPrint('✅ App services initialized successfully');
-      
-      // Optional: Preload AI disaster classification model in background
-      // so it is ready when user opens Emergency Detection screen
+
+      // Load the ML model first (background, non-blocking). Emergency Detection integrates once ready.
       _preloadMLModelInBackground();
     } catch (e) {
       debugPrint('❌ Failed to initialize app services: $e');
@@ -32,23 +31,30 @@ class AppInitializationService {
     }
   }
   
-  /// Preload ML model in background (non-blocking). Does not fail app startup.
+  /// Preload ML model right after init (load first). Non-blocking so app stays responsive.
   void _preloadMLModelInBackground() {
-    Future<void>.delayed(const Duration(seconds: 2), () async {
+    Future<void>(() async {
       try {
         final service = DisasterClassificationService.instance;
-        if (service.isModelLoaded) return;
-        debugPrint('🔄 Background: Preloading AI disaster classification model...');
+        if (service.isModelLoaded) {
+          debugPrint('✅ AI model already loaded');
+          return;
+        }
+        debugPrint('🔄 Loading AI disaster model first (this may take 10–30s)...');
         final ok = await service.loadModel().timeout(
           const Duration(seconds: 90),
           onTimeout: () {
-            debugPrint('⚠️ Background ML preload timed out');
+            debugPrint('⚠️ ML model load timed out');
             return false;
           },
         );
-        if (ok) debugPrint('✅ Background: AI model ready');
+        if (ok) {
+          debugPrint('✅ AI model loaded and ready for detection');
+        } else {
+          debugPrint('⚠️ AI model load failed; detection screen will retry or use fallback');
+        }
       } catch (e) {
-        debugPrint('⚠️ Background ML preload failed: $e');
+        debugPrint('⚠️ AI model preload error: $e');
       }
     });
   }

@@ -6,6 +6,8 @@ import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:tflite_flutter/tflite_flutter.dart' as tflite;
 
+import 'ai_detection_config.dart';
+
 /// Service for loading and running ML models for emergency detection
 /// Currently supports TensorFlow Lite models
 class MLModelService {
@@ -16,12 +18,27 @@ class MLModelService {
   
   tflite.Interpreter? _interpreter;
   bool _isLoaded = false;
+  bool _isDisposed = false;
   String? _lastError;
   /// Ensures only one inference runs at a time (avoids "failed precondition" / interpreter busy).
   Completer<void>? _inferenceLock = Completer<void>()..complete();
-  
-  /// Check if ML model is loaded and available
-  bool get isLoaded => _isLoaded && _interpreter != null;
+  /// Ensures only one load runs at a time; others await this and then re-check isLoaded.
+  Completer<bool>? _loadCompleter;
+
+  /// Check if ML model is loaded and available (and not disposed)
+  bool get isLoaded => !_isDisposed && _isLoaded && _interpreter != null;
+
+  /// Close interpreter and clear state (used on failure paths and retries).
+  void _closeAndClear() {
+    try {
+      _interpreter?.close();
+    } catch (e) {
+      debugPrint('⚠️ Error closing interpreter: $e');
+    }
+    _interpreter = null;
+    _isLoaded = false;
+    // Do not set _isDisposed here; only dispose() does that
+  }
   
   /// Get last error message
   String? get lastError => _lastError;
@@ -47,51 +64,106 @@ class MLModelService {
       return null;
     }
   }
-  
-  /// Load ML model from assets
-  /// 
+
+  /// Reshape flat [H*W*C] to 4D [1, H, W, C] with Float32List(3) per pixel so TFLite CONV_2D gets 4D (fixes "input->dims->size != 4").
+  static List<List<List<Float32List>>> _reshapeTo4DFloat32List(Float32List flat, {int height = 180, int width = 180, int channels = 3}) {
+    return List.generate(1, (_) => List.generate(height, (y) => List.generate(width, (x) {
+      final start = (y * width + x) * channels;
+      return Float32List.fromList(List.generate(channels, (c) => flat[start + c]));
+    })));
+  }
+
+  /// Same for uint8 (quantized input).
+  static List<List<List<Uint8List>>> _reshapeTo4DUint8PerPixel(Uint8List flat, {int height = 180, int width = 180, int channels = 3}) {
+    return List.generate(1, (_) => List.generate(height, (y) => List.generate(width, (x) {
+      final start = (y * width + x) * channels;
+      return Uint8List.fromList(List.generate(channels, (c) => flat[start + c]));
+    })));
+  }
+
+  /// Run inference using run() or runForMultipleInputs() only.
+  /// Do NOT use setTo+invoke+copyTo - that path can call TfLiteTensorCopyFromBuffer with
+  /// null tensor data and cause SIGSEGV if tensors were not allocated.
+  static void _runInferenceWithFallback(
+    tflite.Interpreter interpreter,
+    tflite.Tensor inputTensor,
+    tflite.Tensor outputTensor,
+    Object inputBuffer,
+    Object outputBuffer,
+  ) {
+    try {
+      interpreter.run(inputBuffer, outputBuffer);
+      return;
+    } catch (e) {
+      if (kDebugMode) debugPrint('   run() failed ($e), trying runForMultipleInputs...');
+    }
+    try {
+      interpreter.runForMultipleInputs([inputBuffer], {0: outputBuffer});
+    } catch (e2) {
+      throw Exception('Inference failed: run() and runForMultipleInputs() threw: $e2');
+    }
+  }
+
+  /// Load ML model from assets with retries and warm-up inference.
+  ///
   /// [modelPath] - Path to model file in assets (e.g., 'best_model.tflite')
-  /// Returns true if model loaded successfully
+  /// Returns true only if model loads and a warm-up inference succeeds.
   Future<bool> loadModel(String modelPath) async {
+    // If another load is in progress, wait for it and return its result
+    if (_loadCompleter != null) {
+      final result = await _loadCompleter!.future;
+      debugPrint('📦 Load already in progress; waited. Result: $result');
+      return result;
+    }
+
+    _loadCompleter = Completer<bool>();
+
+    final maxAttempts = AIDetectionConfig.modelLoadMaxAttempts;
+    final retryDelay = Duration(milliseconds: AIDetectionConfig.modelLoadRetryDelayMs);
+
+    for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        if (attempt > 1) {
+          debugPrint('🔄 Load retry $attempt/$maxAttempts after ${retryDelay.inMilliseconds}ms');
+          await Future.delayed(retryDelay);
+        }
+        final ok = await _loadModelOnce(modelPath);
+        if (ok) {
+          _loadCompleter!.complete(true);
+          _loadCompleter = null;
+          return true;
+        }
+      } catch (e, st) {
+        debugPrint('❌ Load attempt $attempt failed: $e');
+        if (kDebugMode) debugPrint('$st');
+      }
+      _closeAndClear();
+    }
+
+    _lastError = _lastError ?? 'Model load failed after $maxAttempts attempts';
+    _loadCompleter!.complete(false);
+    _loadCompleter = null;
+    return false;
+  }
+
+  /// Single attempt at loading the model (no retry). Returns true iff load + optional warm-up succeed.
+  Future<bool> _loadModelOnce(String modelPath) async {
     try {
       _lastError = null;
-      
-      // CRITICAL: Ensure modelPath is correctly formatted for fromAsset
-      // fromAsset expects: 'best_model.tflite' (relative to assets folder, NO "assets/" prefix)
-      // File location: assets/best_model.tflite (WITH underscore between "best" and "model")
+      _isDisposed = false;
+      _closeAndClear();
+
+      // fromAsset expects path relative to assets folder (no "assets/" prefix)
       String assetPath = modelPath.trim();
-      
-      // Remove 'assets/' prefix if present
-      if (assetPath.startsWith('assets/')) {
-        assetPath = assetPath.substring(7);
-      }
-      
-      // Remove leading slash if present
-      if (assetPath.startsWith('/')) {
-        assetPath = assetPath.substring(1);
-      }
-      
-      // CRITICAL: Verify and correct the path to 'best_model.tflite' (with underscore)
-      // The actual file is assets/best_model.tflite (with underscore between "best" and "model")
-      // Common mistake: "bestmodel.tflite" (no underscore) - this will fail!
-      if (assetPath != 'best_model.tflite') {
-        debugPrint('⚠️ WARNING: Asset path mismatch detected!');
-        debugPrint('   Provided path: "$assetPath"');
-        debugPrint('   Expected path: "best_model.tflite" (with underscore)');
-        debugPrint('   Actual file: assets/best_model.tflite');
-        // Force correct path - this is critical!
-        assetPath = 'best_model.tflite';
-        debugPrint('   ✅ Corrected to: "$assetPath"');
-      }
-      
+      if (assetPath.startsWith('assets/')) assetPath = assetPath.substring(7);
+      if (assetPath.startsWith('/')) assetPath = assetPath.substring(1);
+      if (assetPath.isEmpty) assetPath = 'best_model.tflite';
+
       debugPrint('');
       debugPrint('═══════════════════════════════════════════════════════════');
-      debugPrint('🔄 ML MODEL LOADING - COMPREHENSIVE DEBUG');
+      debugPrint('🔄 ML MODEL LOADING');
       debugPrint('═══════════════════════════════════════════════════════════');
-      debugPrint('📁 Requested model path: $modelPath');
-      debugPrint('📁 Asset path (for fromAsset): $assetPath');
-      debugPrint('📁 Full asset path: assets/$assetPath');
-      debugPrint('📁 File must exist at: assets/best_model.tflite (with underscore)');
+      debugPrint('📁 Asset: assets/$assetPath');
       
       // Step 1: Verify asset exists in bundle
       debugPrint('📦 Step 1: Verifying asset exists in bundle...');
@@ -104,6 +176,7 @@ class MLModelService {
         if (assetSize == 0) {
           _lastError = 'Asset file is empty';
           debugPrint('❌ Asset file is empty!');
+          _closeAndClear();
           return false;
         }
       } catch (e) {
@@ -114,23 +187,16 @@ class MLModelService {
         debugPrint('   1. File exists at: assets/$assetPath');
         debugPrint('   2. pubspec.yaml includes: - assets/$assetPath');
         debugPrint('   3. Run: flutter clean && flutter pub get');
+        _closeAndClear();
         return false;
       }
       
       // Step 2: Load interpreter from asset
-      debugPrint('📦 Step 2: Loading TFLite interpreter from asset...');
-      debugPrint('   Using asset path: $assetPath');
-      debugPrint('   Full path for fromAsset: $assetPath (should NOT include "assets/")');
-      
-      // CRITICAL: fromAsset expects path relative to assets folder WITHOUT "assets/" prefix
-      // Example: 'best_model.tflite' not 'assets/best_model.tflite'
+      debugPrint('📦 Step 2: Loading TFLite interpreter...');
       final options = tflite.InterpreterOptions()
         ..threads = 4;
-      // Note: GPU delegate can be enabled here if needed for better performance
-      
+
       try {
-        debugPrint('   Attempting to load via fromAsset()...');
-        debugPrint('   ⏳ Loading ~14.5 MB model (this may take 10-30 seconds)...');
         
         // Try fromAsset first (fastest if it works)
         try {
@@ -209,14 +275,12 @@ class MLModelService {
         debugPrint('   Stack trace: $stackTrace');
         debugPrint('');
         debugPrint('🔧 TROUBLESHOOTING STEPS:');
-        debugPrint('   1. Verify file exists: assets/best_model.tflite (with underscore)');
-        debugPrint('   2. Check pubspec.yaml includes: - assets/best_model.tflite');
+        debugPrint('   1. Verify file exists: assets/$assetPath');
+        debugPrint('   2. Check pubspec.yaml includes: - assets/$assetPath');
         debugPrint('   3. Run: flutter clean && flutter pub get');
         debugPrint('   4. Verify Android build.gradle.kts has noCompress for .tflite');
-        debugPrint('   5. Check file is not corrupted (should be ~14.5 MB)');
-        debugPrint('   6. Ensure file name is exactly: best_model.tflite (with underscore)');
-        _isLoaded = false;
-        _interpreter = null;
+        debugPrint('   5. Check file is not corrupted (best_model.tflite ~4 MB for 180x180 model)');
+        _closeAndClear();
         return false;
       }
       
@@ -241,15 +305,15 @@ class MLModelService {
         debugPrint('     Type: $outputType');
         debugPrint('     Size: ${outputShape.reduce((a, b) => a * b)} elements');
         
-        // Verify expected input shape (should be [1, 224, 224, 3] or [224, 224, 3])
-        final expectedInputSize = 224 * 224 * 3;
+        // Verify expected input shape (e.g. [1, 180, 180, 3] for best_model.tflite)
+        final expectedInputSize = AIDetectionConfig.expectedInputPixels;
         final actualInputSize = inputShape.length > 1
             ? inputShape.sublist(1).reduce((a, b) => a * b)  // Skip batch dimension
             : inputShape.reduce((a, b) => a * b);
         
         if (actualInputSize != expectedInputSize) {
           debugPrint('⚠️ Warning: Input size mismatch');
-          debugPrint('   Expected: $expectedInputSize (224x224x3)');
+          debugPrint('   Expected: $expectedInputSize (${AIDetectionConfig.modelInputHeight}x${AIDetectionConfig.modelInputWidth}x3)');
           debugPrint('   Actual: $actualInputSize');
         } else {
           debugPrint('✅ Input size matches expected: $expectedInputSize');
@@ -273,44 +337,128 @@ class MLModelService {
         _lastError = 'Failed to verify interpreter: $e';
         debugPrint('❌ Failed to verify interpreter initialization: $e');
         debugPrint('   Stack trace: $stackTrace');
-        _isLoaded = false;
-        _interpreter = null;
+        _closeAndClear();
         return false;
       }
-      
+
+      // Allocate tensor memory so TfLiteTensorCopyFromBuffer never gets null (avoids SIGSEGV).
+      debugPrint('📦 Step 3b: Allocate tensors...');
+      try {
+        _interpreter!.allocateTensors();
+        debugPrint('   allocateTensors() OK');
+      } catch (e) {
+        debugPrint('⚠️ allocateTensors() failed: $e (inference may still work via run())');
+        // Continue without allocation; run() might allocate internally on first call.
+      }
+
+      // Warm-up inference: use same input shape as classify (4D when model expects [1,H,W,3])
+      if (AIDetectionConfig.warmupInferenceAfterLoad && _interpreter != null) {
+        debugPrint('📦 Step 4: Warm-up inference...');
+        try {
+          final inputTensor = _interpreter!.getInputTensor(0);
+          final outputTensor = _interpreter!.getOutputTensor(0);
+          final warmupInputShape = inputTensor.shape;
+          final nonBatch = warmupInputShape.length > 1
+              ? warmupInputShape.sublist(1).reduce((a, b) => a * b)
+              : warmupInputShape.reduce((a, b) => a * b);
+          final outSize = outputTensor.shape.reduce((a, b) => a * b);
+          final inputTypeStr = inputTensor.type.toString().toLowerCase();
+          final isQuantInput = inputTypeStr.contains('uint8') || inputTypeStr.contains('int8');
+          final is4D = warmupInputShape.length == 4 &&
+              warmupInputShape[0] == 1 &&
+              warmupInputShape[3] == 3 &&
+              warmupInputShape[1] > 0 &&
+              warmupInputShape[2] > 0;
+          final int wh = is4D ? warmupInputShape[1] : AIDetectionConfig.modelInputHeight;
+          final int ww = is4D ? warmupInputShape[2] : AIDetectionConfig.modelInputWidth;
+          Object warmupInput;
+          if (isQuantInput) {
+            final flat = Uint8List(nonBatch);
+            warmupInput = is4D ? _reshapeTo4DUint8PerPixel(flat, height: wh, width: ww) : flat;
+          } else {
+            final flat = Float32List(nonBatch);
+            warmupInput = is4D ? _reshapeTo4DFloat32List(flat, height: wh, width: ww) : flat;
+          }
+          if (is4D) debugPrint('   Warm-up input: 4D [1, $wh, $ww, 3] (CONV_2D compatible)');
+          final outputTypeStr = outputTensor.type.toString().toLowerCase();
+          final isQuantOutput = outputTypeStr.contains('uint8') || outputTypeStr.contains('int8');
+          // For output shape [1, N], tflite_flutter expects a 2D structure. The plugin
+          // may assign native result (List<double>) into output[0], so use List<double>
+          // for the inner buffer to avoid "List<double> is not a subtype of Float32List".
+          Object warmupOutput;
+          if (outputTensor.shape.length == 2 && outputTensor.shape[0] == 1) {
+            final n = outSize;
+            if (isQuantOutput) {
+              warmupOutput = <Uint8List>[Uint8List(n)];
+            } else {
+              warmupOutput = <List<double>>[List<double>.filled(n, 0.0)];
+            }
+          } else {
+            warmupOutput = isQuantOutput
+                ? Uint8List(outSize)
+                : Float32List(outSize);
+          }
+          _runInferenceWithFallback(_interpreter!, inputTensor, outputTensor, warmupInput, warmupOutput);
+          final numClasses = outputTensor.shape.length > 1 && outputTensor.shape[0] == 1
+              ? outputTensor.shape.sublist(1).reduce((a, b) => a * b)
+              : outSize;
+          if (numClasses != AIDetectionConfig.numClasses) {
+            _lastError = 'Warm-up output size $numClasses != ${AIDetectionConfig.numClasses}';
+            _closeAndClear();
+            return false;
+          }
+          debugPrint('✅ Warm-up inference OK');
+        } catch (e) {
+          _lastError = 'Warm-up inference error: $e';
+          debugPrint('❌ Warm-up inference error: $e');
+          _closeAndClear();
+          return false;
+        }
+      }
+
       _isLoaded = true;
-      
+
       debugPrint('═══════════════════════════════════════════════════════════');
       debugPrint('✅ ML MODEL LOADED SUCCESSFULLY');
       debugPrint('═══════════════════════════════════════════════════════════');
       debugPrint('');
-      
+
       return true;
     } catch (e, stackTrace) {
       _lastError = 'Unexpected error loading model: $e';
       debugPrint('❌ Unexpected error loading ML model: $e');
       debugPrint('   Stack trace: $stackTrace');
-      _isLoaded = false;
-      _interpreter = null;
+      _closeAndClear();
       return false;
     }
   }
   
   /// Run full classification using ML model
-  /// 
-  /// [preprocessedImage] - Normalized Float32List (224x224x3 = 150528 values)
-  /// Returns classification probabilities or null
-  Future<List<double>?> classify(Float32List preprocessedImage) async {
-    if (!isLoaded || _interpreter == null) {
+  ///
+  /// [preprocessedImage] - Normalized Float32List (HxWx3, e.g. 180x180x3 = 97200 values)
+  /// Returns classification probabilities [Cyclone, Earthquake, Flood, Wildfire] or null
+  Future<List<double>?> classify(Float32List? preprocessedImage) async {
+    if (_isDisposed) {
+      debugPrint('⚠️ ML model service disposed, cannot classify');
+      return null;
+    }
+    if (!_isLoaded || _interpreter == null) {
       debugPrint('⚠️ ML model not loaded, cannot classify');
       return null;
     }
-    
+    if (preprocessedImage == null || preprocessedImage.isEmpty) {
+      debugPrint('⚠️ classify: null or empty input');
+      return null;
+    }
+    if (preprocessedImage.length != AIDetectionConfig.expectedInputPixels) {
+      debugPrint('⚠️ classify: input size ${preprocessedImage.length} != ${AIDetectionConfig.expectedInputPixels}');
+      return null;
+    }
+
     try {
       final inputTensor = _interpreter!.getInputTensor(0);
       final outputTensor = _interpreter!.getOutputTensor(0);
       
-      // Get input shape (usually [1, 224, 224, 3] for batch, height, width, channels)
       final inputShape = inputTensor.shape;
       final expectedSize = inputShape.length > 1
           ? inputShape.sublist(1).reduce((a, b) => a * b)  // Skip batch dimension
@@ -325,115 +473,212 @@ class MLModelService {
         return null;
       }
       
-      // CRITICAL: Prepare input buffer correctly
-      // TFLite expects input to match tensor shape exactly
-      // If tensor is [1, 224, 224, 3], we need to reshape the flat array
       debugPrint('📐 Input tensor shape: $inputShape');
       debugPrint('📐 Preprocessed image length: ${preprocessedImage.length}');
-      
-      // Reshape the flat array to match tensor shape
-      // For shape [1, 224, 224, 3], we need to create a properly shaped buffer
-      final inputBuffer = [preprocessedImage];
-      
-      // Verify input buffer size matches expected
-      // The preprocessedImage is [224*224*3] = 150,528 elements (without batch dimension)
-      // The input tensor shape is [1, 224, 224, 3] = 150,528 elements (with batch dimension)
-      // tflite_flutter handles the batch dimension automatically when we wrap in [preprocessedImage]
-      final expectedInputElements = inputShape.reduce((a, b) => a * b); // Full tensor size including batch
-      final expectedNonBatchSize = inputShape.sublist(1).reduce((a, b) => a * b); // Size without batch
-      
-      // Preprocessed image should match non-batch size (150,528)
+
+      final expectedNonBatchSize = inputShape.length > 1
+          ? inputShape.sublist(1).reduce((a, b) => a * b)
+          : inputShape.reduce((a, b) => a * b);
       if (preprocessedImage.length != expectedNonBatchSize) {
-        debugPrint('❌ CRITICAL: Input size mismatch!');
-        debugPrint('   Tensor shape: $inputShape');
-        debugPrint('   Tensor expects (with batch): $expectedInputElements elements');
-        debugPrint('   Tensor expects (without batch): $expectedNonBatchSize elements');
-        debugPrint('   Preprocessed image has: ${preprocessedImage.length} elements');
-        debugPrint('   Expected: $expectedNonBatchSize (224 * 224 * 3)');
+        debugPrint('❌ Input size mismatch: got ${preprocessedImage.length}, expected $expectedNonBatchSize (tensor: $inputShape)');
         return null;
       }
       
       debugPrint('✅ Input size verified: ${preprocessedImage.length} elements (matches $expectedNonBatchSize)');
-      
-      // Match input buffer type to model (fixes "failed precondition" when model is quantized)
+
+      // CONV_2D requires 4D input [1, H, W, 3]. Pass 4D structure with Float32List(3) per pixel to avoid "input->dims->size != 4".
       final inputType = inputTensor.type;
       final inputTypeStr = inputType.toString().toLowerCase();
       debugPrint('📐 Input tensor type: $inputType');
-      List<Object> runInputBuffer;
+      final is4DShape = inputShape.length == 4 &&
+          inputShape[0] == 1 &&
+          inputShape[3] == 3 &&
+          inputShape[1] > 0 &&
+          inputShape[2] > 0;
+      final int inputH = is4DShape ? inputShape[1] : AIDetectionConfig.modelInputHeight;
+      final int inputW = is4DShape ? inputShape[2] : AIDetectionConfig.modelInputWidth;
+      Object runInput;
       final isQuantizedInput = inputTypeStr.contains('uint8') || inputTypeStr.contains('int8');
       if (isQuantizedInput) {
-        // Quantized model: convert float [0,1] to uint8 [0,255]
         final uint8List = Uint8List(preprocessedImage.length);
+        double scale = 1.0 / 255.0;
+        int zeroPoint = 0;
+        try {
+          final q = inputTensor.params;
+          if (q.scale != 0) {
+            scale = q.scale.toDouble();
+            zeroPoint = q.zeroPoint;
+            debugPrint('   Input quantization: scale=$scale zeroPoint=$zeroPoint');
+          }
+        } catch (_) {}
         for (int i = 0; i < preprocessedImage.length; i++) {
-          uint8List[i] = (preprocessedImage[i].clamp(0.0, 1.0) * 255).round().clamp(0, 255);
+          final v = preprocessedImage[i].clamp(0.0, 1.0);
+          final qv = (v / scale + zeroPoint).round();
+          uint8List[i] = qv.clamp(0, 255);
         }
-        runInputBuffer = [uint8List];
-        debugPrint('   Using Uint8List input (quantized model)');
+        runInput = is4DShape ? _reshapeTo4DUint8PerPixel(uint8List, height: inputH, width: inputW) : uint8List;
+        debugPrint('   Using ${is4DShape ? "4D" : "flat"} Uint8List input (quantized)');
       } else {
-        runInputBuffer = inputBuffer;
+        if (is4DShape) {
+          runInput = _reshapeTo4DFloat32List(Float32List.fromList(preprocessedImage), height: inputH, width: inputW);
+          debugPrint('   Using 4D input [1, $inputH, $inputW, 3] for CONV_2D');
+        } else {
+          runInput = Float32List.fromList(preprocessedImage);
+          debugPrint('   Using flat Float32List input');
+        }
       }
       
-      // Prepare output buffer (type must match model output: float32 or uint8)
+      // Prepare output buffer (type and shape must match model output tensor)
       final outputSize = outputTensor.shape.reduce((a, b) => a * b);
+      if (outputSize <= 0) {
+        debugPrint('❌ Invalid output tensor size: $outputSize');
+        return null;
+      }
       final outputTypeStr = outputTensor.type.toString().toLowerCase();
       final isQuantizedOutput = outputTypeStr.contains('uint8') || outputTypeStr.contains('int8');
-      List<Object> outputBuffer;
-      if (isQuantizedOutput) {
-        outputBuffer = [Uint8List(outputSize)];
-        debugPrint('   Output tensor type: quantized (uint8/int8)');
+      Object runOutput;
+      if (outputTensor.shape.length == 2 && outputTensor.shape[0] == 1) {
+        // Output shape [1, numClasses]. Use List<double> inner so plugin can assign native result.
+        final n = outputSize;
+        if (isQuantizedOutput) {
+          runOutput = <Uint8List>[Uint8List(n)];
+        } else {
+          runOutput = <List<double>>[List<double>.filled(n, 0.0)];
+        }
       } else {
-        outputBuffer = [Float32List(outputSize)];
+        runOutput = isQuantizedOutput
+            ? Uint8List(outputSize)
+            : Float32List(outputSize);
       }
-      
+      if (isQuantizedOutput) {
+        debugPrint('   Output tensor type: quantized (uint8/int8)');
+      }
+
       // Run inference - one at a time to avoid "failed precondition" / interpreter busy
       await _inferenceLock!.future;
       _inferenceLock = Completer<void>();
-      debugPrint('🔄 Running TFLite inference (dynamic, no caching)...');
-      debugPrint('   Input buffer size: ${runInputBuffer[0] is List ? (runInputBuffer[0] as List).length : 0}');
-      debugPrint('   Output buffer size: ${outputBuffer[0].length}');
+      debugPrint('🔄 Running TFLite inference...');
+
+      // Re-check interpreter is still valid (could have been disposed)
+      if (_isDisposed || _interpreter == null || !_isLoaded) {
+        debugPrint('⚠️ Interpreter no longer available; skipping inference');
+        if (_inferenceLock != null && !_inferenceLock!.isCompleted) _inferenceLock!.complete();
+        return null;
+      }
+
       final inferenceStartTime = DateTime.now();
-      
+      final timeoutDuration = Duration(seconds: AIDetectionConfig.inferenceTimeoutSeconds);
+
       try {
-        _interpreter!.run(runInputBuffer, outputBuffer);
+        await Future(() {
+          _runInferenceWithFallback(
+            _interpreter!,
+            inputTensor,
+            outputTensor,
+            runInput,
+            runOutput,
+          );
+        }).timeout(
+          timeoutDuration,
+          onTimeout: () {
+            throw TimeoutException(
+              'Inference timeout after ${timeoutDuration.inSeconds}s',
+            );
+          },
+        );
       } catch (e, stackTrace) {
-        debugPrint('❌ CRITICAL: Inference failed with error: $e');
-        debugPrint('   Stack trace: $stackTrace');
-        debugPrint('   Input shape: $inputShape');
-        debugPrint('   Input tensor type: $inputType');
-        debugPrint('   Input buffer length: ${runInputBuffer[0] is List ? (runInputBuffer[0] as List).length : 0}');
-        debugPrint('   Output shape: ${outputTensor.shape}');
+        debugPrint('❌ CRITICAL: Inference failed: $e');
+        if (kDebugMode) debugPrint('   Stack trace: $stackTrace');
+        _lastError = 'Inference failed: $e';
         return null;
       } finally {
-        if (_inferenceLock != null && !_inferenceLock!.isCompleted) _inferenceLock!.complete();
+        if (_inferenceLock != null && !_inferenceLock!.isCompleted) {
+          _inferenceLock!.complete();
+        }
       }
       
       final inferenceDuration = DateTime.now().difference(inferenceStartTime);
       debugPrint('✅ TFLite inference completed in ${inferenceDuration.inMilliseconds}ms');
       
-      // Extract probabilities (handle batch dimension and quantized output)
-      final output = outputBuffer[0];
+      // Extract and dequantize output (must match Python/TFLite: scale/zeroPoint or raw float)
+      final output = runOutput;
       final numClasses = outputTensor.shape.length > 1 && outputTensor.shape[0] == 1
           ? outputTensor.shape.sublist(1).reduce((a, b) => a * b)
           : outputSize;
-      List<double> probabilities;
+      List<double> rawOutput;
       if (output is Float32List) {
-        probabilities = output.sublist(0, numClasses).map((e) => e.toDouble()).toList();
+        rawOutput = output.sublist(0, numClasses).map((e) => e.toDouble()).toList();
       } else if (output is Uint8List) {
-        probabilities = output.sublist(0, numClasses).map((e) => e / 255.0).toList();
-        debugPrint('📊 Dequantized ${probabilities.length} probabilities from uint8 output');
+        double scale = 1.0 / 255.0;
+        int zeroPoint = 0;
+        try {
+          final q = outputTensor.params;
+          if (q.scale != 0) {
+            scale = q.scale.toDouble();
+            zeroPoint = q.zeroPoint;
+            debugPrint('📊 Output dequantization: scale=$scale zeroPoint=$zeroPoint');
+          }
+        } catch (_) {}
+        rawOutput = output.sublist(0, numClasses).map((e) {
+          final r = (e - zeroPoint) * scale;
+          return r.toDouble();
+        }).toList();
+        debugPrint('📊 Dequantized ${rawOutput.length} values from uint8 (${scale != 1.0/255 ? "tensor params" : "÷255"})');
+      } else if (output is List) {
+        // Handle [Float32List], [Uint8List], or [List<double>] for shape [1, numClasses]
+        if (output.isEmpty) {
+          debugPrint('⚠️ Empty output list');
+          return null;
+        }
+        final first = output.first;
+        if (first is Float32List) {
+          rawOutput = first.sublist(0, numClasses).map((e) => e.toDouble()).toList();
+        } else if (first is Uint8List) {
+          double scale = 1.0 / 255.0;
+          int zeroPoint = 0;
+          try {
+            final q = outputTensor.params;
+            if (q.scale != 0) {
+              scale = q.scale.toDouble();
+              zeroPoint = q.zeroPoint;
+              debugPrint('📊 Output dequantization (list): scale=$scale zeroPoint=$zeroPoint');
+            }
+          } catch (_) {}
+          rawOutput = first.sublist(0, numClasses).map((e) {
+            final r = (e - zeroPoint) * scale;
+            return r.toDouble();
+          }).toList();
+        } else if (first is List) {
+          // [List<double>] from run when using List<double>.filled for [1, N] output
+          rawOutput = (first as List<dynamic>).take(numClasses).map((e) => (e as num).toDouble()).toList();
+        } else {
+          final list = output.cast<num>();
+          rawOutput = list.take(numClasses).map((e) => e.toDouble()).toList();
+        }
       } else {
-        probabilities = output.sublist(0, numClasses).map((e) => (e as num).toDouble()).toList();
+        debugPrint('⚠️ Unexpected output buffer type: ${output.runtimeType}');
+        return null;
       }
-      debugPrint('📊 Raw output buffer size: ${output.length}');
-      debugPrint('📊 Output tensor shape: ${outputTensor.shape}');
+
+      // Allow logits (negative/large) or probabilities; only reject NaN/Infinite
+      if (rawOutput.length != AIDetectionConfig.numClasses) {
+        debugPrint('⚠️ Output class count ${rawOutput.length} != ${AIDetectionConfig.numClasses}');
+        return null;
+      }
+      final hasInvalid = rawOutput.any((p) => p.isNaN || p.isInfinite);
+      if (hasInvalid) {
+        debugPrint('⚠️ Output contains NaN/Infinite');
+        return null;
+      }
+      final probabilities = rawOutput;
+
       debugPrint('📊 Extracted ${probabilities.length} probabilities');
-      
-      // Log raw output for verification
-      debugPrint('📊 Raw Model Output Values:');
-      for (int i = 0; i < probabilities.length && i < 4; i++) {
-        debugPrint('   Output[$i]: ${probabilities[i].toStringAsFixed(6)}');
+      if (kDebugMode) {
+        for (int i = 0; i < probabilities.length && i < 4; i++) {
+          debugPrint('   Output[$i]: ${probabilities[i].toStringAsFixed(6)}');
+        }
       }
-      
+
       return probabilities;
     } catch (e, stackTrace) {
       debugPrint('❌ Error during ML classification: $e');
@@ -444,7 +689,7 @@ class MLModelService {
   
   /// Extract features from preprocessed image using ML model
   /// 
-  /// [preprocessedImage] - Normalized Float32List (224x224x3)
+  /// [preprocessedImage] - Normalized Float32List (HxWx3, e.g. 180x180x3)
   /// Returns feature vector or null if model not loaded
   Future<Float32List?> extractFeatures(Float32List preprocessedImage) async {
     // For classification models, use classify instead
@@ -463,8 +708,8 @@ class MLModelService {
     try {
       debugPrint('🧪 Testing model with dummy input...');
       
-      // Create dummy input (224x224x3 = 150528 values, all zeros)
-      final dummyInput = Float32List(224 * 224 * 3);
+      // Create dummy input (HxWx3, all zeros)
+      final dummyInput = Float32List(AIDetectionConfig.expectedInputPixels);
       
       final result = await classify(dummyInput);
       
@@ -482,12 +727,18 @@ class MLModelService {
     }
   }
   
-  /// Dispose resources
+  /// Dispose resources. Safe to call multiple times.
   void dispose() {
-    _interpreter?.close();
-    _interpreter = null;
-    _isLoaded = false;
+    _isDisposed = true;
+    if (_loadCompleter != null && !_loadCompleter!.isCompleted) {
+      _loadCompleter!.complete(false);
+    }
+    _loadCompleter = null;
+    _closeAndClear();
     _lastError = null;
+    // Reset inference lock to a completed state so future classify() calls
+    // won't crash even if dispose() was invoked earlier.
+    _inferenceLock = Completer<void>()..complete();
     debugPrint('🧹 ML Model service disposed');
   }
 }

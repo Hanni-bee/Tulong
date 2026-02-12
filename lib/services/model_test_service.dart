@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
+import 'ai_detection_config.dart';
 import 'ml_model_service.dart';
 import 'disaster_classification_service.dart';
 import 'image_preprocessing_service.dart';
@@ -143,10 +144,8 @@ class ModelTestService {
         debugPrint('   Input: ${result['inputShape']} (${result['inputSize']} elements)');
         debugPrint('   Output: ${result['outputShape']} (${result['outputSize']} elements)');
         
-        // Verify expected sizes
-        final expectedInput = 224 * 224 * 3; // 150528
-        final expectedOutput = 4; // 4 classes
-        
+        final expectedInput = AIDetectionConfig.expectedInputPixels;
+        const expectedOutput = 4;
         if (result['inputSize'] == expectedInput) {
           debugPrint('   ✅ Input size correct: $expectedInput');
         } else {
@@ -182,8 +181,7 @@ class ModelTestService {
         };
       }
       
-      // Create dummy input (224x224x3 = 150528 values)
-      final dummyInput = Float32List(224 * 224 * 3);
+      final dummyInput = Float32List(AIDetectionConfig.expectedInputPixels);
       // Fill with small random values for testing
       for (int i = 0; i < dummyInput.length; i++) {
         dummyInput[i] = (i % 255) / 255.0;

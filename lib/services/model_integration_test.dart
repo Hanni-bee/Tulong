@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'ai_detection_config.dart';
 import 'image_preprocessing_service.dart';
 import 'ml_model_service.dart';
 import 'disaster_classification_service.dart';
@@ -170,15 +171,16 @@ class ModelIntegrationTest {
       final inputShape = mlService.inputShape;
       final outputShape = mlService.outputShape;
 
-      // Expected shapes
-      const expectedInputShape = [1, 224, 224, 3];
+      final h = AIDetectionConfig.modelInputHeight;
+      final w = AIDetectionConfig.modelInputWidth;
+      final expectedInputShape = [1, h, w, 3];
       const expectedOutputShape = [1, 4];
 
       final inputValid = inputShape != null &&
           inputShape.length == 4 &&
           inputShape[0] == 1 &&
-          inputShape[1] == 224 &&
-          inputShape[2] == 224 &&
+          inputShape[1] == h &&
+          inputShape[2] == w &&
           inputShape[3] == 3;
 
       final outputValid = outputShape != null &&
@@ -239,8 +241,8 @@ class ModelIntegrationTest {
         };
       }
 
-      // Create dummy preprocessed image if not provided
-      final testImage = preprocessedImage ?? Float32List(224 * 224 * 3);
+      final expectedPixels = AIDetectionConfig.expectedInputPixels;
+      final testImage = preprocessedImage ?? Float32List(expectedPixels);
       // Fill with random values in [0, 1] range
       for (int i = 0; i < testImage.length; i++) {
         testImage[i] = (i % 255) / 255.0;

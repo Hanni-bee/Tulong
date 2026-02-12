@@ -5,12 +5,13 @@ import 'package:flutter/foundation.dart';
 
 import '../models/emergency_type.dart';
 import '../models/emergency_detection_result.dart';
+import 'ai_detection_config.dart';
 import 'ml_model_service.dart';
 import 'image_preprocessing_service.dart';
 
-/// Service for ML-based disaster classification
-/// Uses TensorFlow Lite model trained on PyImageSearch natural disaster dataset
-/// Classifies images into: Flood, Wildfire, Earthquake, Cyclone
+/// Service for ML-based disaster classification.
+/// Uses TensorFlow Lite (PyImageSearch) to classify into: Flood, Wildfire, Earthquake, Cyclone.
+/// Detection is tuned via [AIDetectionConfig] (thresholds, min gap, entropy).
 class DisasterClassificationService {
   static DisasterClassificationService? _instance;
   static DisasterClassificationService get instance =>
@@ -21,17 +22,7 @@ class DisasterClassificationService {
   final MLModelService _mlService = MLModelService.instance;
   final ImagePreprocessingService _preprocessingService = ImagePreprocessingService();
 
-  // Model labels in order (as per PyImageSearch model output)
-  // Class Mapping: 0=Cyclone, 1=Earthquake, 2=Flood, 3=Wildfire
-  static const List<String> _modelLabels = [
-    'Cyclone',    // Index 0
-    'Earthquake', // Index 1
-    'Flood',      // Index 2
-    'Wildfire',   // Index 3
-  ];
-
-  // Confidence threshold below which we consider the prediction uncertain
-  static const double _minConfidenceThreshold = 0.3;
+  static List<String> get _modelLabels => AIDetectionConfig.modelLabels;
 
   // Debugging and status tracking
   int _inferenceCount = 0;
@@ -84,11 +75,12 @@ class DisasterClassificationService {
       debugPrint('⏳ Starting load at: ${_modelLoadTime?.toIso8601String()}');
       
       // Load model with timeout to prevent infinite hanging
+      final timeoutSecs = AIDetectionConfig.modelLoadTimeoutSeconds;
       final success = await _mlService.loadModel('best_model.tflite').timeout(
-        const Duration(seconds: 90),
+        Duration(seconds: timeoutSecs),
         onTimeout: () {
-          _lastError = 'Model loading timeout after 90 seconds';
-          debugPrint('❌ TIMEOUT: Model loading exceeded 90 seconds');
+          _lastError = 'Model loading timeout after $timeoutSecs seconds';
+          debugPrint('❌ TIMEOUT: Model loading exceeded $timeoutSecs seconds');
           debugPrint('   Possible causes:');
           debugPrint('   1. Model file is corrupted in APK');
           debugPrint('   2. Model file was compressed despite noCompress setting');
@@ -178,33 +170,48 @@ class DisasterClassificationService {
       }
       debugPrint('───────────────────────────────────────────────────────────');
 
-      // Step 1: Preprocess image (resize to 224x224, normalize to 0-1)
+      // Step 1: Preprocess image (validate + resize to model size, normalize 0-1)
       debugPrint('📐 Step 1: Preprocessing image...');
       final preprocessStart = DateTime.now();
-      final preprocessedImage = await _preprocessingService.preprocessImage(imagePath);
+      final preprocessResult = await _preprocessingService.preprocessImageWithResult(imagePath);
       final preprocessTime = DateTime.now().difference(preprocessStart);
 
-      if (preprocessedImage == null) {
-        _lastError = 'Failed to preprocess image';
-        debugPrint('❌ Failed to preprocess image');
+      if (!preprocessResult.isSuccess) {
+        _lastError = 'Preprocess failed: ${preprocessResult.errorCode ?? "unknown"}';
+        debugPrint('❌ Preprocess failed: ${preprocessResult.errorCode}');
         return _createErrorResult(imagePath);
       }
 
+      final preprocessedImage = preprocessResult.data!;
       debugPrint('✅ Preprocessing complete: ${preprocessedImage.length} pixels in ${preprocessTime.inMilliseconds}ms');
-      debugPrint('   Input shape: [1, 224, 224, 3] = ${224 * 224 * 3} values');
 
-      // Step 2: Run ML inference - DYNAMIC, NO CACHING
-      debugPrint('🧠 Step 2: Running ML inference (DYNAMIC - fresh inference every time)...');
+      // Step 2: Run ML inference (with optional TTA: flip + average)
+      debugPrint('🧠 Step 2: Running ML inference...');
       final inferenceStart = DateTime.now();
-      
-      // Clear any previous cached results to ensure dynamic processing
       _lastAllProbabilities = null;
-      
-      // Run fresh inference
-      final probabilities = await _mlService.classify(preprocessedImage);
-      final inferenceTime = DateTime.now().difference(inferenceStart);
 
-      if (probabilities == null || probabilities.isEmpty) {
+      List<double> probabilities;
+      if (AIDetectionConfig.enableTTA) {
+        final probs1 = await _mlService.classify(preprocessedImage);
+        final flipped = _flipPreprocessedImage(preprocessedImage);
+        final probs2 = flipped != null ? await _mlService.classify(flipped) : null;
+        if (probs1 == null || probs1.isEmpty) {
+          _lastError = 'ML inference returned null or empty';
+          debugPrint('❌ ML inference returned null or empty');
+          return _createErrorResult(imagePath);
+        }
+        if (probs2 != null && probs2.length == probs1.length) {
+          probabilities = List.generate(probs1.length, (i) => (probs1[i] + probs2[i]) / 2.0);
+          debugPrint('   TTA: averaged with flipped image');
+        } else {
+          probabilities = probs1;
+        }
+      } else {
+        probabilities = await _mlService.classify(preprocessedImage) ?? [];
+      }
+
+      final inferenceTime = DateTime.now().difference(inferenceStart);
+      if (probabilities.isEmpty) {
         _lastError = 'ML inference returned null or empty';
         debugPrint('❌ ML inference returned null or empty');
         return _createErrorResult(imagePath);
@@ -216,7 +223,7 @@ class DisasterClassificationService {
         debugPrint('   ${_modelLabels[i]}: ${probabilities[i].toStringAsFixed(6)}');
       }
 
-      // Step 3: Post-process output (find highest probability)
+      // Step 3: Post-process output (find highest probability, optional temperature)
       debugPrint('🔍 Step 3: Post-processing output...');
       final classification = _postProcessOutput(probabilities);
 
@@ -277,6 +284,25 @@ class DisasterClassificationService {
     }
   }
 
+  /// Horizontally flip preprocessed image (HxWx3 row-major) for TTA.
+  Float32List? _flipPreprocessedImage(Float32List input) {
+    if (input.length != AIDetectionConfig.expectedInputPixels) return null;
+    final w = AIDetectionConfig.modelInputWidth;
+    final h = AIDetectionConfig.modelInputHeight;
+    const c = 3;
+    final out = Float32List(input.length);
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        final src = (y * w + x) * c;
+        final dst = (y * w + (w - 1 - x)) * c;
+        out[dst] = input[src];
+        out[dst + 1] = input[src + 1];
+        out[dst + 2] = input[src + 2];
+      }
+    }
+    return out;
+  }
+
   /// Calculate hash of image file to verify dynamic processing
   Future<String> _calculateImageHash(String imagePath) async {
     try {
@@ -307,11 +333,7 @@ class DisasterClassificationService {
   Map<String, dynamic> _findBestPrediction(List<double> probabilities) {
     if (probabilities.isEmpty) {
       debugPrint('❌ Empty probabilities list');
-      return {
-        'label': 'No Emergency',
-        'confidence': EmergencyDetectionResult.defaultNoEmergencyConfidence,
-        'index': -1,
-      };
+      return _noEmergencyResult([]);
     }
 
     // Find the index with highest probability
@@ -376,16 +398,45 @@ class DisasterClassificationService {
       bestIndex = 0;
     }
 
-    // Handle low confidence predictions - use default 70-75% for "no emergency"
-    if (normalizedConfidence < _minConfidenceThreshold) {
-      debugPrint('⚠️ Low confidence prediction: ${normalizedConfidence.toStringAsFixed(3)} < $_minConfidenceThreshold');
-      debugPrint('   Returning "No Emergency" with default confidence');
-      return {
-        'label': 'No Emergency',
-        'confidence': EmergencyDetectionResult.defaultNoEmergencyConfidence,
-        'index': -1,
-        'allProbabilities': normalizedProbs,
-      };
+    // Optional temperature scaling (soften or sharpen the distribution)
+    final temp = AIDetectionConfig.temperatureScale;
+    if (temp > 0 && (temp - 1.0).abs() > 0.01) {
+      final invT = 1.0 / temp;
+      final scaled = normalizedProbs.map((p) => math.pow(p, invT).toDouble()).toList();
+      final sum = scaled.fold(0.0, (a, b) => a + b);
+      if (sum > 0) {
+        for (int i = 0; i < scaled.length; i++) scaled[i] = scaled[i] / sum;
+        normalizedProbs = scaled;
+        normalizedConfidence = normalizedProbs[bestIndex];
+      }
+    }
+
+    // Apply detection thresholds for reliable reporting
+    final minConf = AIDetectionConfig.minConfidenceToReport;
+    final minGap = AIDetectionConfig.minProbabilityGap;
+    final maxEnt = AIDetectionConfig.maxEntropyForReport;
+
+    if (normalizedConfidence < minConf) {
+      debugPrint('⚠️ Low confidence: ${(normalizedConfidence * 100).toStringAsFixed(1)}% < ${(minConf * 100).toStringAsFixed(0)}% → No Emergency');
+      return _noEmergencyResult(normalizedProbs);
+    }
+
+    // Require clear lead over second class (avoids ties/uncertainty)
+    double gap = 0.0;
+    if (normalizedProbs.length > 1) {
+      final sorted = List<double>.from(normalizedProbs)..sort((a, b) => b.compareTo(a));
+      gap = sorted[0] - sorted[1];
+    }
+    if (gap < minGap) {
+      debugPrint('⚠️ Probability gap too small: ${(gap * 100).toStringAsFixed(1)}% < ${(minGap * 100).toStringAsFixed(0)}% → No Emergency');
+      return _noEmergencyResult(normalizedProbs);
+    }
+
+    // Reject high-entropy (uniform) predictions
+    final entropy = _computeEntropy(normalizedProbs);
+    if (entropy > maxEnt) {
+      debugPrint('⚠️ High uncertainty (entropy ${entropy.toStringAsFixed(3)} > $maxEnt) → No Emergency');
+      return _noEmergencyResult(normalizedProbs);
     }
 
     final selectedLabel = _modelLabels[bestIndex];
@@ -397,6 +448,25 @@ class DisasterClassificationService {
       'index': bestIndex,
       'allProbabilities': normalizedProbs,
     };
+  }
+
+  Map<String, dynamic> _noEmergencyResult(List<double> allProbabilities) {
+    return {
+      'label': 'No Emergency',
+      'confidence': AIDetectionConfig.defaultNoEmergencyConfidence,
+      'index': -1,
+      'allProbabilities': allProbabilities,
+    };
+  }
+
+  /// Entropy of probability distribution (0 = certain, ln(4)≈1.39 = uniform over 4 classes)
+  double _computeEntropy(List<double> probs) {
+    if (probs.isEmpty) return 0.0;
+    double h = 0.0;
+    for (final p in probs) {
+      if (p > 0.0 && p < 1.0) h -= p * math.log(p);
+    }
+    return h;
   }
 
   /// Apply softmax normalization to probabilities
@@ -487,7 +557,7 @@ class DisasterClassificationService {
     return EmergencyDetectionResult(
       type: EmergencyType.noEmergency,
       severity: SeverityLevel.low,
-      confidence: EmergencyDetectionResult.defaultNoEmergencyConfidence,
+      confidence: AIDetectionConfig.defaultNoEmergencyConfidence,
       timestamp: DateTime.now(),
       imagePath: imagePath,
     );

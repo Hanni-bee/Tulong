@@ -178,26 +178,35 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
     }
   }
 
-  /// Load ML disaster classification model - ENHANCED with proper state management
+  /// Step 1: Load ML model (or use already-loaded from app init). Step 2: classification uses it when ready.
   Future<void> _loadMLModel() async {
-    // Prevent multiple simultaneous loads
-    if (_isMLModelLoading || _isMLModelLoaded) {
-      debugPrint('⚠️ Model loading already in progress or already loaded');
+    // If already loaded (e.g. by app init preload), just sync state
+    if (_mlClassificationService.isModelLoaded) {
+      if (mounted && !_isMLModelLoaded) {
+        setState(() {
+          _isMLModelLoaded = true;
+          _isMLModelLoading = false;
+        });
+      }
+      debugPrint('✅ ML model already loaded (ready for detection)');
       return;
     }
-    
+    if (_isMLModelLoading) {
+      debugPrint('⚠️ Model load already in progress');
+      return;
+    }
+
     if (mounted) {
       setState(() {
         _isMLModelLoading = true;
-        _isMLModelLoaded = false; // Reset to ensure clean state
+        _isMLModelLoaded = false;
       });
     }
-    
+
     try {
-      debugPrint('🔄 Loading ML model directly...');
-      debugPrint('⏳ This may take 10-30 seconds for the ~14.5 MB model...');
-      
-      // Load model with timeout to prevent infinite hanging
+      debugPrint('🔄 Loading ML model (first load or retry)...');
+
+      // Single load path: MLModelService enforces one load at a time; others wait
       final loaded = await _mlClassificationService.loadModel().timeout(
         const Duration(seconds: 90),
         onTimeout: () {
@@ -563,15 +572,17 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
       EmergencyDetectionResult result;
       Map<String, dynamic>? detailedAssessment;
 
-      if (_isMLModelLoaded && _mlClassificationService.isModelLoaded) {
-        debugPrint('🔍 Using ML classification');
+      // Use ML only when model is loaded (integrate after load)
+      final bool useML = _isMLModelLoaded && _mlClassificationService.isModelLoaded;
+      if (useML) {
+        debugPrint('🔍 Running ML classification (model loaded)');
         result = await _mlClassificationService.classifyDisaster(imagePath);
         detailedAssessment = _mlClassificationService.getDetailedAssessment(
           result.type,
           result.confidence,
         );
       } else {
-        debugPrint('🔍 Using fallback detection');
+        debugPrint('🔍 Model not ready; using rule-based fallback');
         final preprocessed = await _preprocessingService.preprocessImage(imagePath);
         
         if (preprocessed == null) {

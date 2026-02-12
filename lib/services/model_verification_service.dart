@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'ai_detection_config.dart';
 import 'ml_model_service.dart';
 import 'disaster_classification_service.dart';
 import 'image_preprocessing_service.dart';
@@ -207,9 +208,8 @@ class ModelVerificationService {
           ? outputShape.sublist(1).reduce((a, b) => a * b)
           : outputShape.reduce((a, b) => a * b);
       
-      // Expected values
-      final expectedInput = 224 * 224 * 3; // 150528
-      final expectedOutput = 4; // 4 classes
+      final expectedInput = AIDetectionConfig.expectedInputPixels; // 180x180x3
+      const expectedOutput = 4;
       
       final inputValid = inputSize == expectedInput;
       final outputValid = outputSize == expectedOutput;
@@ -252,15 +252,13 @@ class ModelVerificationService {
         };
       }
       
-      // Create dummy input (224x224x3 = 150528 values)
-      final dummyInput = Float32List(224 * 224 * 3);
-      // Fill with normalized values (0-1 range)
+      final expectedPixels = AIDetectionConfig.expectedInputPixels;
+      final dummyInput = Float32List(expectedPixels);
       for (int i = 0; i < dummyInput.length; i++) {
         dummyInput[i] = (i % 255) / 255.0;
       }
-      
       debugPrint('🧪 Running dummy inference...');
-      debugPrint('   Input size: ${dummyInput.length} (224x224x3)');
+      debugPrint('   Input size: ${dummyInput.length} (${AIDetectionConfig.modelInputHeight}x${AIDetectionConfig.modelInputWidth}x3)');
       
       final startTime = DateTime.now();
       final output = await _mlService.classify(dummyInput);
@@ -319,7 +317,7 @@ class ModelVerificationService {
       
       // Verify preprocessing constants
       final targetSize = ImagePreprocessingService.targetSize;
-      final expectedSize = targetSize * targetSize * 3; // 224 * 224 * 3 = 150528
+      final expectedSize = AIDetectionConfig.expectedInputPixels;
       
       debugPrint('   Target size: ${targetSize}x${targetSize}');
       debugPrint('   Expected output: $expectedSize values (${targetSize}x${targetSize}x3)');

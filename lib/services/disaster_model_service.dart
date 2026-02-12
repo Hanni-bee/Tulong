@@ -3,31 +3,23 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:tflite_flutter/tflite_flutter.dart' as tflite;
 
-/// Disaster Model Service - Singleton service for loading and running TFLite model
-/// Based on PyImageSearch VGG16 natural disaster detection model
-/// 
-/// Model Specifications:
-/// - Architecture: VGG16-based (pre-trained on ImageNet, fine-tuned for natural disasters)
-/// - Input: 224x224 RGB image, normalized [0, 1], shape [1, 224, 224, 3]
-/// - Input dtype: float32
-/// - Output: 4-class softmax probabilities [Cyclone, Earthquake, Flood, Wildfire]
-/// - Output shape: [1, 4]
-/// - Output dtype: float32
-/// - Class Mapping: 0=Cyclone, 1=Earthquake, 2=Flood, 3=Wildfire
+import 'ai_detection_config.dart';
+
+/// Legacy/alternate disaster model service (same asset as MLModelService).
+/// Uses best_model.tflite: 180x180 RGB, normalized [0,1], output [1, 4] (Cyclone, Earthquake, Flood, Wildfire).
 class DisasterModelService {
   static DisasterModelService? _instance;
   static DisasterModelService get instance => _instance ??= DisasterModelService._();
-  
+
   DisasterModelService._();
-  
+
   tflite.Interpreter? _interpreter;
   bool _isLoaded = false;
   String? _lastError;
-  
-  // Model specifications
-  static const String _modelPath = 'best_model.tflite'; // Located in assets/
-  static const int _inputSize = 224;
-  static const int _inputChannels = 3; // RGB
+
+  static const String _modelPath = 'best_model.tflite';
+  static int get _inputSize => AIDetectionConfig.modelInputHeight;
+  static const int _inputChannels = 3;
   static const int _numClasses = 4;
   
   // Class labels in order (matching model output indices)
@@ -44,7 +36,7 @@ class DisasterModelService {
   /// Get last error message
   String? get lastError => _lastError;
   
-  /// Get model input shape [1, 224, 224, 3]
+  /// Get model input shape [1, H, W, 3] (e.g. [1, 180, 180, 3])
   List<int>? get inputShape {
     if (_interpreter == null) return null;
     try {
@@ -66,7 +58,7 @@ class DisasterModelService {
     }
   }
   
-  /// Get input size (224)
+  /// Get input size (180)
   int get inputSize => _inputSize;
   
   /// Get number of classes (4)
@@ -196,26 +188,16 @@ class DisasterModelService {
   
   /// Run inference on preprocessed image
   /// 
-  /// [preprocessedImage] - Float32List of shape [224*224*3] = 150,528 values
-  ///                       Normalized [0, 1], RGB channel order
-  /// 
-  /// Returns Map with:
-  /// - predicted_class: int (0-3)
-  /// - class_name: String (Cyclone, Earthquake, Flood, or Wildfire)
-  /// - confidence: double (0.0 to 1.0)
-  /// - all_probabilities: Map<String, double> with all 4 class probabilities
-  /// 
-  /// Returns null if inference fails
+  /// [preprocessedImage] - Float32List HxWx3 normalized [0,1] RGB (e.g. 180x180x3 = 97200 values).
+  /// Returns predicted class, name, confidence, and all probabilities; null on failure.
   Map<String, dynamic>? predict(Float32List preprocessedImage) {
     if (!isLoaded || _interpreter == null) {
       debugPrint('❌ Model not loaded, cannot run inference');
       _lastError = 'Model not loaded';
       return null;
     }
-    
     try {
-      // Verify input size
-      final expectedSize = _inputSize * _inputSize * _inputChannels; // 224 * 224 * 3 = 150,528
+      final expectedSize = AIDetectionConfig.expectedInputPixels;
       if (preprocessedImage.length != expectedSize) {
         debugPrint('❌ Input size mismatch: expected $expectedSize, got ${preprocessedImage.length}');
         _lastError = 'Input size mismatch: expected $expectedSize, got ${preprocessedImage.length}';
