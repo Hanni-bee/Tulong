@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../constants/app_colors.dart';
+import '../constants/severity_colors.dart';
 import '../constants/soft_ui_design.dart';
 import '../utils/theme_colors.dart';
+
+/// Variant for the alert card: emergency (red, severity, EMERGENCY pill) or tips (orange, preparedness).
+enum EmergencyAlertVariant { emergency, tips }
 
 class EmergencyAlertWidget extends StatefulWidget {
   final String title;
@@ -11,6 +15,7 @@ class EmergencyAlertWidget extends StatefulWidget {
   final VoidCallback? onTap;
   final bool showGif;
   final String? gifPath;
+  final EmergencyAlertVariant variant;
 
   const EmergencyAlertWidget({
     super.key,
@@ -20,6 +25,7 @@ class EmergencyAlertWidget extends StatefulWidget {
     this.onTap,
     this.showGif = false,
     this.gifPath,
+    this.variant = EmergencyAlertVariant.emergency,
   });
 
   @override
@@ -155,8 +161,8 @@ class _EmergencyAlertWidgetState extends State<EmergencyAlertWidget>
 
   @override
   Widget build(BuildContext context) {
-    // Use app's red theme for emergency
-    final emergencyColor = AppColors.primaryRed;
+    final isTips = widget.variant == EmergencyAlertVariant.tips;
+    final emergencyColor = isTips ? DisasterTypeColors.general : AppColors.primaryRed;
     
     return AnimatedBuilder(
       animation: Listenable.merge([_pulseAnimation, _pressScaleAnimation, _pressElevationAnimation, _enterAnimation, _slideAnimation]),
@@ -265,22 +271,28 @@ class _EmergencyAlertWidgetState extends State<EmergencyAlertWidget>
                                             width: 1,
                                           ),
                                         ),
-                                        child: ClipRRect(
-                                          borderRadius: BorderRadius.circular(6),
-                                          child: Image.asset(
-                                            'assets/images/app_logo (3).png',
-                                            width: 28,
-                                            height: 28,
-                                            fit: BoxFit.contain,
-                                            errorBuilder: (context, error, stackTrace) {
-                                              return Icon(
-                                                Icons.emergency,
+                                        child: isTips
+                                            ? Icon(
+                                                Icons.tips_and_updates_rounded,
                                                 color: emergencyColor,
-                                                size: 24,
-                                              );
-                                            },
-                                          ),
-                                        ),
+                                                size: 28,
+                                              )
+                                            : ClipRRect(
+                                                borderRadius: BorderRadius.circular(6),
+                                                child: Image.asset(
+                                                  'assets/images/app_logo (3).png',
+                                                  width: 28,
+                                                  height: 28,
+                                                  fit: BoxFit.contain,
+                                                  errorBuilder: (context, error, stackTrace) {
+                                                    return Icon(
+                                                      Icons.emergency,
+                                                      color: emergencyColor,
+                                                      size: 24,
+                                                    );
+                                                  },
+                                                ),
+                                              ),
                                       ),
                                     ),
                                   );
@@ -303,87 +315,123 @@ class _EmergencyAlertWidgetState extends State<EmergencyAlertWidget>
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                     const SizedBox(height: 6),
-                                    // Severity badge - Neumorphic style with subtle pulse
-                                    AnimatedBuilder(
-                                      animation: _iconPulseController,
-                                      builder: (context, child) {
-                                        return Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                          decoration: BoxDecoration(
-                                            color: emergencyColor.withOpacity(0.1),
-                                            borderRadius: BorderRadius.circular(8),
-                                            border: Border.all(
-                                              color: emergencyColor.withOpacity(0.2 + 0.1 * (_iconPulseAnimation.value - 1.0) / 0.08),
-                                              width: 1,
+                                    if (!isTips)
+                                      AnimatedBuilder(
+                                        animation: _iconPulseController,
+                                        builder: (context, child) {
+                                          return Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                            decoration: BoxDecoration(
+                                              color: emergencyColor.withOpacity(0.1),
+                                              borderRadius: BorderRadius.circular(8),
+                                              border: Border.all(
+                                                color: emergencyColor.withOpacity(0.2 + 0.1 * (_iconPulseAnimation.value - 1.0) / 0.08),
+                                                width: 1,
+                                              ),
                                             ),
-                                          ),
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Container(
-                                                width: 6,
-                                                height: 6,
-                                                decoration: BoxDecoration(
-                                                  color: emergencyColor,
-                                                  shape: BoxShape.circle,
-                                                  boxShadow: [
-                                                    BoxShadow(
-                                                      color: emergencyColor.withOpacity(0.6 * (_iconPulseAnimation.value - 1.0) / 0.08),
-                                                      blurRadius: 4,
-                                                      spreadRadius: 1,
-                                                    ),
-                                                  ],
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Container(
+                                                  width: 6,
+                                                  height: 6,
+                                                  decoration: BoxDecoration(
+                                                    color: emergencyColor,
+                                                    shape: BoxShape.circle,
+                                                    boxShadow: [
+                                                      BoxShadow(
+                                                        color: emergencyColor.withOpacity(0.6 * (_iconPulseAnimation.value - 1.0) / 0.08),
+                                                        blurRadius: 4,
+                                                        spreadRadius: 1,
+                                                      ),
+                                                    ],
+                                                  ),
                                                 ),
-                                              ),
-                                              const SizedBox(width: 6),
-                                              Text(
-                                                'Severity: ${widget.severity.toUpperCase()}',
-                                                style: TextStyle(
-                                                  fontSize: 11,
-                                                  fontWeight: FontWeight.w600,
-                                                  color: emergencyColor,
-                                                  letterSpacing: 0.3,
+                                                const SizedBox(width: 6),
+                                                Text(
+                                                  'Severity: ${widget.severity.toUpperCase()}',
+                                                  style: TextStyle(
+                                                    fontSize: 11,
+                                                    fontWeight: FontWeight.w600,
+                                                    color: emergencyColor,
+                                                    letterSpacing: 0.3,
+                                                  ),
                                                 ),
-                                              ),
-                                            ],
+                                              ],
+                                            ),
+                                          );
+                                        },
+                                      ),
+                                    if (isTips)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: emergencyColor.withOpacity(0.12),
+                                          borderRadius: BorderRadius.circular(8),
+                                          border: Border.all(color: emergencyColor.withOpacity(0.25), width: 1),
+                                        ),
+                                        child: Text(
+                                          'Preparedness',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w600,
+                                            color: emergencyColor,
+                                            letterSpacing: 0.2,
                                           ),
-                                        );
-                                      },
-                                    ),
+                                        ),
+                                      ),
                                   ],
                                 ),
                               ),
-                              // Emergency badge - Neumorphic style
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                    colors: [
-                                      emergencyColor,
-                                      emergencyColor.withOpacity(0.8),
+                              if (!isTips)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                      colors: [
+                                        emergencyColor,
+                                        emergencyColor.withOpacity(0.8),
+                                      ],
+                                    ),
+                                    borderRadius: BorderRadius.circular(10),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: emergencyColor.withOpacity(0.3),
+                                        blurRadius: 4,
+                                        offset: const Offset(0, 2),
+                                      ),
                                     ],
                                   ),
-                                  borderRadius: BorderRadius.circular(10),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: emergencyColor.withOpacity(0.3),
-                                      blurRadius: 4,
-                                      offset: const Offset(0, 2),
+                                  child: Text(
+                                    'EMERGENCY',
+                                    style: TextStyle(
+                                      color: ThemeColors.textWhite(context),
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.w700,
+                                      letterSpacing: 1.2,
                                     ),
-                                  ],
-                                ),
-                                child: Text(
-                                  'EMERGENCY',
-                                  style: TextStyle(
-                                    color: ThemeColors.textWhite(context),
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.w700,
-                                    letterSpacing: 1.2,
                                   ),
                                 ),
-                              ),
+                              if (isTips)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: emergencyColor.withOpacity(0.2),
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(color: emergencyColor.withOpacity(0.4), width: 1),
+                                  ),
+                                  child: Text(
+                                    'Tips',
+                                    style: TextStyle(
+                                      color: emergencyColor,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                      letterSpacing: 0.5,
+                                    ),
+                                  ),
+                                ),
                             ],
                           ),
                             
@@ -475,7 +523,7 @@ class _EmergencyAlertWidgetState extends State<EmergencyAlertWidget>
                                           ),
                                           const SizedBox(width: 10),
                                           Text(
-                                            'Tap for more information',
+                                            isTips ? 'See tips' : 'Tap for more information',
                                             style: TextStyle(
                                               color: emergencyColor,
                                               fontWeight: FontWeight.w600,

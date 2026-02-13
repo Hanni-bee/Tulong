@@ -54,3 +54,37 @@ class SeverityColors {
     }
   }
 }
+
+/// Single source of truth for disaster/emergency type colors.
+/// Use for modal header, profile status card, send button, etc. (adaptive theming).
+class DisasterTypeColors {
+  DisasterTypeColors._();
+
+  static const Color noEmergency = Color(0xFF4CAF50);   // Green – safe
+  static const Color flood = Color(0xFF1976D2);          // Blue
+  static const Color earthquake = Color(0xFF5D4037);     // Brown
+  static const Color fire = Color(0xFFD32F2F);           // Red
+  static const Color calamity = Color(0xFFE65100);       // Deep Orange
+  static const Color accident = Color(0xFF7B1FA2);       // Purple
+  static const Color general = Color(0xFFF57C00);       // Orange
+
+  /// Returns the canonical color for an emergency type (urgent but distinct).
+  static Color color(EmergencyType type) {
+    switch (type) {
+      case EmergencyType.noEmergency:
+        return noEmergency;
+      case EmergencyType.flood:
+        return flood;
+      case EmergencyType.earthquake:
+        return earthquake;
+      case EmergencyType.fire:
+        return fire;
+      case EmergencyType.calamity:
+        return calamity;
+      case EmergencyType.accident:
+        return accident;
+      case EmergencyType.general:
+        return general;
+    }
+  }
+}

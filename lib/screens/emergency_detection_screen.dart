@@ -6,6 +6,7 @@ import 'package:camera/camera.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/app_colors.dart';
+import '../constants/storage_keys.dart';
 import '../constants/severity_colors.dart';
 import '../constants/app_typography.dart';
 import '../utils/theme_colors.dart';
@@ -173,6 +174,7 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _initializeCamera();
+      _updateCooldownState();
     } else if (state == AppLifecycleState.paused) {
       _cameraService.dispose();
     }
@@ -639,7 +641,7 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
   }
 
   void _showDetectionResult(EmergencyDetectionResult result, [Map<String, dynamic>? detailedAssessment]) {
-    // Ensure "no emergency" has low severity
+    // Ensure "no emergency" has low severity; preserve failureReason (e.g. image too dark)
     final adjustedResult = result.type == EmergencyType.noEmergency
         ? EmergencyDetectionResult(
             type: result.type,
@@ -647,6 +649,8 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
             confidence: result.confidence,
             timestamp: result.timestamp,
             imagePath: result.imagePath,
+            failureReason: result.failureReason,
+            probabilityBreakdown: result.probabilityBreakdown,
           )
         : result;
     
@@ -654,6 +658,7 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
     // Now showing full analysis dialog for ALL results including "No Emergency"
     // This allows users to view analysis and send to chat even for "No Emergency"
     
+    final typeColor = DisasterTypeColors.color(adjustedResult.type);
     final severityColor = SeverityColors.color(adjustedResult.severity);
     final dateFormat = DateFormat('MMM dd, yyyy');
     final timeFormat = DateFormat('hh:mm:ss a');
@@ -662,10 +667,25 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
       context: context,
       barrierColor: Colors.black54,
       builder: (dialogContext) {
+        // One-time tip: Re-analyze (QoL6)
+        WidgetsBinding.instance.addPostFrameCallback((_) async {
+          final prefs = await SharedPreferences.getInstance();
+          if (prefs.getBool(StorageKeys.emergencyTipReanalyzeShown) == true) return;
+          await prefs.setBool(StorageKeys.emergencyTipReanalyzeShown, true);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Text('Tip: Use Re-analyze to run the AI again on the same photo.'),
+                duration: const Duration(seconds: 3),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
+        });
         final screenSize = MediaQuery.of(dialogContext).size;
         final isSmallScreen = screenSize.width < 360;
         final isLargeScreen = screenSize.width > 600;
-        
+        // B.4: Radius convention – dialog 24, cards 20, inner 12–14, buttons 14
         return Dialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
           insetPadding: EdgeInsets.symmetric(
@@ -693,25 +713,58 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Header with solid severity color (no gradient)
+                // Header with disaster-type color; red accent when real emergency so urgency is clear
                 Container(
                   padding: EdgeInsets.symmetric(
                     horizontal: isSmallScreen ? 18 : 22,
                     vertical: isSmallScreen ? 16 : 20,
                   ),
                   decoration: BoxDecoration(
-                    color: severityColor,
+                    color: typeColor,
+                    border: adjustedResult.type.isRealEmergency
+                        ? Border(
+                            top: BorderSide(
+                              color: SeverityColors.critical,
+                              width: 4,
+                            ),
+                          )
+                        : null,
                     boxShadow: [
                       BoxShadow(
-                        color: severityColor.withOpacity(0.3),
+                        color: typeColor.withOpacity(0.3),
                         blurRadius: 12,
                         offset: const Offset(0, 3),
                       ),
+                      if (adjustedResult.type.isRealEmergency)
+                        BoxShadow(
+                          color: SeverityColors.critical.withOpacity(0.4),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
                     ],
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      if (adjustedResult.type.isRealEmergency) ...[
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.warning_amber_rounded, color: Colors.white, size: isSmallScreen ? 14 : 16),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Action required',
+                              style: TextStyle(
+                                fontSize: isSmallScreen ? 11 : 12,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.white,
+                                letterSpacing: 0.3,
+                              ),
+                            ),
+                          ],
+                        ),
+                        SizedBox(height: isSmallScreen ? 8 : 10),
+                      ],
                       Row(
                         children: [
                           Container(
@@ -790,14 +843,18 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                             ),
                           ),
                           // Close button (upper right)
-                          IconButton(
-                            onPressed: () => Navigator.pop(dialogContext),
-                            icon: const Icon(Icons.close_rounded),
-                            color: Colors.white,
-                            style: IconButton.styleFrom(
-                              backgroundColor: Colors.white.withOpacity(0.2),
-                              padding: const EdgeInsets.all(8),
-                              minimumSize: const Size(40, 40),
+                          Semantics(
+                            button: true,
+                            label: 'Close',
+                            child: IconButton(
+                              onPressed: () => Navigator.pop(dialogContext),
+                              icon: const Icon(Icons.close_rounded),
+                              color: Colors.white,
+                              style: IconButton.styleFrom(
+                                backgroundColor: Colors.white.withOpacity(0.2),
+                                padding: const EdgeInsets.all(8),
+                                minimumSize: const Size(48, 48),
+                              ),
                             ),
                           ),
                         ],
@@ -861,7 +918,7 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                           isSmallScreen ? 16 : 20,
                           isSmallScreen ? 16 : 20,
                           isSmallScreen ? 16 : 20,
-                          isSmallScreen ? 28 : 32,
+                          isSmallScreen ? 32 : 40,
                         ),
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
@@ -905,27 +962,31 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                             ),
                             SizedBox(height: isSmallScreen ? 16 : 20),
                           ] else if (adjustedResult.type == EmergencyType.noEmergency && _isMLModelLoaded) ...[
-                            // Show basic info for "No Emergency" - theme-aware
+                            // Show message: either "No emergency" or preprocess failure (e.g. image too dark)
                             Container(
                               padding: EdgeInsets.all(isSmallScreen ? 14 : 16),
                               decoration: BoxDecoration(
-                                color: ThemeColors.success(dialogContext).withOpacity(ThemeColors.isDark(dialogContext) ? 0.2 : 0.12),
+                                color: adjustedResult.isPreprocessFailure
+                                    ? ThemeColors.textTertiary(dialogContext).withOpacity(ThemeColors.isDark(dialogContext) ? 0.2 : 0.12)
+                                    : ThemeColors.success(dialogContext).withOpacity(ThemeColors.isDark(dialogContext) ? 0.2 : 0.12),
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
-                                  color: ThemeColors.success(dialogContext).withOpacity(ThemeColors.isDark(dialogContext) ? 0.5 : 0.35),
+                                  color: adjustedResult.isPreprocessFailure
+                                      ? ThemeColors.textTertiary(dialogContext).withOpacity(0.4)
+                                      : ThemeColors.success(dialogContext).withOpacity(ThemeColors.isDark(dialogContext) ? 0.5 : 0.35),
                                 ),
                               ),
                               child: Row(
                                 children: [
                                   Icon(
-                                    Icons.check_circle,
-                                    color: ThemeColors.success(dialogContext),
+                                    adjustedResult.isPreprocessFailure ? Icons.info_outline_rounded : Icons.check_circle,
+                                    color: adjustedResult.isPreprocessFailure ? ThemeColors.textSecondary(dialogContext) : ThemeColors.success(dialogContext),
                                     size: 24,
                                   ),
                                   SizedBox(width: 12),
                                   Expanded(
                                     child: Text(
-                                      'No emergency detected. Area appears safe.',
+                                      adjustedResult.failureReason ?? 'No emergency detected. Area appears safe.',
                                       style: AppTypography.bodyMedium.copyWith(
                                         color: ThemeColors.textPrimary(dialogContext),
                                         fontWeight: FontWeight.w500,
@@ -1078,6 +1139,148 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                               ),
                             ),
                           ],
+                          // Detection tips (A.3)
+                          Padding(
+                            padding: EdgeInsets.only(top: isSmallScreen ? 12 : 16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  'For better results:',
+                                  style: AppTypography.labelLarge.copyWith(
+                                    color: ThemeColors.textSecondary(dialogContext),
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Icon(Icons.light_mode_outlined, size: 18, color: ThemeColors.textTertiary(dialogContext)),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        'Good lighting',
+                                        style: AppTypography.bodySmall.copyWith(color: ThemeColors.textSecondary(dialogContext)),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 4),
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Icon(Icons.camera_alt_outlined, size: 18, color: ThemeColors.textTertiary(dialogContext)),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        'Include the hazard in frame',
+                                        style: AppTypography.bodySmall.copyWith(color: ThemeColors.textSecondary(dialogContext)),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 4),
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Icon(Icons.blur_off_outlined, size: 18, color: ThemeColors.textTertiary(dialogContext)),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        'Avoid blur',
+                                        style: AppTypography.bodySmall.copyWith(color: ThemeColors.textSecondary(dialogContext)),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                          SizedBox(height: isSmallScreen ? 12 : 16),
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: Text(
+                              'This is an AI estimate. Use your judgment and report to authorities when needed.',
+                              style: AppTypography.bodySmall.copyWith(
+                                color: ThemeColors.textTertiary(dialogContext),
+                                fontStyle: FontStyle.italic,
+                              ),
+                            ),
+                          ),
+                          // Local feedback: Was this correct? (A.5)
+                          StatefulBuilder(
+                            builder: (context, setDialogState) {
+                              return FutureBuilder<bool>(
+                                future: _historyService.hasFeedbackForDetection(
+                                  imagePath: adjustedResult.imagePath,
+                                  timestamp: adjustedResult.timestamp,
+                                ),
+                                builder: (context, snapshot) {
+                                  final alreadySent = snapshot.data == true;
+                                  if (alreadySent) {
+                                    return Padding(
+                                      padding: const EdgeInsets.only(top: 12, bottom: 8),
+                                      child: Text(
+                                        'Thanks for your feedback.',
+                                        style: AppTypography.bodySmall.copyWith(
+                                          color: ThemeColors.textTertiary(dialogContext),
+                                          fontStyle: FontStyle.italic,
+                                        ),
+                                      ),
+                                    );
+                                  }
+                                  return Padding(
+                                    padding: const EdgeInsets.only(top: 12, bottom: 8),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          'Was this assessment correct?',
+                                          style: AppTypography.bodySmall.copyWith(
+                                            color: ThemeColors.textSecondary(dialogContext),
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Row(
+                                          children: [
+                                            TextButton.icon(
+                                              onPressed: () async {
+                                                await _historyService.saveDetectionFeedback(
+                                                  imagePath: adjustedResult.imagePath,
+                                                  timestamp: adjustedResult.timestamp,
+                                                  correct: true,
+                                                );
+                                                setDialogState(() {});
+                                              },
+                                              icon: Icon(Icons.thumb_up_outlined, size: 18, color: ThemeColors.success(dialogContext)),
+                                              label: Text('Yes', style: TextStyle(color: ThemeColors.success(dialogContext), fontWeight: FontWeight.w600)),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            TextButton.icon(
+                                              onPressed: () async {
+                                                await _historyService.saveDetectionFeedback(
+                                                  imagePath: adjustedResult.imagePath,
+                                                  timestamp: adjustedResult.timestamp,
+                                                  correct: false,
+                                                );
+                                                setDialogState(() {});
+                                              },
+                                              icon: Icon(Icons.thumb_down_outlined, size: 18, color: ThemeColors.error(dialogContext)),
+                                              label: Text('No', style: TextStyle(color: ThemeColors.error(dialogContext), fontWeight: FontWeight.w600)),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              );
+                            },
+                          ),
                           ],
                         ),
                       ),
@@ -1085,9 +1288,9 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                   ),
                 ),
                 
-                // Actions - same size and shape for both buttons
+                // Actions - Not an Emergency, Re-analyze (when ML + image), Send/Try Again
                 Container(
-                  padding: EdgeInsets.fromLTRB(isSmallScreen ? 14 : 18, 12, isSmallScreen ? 14 : 18, isSmallScreen ? 16 : 20),
+                  padding: EdgeInsets.fromLTRB(isSmallScreen ? 12 : 16, 12, isSmallScreen ? 12 : 16, isSmallScreen ? 16 : 20),
                   decoration: BoxDecoration(
                     color: ThemeColors.surfaceContainer(dialogContext),
                     border: Border(
@@ -1098,59 +1301,105 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                     children: [
                       Expanded(
                         child: SizedBox(
-                          height: isSmallScreen ? 48 : 52,
+                          height: 48,
                           child: OutlinedButton.icon(
                             onPressed: () {
                               Navigator.pop(dialogContext);
-                              _reportFalsePositive(result);
+                              _confirmReportFalsePositive(result);
                             },
-                            icon: Icon(Icons.close_rounded, size: isSmallScreen ? 18 : 20),
+                            icon: Icon(Icons.close_rounded, size: isSmallScreen ? 16 : 18),
                             label: FittedBox(
                               fit: BoxFit.scaleDown,
                               child: Text(
                                 'Not an Emergency',
-                                style: AppTypography.labelLarge.copyWith(
+                                style: AppTypography.bodyMedium.copyWith(
                                   fontWeight: FontWeight.w600,
                                   fontSize: isSmallScreen ? 11 : 13,
                                   color: ThemeColors.textPrimary(dialogContext),
                                 ),
+                                maxLines: 1,
                               ),
                             ),
                             style: OutlinedButton.styleFrom(
                               foregroundColor: ThemeColors.textPrimary(dialogContext),
                               side: BorderSide(color: ThemeColors.border(dialogContext)),
-                              padding: EdgeInsets.symmetric(horizontal: 12, vertical: 0),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                              padding: EdgeInsets.symmetric(horizontal: 6, vertical: 0),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                             ),
                           ),
                         ),
                       ),
-                      SizedBox(width: isSmallScreen ? 10 : 12),
+                      if (adjustedResult.imagePath != null && _isMLModelLoaded) ...[
+                        SizedBox(width: isSmallScreen ? 6 : 8),
+                        SizedBox(
+                          height: 48,
+                          child: TextButton.icon(
+                            onPressed: () async {
+                              Navigator.pop(dialogContext);
+                              if (adjustedResult.imagePath == null || !_isMLModelLoaded || !mounted) return;
+                              setState(() => _isProcessing = true);
+                              try {
+                                final newResult = await _mlClassificationService.classifyDisaster(adjustedResult.imagePath!);
+                                final newAssessment = _mlClassificationService.getDetailedAssessment(newResult.type, newResult.confidence);
+                                if (!mounted) return;
+                                await _historyService.saveDetection(newResult);
+                                await _loadHistory();
+                                _showDetectionResult(newResult, newAssessment);
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: const Text('Analysis updated.'),
+                                      backgroundColor: AppColors.success,
+                                      duration: const Duration(seconds: 2),
+                                    ),
+                                  );
+                                }
+                              } finally {
+                                if (mounted) setState(() => _isProcessing = false);
+                              }
+                            },
+                            icon: Icon(Icons.refresh_rounded, size: 16, color: ThemeColors.primary(dialogContext)),
+                            label: Text(
+                              'Re-analyze',
+                              style: AppTypography.bodyMedium.copyWith(
+                                fontWeight: FontWeight.w600,
+                                fontSize: isSmallScreen ? 11 : 12,
+                                color: ThemeColors.primary(dialogContext),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                      SizedBox(width: isSmallScreen ? 6 : 8),
                       Expanded(
                         child: SizedBox(
-                          height: isSmallScreen ? 48 : 52,
+                          height: 48,
                           child: ElevatedButton.icon(
                             onPressed: () {
                               Navigator.pop(dialogContext);
-                              _sendToChat(result);
+                              if (!adjustedResult.isPreprocessFailure) _sendToChat(result);
                             },
-                            icon: Icon(Icons.send_rounded, size: isSmallScreen ? 18 : 20),
+                            icon: Icon(adjustedResult.isPreprocessFailure ? Icons.refresh_rounded : Icons.send_rounded, size: isSmallScreen ? 16 : 18),
                             label: FittedBox(
                               fit: BoxFit.scaleDown,
                               child: Text(
-                                adjustedResult.type == EmergencyType.noEmergency ? 'Send to Chat' : 'Send Alert',
-                                style: AppTypography.labelLarge.copyWith(
+                                adjustedResult.isPreprocessFailure ? 'Try Again' : (adjustedResult.type == EmergencyType.noEmergency ? 'Send to Chat' : 'Send Alert'),
+                                style: AppTypography.bodyMedium.copyWith(
                                   fontWeight: FontWeight.w700,
                                   fontSize: isSmallScreen ? 11 : 13,
                                 ),
+                                maxLines: 1,
                               ),
                             ),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: ThemeColors.primary(dialogContext),
+                              backgroundColor: typeColor,
                               foregroundColor: Colors.white,
-                              padding: EdgeInsets.symmetric(horizontal: 12, vertical: 0),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                              elevation: 0,
+                              padding: EdgeInsets.symmetric(horizontal: 6, vertical: 0),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              elevation: adjustedResult.type.isRealEmergency ? 2 : 0,
+                              side: adjustedResult.type.isRealEmergency
+                                  ? BorderSide(color: SeverityColors.critical, width: 2)
+                                  : null,
                             ),
                           ),
                         ),
@@ -1235,6 +1484,7 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
         if (success) {
           // Navigate to chat screen
           Navigator.of(context).pushNamed('/chat');
+          final message = result.type == EmergencyType.noEmergency ? 'Sent to chat' : 'Emergency alert sent to chat';
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Row(
@@ -1243,7 +1493,7 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Emergency alert sent to chat',
+                      message,
                       style: AppTypography.bodyMedium.copyWith(color: Colors.white),
                     ),
                   ),
@@ -1285,6 +1535,32 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
         );
       }
     }
+  }
+
+  void _confirmReportFalsePositive(EmergencyDetectionResult result) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Report as not an emergency?'),
+        content: Text(
+          'This will mark the detection as a false positive. You can still find it in history.',
+          style: AppTypography.bodyMedium.copyWith(color: ThemeColors.textSecondary(ctx)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('Cancel', style: TextStyle(color: ThemeColors.primary(ctx))),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _reportFalsePositive(result);
+            },
+            child: Text('Report', style: TextStyle(color: ThemeColors.primary(ctx), fontWeight: FontWeight.w600)),
+          ),
+        ],
+      ),
+    );
   }
 
   void _reportFalsePositive(EmergencyDetectionResult result) {
@@ -1416,23 +1692,31 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                     ),
                   ),
                   Divider(height: 1, thickness: 1, color: ThemeColors.divider(context)),
-                  // History list
+                  // History list with pull-to-refresh
                   Expanded(
-                    child: _recentDetections.isEmpty
-                        ? Center(
-                            child: Padding(
-                              padding: const EdgeInsets.all(24),
-                              child: Text(
-                                'No detection history yet.\nYour captures will appear here.',
-                                textAlign: TextAlign.center,
-                                style: AppTypography.bodyMedium.copyWith(
-                                  color: ThemeColors.textTertiary(context),
-                                  height: 1.45,
+                    child: RefreshIndicator(
+                      onRefresh: () async { await _loadHistory(); },
+                      child: _recentDetections.isEmpty
+                          ? SingleChildScrollView(
+                              physics: const AlwaysScrollableScrollPhysics(),
+                              child: SizedBox(
+                                height: 280,
+                                child: Center(
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(24),
+                                    child: Text(
+                                      'No detection history yet.\nYour captures will appear here.',
+                                      textAlign: TextAlign.center,
+                                      style: AppTypography.bodyMedium.copyWith(
+                                        color: ThemeColors.textTertiary(context),
+                                        height: 1.45,
+                                      ),
+                                    ),
+                                  ),
                                 ),
-                              ),
                             ),
                           )
-                        : ListView.builder(
+                          : ListView.builder(
                             controller: scrollController,
                             padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
                             itemCount: _recentDetections.length,
@@ -1571,6 +1855,7 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                               );
                             },
                           ),
+                    ),
                   ),
                 ],
               ),
@@ -1581,17 +1866,16 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
     );
   }
 
-  /// Show detection details
+  /// Show detection details (from history or recent list). Uses stored breakdown so we never show wrong probabilities.
   void _showDetectionDetails(EmergencyDetectionResult detection) {
-    // Get detailed assessment if available
-    Map<String, dynamic>? detailedAssessment;
-    if (_isMLModelLoaded && _mlClassificationService.isModelLoaded) {
-      detailedAssessment = _mlClassificationService.getDetailedAssessment(
-        detection.type,
-        detection.confidence,
-      );
-    }
-    
+    final detailedAssessment = <String, dynamic>{
+      'type': detection.type.label,
+      'confidence': detection.confidence,
+      'confidencePercent': (detection.confidence * 100).toStringAsFixed(1),
+      'riskMessage': _mlClassificationService.getRiskAssessmentMessage(detection.type, detection.confidence),
+      'timestamp': detection.timestamp.toIso8601String(),
+      'probabilityBreakdown': detection.probabilityBreakdown,
+    };
     _showDetectionResult(detection, detailedAssessment);
   }
 
@@ -1869,7 +2153,7 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                                   ),
                                   const SizedBox(height: 16),
                                   Text(
-                                    'Analyzing...',
+                                    'Analyzing image…',
                                     style: AppTypography.bodyLarge.copyWith(
                                       color: Colors.white,
                                       fontWeight: FontWeight.w600,
@@ -2073,299 +2357,152 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
             
             // Spacing between capture card and Detection History
             const SizedBox(height: 12),
-            // Detection History Section (min height prevents bottom overflow)
+            // Detection History Section – tap anywhere to open View All (no scrollable list)
             Expanded(
               flex: 1,
               child: ConstrainedBox(
                 constraints: const BoxConstraints(minHeight: 100),
-                child: Container(
-                margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                decoration: BoxDecoration(
-                  color: ThemeColors.surfaceContainer(context),
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: ThemeColors.border(context), width: 1),
-                  boxShadow: [
-                    BoxShadow(
-                      color: ThemeColors.shadow(context, opacity: 0.06),
-                      blurRadius: 12,
-                      offset: const Offset(0, 2),
+                child: GestureDetector(
+                  onTap: () {
+                    _markHistoryAsSeen();
+                    _showFullHistoryModal();
+                  },
+                  child: Container(
+                    margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                    decoration: BoxDecoration(
+                      color: ThemeColors.surfaceContainer(context),
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(color: ThemeColors.border(context), width: 1),
+                      boxShadow: [
+                        BoxShadow(
+                          color: ThemeColors.shadow(context, opacity: 0.06),
+                          blurRadius: 12,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(4),
-                            decoration: BoxDecoration(
-                              color: ThemeColors.primary(context).withOpacity(0.12),
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(
-                                color: ThemeColors.primary(context).withOpacity(0.25),
-                                width: 1,
-                              ),
-                            ),
-                            child: Stack(
-                              clipBehavior: Clip.none,
-                              children: [
-                                Icon(
-                                  Icons.history_rounded,
-                                  color: ThemeColors.primary(context),
-                                  size: 16,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  color: ThemeColors.primary(context).withOpacity(0.12),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(
+                                    color: ThemeColors.primary(context).withOpacity(0.25),
+                                    width: 1,
+                                  ),
                                 ),
-                                if (_newDetectionsCount > 0)
-                                  Positioned(
-                                    top: -5,
-                                    right: -5,
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                                      decoration: BoxDecoration(
-                                        color: ThemeColors.primary(context),
-                                        shape: BoxShape.circle,
-                                        border: Border.all(color: ThemeColors.surfaceContainer(context), width: 1),
-                                      ),
-                                      constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
-                                      alignment: Alignment.center,
-                                      child: Text(
-                                        _newDetectionsCount > 99 ? '99+' : '$_newDetectionsCount',
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 9,
-                                          fontWeight: FontWeight.w800,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              alignment: Alignment.centerLeft,
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    'Detection History',
-                                    style: AppTypography.bodyLarge.copyWith(
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 14,
-                                      color: ThemeColors.textPrimary(context),
-                                      letterSpacing: -0.2,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    'Recent AI analyses',
-                                    style: AppTypography.captionText.copyWith(
-                                      color: ThemeColors.textTertiary(context),
-                                      fontSize: 11,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          GestureDetector(
-                            onTap: () {
-                              _markHistoryAsSeen();
-                              _showFullHistoryModal();
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                              decoration: BoxDecoration(
-                                color: ThemeColors.primary(context).withOpacity(ThemeColors.isDark(context) ? 0.2 : 0.1),
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(
-                                  color: ThemeColors.primary(context).withOpacity(0.35),
-                                  width: 1,
-                                ),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    'View All',
-                                    style: AppTypography.labelMedium.copyWith(
+                                child: Stack(
+                                  clipBehavior: Clip.none,
+                                  children: [
+                                    Icon(
+                                      Icons.history_rounded,
                                       color: ThemeColors.primary(context),
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 12,
+                                      size: 16,
                                     ),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Icon(
-                                    Icons.arrow_forward_ios_rounded,
-                                    size: 10,
-                                    color: ThemeColors.primary(context),
-                                  ),
-                                ],
+                                    if (_newDetectionsCount > 0)
+                                      Positioned(
+                                        top: -5,
+                                        right: -5,
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                          decoration: BoxDecoration(
+                                            color: ThemeColors.primary(context),
+                                            shape: BoxShape.circle,
+                                            border: Border.all(color: ThemeColors.surfaceContainer(context), width: 1),
+                                          ),
+                                          constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                                          alignment: Alignment.center,
+                                          child: Text(
+                                            _newDetectionsCount > 99 ? '99+' : '$_newDetectionsCount',
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 9,
+                                              fontWeight: FontWeight.w800,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
                               ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Expanded(
-                      child: _recentDetections.isEmpty
-                          ? Center(
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 20),
-                                child: Text(
-                                  'No detections yet.\nTap Capture & Analyze above to scan a scene.',
-                                  textAlign: TextAlign.center,
-                                  style: AppTypography.bodySmall.copyWith(
-                                    color: ThemeColors.textTertiary(context),
-                                    height: 1.45,
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  alignment: Alignment.centerLeft,
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        'Detection History',
+                                        style: AppTypography.bodyLarge.copyWith(
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 14,
+                                          color: ThemeColors.textPrimary(context),
+                                          letterSpacing: -0.2,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        'Tap to view all',
+                                        style: AppTypography.captionText.copyWith(
+                                          color: ThemeColors.textTertiary(context),
+                                          fontSize: 11,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ),
-                            )
-                          : ListView.builder(
-                              scrollDirection: Axis.vertical,
-                              padding: const EdgeInsets.fromLTRB(8, 8, 8, 10),
-                              physics: const BouncingScrollPhysics(),
-                              itemCount: _recentDetections.length,
-                              itemBuilder: (context, index) {
-                                final detection = _recentDetections[index];
-                                final severityColor = SeverityColors.color(detection.severity);
-                                final dateFormat = DateFormat('MMM dd');
-                                final timeFormat = DateFormat('hh:mm a');
-                                return Padding(
-                                  padding: const EdgeInsets.only(bottom: 8),
-                                  child: GestureDetector(
-                                    onTap: () => _showDetectionDetails(detection),
-                                    child: Container(
-                                      width: double.infinity,
-                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                                      decoration: BoxDecoration(
-                                        color: ThemeColors.background(context),
-                                        borderRadius: BorderRadius.circular(14),
-                                        border: Border.all(
-                                          color: severityColor.withOpacity(0.35),
-                                          width: 1.5,
-                                        ),
-                                        boxShadow: [
-                                          BoxShadow(
-                                            color: ThemeColors.shadow(context, opacity: 0.08),
-                                            blurRadius: 8,
-                                            offset: const Offset(0, 2),
-                                          ),
-                                        ],
-                                      ),
-                                      child: Row(
-                                        children: [
-                                          Container(
-                                            padding: const EdgeInsets.all(6),
-                                            decoration: BoxDecoration(
-                                              color: severityColor.withOpacity(0.15),
-                                              borderRadius: BorderRadius.circular(10),
-                                            ),
-                                            child: Icon(
-                                              detection.type.icon,
-                                              size: 18,
-                                              color: severityColor,
-                                            ),
-                                          ),
-                                          const SizedBox(width: 12),
-                                          Expanded(
-                                            child: Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                Text(
-                                                  detection.type.label.isNotEmpty
-                                                      ? detection.type.label
-                                                      : 'Detection',
-                                                  style: AppTypography.bodySmall.copyWith(
-                                                    fontWeight: FontWeight.w700,
-                                                    fontSize: 13,
-                                                    color: ThemeColors.textPrimary(context),
-                                                    letterSpacing: 0.1,
-                                                    height: 1.25,
-                                                  ),
-                                                  maxLines: 1,
-                                                  overflow: TextOverflow.ellipsis,
-                                                ),
-                                                const SizedBox(height: 2),
-                                                Row(
-                                                  children: [
-                                                    Container(
-                                                      width: 6,
-                                                      height: 6,
-                                                      decoration: BoxDecoration(
-                                                        color: severityColor,
-                                                        shape: BoxShape.circle,
-                                                        boxShadow: [
-                                                          BoxShadow(
-                                                            color: severityColor.withOpacity(0.4),
-                                                            blurRadius: 2,
-                                                          ),
-                                                        ],
-                                                      ),
-                                                    ),
-                                                    const SizedBox(width: 6),
-                                                    Text(
-                                                      detection.severity.label,
-                                                      style: AppTypography.captionText.copyWith(
-                                                        color: severityColor,
-                                                        fontWeight: FontWeight.w600,
-                                                        fontSize: 11,
-                                                        height: 1.3,
-                                                      ),
-                                                      maxLines: 1,
-                                                      overflow: TextOverflow.ellipsis,
-                                                    ),
-                                                  ],
-                                                ),
-                                                const SizedBox(height: 4),
-                                                Row(
-                                                  children: [
-                                                    Icon(
-                                                      Icons.schedule_rounded,
-                                                      size: 12,
-                                                      color: ThemeColors.textTertiary(context),
-                                                    ),
-                                                    const SizedBox(width: 4),
-                                                    Text(
-                                                      '${dateFormat.format(detection.timestamp)} ${timeFormat.format(detection.timestamp)}',
-                                                      style: AppTypography.captionText.copyWith(
-                                                        color: ThemeColors.textTertiary(context),
-                                                        fontSize: 11,
-                                                      ),
-                                                      maxLines: 1,
-                                                      overflow: TextOverflow.ellipsis,
-                                                    ),
-                                                  ],
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                          Icon(
-                                            Icons.chevron_right_rounded,
-                                            size: 20,
-                                            color: ThemeColors.textTertiary(context),
-                                          ),
-                                        ],
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: ThemeColors.primary(context).withOpacity(ThemeColors.isDark(context) ? 0.2 : 0.1),
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(
+                                    color: ThemeColors.primary(context).withOpacity(0.35),
+                                    width: 1,
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      'View All',
+                                      style: AppTypography.labelMedium.copyWith(
+                                        color: ThemeColors.primary(context),
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 12,
                                       ),
                                     ),
-                                  ),
-                                );
-                              },
-                            ),
+                                    const SizedBox(width: 4),
+                                    Icon(
+                                      Icons.arrow_forward_ios_rounded,
+                                      size: 10,
+                                      color: ThemeColors.primary(context),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
               ),
-            ),
             ),
             ],
           ),

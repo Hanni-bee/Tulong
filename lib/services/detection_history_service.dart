@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
@@ -16,8 +17,9 @@ class DetectionHistoryService {
   
   static Database? _database;
   static const String _databaseName = 'detection_history.db';
-  static const int _databaseVersion = 2; // Incremented for user_uid migration
+  static const int _databaseVersion = 4; // v3: failure_reason, probability_breakdown; v4: detection_feedback
   static const String _tableName = 'detections';
+  static const String _feedbackTableName = 'detection_feedback';
   
   /// Get database instance
   Future<Database> get database async {
@@ -37,11 +39,17 @@ class DetectionHistoryService {
         if (oldVersion < 2) {
           await _migrateTable(db);
         }
+        if (oldVersion < 3) {
+          await _migrateToV3(db);
+        }
+        if (oldVersion < 4) {
+          await _migrateToV4(db);
+        }
       },
     );
   }
   
-  /// Create table
+  /// Create table (v3 schema includes failure_reason and probability_breakdown)
   Future<void> _onCreate(Database db, int version) async {
     await db.execute('''
       CREATE TABLE $_tableName (
@@ -52,7 +60,9 @@ class DetectionHistoryService {
         confidence REAL NOT NULL,
         timestamp INTEGER NOT NULL,
         image_path TEXT,
-        created_at INTEGER NOT NULL
+        created_at INTEGER NOT NULL,
+        failure_reason TEXT,
+        probability_breakdown TEXT
       )
     ''');
     
@@ -65,6 +75,22 @@ class DetectionHistoryService {
     ''');
     await db.execute('''
       CREATE INDEX idx_user_timestamp ON $_tableName(user_uid, timestamp DESC)
+    ''');
+    await _createFeedbackTable(db);
+  }
+
+  Future<void> _createFeedbackTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS $_feedbackTableName (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        image_path TEXT NOT NULL,
+        timestamp INTEGER NOT NULL,
+        correct INTEGER NOT NULL,
+        created_at INTEGER NOT NULL
+      )
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_feedback_key ON $_feedbackTableName(image_path, timestamp)
     ''');
   }
   
@@ -94,6 +120,60 @@ class DetectionHistoryService {
       debugPrint('Migration error: $e');
     }
   }
+
+  /// Migrate to v3: add failure_reason and probability_breakdown columns
+  Future<void> _migrateToV3(Database db) async {
+    try {
+      final tableInfo = await db.rawQuery('PRAGMA table_info($_tableName)');
+      final hasFailureReason = tableInfo.any((c) => c['name'] == 'failure_reason');
+      final hasProbabilityBreakdown = tableInfo.any((c) => c['name'] == 'probability_breakdown');
+      if (!hasFailureReason) {
+        await db.execute('ALTER TABLE $_tableName ADD COLUMN failure_reason TEXT');
+      }
+      if (!hasProbabilityBreakdown) {
+        await db.execute('ALTER TABLE $_tableName ADD COLUMN probability_breakdown TEXT');
+      }
+    } catch (e) {
+      debugPrint('Migration v3 error: $e');
+    }
+  }
+
+  /// Migrate to v4: add detection_feedback table
+  Future<void> _migrateToV4(Database db) async {
+    await _createFeedbackTable(db);
+  }
+
+  /// Save user feedback for a detection (local only; for future tuning).
+  Future<void> saveDetectionFeedback({
+    required String? imagePath,
+    required DateTime timestamp,
+    required bool correct,
+  }) async {
+    if (imagePath == null || imagePath.isEmpty) return;
+    final db = await database;
+    await db.insert(
+      _feedbackTableName,
+      {
+        'image_path': imagePath,
+        'timestamp': timestamp.millisecondsSinceEpoch,
+        'correct': correct ? 1 : 0,
+        'created_at': DateTime.now().millisecondsSinceEpoch,
+      },
+    );
+  }
+
+  /// Whether feedback was already submitted for this detection.
+  Future<bool> hasFeedbackForDetection({required String? imagePath, required DateTime timestamp}) async {
+    if (imagePath == null || imagePath.isEmpty) return false;
+    final db = await database;
+    final list = await db.query(
+      _feedbackTableName,
+      where: 'image_path = ? AND timestamp = ?',
+      whereArgs: [imagePath, timestamp.millisecondsSinceEpoch],
+      limit: 1,
+    );
+    return list.isNotEmpty;
+  }
   
   /// Save detection result to database with user UID
   Future<int> saveDetection(EmergencyDetectionResult result) async {
@@ -116,6 +196,10 @@ class DetectionHistoryService {
         'timestamp': result.timestamp.millisecondsSinceEpoch,
         'image_path': result.imagePath,
         'created_at': DateTime.now().millisecondsSinceEpoch,
+        'failure_reason': result.failureReason,
+        'probability_breakdown': result.probabilityBreakdown != null && result.probabilityBreakdown!.isNotEmpty
+            ? jsonEncode(result.probabilityBreakdown)
+            : null,
       },
     );
     
@@ -233,6 +317,23 @@ class DetectionHistoryService {
     return await db.delete(_tableName);
   }
   
+  /// Parse probability_breakdown from DB (JSON string) to Map<String, double>
+  Map<String, double>? _parseProbabilityBreakdown(dynamic value) {
+    if (value == null) return null;
+    if (value is! String) return null;
+    try {
+      final decoded = jsonDecode(value) as Map<String, dynamic>;
+      final out = <String, double>{};
+      for (final e in decoded.entries) {
+        final v = e.value;
+        out[e.key] = (v is num) ? v.toDouble() : double.tryParse(v.toString()) ?? 0.0;
+      }
+      return out.isEmpty ? null : out;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Convert database map to EmergencyDetectionResult (defensive: null/empty use enum defaults)
   EmergencyDetectionResult _mapToResult(Map<String, dynamic> map) {
     final typeStr = (map['emergency_type'] as String?)?.trim();
@@ -246,6 +347,8 @@ class DetectionHistoryService {
           ? DateTime.fromMillisecondsSinceEpoch(ts)
           : DateTime.now(),
       imagePath: map['image_path'] as String?,
+      failureReason: map['failure_reason'] as String?,
+      probabilityBreakdown: _parseProbabilityBreakdown(map['probability_breakdown']),
     );
   }
   

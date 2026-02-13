@@ -179,7 +179,7 @@ class DisasterClassificationService {
       if (!preprocessResult.isSuccess) {
         _lastError = 'Preprocess failed: ${preprocessResult.errorCode ?? "unknown"}';
         debugPrint('❌ Preprocess failed: ${preprocessResult.errorCode}');
-        return _createErrorResult(imagePath);
+        return _createErrorResult(imagePath, reason: _userFacingFailureReason(preprocessResult.errorCode));
       }
 
       final preprocessedImage = preprocessResult.data!;
@@ -244,8 +244,17 @@ class DisasterClassificationService {
       }
 
       // Step 4: Map model output to EmergencyType
-      final emergencyType = _mapToEmergencyType(classification['label'] as String);
-      final confidence = classification['confidence'] as double;
+      EmergencyType emergencyType = _mapToEmergencyType(classification['label'] as String);
+      double confidence = classification['confidence'] as double;
+
+      // Step 4b: Offline wildfire color sanity check (no network) – reduces false fire in blue/green scenes
+      if (emergencyType == EmergencyType.fire &&
+          AIDetectionConfig.enableWildfireColorCheck &&
+          !_imageSupportsWildfire(preprocessedImage)) {
+        debugPrint('⚠️ Wildfire color check failed (image lacks red/orange presence) → No Emergency');
+        emergencyType = EmergencyType.noEmergency;
+        confidence = AIDetectionConfig.defaultNoEmergencyConfidence;
+      }
 
       // Step 5: Enhanced severity assessment
       debugPrint('⚖️  Step 4: Assessing severity...');
@@ -269,19 +278,70 @@ class DisasterClassificationService {
       debugPrint('═══════════════════════════════════════════════════════════');
       debugPrint('');
 
+      // Build probability breakdown for storage and history (index-aligned with _modelLabels)
+      final allProbs = classification['allProbabilities'] as List<double>?;
+      Map<String, double>? probabilityBreakdown;
+      if (allProbs != null && allProbs.length >= _modelLabels.length) {
+        probabilityBreakdown = {};
+        for (int i = 0; i < _modelLabels.length && i < allProbs.length; i++) {
+          probabilityBreakdown[_modelLabels[i]] = allProbs[i];
+        }
+      }
+
       return EmergencyDetectionResult(
         type: emergencyType,
         severity: severity,
         confidence: confidence,
         timestamp: startTime,
         imagePath: imagePath,
+        probabilityBreakdown: probabilityBreakdown,
       );
     } catch (e, stackTrace) {
       _lastError = 'Error in classification: $e';
       debugPrint('❌ Error in disaster classification: $e');
       debugPrint('Stack trace: $stackTrace');
-      return _createErrorResult(imagePath);
+      return _createErrorResult(imagePath, reason: 'Analysis failed. Please try again.');
     }
+  }
+
+  /// User-facing message for preprocess/validation failures (offline).
+  String? _userFacingFailureReason(String? errorCode) {
+    switch (errorCode) {
+      case 'low_contrast':
+        return 'Image too dark or unclear. Please try again in better lighting.';
+      case 'decode_failed':
+        return 'Could not read image. Please try another photo.';
+      case 'file_not_found':
+      case 'empty_file':
+      case 'empty_path':
+        return 'Invalid image. Please capture or select again.';
+      case 'file_too_large':
+        return 'Image is too large. Please use a smaller photo.';
+      case 'image_too_small':
+        return 'Image is too small. Please use a higher resolution.';
+      default:
+        return 'Image could not be analyzed. Please try again.';
+    }
+  }
+
+  /// Offline check: wildfire typically has red/orange presence. Preprocessed pixels are RGB order.
+  bool _imageSupportsWildfire(Float32List pixels) {
+    if (pixels.length < 3) return false;
+    double sumR = 0.0, sumG = 0.0, sumB = 0.0;
+    int n = 0;
+    for (int i = 0; i + 2 < pixels.length; i += 3) {
+      sumR += pixels[i];
+      sumG += pixels[i + 1];
+      sumB += pixels[i + 2];
+      n++;
+    }
+    if (n == 0) return false;
+    final total = sumR + sumG + sumB;
+    if (total <= 0) return false;
+    final redRatio = sumR / total;
+    final ok = redRatio >= AIDetectionConfig.minRedRatioForWildfire;
+    debugPrint('   Wildfire color check: R ratio=${redRatio.toStringAsFixed(3)} (min=${AIDetectionConfig.minRedRatioForWildfire}) → ${ok ? "pass" : "fail"}');
+    return ok;
   }
 
   /// Horizontally flip preprocessed image (HxWx3 row-major) for TTA.
@@ -440,6 +500,14 @@ class DisasterClassificationService {
     }
 
     final selectedLabel = _modelLabels[bestIndex];
+
+    // Stricter threshold for Wildfire to reduce false positives (fire when there is no fire)
+    if (selectedLabel.toLowerCase() == 'wildfire' &&
+        normalizedConfidence < AIDetectionConfig.minConfidenceForWildfire) {
+      debugPrint('⚠️ Wildfire confidence ${(normalizedConfidence * 100).toStringAsFixed(1)}% < ${(AIDetectionConfig.minConfidenceForWildfire * 100).toStringAsFixed(0)}% → No Emergency');
+      return _noEmergencyResult(normalizedProbs);
+    }
+
     debugPrint('✅ Selected: $selectedLabel (index $bestIndex) with confidence ${(normalizedConfidence * 100).toStringAsFixed(2)}%');
 
     return {
@@ -552,14 +620,16 @@ class DisasterClassificationService {
     }
   }
 
-  /// Create error result when classification fails (no detection)
-  EmergencyDetectionResult _createErrorResult(String imagePath) {
+  /// Create error result when classification or preprocessing fails (no detection)
+  EmergencyDetectionResult _createErrorResult(String imagePath, {String? reason}) {
     return EmergencyDetectionResult(
       type: EmergencyType.noEmergency,
       severity: SeverityLevel.low,
       confidence: AIDetectionConfig.defaultNoEmergencyConfidence,
       timestamp: DateTime.now(),
       imagePath: imagePath,
+      failureReason: reason,
+      probabilityBreakdown: null,
     );
   }
 

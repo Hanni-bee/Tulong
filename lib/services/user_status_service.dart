@@ -100,6 +100,7 @@ class UserStatusService {
       'severity': severity,
       'severity_label': severity.label,
       'severity_color': SeverityColors.color(severity),
+      'type_color': DisasterTypeColors.color(emergencyType),
       'emergency_type': emergencyType,
       'emergency_type_label': emergencyType.label,
       'emergency_type_emoji': emergencyType.emoji,

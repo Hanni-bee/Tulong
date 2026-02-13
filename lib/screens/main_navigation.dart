@@ -16,6 +16,7 @@ import 'emergency_detection_screen.dart';
 // Hardware screen removed - using pure Bluetooth only
 import 'modern_profile_screen.dart';
 import '../models/notification_model.dart';
+import '../constants/storage_keys.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class MainNavigation extends StatefulWidget {
@@ -53,12 +54,15 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
   
   // UID watermark
   String? _userUID;
+
+  /// Incremented when user taps Profile tab so profile refreshes "Current Status" from latest detection.
+  int _profileRefreshTrigger = 0;
   
-  final List<Widget> _screens = [
+  List<Widget> get _screens => [
     const ModernHomeScreen(), // Home has its own custom header card (not UnifiedTopBar)
     const LocalChatScreen(),
     const EmergencyDetectionScreen(),
-    const ModernProfileScreen(),
+    ModernProfileScreen(refreshTrigger: _profileRefreshTrigger),
   ];
 
   final List<NavigationItem> _navigationItems = [
@@ -92,6 +96,7 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
   void initState() {
     super.initState();
     _loadUserUID();
+    _loadLastNavIndex();
     _animationController = AnimationController(
       duration: const Duration(milliseconds: 400),
       vsync: this,
@@ -283,6 +288,11 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
     if (_currentIndex != index) {
       HapticFeedback.lightImpact();
       
+      // If switching to Profile (index 3), refresh so "Current Status" shows latest detection
+      if (index == 3) {
+        setState(() => _profileRefreshTrigger++);
+      }
+      
       // If switching to Local Chat (index 1), ensure badge updates
       if (index == 1) {
         // Update badge counts immediately when switching to chat
@@ -305,6 +315,7 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
       setState(() {
         _currentIndex = index;
       });
+      _saveLastNavIndex(index);
 
       _pageEntranceController.forward().then((_) {
         _iconAnimationController.reverse();
@@ -322,7 +333,7 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
     if (!mounted) return;
     try {
       final prefs = await SharedPreferences.getInstance();
-      final uid = prefs.getString('session_uid');
+      final uid = prefs.getString(StorageKeys.sessionUid);
       if (mounted && uid != null && uid.isNotEmpty) {
         setState(() {
           _userUID = uid;
@@ -331,6 +342,31 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
     } catch (e) {
       print('Error loading user UID from SharedPreferences: $e');
     }
+  }
+
+  /// Restore last nav tab (or preference: home / emergency).
+  Future<void> _loadLastNavIndex() async {
+    if (!mounted) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final startPref = prefs.getString(StorageKeys.prefStartTab) ?? 'last';
+      int index = 0;
+      if (startPref == 'home') {
+        index = 0;
+      } else if (startPref == 'emergency') {
+        index = 2;
+      } else {
+        final last = prefs.getInt(StorageKeys.lastNavIndex);
+        if (last != null && last >= 0 && last < _screens.length) index = last;
+      }
+      if (mounted) setState(() => _currentIndex = index);
+    } catch (_) {}
+  }
+
+  void _saveLastNavIndex(int index) {
+    SharedPreferences.getInstance().then((prefs) {
+      prefs.setInt(StorageKeys.lastNavIndex, index);
+    });
   }
 
   @override

@@ -10,7 +10,7 @@ import 'screens/auth/reset_password_screen.dart';
 import 'screens/auth/two_factor_verification_screen.dart';
 import 'screens/interactive_tutorial_screen.dart';
 import 'screens/tutorial_walkthrough_screen.dart';
-import 'screens/disaster_demo_screen.dart';
+import 'screens/disaster_tips_screen.dart';
 import 'screens/setup/address_setup_screen.dart';
 import 'screens/update_profile_screen.dart';
 import 'screens/esp32_auth_screen.dart';
@@ -136,7 +136,8 @@ class _TulongAppState extends State<TulongApp> with WidgetsBindingObserver {
               '/update-profile': (context) => const UpdateProfileScreen(), // Update profile with address
               '/esp32-auth': (context) => const ESP32AuthScreen(), // ESP32 Bluetooth authentication
               '/esp32-scanner': (context) => const ESP32DeviceScanner(), // ESP32 device scanner with pairing
-              '/disaster-demo': (context) => const DisasterDemoScreen(),
+              '/disaster-demo': (context) => const DisasterTipsScreen(),
+              '/disaster-tips': (context) => const DisasterTipsScreen(),
               '/main': (context) => const MainNavigation(),
               '/chat': (context) => const LocalChatScreen(),
             },

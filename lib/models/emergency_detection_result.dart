@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'emergency_type.dart';
 
 /// Result of emergency detection from AI/ML processing
@@ -12,7 +14,11 @@ class EmergencyDetectionResult {
   final double? confidenceUpperBound; // Upper bound of confidence interval
   final DateTime timestamp;
   final String? imagePath; // Path to captured image (stays on device)
-  
+  /// When set, preprocessing or validation failed (e.g. image too dark); UI can show this instead of "No Emergency".
+  final String? failureReason;
+  /// Per-class probabilities (e.g. Cyclone, Earthquake, Flood, Wildfire) for display and history.
+  final Map<String, double>? probabilityBreakdown;
+
   EmergencyDetectionResult({
     required this.type,
     required this.severity,
@@ -21,7 +27,12 @@ class EmergencyDetectionResult {
     this.confidenceUpperBound,
     required this.timestamp,
     this.imagePath,
+    this.failureReason,
+    this.probabilityBreakdown,
   });
+
+  /// True if this result is due to image quality/preprocess failure (not a real "no emergency" classification).
+  bool get isPreprocessFailure => failureReason != null && failureReason!.isNotEmpty;
   
   /// Get confidence as formatted string with interval if available
   String getConfidenceString() {
@@ -43,25 +54,53 @@ class EmergencyDetectionResult {
     return c.clamp(0.0, 1.0);
   }
 
-  /// Create from JSON (for ESP32/radio transmission)
-  /// Expects keys: emergency_type, severity (enum names); timestamp (ISO8601 optional).
+  /// Parse probability_breakdown from JSON (string or map) to Map<String, double>.
+  static Map<String, double>? _probabilityBreakdownFromJson(dynamic value) {
+    if (value == null) return null;
+    Map<String, double> out = {};
+    if (value is String) {
+      try {
+        final decoded = jsonDecode(value) as Map<String, dynamic>;
+        for (final e in decoded.entries) {
+          final v = e.value;
+          out[e.key] = (v is num) ? v.toDouble() : double.tryParse(v.toString()) ?? 0.0;
+        }
+        return out.isEmpty ? null : out;
+      } catch (_) {
+        return null;
+      }
+    }
+    if (value is Map) {
+      for (final e in value.entries) {
+        final v = e.value;
+        out[e.key.toString()] = (v is num) ? v.toDouble() : double.tryParse(v.toString()) ?? 0.0;
+      }
+      return out.isEmpty ? null : out;
+    }
+    return null;
+  }
+
+  /// Create from JSON (for ESP32/radio transmission and local storage)
+  /// Expects keys: emergency_type, severity (enum names); timestamp (ISO8601 optional); probability_breakdown optional.
   factory EmergencyDetectionResult.fromJson(Map<String, dynamic> json) {
     final typeStr = (json['emergency_type'] as String?)?.trim();
     final severityStr = (json['severity'] as String?)?.trim();
     return EmergencyDetectionResult(
-      type: EmergencyType.fromString(typeStr?.isNotEmpty == true ? typeStr! : 'general'),
+      type: EmergencyType.fromString(typeStr?.isNotEmpty == true ? typeStr! : 'noEmergency'),
       severity: SeverityLevel.fromString(severityStr?.isNotEmpty == true ? severityStr! : 'medium'),
       confidence: _confidenceFromJson(json['confidence']),
       timestamp: json['timestamp'] != null
           ? DateTime.parse(json['timestamp'] as String)
           : DateTime.now(),
       imagePath: json['image_path'] as String?,
+      failureReason: json['failure_reason'] as String?,
+      probabilityBreakdown: _probabilityBreakdownFromJson(json['probability_breakdown']),
     );
   }
   
-  /// Convert to JSON for ESP32/radio transmission (text only, no image)
+  /// Convert to JSON for ESP32/radio transmission and local storage (text only, no image)
   Map<String, dynamic> toJson() {
-    return {
+    final map = <String, dynamic>{
       'type': 'emergency_detection',
       'emergency_type': type.name,
       'severity': severity.name,
@@ -70,10 +109,18 @@ class EmergencyDetectionResult {
       'confidence': confidence,
       // Note: image_path is NOT included - hardware can't transmit images
     };
+    if (failureReason != null) map['failure_reason'] = failureReason;
+    if (probabilityBreakdown != null && probabilityBreakdown!.isNotEmpty) {
+      map['probability_breakdown'] = probabilityBreakdown;
+    }
+    return map;
   }
   
   /// Get formatted message for chat display
   String getFormattedMessage() {
+    if (failureReason != null && failureReason!.isNotEmpty) {
+      return '${type.emoji} ${type.label} - $failureReason';
+    }
     if (type == EmergencyType.noEmergency) {
       return '${type.emoji} ${type.label} - No emergency detected. Area appears safe.';
     }

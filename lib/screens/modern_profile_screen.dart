@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:tulong_app/constants/app_colors.dart';
+import 'package:tulong_app/constants/storage_keys.dart';
 import 'package:tulong_app/constants/unified_typography.dart';
 import 'package:tulong_app/constants/soft_ui_design.dart';
 import 'package:tulong_app/utils/theme_colors.dart';
@@ -24,7 +25,10 @@ import '../services/user_status_service.dart';
 import '../models/emergency_type.dart';
 
 class ModernProfileScreen extends StatefulWidget {
-  const ModernProfileScreen({super.key});
+  const ModernProfileScreen({super.key, this.refreshTrigger = 0});
+
+  /// When this changes (e.g. parent increments when user taps Profile tab), status is refetched.
+  final int refreshTrigger;
 
   @override
   State<ModernProfileScreen> createState() => _ModernProfileScreenState();
@@ -45,6 +49,10 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
   
   // Loading state
   bool _isLoadingProfile = true;
+
+  /// Status future; refreshed when [ModernProfileScreen.refreshTrigger] changes (e.g. user opens Profile tab).
+  Future<Map<String, dynamic>?>? _statusFuture;
+  int? _lastRefreshTrigger;
 
   // Dynamic user profile data will be fetched from AuthProvider
 
@@ -86,6 +94,9 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
     );
     
     
+    _statusFuture = UserStatusService.instance.getFormattedStatus();
+    _lastRefreshTrigger = widget.refreshTrigger;
+
     // Load user model immediately when screen opens to ensure data is available
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
@@ -101,6 +112,17 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
         });
       }
     });
+  }
+
+  @override
+  void didUpdateWidget(ModernProfileScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.refreshTrigger != oldWidget.refreshTrigger) {
+      setState(() {
+        _lastRefreshTrigger = widget.refreshTrigger;
+        _statusFuture = UserStatusService.instance.getFormattedStatus();
+      });
+    }
   }
 
   @override
@@ -925,19 +947,22 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
   }
 
   Widget _buildUserStatusCard() {
+    _statusFuture ??= UserStatusService.instance.getFormattedStatus();
     return FutureBuilder<Map<String, dynamic>?>(
-      future: UserStatusService.instance.getFormattedStatus(),
+      future: _statusFuture,
       builder: (context, snapshot) {
         final status = snapshot.data;
         if (status == null) {
           return const SizedBox.shrink();
         }
         final severityColor = status['severity_color'] as Color;
+        final typeColor = status['type_color'] as Color? ?? severityColor;
         final severityLabel = status['severity_label'] as String;
         final emergencyLabel = status['emergency_type_label'] as String;
         final lastUpdated = status['last_updated_formatted'] as String? ?? '—';
         final emergencyType = status['emergency_type'] as EmergencyType?;
         final statusIcon = emergencyType?.icon ?? Icons.assignment_outlined;
+        final isRealEmergency = emergencyType != null && emergencyType.isRealEmergency;
         return AnimatedNeumorphicCard(
           borderRadius: 18,
           child: ClipRRect(
@@ -947,9 +972,15 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                 borderRadius: BorderRadius.circular(18),
                 border: Border(
                   left: BorderSide(
-                    color: severityColor,
+                    color: typeColor,
                     width: 4,
                   ),
+                  bottom: isRealEmergency
+                      ? BorderSide(
+                          color: ThemeColors.error(context),
+                          width: 2,
+                        )
+                      : BorderSide.none,
                 ),
               ),
               child: Padding(
@@ -960,15 +991,15 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: severityColor.withOpacity(0.14),
+                        color: typeColor.withOpacity(0.14),
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(
-                          color: severityColor.withOpacity(0.35),
+                          color: typeColor.withOpacity(0.35),
                           width: 1.5,
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: severityColor.withOpacity(0.12),
+                            color: typeColor.withOpacity(0.12),
                             blurRadius: 10,
                             offset: const Offset(0, 2),
                           ),
@@ -977,7 +1008,7 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                       child: Icon(
                         statusIcon,
                         size: 28,
-                        color: severityColor,
+                        color: typeColor,
                       ),
                     ),
                     const SizedBox(width: 16),
@@ -985,21 +1016,50 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            'Current Status',
-                            style: UnifiedTypography.bodySmall.copyWith(
-                              color: ThemeColors.textTertiary(context),
-                              fontWeight: FontWeight.w600,
-                              fontSize: 11,
-                              letterSpacing: 0.5,
-                            ),
+                          Row(
+                            children: [
+                              Text(
+                                'Current Status',
+                                style: UnifiedTypography.bodySmall.copyWith(
+                                  color: ThemeColors.textTertiary(context),
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 11,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                              if (isRealEmergency) ...[
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: ThemeColors.error(context),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.warning_amber_rounded, size: 12, color: Colors.white),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        'Emergency',
+                                        style: UnifiedTypography.labelSmall.copyWith(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w800,
+                                          fontSize: 10,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ],
                           ),
                           const SizedBox(height: 8),
                           Text(
                             '$emergencyLabel · $severityLabel',
                             style: UnifiedTypography.titleMedium.copyWith(
                               fontWeight: FontWeight.w700,
-                              color: severityColor,
+                              color: typeColor,
                               fontSize: 16,
                               letterSpacing: 0.2,
                               height: 1.25,
@@ -1329,6 +1389,18 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
               title: 'Notifications',
               subtitle: 'Manage notification preferences',
               onTap: () => _openNotifications(context),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        _buildSettingsSection(
+          title: 'App',
+          items: [
+            _buildSettingsItem(
+              icon: Icons.home_work_outlined,
+              title: 'Start screen',
+              subtitle: 'Which tab to open when app launches',
+              onTap: () => _showStartScreenPreference(context),
             ),
           ],
         ),
@@ -1802,6 +1874,86 @@ class _ModernProfileScreenState extends State<ModernProfileScreen>
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => const NotificationSettingsScreen(),
+      ),
+    );
+  }
+
+  Future<void> _showStartScreenPreference(BuildContext context) async {
+    HapticFeedback.lightImpact();
+    final prefs = await SharedPreferences.getInstance();
+    final current = prefs.getString(StorageKeys.prefStartTab) ?? 'last';
+    if (!context.mounted) return;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: ThemeColors.surface(context),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) {
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Start screen',
+                style: UnifiedTypography.titleLarge.copyWith(
+                  color: ThemeColors.textPrimary(context),
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Which tab to show when the app opens.',
+                style: UnifiedTypography.bodySmall.copyWith(
+                  color: ThemeColors.textSecondary(context),
+                ),
+              ),
+              const SizedBox(height: 16),
+              _startOption(sheetContext, 'last', 'Last used', 'Open where you left off', current, prefs),
+              _startOption(sheetContext, 'home', 'Home', 'Always open on Home', current, prefs),
+              _startOption(sheetContext, 'emergency', 'Emergency', 'Always open on Emergency', current, prefs),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _startOption(BuildContext context, String value, String title, String subtitle, String current, SharedPreferences prefs) {
+    final isSelected = current == value;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () async {
+          await prefs.setString(StorageKeys.prefStartTab, value);
+          if (context.mounted) {
+            Navigator.pop(context);
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Preference saved'), duration: Duration(seconds: 2), behavior: SnackBarBehavior.floating),
+            );
+          }
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
+          child: Row(
+            children: [
+              Icon(isSelected ? Icons.radio_button_checked : Icons.radio_button_off, color: isSelected ? AppColors.primary : ThemeColors.textTertiary(context), size: 24),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: UnifiedTypography.bodyLarge.copyWith(color: ThemeColors.textPrimary(context), fontWeight: FontWeight.w600)),
+                    Text(subtitle, style: UnifiedTypography.bodySmall.copyWith(color: ThemeColors.textSecondary(context))),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

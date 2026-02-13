@@ -23,7 +23,7 @@ import '../utils/prototype_animations.dart';
 import '../widgets/special_animations.dart';
 import 'local_chat_screen.dart';
 import 'modern_profile_screen.dart';
-import 'disaster_demo_screen.dart';
+import 'disaster_tips_screen.dart';
 import '../widgets/solid_modal_header.dart';
 import '../widgets/radar_scan_modal.dart';
 import '../widgets/enhanced_skeleton_loaders.dart';
@@ -77,11 +77,11 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
       'subtitle': 'App Config',
     },
     {
-      'onPressed': () => _navigateToDisasterDemo(context),
-      'backgroundColor': Colors.purple,
-      'icon': Icons.science,
-      'title': 'Simulate',
-      'subtitle': 'Disaster',
+      'onPressed': () => _navigateToOnboarding(context),
+      'backgroundColor': AppColors.info,
+      'icon': Icons.school_rounded,
+      'title': 'Onboarding',
+      'subtitle': 'App guide',
     },
   ];
 
@@ -1278,8 +1278,9 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
         ),
         const SizedBox(height: 12),
         EmergencyAlertWidget(
-          title: 'Emergency System Active', // Shortened title to prevent wrapping
-          message: 'Emergency alert system is monitoring for disasters and will automatically notify all users in your area.',
+          variant: EmergencyAlertVariant.tips,
+          title: 'Disaster Tips',
+          message: 'What to do before, during, and after floods, earthquakes, fire, and cyclones.',
           severity: 'High',
           showGif: true,
           gifPath: 'assets/gifs/disasters/emergency.gif',
@@ -1287,7 +1288,7 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
             HapticFeedback.lightImpact();
             Navigator.of(context).push(
               ModernPageRoute(
-                child: const DisasterDemoScreen(),
+                child: const DisasterTipsScreen(),
                 transitionType: ModernTransitionType.slideAndFade,
               ),
             );
@@ -1312,9 +1313,9 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
     context.pushStandard(const ModernProfileScreen());
   }
 
-  void _navigateToDisasterDemo(BuildContext context) {
+  void _navigateToOnboarding(BuildContext context) {
     HapticFeedback.lightImpact();
-    Navigator.of(context).pushNamed('/disaster-demo');
+    Navigator.of(context).pushNamed('/tutorial');
   }
 
   // Radar Modal for finding devices

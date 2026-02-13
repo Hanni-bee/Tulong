@@ -9,6 +9,7 @@ import '../constants/app_typography.dart';
 import '../constants/soft_ui_design.dart';
 import '../constants/severity_colors.dart';
 import '../utils/theme_colors.dart';
+import '../services/user_status_service.dart';
 import '../models/emergency_type.dart';
 import '../providers/chat_provider.dart';
 import '../providers/auth_provider.dart';
@@ -43,6 +44,9 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
   int _prevMessageCount = 0;
   static const double _nearBottomThresholdPx = 100;
 
+  /// Show scroll-to-bottom FAB when user has scrolled up (not near bottom).
+  bool _showScrollToBottomFAB = false;
+
   // Pinned banner timer management (30 seconds display duration)
   static const Duration _pinnedRetention = Duration(days: 1); // For history (24 hours)
   static const Duration _pinnedBannerDuration = Duration(seconds: 30); // For banner display
@@ -55,7 +59,7 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
   @override
   void initState() {
     super.initState();
-    
+    _scrollController.addListener(_updateScrollToBottomFABVisibility);
     // Keep pinned banner/history time-window accurate while the screen stays open
     _pinnedRefreshTimer = Timer.periodic(const Duration(minutes: 1), (_) {
       if (!mounted) return;
@@ -219,15 +223,26 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
     await provider.playVoiceMessage(voiceMessage);
   }
 
+  void _updateScrollToBottomFABVisibility() {
+    if (!_scrollController.hasClients) return;
+    final pos = _scrollController.position;
+    final distanceFromBottom = pos.maxScrollExtent - pos.pixels;
+    final show = distanceFromBottom > _nearBottomThresholdPx && pos.maxScrollExtent > 100;
+    if (show != _showScrollToBottomFAB && mounted) {
+      setState(() => _showScrollToBottomFAB = show);
+    }
+  }
+
   void _scrollToBottom() {
+    HapticFeedback.lightImpact();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
-      }
+      if (!mounted || !_scrollController.hasClients) return;
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+      if (mounted) setState(() => _showScrollToBottomFAB = false);
     });
   }
 
@@ -592,11 +607,16 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
                       Expanded(
                         child: Stack(
                           children: [
-                            ListView.builder(
-                              controller: _scrollController,
-                              padding: const EdgeInsets.all(16),
-                              itemCount: regularMessages.length + (provider.isTyping ? 1 : 0),
-                              itemBuilder: (context, index) {
+                            RefreshIndicator(
+                              onRefresh: () async {
+                                provider.loadPairedDevices();
+                                if (mounted) setState(() {});
+                              },
+                              child: ListView.builder(
+                                controller: _scrollController,
+                                padding: const EdgeInsets.all(16),
+                                itemCount: regularMessages.length + (provider.isTyping ? 1 : 0),
+                                itemBuilder: (context, index) {
                                 if (index == regularMessages.length && provider.isTyping) {
                                   return _buildTypingIndicator();
                                 }
@@ -621,6 +641,25 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
                                 return const SizedBox.shrink();
                               },
                             ),
+                            ),
+                            if (_showScrollToBottomFAB)
+                              Positioned(
+                                right: 16,
+                                bottom: 90,
+                                child: Material(
+                                  elevation: 4,
+                                  borderRadius: BorderRadius.circular(28),
+                                  color: ThemeColors.surfaceContainerHigh(context),
+                                  child: IconButton(
+                                    onPressed: _scrollToBottom,
+                                    icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 28),
+                                    tooltip: 'Scroll to bottom',
+                                    style: IconButton.styleFrom(
+                                      minimumSize: const Size(48, 48),
+                                    ),
+                                  ),
+                                ),
+                              ),
                             // Refresh indicator overlay (only show if refreshing, not when receiving real-time messages)
                             if (provider.isRefreshingMessages && !provider.isConnected)
                               Positioned(
@@ -1575,22 +1614,43 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
                   
                   const SizedBox(width: 12),
                   
-                  // Send button
-                  GestureDetector(
-                    onTap: _sendMessage,
-                    child: Container(
-                      width: 48,
-                      height: 48,
-                      decoration: BoxDecoration(
-                        color: AppColors.primaryRed,
-                        borderRadius: BorderRadius.circular(24),
-                      ),
-                      child: const Icon(
-                        Icons.send_rounded,
-                        color: Colors.white,
-                        size: 20,
-                      ),
-                    ),
+                  // Send button (color matches current disaster type; red border when emergency so urgency is clear)
+                  FutureBuilder<Map<String, dynamic>?>(
+                    future: UserStatusService.instance.getFormattedStatus(),
+                    builder: (context, snapshot) {
+                      final data = snapshot.data;
+                      final typeColor = data?['type_color'] as Color? ?? AppColors.primaryRed;
+                      final emergencyType = data?['emergency_type'] as EmergencyType?;
+                      final isRealEmergency = emergencyType != null && emergencyType.isRealEmergency;
+                      return GestureDetector(
+                        onTap: _sendMessage,
+                        child: Container(
+                          width: 48,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            color: typeColor,
+                            borderRadius: BorderRadius.circular(24),
+                            border: isRealEmergency
+                                ? Border.all(color: SeverityColors.critical, width: 2)
+                                : null,
+                            boxShadow: isRealEmergency
+                                ? [
+                                    BoxShadow(
+                                      color: SeverityColors.critical.withOpacity(0.35),
+                                      blurRadius: 6,
+                                      offset: const Offset(0, 1),
+                                    ),
+                                  ]
+                                : null,
+                          ),
+                          child: const Icon(
+                            Icons.send_rounded,
+                            color: Colors.white,
+                            size: 20,
+                          ),
+                        ),
+                      );
+                    },
                   ),
                 ],
               ),
@@ -1603,6 +1663,7 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
 
   @override
   void dispose() {
+    _scrollController.removeListener(_updateScrollToBottomFABVisibility);
     // Mark chat screen as not visible
     final chatProvider = context.read<ChatProvider>();
     chatProvider.setLocalChatScreenVisible(false);
