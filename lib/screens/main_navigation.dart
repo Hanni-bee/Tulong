@@ -271,31 +271,42 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
 
   void _updateBadgeCounts() {
     if (!mounted) return;
-    try {
-      final chatProvider = Provider.of<ChatProvider>(context, listen: false);
-      final notificationProvider = Provider.of<NotificationProvider>(context, listen: false);
-      setState(() {
-        // Use ChatProvider's unread count for local chat (index 1)
-        _messagesUnreadCount = chatProvider.unreadMessageCount;
-        _callsActiveCount = notificationProvider.getBadgeCountForType(NotificationType.emergency);
-      });
-    } catch (_) {
-      // Providers might not be available
-    }
+    // Schedule on next frame so badge updates when ChatProvider notifies from timer/async (e.g. incoming message while on Home)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      try {
+        final chatProvider = Provider.of<ChatProvider>(context, listen: false);
+        final notificationProvider = Provider.of<NotificationProvider>(context, listen: false);
+        setState(() {
+          // Use ChatProvider's unread count for local chat (index 1)
+          _messagesUnreadCount = chatProvider.unreadMessageCount;
+          _callsActiveCount = notificationProvider.getBadgeCountForType(NotificationType.emergency);
+        });
+      } catch (_) {
+        // Providers might not be available
+      }
+    });
   }
 
   void _onTabTapped(int index) {
     if (_currentIndex != index) {
       HapticFeedback.lightImpact();
       
+      // Keep ChatProvider in sync with whether user is viewing Local Chat (affects unread badge)
+      final chatProvider = Provider.of<ChatProvider>(context, listen: false);
+      if (index == 1) {
+        chatProvider.setLocalChatScreenVisible(true);
+      } else if (_currentIndex == 1) {
+        chatProvider.setLocalChatScreenVisible(false);
+      }
+      
       // If switching to Profile (index 3), refresh so "Current Status" shows latest detection
       if (index == 3) {
         setState(() => _profileRefreshTrigger++);
       }
       
-      // If switching to Local Chat (index 1), ensure badge updates
+      // If switching to Local Chat (index 1), ensure badge updates and messages marked read
       if (index == 1) {
-        // Update badge counts immediately when switching to chat
         _updateBadgeCounts();
       }
       
@@ -359,7 +370,15 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
         final last = prefs.getInt(StorageKeys.lastNavIndex);
         if (last != null && last >= 0 && last < _screens.length) index = last;
       }
-      if (mounted) setState(() => _currentIndex = index);
+      if (mounted) {
+        setState(() => _currentIndex = index);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          try {
+            Provider.of<ChatProvider>(context, listen: false).setLocalChatScreenVisible(index == 1);
+          } catch (_) {}
+        });
+      }
     } catch (_) {}
   }
 

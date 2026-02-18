@@ -10,7 +10,7 @@ class SQLiteService {
 
   static Database? _database;
   static const String _databaseName = 'tulong_offline.db';
-  static const int _databaseVersion = 8;
+  static const int _databaseVersion = 10;
 
   // Table names
   static const String _usersTable = 'users';
@@ -68,7 +68,7 @@ class SQLiteService {
       )
     ''');
 
-    // Messages table
+    // Messages table (cache-friendly, channel-aware: type text/voice/SOS/AI, optional voice_file_path and AI metadata)
     await db.execute('''
       CREATE TABLE $_messagesTable (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -81,7 +81,13 @@ class SQLiteService {
         message_type TEXT DEFAULT 'text',
         image_url TEXT,
         is_synced INTEGER DEFAULT 0,
-        sync_timestamp INTEGER
+        sync_timestamp INTEGER,
+        channel INTEGER NOT NULL DEFAULT 1,
+        voice_file_path TEXT,
+        type TEXT NOT NULL DEFAULT 'text',
+        severity_level TEXT,
+        emergency_type TEXT,
+        is_pinned INTEGER DEFAULT 0
       )
     ''');
 
@@ -270,6 +276,36 @@ class SQLiteService {
       await db.execute('DROP TABLE $_syncQueueTable');
       await db.execute('ALTER TABLE ${_syncQueueTable}_new RENAME TO $_syncQueueTable');
     }
+    if (oldVersion < 9) {
+      // Add channel and voice_file_path to messages for cache-friendly, channel-aware storage
+      final info = await db.rawQuery('PRAGMA table_info($_messagesTable)');
+      final columns = info.map((r) => r['name'] as String?).whereType<String>().toSet();
+      if (!columns.contains('channel')) {
+        await db.execute('ALTER TABLE $_messagesTable ADD COLUMN channel INTEGER NOT NULL DEFAULT 1');
+      }
+      if (!columns.contains('voice_file_path')) {
+        await db.execute('ALTER TABLE $_messagesTable ADD COLUMN voice_file_path TEXT');
+      }
+    }
+    if (oldVersion < 10) {
+      // Full local retention: type (text/voice/SOS/AI), severity_level, emergency_type, is_pinned
+      final info = await db.rawQuery('PRAGMA table_info($_messagesTable)');
+      final columns = info.map((r) => r['name'] as String?).whereType<String>().toSet();
+      if (!columns.contains('type')) {
+        await db.execute('ALTER TABLE $_messagesTable ADD COLUMN type TEXT NOT NULL DEFAULT \'text\'');
+      }
+      if (!columns.contains('severity_level')) {
+        await db.execute('ALTER TABLE $_messagesTable ADD COLUMN severity_level TEXT');
+      }
+      if (!columns.contains('emergency_type')) {
+        await db.execute('ALTER TABLE $_messagesTable ADD COLUMN emergency_type TEXT');
+      }
+      if (!columns.contains('is_pinned')) {
+        await db.execute('ALTER TABLE $_messagesTable ADD COLUMN is_pinned INTEGER DEFAULT 0');
+      }
+      // Backfill type from message_type for existing rows
+      await db.execute('UPDATE $_messagesTable SET type = \'voice\' WHERE message_type = \'voice\'');
+    }
   }
 
   // User operations
@@ -421,6 +457,23 @@ class SQLiteService {
       _messagesTable,
       where: 'chat_id = ?',
       whereArgs: [chatId],
+      orderBy: 'timestamp ASC',
+    );
+  }
+
+  /// Get cached messages for a given RF channel (1-5). Uses chat_id = 'local_channel_$channel'.
+  Future<List<Map<String, dynamic>>> getMessagesByChannel(int channel) async {
+    return getMessagesByChatId('local_channel_$channel');
+  }
+
+  /// Get all cached messages from every channel (1-5), merged and ordered by timestamp.
+  /// Used to retain the full chat UI history across channel switches.
+  Future<List<Map<String, dynamic>>> getMessagesFromAllChannels() async {
+    final db = await database;
+    return await db.query(
+      _messagesTable,
+      where: 'channel >= ? AND channel <= ?',
+      whereArgs: [1, 5],
       orderBy: 'timestamp ASC',
     );
   }

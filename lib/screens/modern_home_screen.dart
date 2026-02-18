@@ -258,6 +258,7 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                   final prefs = await SharedPreferences.getInstance();
                   await prefs.setInt(_rfChannelPrefKey, index);
                   await chatProvider.setRfChannel(_rfChannelValues[index]);
+                  chatProvider.addChannelSwitchNotification(index + 1);
                 }
               : null,
         ),
@@ -375,10 +376,10 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                       
                       const SizedBox(height: 16),
                       
-                      // Sample Emergency Alert with GIF
+                      // Reminders section (Disaster Tips, etc.)
                       PolishedFadeIn(
                         delay: const Duration(milliseconds: 500),
-                        child: _buildSampleEmergencyAlert(),
+                        child: _buildRemindersSection(),
                       ),
                       ],
                     ),
@@ -1322,7 +1323,7 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
     );
   }
 
-  Widget _buildSampleEmergencyAlert() {
+  Widget _buildRemindersSection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1339,13 +1340,13 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
           child: Row(
             children: [
               Icon(
-                Icons.info_outline,
+                Icons.notifications_active_outlined,
                 color: AppColors.primaryRed,
                 size: 20,
               ),
               const SizedBox(width: 8),
               const Text(
-                'Sample Emergency Alert',
+                'Reminders',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
@@ -1358,8 +1359,8 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
         const SizedBox(height: 12),
         EmergencyAlertWidget(
           variant: EmergencyAlertVariant.tips,
-          title: 'Disaster Tips',
-          message: 'What to do before, during, and after floods, earthquakes, fire, and cyclones.',
+          title: 'Offline disaster tips',
+          message: 'Actionable tips for various disaster types: floods, earthquakes, fire, and cyclones. Works without internet.',
           severity: 'High',
           showGif: true,
           gifPath: 'assets/gifs/disasters/emergency.gif',

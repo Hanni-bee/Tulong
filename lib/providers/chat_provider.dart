@@ -1,9 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bluetooth_serial_plus/flutter_bluetooth_serial_plus.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as path;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/bluetooth_service.dart';
 import '../services/voice_chat_extension.dart' as voice;
@@ -76,6 +79,7 @@ class ChatProvider with ChangeNotifier {
     for (int i = 0; i < _pendingIncomingMessages.length; i++) {
       final msg = _pendingIncomingMessages[i];
       _messages.add(msg);
+      if (!msg.isSystem) unawaited(_persistMessageToCache(msg));
       final msgId = i < _pendingIncomingMsgIds.length ? _pendingIncomingMsgIds[i] : null;
       if (msgId != null && msgId.isNotEmpty) {
         _displayedIncomingMsgIds.add(msgId);
@@ -292,6 +296,9 @@ class ChatProvider with ChangeNotifier {
         notifyListeners();
       }
     });
+
+    // Load message cache from SQLite on startup so pinned history survives app kill
+    unawaited(_loadCachedMessages());
   }
 
   Future<void> loadPairedDevices() async {
@@ -407,6 +414,10 @@ class ChatProvider with ChangeNotifier {
     notifyListeners();
     
     try {
+      // On refresh, reload from SQLite for current channel so list is backed by full retention
+      if (forceRefresh) {
+        await _loadCachedMessages();
+      }
       // If online, try to fetch new messages
       if (isOnline) {
         await _fetchMessagesFromNetwork();
@@ -429,17 +440,146 @@ class ChatProvider with ChangeNotifier {
     }
   }
   
-  /// Load cached messages from SQLite
+  /// Load cached messages from SQLite from all channels, merged by timestamp.
+  /// Retains full chat UI: everything that was on screen (all channels + channel notifs).
   Future<void> _loadCachedMessages() async {
     try {
-      // Load messages from local database
-      // For now, we'll use the existing messages list
-      // In a full implementation, you'd load from SQLite here
-      // Example: final cached = await SQLiteService().getMessagesByChatId('local_chat');
+      final sqlite = SQLiteService();
+      final rows = await sqlite.getMessagesFromAllChannels();
+      final List<ChatMessage> loaded = [];
+      for (final row in rows) {
+        final isMe = (row['sender_id']?.toString() ?? '') == 'me' ||
+            (row['sender_id']?.toString() ?? '').isEmpty;
+        final rowType = row['type']?.toString() ?? row['message_type']?.toString() ?? 'text';
+        final timestamp = DateTime.fromMillisecondsSinceEpoch(
+          (row['timestamp'] as int?) ?? 0,
+        );
+        if (rowType == 'system') {
+          loaded.add(ChatMessage(
+            text: row['message']?.toString() ?? '',
+            isMe: false,
+            timestamp: timestamp,
+            status: voice.MessageStatus.delivered,
+            type: voice.MessageType.text,
+            isSystem: true,
+            isRead: true,
+          ));
+          continue;
+        }
+        final isPinned = (row['is_pinned'] as int?) == 1;
+        final severityLevelStr = row['severity_level']?.toString();
+        final emergencyTypeStr = row['emergency_type']?.toString();
+        final SeverityLevel? severityLevel = severityLevelStr != null && severityLevelStr.isNotEmpty
+            ? SeverityLevel.fromString(severityLevelStr)
+            : null;
+        final EmergencyType? emergencyType = emergencyTypeStr != null && emergencyTypeStr.isNotEmpty
+            ? EmergencyType.fromString(emergencyTypeStr)
+            : null;
+        final isEmergency = rowType == 'SOS' || rowType == 'AI';
+
+        if (rowType == 'voice') {
+          final voicePath = row['voice_file_path']?.toString();
+          if (voicePath != null && voicePath.isNotEmpty) {
+            final file = File(voicePath);
+            if (await file.exists()) {
+              final bytes = await file.readAsBytes();
+              final base64Audio = base64Encode(bytes);
+              final vm = voice.VoiceMessage.fromBase64(
+                base64Audio: base64Audio,
+                isMe: isMe,
+                status: voice.MessageStatus.delivered,
+              );
+              loaded.add(ChatMessage(
+                text: '🎤 Voice message',
+                isMe: isMe,
+                timestamp: timestamp,
+                status: voice.MessageStatus.delivered,
+                type: voice.MessageType.voice,
+                voiceMessage: vm,
+                senderName: isMe ? null : (row['sender_name']?.toString()),
+                isRead: true,
+              ));
+            }
+          }
+        } else {
+          loaded.add(ChatMessage(
+            text: row['message']?.toString() ?? '',
+            isMe: isMe,
+            timestamp: timestamp,
+            status: voice.MessageStatus.delivered,
+            type: voice.MessageType.text,
+            senderName: isMe ? null : (row['sender_name']?.toString()),
+            senderUid: isMe ? null : (row['sender_id']?.toString()),
+            isEmergency: isEmergency,
+            isPinned: isPinned,
+            severityLevel: severityLevel,
+            emergencyType: emergencyType,
+            isRead: true,
+          ));
+        }
+      }
+      _messages.clear();
+      _messages.addAll(loaded);
       _hasCachedMessages = _messages.isNotEmpty;
+      if (loaded.isNotEmpty) _isLoadingMessages = false;
       notifyListeners();
     } catch (e) {
       print('Error loading cached messages: $e');
+    }
+  }
+
+  /// Persist a single message to SQLite cache (write-through). Includes system messages (channel notif).
+  /// Stores type (text/voice/SOS/AI/system) for full local retention of everything on chat UI.
+  Future<void> _persistMessageToCache(ChatMessage msg, {String? voiceFilePath}) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final channelIndex = prefs.getInt(_rfChannelPrefKey) ?? 0;
+      final channelNum = (channelIndex + 1).clamp(1, 5);
+      final chatId = 'local_channel_$channelNum';
+      String rowType;
+      String senderId;
+      String senderName;
+      String messageType;
+      if (msg.isSystem) {
+        rowType = 'system';
+        senderId = 'system';
+        senderName = '';
+        messageType = 'text';
+      } else {
+        senderId = msg.isMe ? 'me' : (msg.senderUid ?? msg.senderName ?? '');
+        senderName = msg.isMe ? (_currentUserName ?? 'Me') : (msg.senderName ?? '');
+        messageType = msg.type == voice.MessageType.voice ? 'voice' : 'text';
+        if (msg.type == voice.MessageType.voice) {
+          rowType = 'voice';
+        } else if (msg.emergencyType != null) {
+          rowType = 'AI';
+        } else if (msg.isEmergency) {
+          rowType = 'SOS';
+        } else {
+          rowType = 'text';
+        }
+      }
+      final data = <String, dynamic>{
+        'chat_id': chatId,
+        'message': msg.text,
+        'sender_id': senderId,
+        'sender_name': senderName,
+        'timestamp': msg.timestamp.millisecondsSinceEpoch,
+        'message_type': messageType,
+        'channel': channelNum,
+        'type': rowType,
+        'is_pinned': msg.isPinned ? 1 : 0,
+      };
+      if (!msg.isSystem) {
+        data['severity_level'] = msg.severityLevel?.name;
+        data['emergency_type'] = msg.emergencyType?.name;
+      }
+      if (voiceFilePath != null && voiceFilePath.isNotEmpty) {
+        data['voice_file_path'] = voiceFilePath;
+      }
+      await SQLiteService().insertMessage(data);
+    } catch (e) {
+      print('Error persisting message to cache: $e');
     }
   }
   
@@ -554,6 +694,9 @@ class ChatProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  /// SharedPreferences key for RF channel index (0-4). Must match modern_home_screen.dart.
+  static const String _rfChannelPrefKey = 'rf_channel_index';
+
   /// Send RF channel to ESP32 (only when connected). Call when user selects Channel 1–5 (RF 108, 100, 104, 112, 120).
   Future<void> setRfChannel(int rfChannelValue) async {
     if (!_bluetoothService.isConnected) return;
@@ -563,6 +706,22 @@ class ChatProvider with ChangeNotifier {
     } catch (e) {
       print('Error sending set_rf_channel: $e');
     }
+  }
+
+  /// Add a local-only system message to the chat (e.g. "You are now in Channel X"). Call when user switches RF channel.
+  void addChannelSwitchNotification(int channelNumber) {
+    final msg = ChatMessage(
+      text: 'You are now in Channel $channelNumber',
+      isMe: false,
+      timestamp: DateTime.now(),
+      status: voice.MessageStatus.delivered,
+      type: voice.MessageType.text,
+      isSystem: true,
+    );
+    _messages.add(msg);
+    _hasCachedMessages = true;
+    unawaited(_persistMessageToCache(msg));
+    notifyListeners();
   }
 
   Future<bool> sendMessage(
@@ -1272,6 +1431,20 @@ class ChatProvider with ChangeNotifier {
       _requestProfileFromESP32(actualUid);
     }
     final rawDataForHardwareSos = isSosFromHardware ? {'source': 'sos'} : null;
+
+    // Parse emergency detection from message body so receiver gets same metadata as sender (severity, type, styling)
+    SeverityLevel? severityLevel;
+    EmergencyType? emergencyType;
+    bool isEmergencyFromDetection = false;
+    if (EmergencyMessageParser.isEmergencyMessage(completeMessage)) {
+      final detection = EmergencyMessageParser.parseFromMessage(completeMessage);
+      if (detection != null) {
+        severityLevel = detection.severity;
+        emergencyType = detection.type;
+        isEmergencyFromDetection = true;
+      }
+    }
+
     // Store RF msgId on ChatMessage for normal chat; SOS/legacy without msgId use null (do not generate local IDs for SEEN)
     final chatMsg = ChatMessage(
       text: completeMessage,
@@ -1282,10 +1455,12 @@ class ChatProvider with ChangeNotifier {
       senderName: displayName,
       senderUid: actualUid,
       isRead: _isLocalChatScreenVisible,
-      isEmergency: isSosFromHardware,
+      isEmergency: isSosFromHardware || isEmergencyFromDetection,
       isPinned: isSosFromHardware,
       messageId: isSosFromHardware ? null : msgIdForDedup,
       rawData: rawDataForHardwareSos,
+      severityLevel: severityLevel,
+      emergencyType: emergencyType,
     );
     _pendingIncomingMessages.add(chatMsg);
     _pendingIncomingMsgIds.add(msgIdForDedup);
@@ -1399,6 +1574,25 @@ class ChatProvider with ChangeNotifier {
       'metrics': {'totalMessages': _messages.length, 'voiceSize': voiceMessage.formattedSize}
     });
     notifyListeners();
+    // Persist voice to cache: save base64 to file then persist row with path
+    unawaited(_saveVoiceToCache(chatMessage));
+  }
+
+  /// Save voice message to app storage and persist row to SQLite (path in voice_file_path).
+  Future<void> _saveVoiceToCache(ChatMessage chatMessage) async {
+    if (chatMessage.voiceMessage == null) return;
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final voiceDir = Directory(path.join(dir.path, 'voice_messages'));
+      if (!await voiceDir.exists()) await voiceDir.create(recursive: true);
+      final name = 'voice_${chatMessage.timestamp.millisecondsSinceEpoch}.aac';
+      final filePath = path.join(voiceDir.path, name);
+      final bytes = base64Decode(chatMessage.voiceMessage!.base64Audio);
+      await File(filePath).writeAsBytes(bytes);
+      await _persistMessageToCache(chatMessage, voiceFilePath: filePath);
+    } catch (e) {
+      print('Error saving voice to cache: $e');
+    }
   }
 
   /// Start recording voice message
@@ -1471,6 +1665,7 @@ class ChatProvider with ChangeNotifier {
 
     _messages.add(chatMessage);
     notifyListeners();
+    unawaited(_persistMessageToCache(chatMessage, voiceFilePath: recordingPath));
 
     // Send over Bluetooth (waits for VOICE_READY, then chunks, then VOICE_DONE)
     final success = await _voiceExtension.sendVoiceMessage(
@@ -1582,6 +1777,11 @@ class ChatProvider with ChangeNotifier {
     // Add message to list (real-time from ESP32)
     _messages.add(message);
     
+    // Persist to SQLite cache (write-through); skip system messages
+    if (!message.isSystem) {
+      unawaited(_persistMessageToCache(message));
+    }
+    
     // Notify listeners to update badge count
     notifyListeners();
     
@@ -1603,32 +1803,70 @@ class ChatProvider with ChangeNotifier {
   
   Future<void> _showMessageNotification(ChatMessage message, String? senderName) async {
     try {
-      // Check notification settings
+      // Check notification settings (emergency/SOS use emergency setting for their types)
       final prefs = await SharedPreferences.getInstance();
       final messageNotificationsEnabled = prefs.getBool('notification_messages') ?? true;
-      
-      if (!messageNotificationsEnabled) {
-        return;
-      }
+      final emergencyNotificationsEnabled = prefs.getBool('notification_emergency') ?? true;
       
       // Get current user to avoid notifying for own messages
       final currentUserEmail = prefs.getString('user_email') ?? '';
       final currentUserName = prefs.getString('user_name') ?? '';
       
-      // Don't notify if sender is current user
       if (senderName == currentUserName || senderName == currentUserEmail) {
         return;
       }
       
-      // Show notification
       final displayName = senderName ?? 'Unknown User';
       final messageText = message.text;
+      final stableId = NotificationService.stableNotificationId(
+        message.messageId ?? '${displayName}_${message.timestamp.millisecondsSinceEpoch}',
+      );
       
-      // Handle voice messages
+      // Emergency from Emergency Detection (scan) – distinct styling
+      if (message.emergencyType != null && message.emergencyType!.isRealEmergency) {
+        if (!emergencyNotificationsEnabled) return;
+        final title = 'Emergency: ${message.emergencyType!.label}';
+        await NotificationService().showEmergencyAlert(
+          title: title,
+          body: messageText,
+          stableId: stableId,
+          payload: jsonEncode({
+            'type': 'emergency',
+            'chatType': 'local',
+            'senderName': displayName,
+            'message': messageText,
+            'emergencyType': message.emergencyType!.name,
+            'timestamp': message.timestamp.toIso8601String(),
+          }),
+        );
+        return;
+      }
+      
+      // SOS (hardware/home hold-to-send) – distinct styling
+      if (message.isEmergency) {
+        if (!emergencyNotificationsEnabled) return;
+        await NotificationService().showSosNotification(
+          title: 'SOS Alert',
+          body: messageText,
+          stableId: stableId,
+          payload: jsonEncode({
+            'type': 'sos',
+            'chatType': 'local',
+            'senderName': displayName,
+            'message': messageText,
+            'timestamp': message.timestamp.toIso8601String(),
+          }),
+        );
+        return;
+      }
+      
+      // Normal chat message
+      if (!messageNotificationsEnabled) return;
       if (message.type == voice.MessageType.voice && message.voiceMessage != null) {
         await NotificationService().showMessageNotification(
           sender: displayName,
           message: 'Voice message',
+          stableId: stableId,
           payload: jsonEncode({
             'type': 'message',
             'chatType': 'local',
@@ -1641,6 +1879,7 @@ class ChatProvider with ChangeNotifier {
         await NotificationService().showMessageNotification(
           sender: displayName,
           message: messageText,
+          stableId: stableId,
           payload: jsonEncode({
             'type': 'message',
             'chatType': 'local',
@@ -2020,6 +2259,7 @@ class ChatMessage {
   final Map<String, dynamic>? rawData; // Raw message data for source detection
   final SeverityLevel? severityLevel; // Severity level for AI-detected emergencies (for unique UI styling)
   final EmergencyType? emergencyType; // Emergency type for AI-detected emergencies
+  final bool isSystem; // Local-only system line (e.g. "You are now in Channel X")
 
   ChatMessage({
     required this.text,
@@ -2037,6 +2277,7 @@ class ChatMessage {
     this.rawData, // Raw data for message (e.g., for SOS source)
     this.severityLevel, // Severity level for styling
     this.emergencyType, // Emergency type
+    this.isSystem = false, // Default to false for normal messages
   });
   
   ChatMessage copyWith({
@@ -2055,6 +2296,7 @@ class ChatMessage {
     Map<String, dynamic>? rawData,
     SeverityLevel? severityLevel,
     EmergencyType? emergencyType,
+    bool? isSystem,
   }) {
     return ChatMessage(
       text: text ?? this.text,
@@ -2072,6 +2314,7 @@ class ChatMessage {
       rawData: rawData ?? this.rawData,
       severityLevel: severityLevel ?? this.severityLevel,
       emergencyType: emergencyType ?? this.emergencyType,
+      isSystem: isSystem ?? this.isSystem,
     );
   }
 }

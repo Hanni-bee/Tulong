@@ -558,8 +558,9 @@ class MLModelService {
       await _inferenceLock!.future;
       _inferenceLock = Completer<void>();
       debugPrint('🔄 Running TFLite inference (dynamic, no caching)...');
-      debugPrint('   Input buffer size: ${runInputBuffer[0] is List ? (runInputBuffer[0] as List).length : 0}');
-      debugPrint('   Output buffer size: ${(outputBuffer[0] as List).length}');
+      debugPrint('   Input buffer size: ${runInput is List ? (runInput as List).length : (runInput is TypedData ? (runInput as TypedData).lengthInBytes : 0)}');
+      final outLen = runOutput is List ? ((runOutput as List)[0] as dynamic).length : (runOutput is TypedData ? (runOutput as TypedData).lengthInBytes : 0);
+      debugPrint('   Output buffer size: $outLen');
 
       // Re-check interpreter is still valid (could have been disposed)
       if (_isDisposed || _interpreter == null || !_isLoaded) {

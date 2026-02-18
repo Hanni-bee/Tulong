@@ -84,8 +84,9 @@ class _TulongAppState extends State<TulongApp> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-    // Update notification service with app state
-    final isInForeground = state == AppLifecycleState.resumed;
+    // Update notification service: only show push when app is in background (not resumed or inactive)
+    final isInForeground = state == AppLifecycleState.resumed ||
+        state == AppLifecycleState.inactive;
     NotificationService().setAppLifecycleState(isInForeground);
     debugPrint('📱 App lifecycle changed: $state (Foreground: $isInForeground)');
   }
@@ -136,7 +137,6 @@ class _TulongAppState extends State<TulongApp> with WidgetsBindingObserver {
               '/update-profile': (context) => const UpdateProfileScreen(), // Update profile with address
               '/esp32-auth': (context) => const ESP32AuthScreen(), // ESP32 Bluetooth authentication
               '/esp32-scanner': (context) => const ESP32DeviceScanner(), // ESP32 device scanner with pairing
-              '/disaster-demo': (context) => const DisasterTipsScreen(),
               '/disaster-tips': (context) => const DisasterTipsScreen(),
               '/main': (context) => const MainNavigation(),
               '/chat': (context) => const LocalChatScreen(),
