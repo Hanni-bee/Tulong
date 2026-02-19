@@ -58,6 +58,8 @@ class ChatProvider with ChangeNotifier {
   Timer? _captureTimeoutTimer;    // If no <MSG_END> within ~2s, flush anyway (best-effort)
   static const Duration _captureTimeoutDuration = Duration(milliseconds: 2000);
   final Set<String> _displayedIncomingMsgIds = {};  // Dedup: do not show same msgId twice (status updates still apply to outgoing)
+  /// Message IDs received while chat screen was not visible; send SEEN when user opens chat.
+  final Set<String> _pendingSeenMsgIds = {};
 
   // Debounce: batch appends to avoid UI jitter (single append still goes through timer)
   final List<ChatMessage> _pendingIncomingMessages = [];
@@ -83,7 +85,11 @@ class ChatProvider with ChangeNotifier {
       final msgId = i < _pendingIncomingMsgIds.length ? _pendingIncomingMsgIds[i] : null;
       if (msgId != null && msgId.isNotEmpty) {
         _displayedIncomingMsgIds.add(msgId);
-        idsToSendSeen.add(msgId);
+        if (_isLocalChatScreenVisible) {
+          idsToSendSeen.add(msgId);
+        } else {
+          _pendingSeenMsgIds.add(msgId);
+        }
       }
       if (!msg.isMe) _showMessageNotification(msg, msg.senderName);
     }
@@ -92,7 +98,7 @@ class ChatProvider with ChangeNotifier {
     _hasCachedMessages = true;
     if (_isLoadingMessages && _messages.isNotEmpty) _isLoadingMessages = false;
     notifyListeners();
-    // SEEN only after UI has rendered (receiver phone drives SEEN)
+    // SEEN only when chat screen is visible and after UI has rendered (receiver phone drives SEEN)
     if (idsToSendSeen.isNotEmpty) {
       SchedulerBinding.instance.addPostFrameCallback((_) {
         for (final id in idsToSendSeen) _sendSeenToEsp32(id);
@@ -171,6 +177,14 @@ class ChatProvider with ChangeNotifier {
     if (isVisible) {
       // Mark all messages as read when screen becomes visible
       markAllMessagesAsRead();
+      // Send SEEN for messages that were received while chat was not visible (now displayed)
+      if (_pendingSeenMsgIds.isNotEmpty) {
+        final toSend = _pendingSeenMsgIds.toList();
+        _pendingSeenMsgIds.clear();
+        SchedulerBinding.instance.addPostFrameCallback((_) {
+          for (final id in toSend) _sendSeenToEsp32(id);
+        });
+      }
     }
   }
   
@@ -1340,10 +1354,14 @@ class ChatProvider with ChangeNotifier {
     _bufferedMessageMsgId = null;
     _isBufferingMessage = false;
 
-    // Dedup: if we already displayed this msgId, do not append duplicate — but still send SEEN so sender stops retrying
+    // Dedup: if we already displayed this msgId, do not append duplicate — send SEEN only when chat is visible
     if (msgIdForDedup != null && msgIdForDedup.isNotEmpty && _displayedIncomingMsgIds.contains(msgIdForDedup)) {
-      print('BT_RX: Dedup skip msgId=$msgIdForDedup (still sending SEEN)');
-      SchedulerBinding.instance.addPostFrameCallback((_) => _sendSeenToEsp32(msgIdForDedup!));
+      print('BT_RX: Dedup skip msgId=$msgIdForDedup');
+      if (_isLocalChatScreenVisible) {
+        SchedulerBinding.instance.addPostFrameCallback((_) => _sendSeenToEsp32(msgIdForDedup!));
+      } else {
+        _pendingSeenMsgIds.add(msgIdForDedup!);
+      }
       return;
     }
     if (completeMessage.isEmpty) return;
