@@ -47,6 +47,8 @@ class ChatProvider with ChangeNotifier {
   
   // Track if local chat screen is currently visible
   bool _isLocalChatScreenVisible = false;
+  // RF msgIds that have been received but not yet sent as SEEN because chat UI was not visible
+  final Set<String> _pendingSeenMsgIds = {};
   
   // ----- Message capture state machine (Bluetooth SPP line parser) -----
   // CAPTURE mode: after <MSG_START:uid[:msgId]> we buffer body lines until <MSG_END>.
@@ -83,7 +85,11 @@ class ChatProvider with ChangeNotifier {
       final msgId = i < _pendingIncomingMsgIds.length ? _pendingIncomingMsgIds[i] : null;
       if (msgId != null && msgId.isNotEmpty) {
         _displayedIncomingMsgIds.add(msgId);
-        idsToSendSeen.add(msgId);
+        if (_isLocalChatScreenVisible) {
+          idsToSendSeen.add(msgId);
+        } else {
+          _pendingSeenMsgIds.add(msgId);
+        }
       }
       if (!msg.isMe) _showMessageNotification(msg, msg.senderName);
     }
@@ -171,6 +177,16 @@ class ChatProvider with ChangeNotifier {
     if (isVisible) {
       // Mark all messages as read when screen becomes visible
       markAllMessagesAsRead();
+      // Send SEEN for any RF messages that were received while chat UI was not visible
+      if (_pendingSeenMsgIds.isNotEmpty) {
+        final idsToSend = List<String>.from(_pendingSeenMsgIds);
+        _pendingSeenMsgIds.clear();
+        SchedulerBinding.instance.addPostFrameCallback((_) {
+          for (final id in idsToSend) {
+            _sendSeenToEsp32(id);
+          }
+        });
+      }
     }
   }
   
@@ -1343,7 +1359,11 @@ class ChatProvider with ChangeNotifier {
     // Dedup: if we already displayed this msgId, do not append duplicate — but still send SEEN so sender stops retrying
     if (msgIdForDedup != null && msgIdForDedup.isNotEmpty && _displayedIncomingMsgIds.contains(msgIdForDedup)) {
       print('BT_RX: Dedup skip msgId=$msgIdForDedup (still sending SEEN)');
-      SchedulerBinding.instance.addPostFrameCallback((_) => _sendSeenToEsp32(msgIdForDedup!));
+      if (_isLocalChatScreenVisible) {
+        SchedulerBinding.instance.addPostFrameCallback((_) => _sendSeenToEsp32(msgIdForDedup!));
+      } else {
+        _pendingSeenMsgIds.add(msgIdForDedup!);
+      }
       return;
     }
     if (completeMessage.isEmpty) return;
