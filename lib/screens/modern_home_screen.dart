@@ -59,7 +59,12 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
   bool _showWelcome = false;
   bool _isEmergencyHolding = false;
   final bool _isLoadingStats = false;
-  
+
+  // RF channel selection (Channel 1–5 → RF 108, 100, 104, 112, 120)
+  static const List<int> _rfChannelValues = [108, 100, 104, 112, 120];
+  static const String _rfChannelPrefKey = 'rf_channel_index';
+  int _selectedRfChannelIndex = 0;
+
   // Quick Actions list - created as getter to avoid initialization issues
   List<Map<String, dynamic>> _getQuickActions() => [
     {
@@ -118,7 +123,9 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
           _showEmergencyDialog(context);
         }
       });
-    
+
+    _loadSavedRfChannelIndex();
+
     _fadeAnimation = Tween<double>(
       begin: 0.0,
       end: 1.0,
@@ -187,6 +194,77 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
     }
   }
 
+  Future<void> _loadSavedRfChannelIndex() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getInt(_rfChannelPrefKey);
+    if (mounted && saved != null) {
+      setState(() {
+        _selectedRfChannelIndex = saved.clamp(0, _rfChannelValues.length - 1);
+      });
+    }
+  }
+
+  Widget _buildChannelDropdown(BuildContext context, ChatProvider chatProvider) {
+    final isConnected = chatProvider.isConnected;
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      decoration: BoxDecoration(
+        color: ThemeColors.surface(context).withOpacity(0.9),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: isConnected
+              ? AppColors.primaryRed.withOpacity(0.4)
+              : ThemeColors.border(context).withOpacity(0.5),
+          width: 1,
+        ),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<int>(
+          value: _selectedRfChannelIndex.clamp(0, _rfChannelValues.length - 1),
+          isExpanded: true,
+          isDense: true,
+          borderRadius: BorderRadius.circular(10),
+          dropdownColor: ThemeColors.surface(context),
+          icon: Icon(
+            Icons.tune,
+            color: isConnected ? AppColors.primaryRed : ThemeColors.textSecondary(context),
+            size: 20,
+          ),
+          hint: Text(
+            isConnected ? 'RF Channel' : 'Connect Bluetooth to set channel',
+            style: TextStyle(
+              fontSize: 13,
+              color: ThemeColors.textSecondary(context),
+            ),
+          ),
+          items: List.generate(
+            _rfChannelValues.length,
+            (i) => DropdownMenuItem<int>(
+              value: i,
+              child: Text(
+                'Channel ${i + 1} (RF ${_rfChannelValues[i]})',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: ThemeColors.textPrimary(context),
+                ),
+              ),
+            ),
+          ),
+          onChanged: isConnected
+              ? (int? index) async {
+                  if (index == null) return;
+                  setState(() => _selectedRfChannelIndex = index);
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.setInt(_rfChannelPrefKey, index);
+                  await chatProvider.setRfChannel(_rfChannelValues[index]);
+                  chatProvider.addChannelSwitchNotification(index + 1);
+                }
+              : null,
+        ),
+      ),
+    );
+  }
 
   @override
   void dispose() {
@@ -298,10 +376,10 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                       
                       const SizedBox(height: 16),
                       
-                      // Sample Emergency Alert with GIF
+                      // Reminders section (Disaster Tips, etc.)
                       PolishedFadeIn(
                         delay: const Duration(milliseconds: 500),
-                        child: _buildSampleEmergencyAlert(),
+                        child: _buildRemindersSection(),
                       ),
                       ],
                     ),
@@ -569,6 +647,8 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                 ),
               ),
             ),
+            const SizedBox(height: 8),
+            _buildChannelDropdown(context, chatProvider),
             const SizedBox(height: 12),
             // Gradient accent line matching Calls/Messages/Profile style
             AnimatedContainer(
@@ -1243,7 +1323,7 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
     );
   }
 
-  Widget _buildSampleEmergencyAlert() {
+  Widget _buildRemindersSection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1260,13 +1340,13 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
           child: Row(
             children: [
               Icon(
-                Icons.info_outline,
+                Icons.notifications_active_outlined,
                 color: AppColors.primaryRed,
                 size: 20,
               ),
               const SizedBox(width: 8),
               const Text(
-                'Sample Emergency Alert',
+                'Reminders',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
@@ -1279,8 +1359,8 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
         const SizedBox(height: 12),
         EmergencyAlertWidget(
           variant: EmergencyAlertVariant.tips,
-          title: 'Disaster Tips',
-          message: 'What to do before, during, and after floods, earthquakes, fire, and cyclones.',
+          title: 'Offline disaster tips',
+          message: 'Actionable tips for various disaster types: floods, earthquakes, fire, and cyclones. Works without internet.',
           severity: 'High',
           showGif: true,
           gifPath: 'assets/gifs/disasters/emergency.gif',

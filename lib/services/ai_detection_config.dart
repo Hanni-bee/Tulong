@@ -77,4 +77,14 @@ class AIDetectionConfig {
   static const bool enableWildfireColorCheck = true;
   /// Minimum mean-R ratio (R / (R+G+B)) to accept wildfire; below this → No Emergency. Typical fire ~0.35–0.5.
   static const double minRedRatioForWildfire = 0.32;
+
+  /// When model says Flood, require image to have some blue/cyan presence (reduces false flood in dry/red scenes).
+  static const bool enableFloodColorCheck = true;
+  /// Minimum mean-B ratio (B / (R+G+B)) to accept flood; below this → No Emergency. Typical water ~0.3–0.5.
+  static const double minBlueRatioForFlood = 0.28;
+
+  /// When ML says disaster, allow rule-based color check to slightly reduce confidence (hybrid refinement). Does not force No Emergency.
+  static const bool enableHybridConfidenceRefinement = true;
+  /// If hybrid refinement is on and rule-based strongly disagrees, cap confidence at this (e.g. 0.65).
+  static const double maxConfidenceWhenRuleBasedDisagrees = 0.68;
 }

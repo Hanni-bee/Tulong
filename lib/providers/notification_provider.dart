@@ -360,23 +360,28 @@ class NotificationProvider extends ChangeNotifier {
       return;
     }
     
-    // Show push notification
+    // Stable id to avoid duplicate notifications for same alert
+    final timestamp = DateTime.now().toIso8601String();
+    final stableId = NotificationService.stableNotificationId('${userId}_$timestamp');
+    
+    // Show push notification (text-only, no emoji; icon from NotificationService)
     await NotificationService().showEmergencyAlert(
-      title: '🚨 Emergency Alert',
+      title: 'Emergency Alert',
       body: message,
+      stableId: stableId,
       payload: jsonEncode({
         'type': 'emergency',
         'userId': userId,
         'location': location,
         'message': message,
-        'timestamp': DateTime.now().toIso8601String(),
+        'timestamp': timestamp,
       }),
     );
     
-    // Add to notification list
+    // Add to notification list (text-only, no emoji)
     final notification = AppNotification(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
-      title: '🚨 Emergency Alert',
+      title: 'Emergency Alert',
       body: message,
       type: NotificationType.emergency,
       timestamp: DateTime.now(),

@@ -269,14 +269,10 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
     );
   }
 
-  // UI-only: Check if message is SOS emergency
+  // UI-only: Check if message is SOS emergency (for Pinned SOS History).
+  // Use isEmergency only so messages restored from SQLite (no rawData) still appear after restart.
   bool _isSosEmergencyMessage(ChatMessage message) {
-    if (!message.isEmergency) return false;
-    // Check source from rawData first (matches UI branch)
-    final source = message.rawData?['source']?.toString();
-    if (source == 'sos') return true;
-    // Fallback heuristic for older/legacy SOS payloads
-    return message.isMe && message.text.contains('🚨');
+    return message.isEmergency;
   }
 
   // UI-only: Get SOS emergency history (last 24 hours)
@@ -622,18 +618,16 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
                                 }
                                 if (index < regularMessages.length) {
                                   final message = regularMessages[index];
-                                  // Auto-scroll to bottom when new messages arrive
-                                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                                    if (_scrollController.hasClients && index == regularMessages.length - 1) {
-                                      _scrollController.animateTo(
-                                        _scrollController.position.maxScrollExtent,
-                                        duration: const Duration(milliseconds: 300),
-                                        curve: Curves.easeOut,
-                                      );
-                                    }
-                                  });
-                                  // From Emergency Detection: show status line (dot + name + status), not bubble
+                                  // Auto-scroll is handled only when message count increases, via _maybeScrollToBottomIfNearBottom() above (keeps backread possible)
+                                  // System message (e.g. "You are now in Channel X"): centered, no bubble
+                                  if (message.isSystem) {
+                                    return _buildSystemMessage(message);
+                                  }
+                                  // From Emergency Detection: receiver gets full bubble (avatar + format); sender gets compact status line
                                   if (message.emergencyType != null) {
+                                    if (!message.isMe) {
+                                      return _buildMessageBubble(message);
+                                    }
                                     return _buildEmergencyStatusLine(message);
                                   }
                                   return _buildMessageBubble(message);
@@ -1009,6 +1003,18 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
     );
   }
 
+  /// Strip raw protocol lines (MSG_START, MSG_END) from detection message body for display.
+  String _cleanDetectionMessageBody(String text) {
+    if (text.isEmpty) return text;
+    const protocolPatterns = ['<MSG_START', 'MSG_START>', '<MSG_END', 'MSG_END>'];
+    final lines = text.split('\n');
+    final kept = lines.where((line) {
+      final upper = line.trim().toUpperCase();
+      return !protocolPatterns.any((p) => upper.contains(p.toUpperCase()));
+    }).toList();
+    return kept.join('\n').trim();
+  }
+
   void _showEmergencyStatusDetails(ChatMessage message) {
     final severity = message.severityLevel;
     final type = message.emergencyType;
@@ -1106,6 +1112,21 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildSystemMessage(ChatMessage message) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Center(
+        child: Text(
+          message.text,
+          style: AppTypography.bodySmall.copyWith(
+            color: ThemeColors.textSecondary(context),
+            fontSize: 13,
+          ),
+        ),
+      ),
     );
   }
 
@@ -1277,14 +1298,52 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
                     ],
                   ),
                   const SizedBox(height: 6),
+                  // Pill row: "Detection Result {severity}" + colored dot (same as sender / first image)
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Detection Result ${severity?.label ?? 'Unknown'}',
+                        style: AppTypography.bodySmall.copyWith(
+                          color: ThemeColors.textSecondary(context),
+                          fontWeight: FontWeight.w500,
+                          fontSize: 13,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(width: 10),
+                      Container(
+                        width: 10,
+                        height: 10,
+                        decoration: BoxDecoration(
+                          color: severity != null
+                              ? SeverityColors.color(severity)
+                              : ThemeColors.textTertiary(context),
+                          shape: BoxShape.circle,
+                          boxShadow: severity != null
+                              ? [
+                                  BoxShadow(
+                                    color: SeverityColors.color(severity).withOpacity(0.4),
+                                    blurRadius: 4,
+                                  ),
+                                ]
+                              : null,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
                 ],
-                // Message content
+                // Message content (cleaned body for detection so no raw MSG_* lines)
                 if (message.type == voice.MessageType.voice && message.voiceMessage != null)
                   _buildVoiceMessageContent(message.voiceMessage!, message.timestamp.millisecondsSinceEpoch.toString(), message.isMe)
                 else
                   isEmergency
                       ? Text(
-                          message.text,
+                          isFromEmergencyDetection
+                              ? _cleanDetectionMessageBody(message.text)
+                              : message.text,
                           style: AppTypography.bodyLarge.copyWith(
                             fontSize: 18,
                             fontWeight: FontWeight.w800,

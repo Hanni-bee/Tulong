@@ -70,8 +70,8 @@ class EmergencyDetectionService {
       }
     }
     
-    // PASS 1.5: Multi-scale analysis (enhanced)
-    final multiScaleAnalysis = _analyzeMultiScale(image);
+    // PASS 1.5: Multi-scale analysis (enhanced) – pass full analysis so full-scale metrics are correct
+    final multiScaleAnalysis = _analyzeMultiScale(image, fullAnalysis);
     fullAnalysis.addAll(multiScaleAnalysis);
     
     // PASS 1.6: Histogram analysis (enhanced)
@@ -561,11 +561,15 @@ class EmergencyDetectionService {
     return ((maxBrightness - minBrightness) / 255.0).clamp(0.0, 1.0);
   }
   
-  /// Multi-scale analysis - analyze at different resolutions
-  Map<String, double> _analyzeMultiScale(img.Image image) {
-    final analysis = <String, double>{};
+  /// Multi-scale analysis - analyze at different resolutions.
+  /// [fullAnalysisForScale1] when provided supplies full-image red_ratio and edge_density so consistency is correct.
+  Map<String, double> _analyzeMultiScale(img.Image image, [Map<String, double>? fullAnalysisForScale1]) {
+    final result = <String, double>{};
     
-    // Scale 1: Full image (already analyzed)
+    // Scale 1: Full image – use provided analysis to avoid wrong zeros
+    final redRatioFull = fullAnalysisForScale1?['red_ratio'] ?? 0.0;
+    final edgeDensityFull = fullAnalysisForScale1?['edge_density'] ?? 0.0;
+    
     // Scale 2: Half resolution
     final halfSize = img.copyResize(image, width: image.width ~/ 2, height: image.height ~/ 2);
     final halfAnalysis = _analyzeImage(halfSize);
@@ -574,26 +578,22 @@ class EmergencyDetectionService {
     final quarterSize = img.copyResize(image, width: image.width ~/ 4, height: image.height ~/ 4);
     final quarterAnalysis = _analyzeImage(quarterSize);
     
-    // Compare scales - real emergencies show consistent patterns
-    final redRatioFull = analysis['red_ratio'] ?? 0.0;
     final redRatioHalf = halfAnalysis['red_ratio'] ?? 0.0;
     final redRatioQuarter = quarterAnalysis['red_ratio'] ?? 0.0;
-    
-    final edgeDensityFull = analysis['edge_density'] ?? 0.0;
     final edgeDensityHalf = halfAnalysis['edge_density'] ?? 0.0;
     final edgeDensityQuarter = quarterAnalysis['edge_density'] ?? 0.0;
     
     // Consistency score - real emergencies are consistent across scales
-    final redConsistency = 1.0 - ((redRatioFull - redRatioHalf).abs() + 
-                                  (redRatioHalf - redRatioQuarter).abs()) / 2.0;
-    final edgeConsistency = 1.0 - ((edgeDensityFull - edgeDensityHalf).abs() + 
-                                    (edgeDensityHalf - edgeDensityQuarter).abs()) / 2.0;
+    final redConsistency = 1.0 - ((redRatioFull - redRatioHalf).abs() +
+        (redRatioHalf - redRatioQuarter).abs()) / 2.0;
+    final edgeConsistency = 1.0 - ((edgeDensityFull - edgeDensityHalf).abs() +
+        (edgeDensityHalf - edgeDensityQuarter).abs()) / 2.0;
     
-    analysis['multi_scale_consistency'] = (redConsistency + edgeConsistency) / 2.0;
-    analysis['multi_scale_red_avg'] = (redRatioFull + redRatioHalf + redRatioQuarter) / 3.0;
-    analysis['multi_scale_edge_avg'] = (edgeDensityFull + edgeDensityHalf + edgeDensityQuarter) / 3.0;
+    result['multi_scale_consistency'] = (redConsistency + edgeConsistency) / 2.0;
+    result['multi_scale_red_avg'] = (redRatioFull + redRatioHalf + redRatioQuarter) / 3.0;
+    result['multi_scale_edge_avg'] = (edgeDensityFull + edgeDensityHalf + edgeDensityQuarter) / 3.0;
     
-    return analysis;
+    return result;
   }
   
   /// Histogram analysis - better color distribution understanding

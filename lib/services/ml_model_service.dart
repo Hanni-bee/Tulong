@@ -557,7 +557,10 @@ class MLModelService {
       // Run inference - one at a time to avoid "failed precondition" / interpreter busy
       await _inferenceLock!.future;
       _inferenceLock = Completer<void>();
-      debugPrint('🔄 Running TFLite inference...');
+      debugPrint('🔄 Running TFLite inference (dynamic, no caching)...');
+      debugPrint('   Input buffer size: ${runInput is List ? (runInput as List).length : (runInput is TypedData ? (runInput as TypedData).lengthInBytes : 0)}');
+      final outLen = runOutput is List ? ((runOutput as List)[0] as dynamic).length : (runOutput is TypedData ? (runOutput as TypedData).lengthInBytes : 0);
+      debugPrint('   Output buffer size: $outLen');
 
       // Re-check interpreter is still valid (could have been disposed)
       if (_isDisposed || _interpreter == null || !_isLoaded) {
@@ -672,6 +675,8 @@ class MLModelService {
       }
       final probabilities = rawOutput;
 
+      debugPrint('📊 Raw output buffer size: ${(output is List ? (output as List).length : 0)}');
+      debugPrint('📊 Output tensor shape: ${outputTensor.shape}');
       debugPrint('📊 Extracted ${probabilities.length} probabilities');
       if (kDebugMode) {
         for (int i = 0; i < probabilities.length && i < 4; i++) {

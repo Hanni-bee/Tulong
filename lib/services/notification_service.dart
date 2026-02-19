@@ -26,9 +26,15 @@ class NotificationService {
   
   // Notification channels
   static const String emergencyChannelId = 'emergency_alerts';
+  static const String sosChannelId = 'sos_alerts';
   static const String messageChannelId = 'chat_messages';
   static const String systemChannelId = 'system_notifications';
   static const String reminderChannelId = 'reminders';
+
+  // Android small icons per type (drawable names without @drawable/)
+  static const String _iconMessage = 'ic_notification_message';
+  static const String _iconSos = 'ic_notification_sos';
+  static const String _iconEmergency = 'ic_notification_emergency';
 
   // Stream controllers for notification events
   final StreamController<NotificationResponse> _onNotificationTapController = StreamController.broadcast();
@@ -93,6 +99,13 @@ class NotificationService {
       sound: RawResourceAndroidNotificationSound('emergency_alert'),
     );
 
+    const sosChannel = AndroidNotificationChannel(
+      sosChannelId,
+      'SOS Alerts',
+      description: 'SOS and hold-to-send emergency alerts',
+      importance: Importance.max,
+    );
+
     const messageChannel = AndroidNotificationChannel(
       messageChannelId,
       'Chat Messages',
@@ -114,21 +127,13 @@ class NotificationService {
       importance: Importance.defaultImportance,
     );
 
-    await _localNotifications
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
-        ?.createNotificationChannel(emergencyChannel);
-    
-    await _localNotifications
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
-        ?.createNotificationChannel(messageChannel);
-    
-    await _localNotifications
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
-        ?.createNotificationChannel(systemChannel);
-    
-    await _localNotifications
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
-        ?.createNotificationChannel(reminderChannel);
+    final android = _localNotifications
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+    await android?.createNotificationChannel(emergencyChannel);
+    await android?.createNotificationChannel(sosChannel);
+    await android?.createNotificationChannel(messageChannel);
+    await android?.createNotificationChannel(systemChannel);
+    await android?.createNotificationChannel(reminderChannel);
   }
 
   Future<void> _requestPermissions() async {
@@ -175,6 +180,7 @@ class NotificationService {
     String? largeIcon,
     NotificationStyle style = NotificationStyle.defaultStyle,
     bool forceShow = false, // Allow forcing notification even in foreground (emergency only)
+    String? androidSmallIcon, // Drawable name for status bar (e.g. 'ic_notification_sos')
   }) async {
     // Don't show notification if app is in foreground (unless forced for emergencies)
     if (_isAppInForeground && !forceShow) {
@@ -184,6 +190,9 @@ class NotificationService {
     
     // Determine color based on channel
     final notificationColor = color ?? _getColorForChannel(channelId);
+    final iconResource = androidSmallIcon != null
+        ? '@drawable/$androidSmallIcon'
+        : '@mipmap/launcher_icon';
     
     // Create Android notification details with app's design system
     final androidDetails = AndroidNotificationDetails(
@@ -192,7 +201,7 @@ class NotificationService {
       channelDescription: _getChannelDescription(channelId),
       importance: _getImportanceForChannel(channelId),
       priority: _getPriorityForChannel(channelId),
-      icon: '@mipmap/launcher_icon', // App logo - visible in status bar
+      icon: iconResource,
       color: notificationColor,
       colorized: true, // Enable colored notification background
       largeIcon: largeIcon != null 
@@ -204,7 +213,7 @@ class NotificationService {
       playSound: true,
       channelShowBadge: true,
       autoCancel: true,
-      ongoing: channelId == emergencyChannelId, // Emergency notifications are ongoing
+      ongoing: channelId == emergencyChannelId || channelId == sosChannelId, // Emergency/SOS are ongoing
       showWhen: true,
       when: DateTime.now().millisecondsSinceEpoch,
       ticker: title, // Text that appears in status bar
@@ -250,6 +259,8 @@ class NotificationService {
     switch (channelId) {
       case emergencyChannelId:
         return AppColors.primaryRed; // App's primary red for emergency
+      case sosChannelId:
+        return AppColors.primaryRed; // Red for SOS
       case messageChannelId:
         return AppColors.info; // App's info blue for messages
       case reminderChannelId:
@@ -263,6 +274,7 @@ class NotificationService {
   Importance _getImportanceForChannel(String channelId) {
     switch (channelId) {
       case emergencyChannelId:
+      case sosChannelId:
         return Importance.max;
       case messageChannelId:
         return Importance.high;
@@ -275,6 +287,7 @@ class NotificationService {
   Priority _getPriorityForChannel(String channelId) {
     switch (channelId) {
       case emergencyChannelId:
+      case sosChannelId:
         return Priority.max;
       case messageChannelId:
         return Priority.high;
@@ -339,18 +352,40 @@ class NotificationService {
     String? payload,
     String? imageUrl,
     Color? color,
+    int? stableId,
   }) async {
-    // Emergency alerts can still show in foreground if needed, but by default follow app state
+    final id = stableId ?? DateTime.now().millisecondsSinceEpoch ~/ 1000;
     await _showLocalNotification(
-      id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      id: id,
       title: title,
       body: body,
       payload: payload,
       channelId: emergencyChannelId,
       imageUrl: imageUrl,
-      color: color ?? AppColors.primaryRed, // App's primary red
+      color: color ?? AppColors.primaryRed,
       style: imageUrl != null ? NotificationStyle.bigPicture : NotificationStyle.bigText,
-      forceShow: false, // Don't force - respect app state
+      forceShow: false,
+      androidSmallIcon: _iconEmergency,
+    );
+  }
+
+  /// SOS alert (hardware/home hold-to-send). Use distinct styling from emergency detection.
+  Future<void> showSosNotification({
+    required String title,
+    required String body,
+    String? payload,
+    int? stableId,
+  }) async {
+    final id = stableId ?? DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    await _showLocalNotification(
+      id: id,
+      title: title,
+      body: body,
+      payload: payload,
+      channelId: sosChannelId,
+      color: AppColors.primaryRed,
+      style: NotificationStyle.bigText,
+      androidSmallIcon: _iconSos,
     );
   }
 
@@ -361,19 +396,22 @@ class NotificationService {
     String? imageUrl,
     String? avatarUrl,
     Color? color,
+    int? stableId,
   }) async {
+    final id = stableId ?? DateTime.now().millisecondsSinceEpoch ~/ 1000;
     await _showLocalNotification(
-      id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      id: id,
       title: 'New message from $sender',
       body: message,
       payload: payload,
       channelId: messageChannelId,
       imageUrl: imageUrl,
-      largeIcon: avatarUrl ?? '@mipmap/launcher_icon', // Use app logo if no avatar
-      color: color ?? AppColors.info, // App's info blue
+      largeIcon: avatarUrl ?? '@mipmap/launcher_icon',
+      color: color ?? AppColors.info,
       style: imageUrl != null 
           ? NotificationStyle.bigPicture 
           : NotificationStyle.messaging,
+      androidSmallIcon: _iconMessage,
     );
   }
 
@@ -465,6 +503,8 @@ class NotificationService {
     switch (channelId) {
       case emergencyChannelId:
         return 'Emergency Alerts';
+      case sosChannelId:
+        return 'SOS Alerts';
       case messageChannelId:
         return 'Chat Messages';
       case reminderChannelId:
@@ -478,6 +518,8 @@ class NotificationService {
     switch (channelId) {
       case emergencyChannelId:
         return 'Critical emergency notifications';
+      case sosChannelId:
+        return 'SOS and hold-to-send emergency alerts';
       case messageChannelId:
         return 'New messages in chats';
       case reminderChannelId:
@@ -485,6 +527,15 @@ class NotificationService {
       default:
         return 'App updates and system messages';
     }
+  }
+
+  /// Generate a stable notification id from a string (e.g. messageId) to avoid duplicates.
+  static int stableNotificationId(String? key) {
+    if (key == null || key.isEmpty) {
+      return DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    }
+    final hash = key.hashCode;
+    return hash & 0x7FFFFFFF; // positive 31-bit int for Android notification id
   }
 
   // Cancel scheduled notification

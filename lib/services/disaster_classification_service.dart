@@ -256,6 +256,26 @@ class DisasterClassificationService {
         confidence = AIDetectionConfig.defaultNoEmergencyConfidence;
       }
 
+      // Step 4c: Offline flood color sanity check – reduces false flood in dry/red scenes
+      if (emergencyType == EmergencyType.flood &&
+          AIDetectionConfig.enableFloodColorCheck &&
+          !_imageSupportsFlood(preprocessedImage)) {
+        debugPrint('⚠️ Flood color check failed (image lacks blue/water presence) → No Emergency');
+        emergencyType = EmergencyType.noEmergency;
+        confidence = AIDetectionConfig.defaultNoEmergencyConfidence;
+      }
+
+      // Step 4d: Hybrid refinement – if ML says disaster but image has very low emergency colors, cap confidence (no type change)
+      if (emergencyType != EmergencyType.noEmergency &&
+          AIDetectionConfig.enableHybridConfidenceRefinement &&
+          _imageHasLowEmergencyColors(preprocessedImage)) {
+        final cap = AIDetectionConfig.maxConfidenceWhenRuleBasedDisagrees;
+        if (confidence > cap) {
+          debugPrint('⚠️ Hybrid refinement: rule-based disagrees (low emergency colors) → capping confidence to ${(cap * 100).toStringAsFixed(0)}%');
+          confidence = cap;
+        }
+      }
+
       // Step 5: Enhanced severity assessment
       debugPrint('⚖️  Step 4: Assessing severity...');
       final severity = await _determineSeverityEnhanced(
@@ -342,6 +362,45 @@ class DisasterClassificationService {
     final ok = redRatio >= AIDetectionConfig.minRedRatioForWildfire;
     debugPrint('   Wildfire color check: R ratio=${redRatio.toStringAsFixed(3)} (min=${AIDetectionConfig.minRedRatioForWildfire}) → ${ok ? "pass" : "fail"}');
     return ok;
+  }
+
+  /// Offline check: flood typically has blue/cyan presence. Preprocessed pixels are RGB order.
+  bool _imageSupportsFlood(Float32List pixels) {
+    if (pixels.length < 3) return false;
+    double sumR = 0.0, sumG = 0.0, sumB = 0.0;
+    int n = 0;
+    for (int i = 0; i + 2 < pixels.length; i += 3) {
+      sumR += pixels[i];
+      sumG += pixels[i + 1];
+      sumB += pixels[i + 2];
+      n++;
+    }
+    if (n == 0) return false;
+    final total = sumR + sumG + sumB;
+    if (total <= 0) return false;
+    final blueRatio = sumB / total;
+    final ok = blueRatio >= AIDetectionConfig.minBlueRatioForFlood;
+    debugPrint('   Flood color check: B ratio=${blueRatio.toStringAsFixed(3)} (min=${AIDetectionConfig.minBlueRatioForFlood}) → ${ok ? "pass" : "fail"}');
+    return ok;
+  }
+
+  /// True when image has low red and low blue (rule-based would not see fire or flood). Used for hybrid confidence cap only.
+  bool _imageHasLowEmergencyColors(Float32List pixels) {
+    if (pixels.length < 3) return true;
+    double sumR = 0.0, sumG = 0.0, sumB = 0.0;
+    int n = 0;
+    for (int i = 0; i + 2 < pixels.length; i += 3) {
+      sumR += pixels[i];
+      sumG += pixels[i + 1];
+      sumB += pixels[i + 2];
+      n++;
+    }
+    if (n == 0) return true;
+    final total = sumR + sumG + sumB;
+    if (total <= 0) return true;
+    final r = sumR / total;
+    final b = sumB / total;
+    return r < 0.28 && b < 0.28;
   }
 
   /// Horizontally flip preprocessed image (HxWx3 row-major) for TTA.
