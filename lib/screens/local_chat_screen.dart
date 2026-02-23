@@ -23,6 +23,7 @@ import '../widgets/accessible_text.dart';
 import '../widgets/enhanced_message_status.dart';
 import '../widgets/enhanced_voice_message_view.dart';
 import 'package:flutter_bluetooth_serial_plus/flutter_bluetooth_serial_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Local Chat Screen - Polished UI with Working Backend
 class LocalChatScreen extends StatefulWidget {
@@ -55,6 +56,11 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
   Timer? _pinnedRefreshTimer;
   DateTime? _pinnedBannerStartTime;
   bool _isPinnedBannerAnimatingOut = false;
+
+  // RF channel selection (Channel 1–5 → RF 108, 100, 104, 112, 120) – triggered from Bluetooth icon
+  static const List<int> _rfChannelValues = [108, 100, 104, 112, 120];
+  static const String _rfChannelPrefKey = 'rf_channel_index';
+  int _selectedRfChannelIndex = 0;
 
   @override
   void initState() {
@@ -113,6 +119,7 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
       }
       
       chatProvider.setCurrentUserName(userName);
+      _loadSavedRfChannelIndex();
     });
     
     // Listen to voice extension recording state
@@ -283,6 +290,110 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
         .toList();
     list.sort((a, b) => b.timestamp.compareTo(a.timestamp));
     return list;
+  }
+
+  Future<void> _loadSavedRfChannelIndex() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getInt(_rfChannelPrefKey);
+    if (mounted && saved != null) {
+      setState(() {
+        _selectedRfChannelIndex = saved.clamp(0, _rfChannelValues.length - 1);
+      });
+    }
+  }
+
+  Widget _buildChannelDropdown(BuildContext context, ChatProvider chatProvider) {
+    final isConnected = chatProvider.isConnected;
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      decoration: BoxDecoration(
+        color: ThemeColors.surface(context).withOpacity(0.9),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: isConnected
+              ? AppColors.primaryRed.withOpacity(0.4)
+              : ThemeColors.border(context).withOpacity(0.5),
+          width: 1,
+        ),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<int>(
+          value: _selectedRfChannelIndex.clamp(0, _rfChannelValues.length - 1),
+          isExpanded: true,
+          isDense: true,
+          borderRadius: BorderRadius.circular(10),
+          dropdownColor: ThemeColors.surface(context),
+          icon: Icon(
+            Icons.tune,
+            color: isConnected ? AppColors.primaryRed : ThemeColors.textSecondary(context),
+            size: 20,
+          ),
+          hint: Text(
+            isConnected ? 'RF Channel' : 'Connect Bluetooth to set channel',
+            style: TextStyle(
+              fontSize: 13,
+              color: ThemeColors.textSecondary(context),
+            ),
+          ),
+          items: List.generate(
+            _rfChannelValues.length,
+            (i) => DropdownMenuItem<int>(
+              value: i,
+              child: Text(
+                'Channel ${i + 1} (RF ${_rfChannelValues[i]})',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: ThemeColors.textPrimary(context),
+                ),
+              ),
+            ),
+          ),
+          onChanged: isConnected
+              ? (int? index) async {
+                  if (index == null) return;
+                  setState(() => _selectedRfChannelIndex = index);
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.setInt(_rfChannelPrefKey, index);
+                  await chatProvider.setRfChannel(_rfChannelValues[index]);
+                  chatProvider.addChannelSwitchNotification(index + 1);
+                }
+              : null,
+        ),
+      ),
+    );
+  }
+
+  void _showChannelSheet() {
+    final chatProvider = context.read<ChatProvider>();
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
+        decoration: BoxDecoration(
+          color: ThemeColors.surface(context),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'RF Channel',
+                style: AppTypography.titleMedium.copyWith(
+                  color: ThemeColors.textPrimary(context),
+                ),
+              ),
+              const SizedBox(height: 12),
+              _buildChannelDropdown(context, chatProvider),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   // UI-only: Build pinned history button for top bar
@@ -511,9 +622,7 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
                     : 'Disconnected';
                 return TopBarConfigs.localChatTopBar(
                   status: statusText,
-                  onBluetoothTap: () {
-                    // Bluetooth tap handler - can be used for future features
-                  },
+                  onBluetoothTap: _showChannelSheet,
                   onConnectedTap: () {
                     if (provider.isConnected) {
                       _showConnectedUsersModal();
