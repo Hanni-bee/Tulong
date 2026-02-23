@@ -5,6 +5,15 @@ import 'dart:async';
 import '../constants/app_colors.dart';
 import '../constants/app_typography.dart';
 
+/// Elastic-out curve clamped to [0, 1] so it is safe to use with TweenSequence.
+class _ClampedElasticOutCurve extends Curve {
+  @override
+  double transformInternal(double t) {
+    final v = Curves.elasticOut.transform(t);
+    return v.clamp(0.0, 1.0);
+  }
+}
+
 /// Enhanced button with scale + ripple + glow effects
 class EnhancedInteractiveButton extends StatefulWidget {
   final Widget child;
@@ -196,7 +205,7 @@ class _SuccessAnimationState extends State<SuccessAnimation>
   void initState() {
     super.initState();
     _controller = AnimationController(
-      duration: const Duration(milliseconds: 600),
+      duration: const Duration(milliseconds: 750),
       vsync: this,
     );
 
@@ -205,7 +214,7 @@ class _SuccessAnimationState extends State<SuccessAnimation>
       TweenSequenceItem(tween: Tween<double>(begin: 1.2, end: 1.0), weight: 1),
     ]).animate(CurvedAnimation(
       parent: _controller,
-      curve: Curves.elasticOut,
+      curve: _ClampedElasticOutCurve(),
     ));
 
     _checkmarkAnimation = Tween<double>(
@@ -213,7 +222,7 @@ class _SuccessAnimationState extends State<SuccessAnimation>
       end: 1.0,
     ).animate(CurvedAnimation(
       parent: _controller,
-      curve: const Interval(0.3, 1.0, curve: Curves.easeOut),
+      curve: const Interval(0.25, 0.9, curve: Curves.easeOut),
     ));
 
     _controller.forward().then((_) {
@@ -229,7 +238,7 @@ class _SuccessAnimationState extends State<SuccessAnimation>
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
+    final content = AnimatedBuilder(
       animation: _controller,
       builder: (context, child) {
         return Transform.scale(
@@ -238,13 +247,27 @@ class _SuccessAnimationState extends State<SuccessAnimation>
             width: widget.size,
             height: widget.size,
             decoration: BoxDecoration(
-              color: widget.color,
               shape: BoxShape.circle,
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  widget.color.withOpacity(0.95),
+                  widget.color,
+                  Color.lerp(widget.color, Colors.black, 0.15)!,
+                ],
+              ),
               boxShadow: [
                 BoxShadow(
-                  color: widget.color.withOpacity(0.4),
-                  blurRadius: 20,
-                  spreadRadius: 5,
+                  color: widget.color.withOpacity(0.5),
+                  blurRadius: 24,
+                  spreadRadius: 6,
+                ),
+                BoxShadow(
+                  color: Colors.white.withOpacity(0.25),
+                  blurRadius: 0,
+                  spreadRadius: -widget.size * 0.15,
+                  offset: Offset(-widget.size * 0.12, -widget.size * 0.12),
                 ),
               ],
             ),
@@ -252,11 +275,17 @@ class _SuccessAnimationState extends State<SuccessAnimation>
               painter: CheckmarkPainter(
                 progress: _checkmarkAnimation.value,
                 color: Colors.white,
+                strokeWidthFraction: 0.12,
               ),
             ),
           ),
         );
       },
+    );
+    return Semantics(
+      label: 'Success',
+      explicitChildNodes: true,
+      child: content,
     );
   }
 }
@@ -264,10 +293,12 @@ class _SuccessAnimationState extends State<SuccessAnimation>
 class CheckmarkPainter extends CustomPainter {
   final double progress;
   final Color color;
+  final double strokeWidthFraction;
 
   CheckmarkPainter({
     required this.progress,
     required this.color,
+    this.strokeWidthFraction = 0.1,
   });
 
   @override
@@ -275,7 +306,7 @@ class CheckmarkPainter extends CustomPainter {
     final paint = Paint()
       ..color = color
       ..style = PaintingStyle.stroke
-      ..strokeWidth = size.width * 0.1
+      ..strokeWidth = size.width * strokeWidthFraction
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
 
@@ -294,7 +325,8 @@ class CheckmarkPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(CheckmarkPainter oldDelegate) {
-    return oldDelegate.progress != progress;
+    return oldDelegate.progress != progress ||
+        oldDelegate.strokeWidthFraction != strokeWidthFraction;
   }
 }
 

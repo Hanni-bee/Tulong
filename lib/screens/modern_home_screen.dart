@@ -28,6 +28,7 @@ import '../widgets/solid_modal_header.dart';
 import '../widgets/radar_scan_modal.dart';
 import '../widgets/enhanced_skeleton_loaders.dart';
 import '../widgets/enhanced_micro_interactions.dart' as micro;
+import '../widgets/channel_selector_modal.dart';
 import '../widgets/animated_neumorphic_card.dart';
 import '../utils/icon_system.dart';
 import '../utils/enhanced_page_transitions.dart';
@@ -204,68 +205,6 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
     }
   }
 
-  Widget _buildChannelDropdown(BuildContext context, ChatProvider chatProvider) {
-    final isConnected = chatProvider.isConnected;
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      decoration: BoxDecoration(
-        color: ThemeColors.surface(context).withOpacity(0.9),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: isConnected
-              ? AppColors.primaryRed.withOpacity(0.4)
-              : ThemeColors.border(context).withOpacity(0.5),
-          width: 1,
-        ),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<int>(
-          value: _selectedRfChannelIndex.clamp(0, _rfChannelValues.length - 1),
-          isExpanded: true,
-          isDense: true,
-          borderRadius: BorderRadius.circular(10),
-          dropdownColor: ThemeColors.surface(context),
-          icon: Icon(
-            Icons.tune,
-            color: isConnected ? AppColors.primaryRed : ThemeColors.textSecondary(context),
-            size: 20,
-          ),
-          hint: Text(
-            isConnected ? 'RF Channel' : 'Connect Bluetooth to set channel',
-            style: TextStyle(
-              fontSize: 13,
-              color: ThemeColors.textSecondary(context),
-            ),
-          ),
-          items: List.generate(
-            _rfChannelValues.length,
-            (i) => DropdownMenuItem<int>(
-              value: i,
-              child: Text(
-                'Channel ${i + 1} (RF ${_rfChannelValues[i]})',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: ThemeColors.textPrimary(context),
-                ),
-              ),
-            ),
-          ),
-          onChanged: isConnected
-              ? (int? index) async {
-                  if (index == null) return;
-                  setState(() => _selectedRfChannelIndex = index);
-                  final prefs = await SharedPreferences.getInstance();
-                  await prefs.setInt(_rfChannelPrefKey, index);
-                  await chatProvider.setRfChannel(_rfChannelValues[index]);
-                  chatProvider.addChannelSwitchNotification(index + 1);
-                }
-              : null,
-        ),
-      ),
-    );
-  }
-
   @override
   void dispose() {
     _fadeController.dispose();
@@ -334,6 +273,81 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                             showCornerAccent: true,
                             accentColor: AppColors.primaryRed,
                           ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      // Channel selector trigger (under SOS)
+                      PolishedFadeIn(
+                        delay: const Duration(milliseconds: 220),
+                        child: Consumer<ChatProvider>(
+                          builder: (context, chatProvider, _) {
+                            final isConnected = chatProvider.isConnected;
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              child: Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  onTap: isConnected
+                                      ? () async {
+                                          await showChannelSelectorModal(
+                                            context,
+                                            chatProvider,
+                                            onSelected: (int index) {
+                                              setState(() => _selectedRfChannelIndex = index);
+                                            },
+                                          );
+                                        }
+                                      : null,
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                                    decoration: BoxDecoration(
+                                      color: ThemeColors.surface(context),
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
+                                        color: isConnected
+                                            ? AppColors.primaryRed.withOpacity(0.25)
+                                            : ThemeColors.border(context).withOpacity(0.5),
+                                        width: 1,
+                                      ),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          Icons.settings_ethernet,
+                                          size: 22,
+                                          color: isConnected
+                                              ? AppColors.primaryRed
+                                              : ThemeColors.textTertiary(context),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: Text(
+                                            isConnected
+                                                ? 'Channel ${_selectedRfChannelIndex + 1} (RF ${_rfChannelValues[_selectedRfChannelIndex.clamp(0, _rfChannelValues.length - 1)]})'
+                                                : 'Connect Bluetooth to set channel',
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w500,
+                                              color: isConnected
+                                                  ? ThemeColors.textPrimary(context)
+                                                  : ThemeColors.textTertiary(context),
+                                            ),
+                                          ),
+                                        ),
+                                        if (isConnected)
+                                          Icon(
+                                            Icons.chevron_right,
+                                            size: 22,
+                                            color: ThemeColors.textSecondary(context),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
                         ),
                       ),
                       const SizedBox(height: 16),
@@ -647,8 +661,6 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                 ),
               ),
             ),
-            const SizedBox(height: 8),
-            _buildChannelDropdown(context, chatProvider),
             const SizedBox(height: 12),
             // Gradient accent line matching Calls/Messages/Profile style
             AnimatedContainer(
@@ -2103,59 +2115,76 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
       context: context,
       barrierColor: Colors.black.withOpacity(0.7),
       barrierDismissible: false,
-      builder: (context) => Dialog(
-        backgroundColor: Colors.transparent,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Success checkmark with urgent styling
-            micro.SuccessAnimation(
-              size: 120,
-              color: AppColors.error, // Red for emergency, not green
-              onComplete: () {
-                Future.delayed(const Duration(milliseconds: 800), () {
-                  if (context.mounted) {
-                    Navigator.of(context).pop();
-                  }
-                });
-              },
-            ),
-            const SizedBox(height: 24),
-            // Emergency confirmation message
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.2),
-                    blurRadius: 16,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
+      builder: (dialogContext) => Semantics(
+        label: 'Emergency alert sent',
+        liveRegion: true,
+        child: Dialog(
+          backgroundColor: Colors.transparent,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              micro.SuccessAnimation(
+                size: 120,
+                color: AppColors.error,
+                onComplete: () {
+                  Future.delayed(const Duration(milliseconds: 800), () {
+                    if (dialogContext.mounted) {
+                      Navigator.of(dialogContext).pop();
+                    }
+                  });
+                },
               ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'Emergency Alert Sent',
-                    style: AppTypography.headlineSmall.copyWith(
-                      color: AppColors.error,
-                      fontWeight: FontWeight.w700,
-                    ),
+              const SizedBox(height: 24),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
+                decoration: BoxDecoration(
+                  color: Color.lerp(
+                    ThemeColors.surface(dialogContext),
+                    AppColors.error,
+                    0.04,
+                  ) ?? ThemeColors.surface(dialogContext),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: ThemeColors.border(dialogContext),
+                    width: 1,
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Help is on the way',
-                    style: AppTypography.bodyMedium.copyWith(
-                      color: ThemeColors.textSecondary(context),
+                  boxShadow: [
+                    BoxShadow(
+                      color: ThemeColors.shadow(dialogContext, opacity: 0.2),
+                      blurRadius: 16,
+                      offset: const Offset(0, 8),
                     ),
-                  ),
-                ],
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Emergency Alert Sent',
+                      style: AppTypography.headlineSmall.copyWith(
+                        color: AppColors.error,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      'Help is on the way',
+                      style: AppTypography.bodyMedium.copyWith(
+                        color: ThemeColors.textSecondary(dialogContext),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Sent to local network',
+                      style: AppTypography.bodySmall.copyWith(
+                        color: ThemeColors.textTertiary(dialogContext),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

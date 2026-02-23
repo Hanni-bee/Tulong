@@ -15,6 +15,7 @@ import '../providers/chat_provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/voice_chat_extension.dart' as voice;
 import '../widgets/unified_top_bar.dart';
+import '../widgets/channel_selector_modal.dart';
 import '../widgets/connected_users_list_modal.dart';
 import '../widgets/sender_info_modal.dart';
 import '../widgets/enhanced_skeleton_loaders.dart';
@@ -512,7 +513,7 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
                 return TopBarConfigs.localChatTopBar(
                   status: statusText,
                   onBluetoothTap: () {
-                    // Bluetooth tap handler - can be used for future features
+                    showChannelSelectorModal(context, provider);
                   },
                   onConnectedTap: () {
                     if (provider.isConnected) {
