@@ -10,7 +10,7 @@ class MainActivity: FlutterFragmentActivity() {
         super.configureFlutterEngine(flutterEngine)
         
         // Initialize Bluetooth handler
-        bluetoothHandler = SimpleBluetoothHandler(flutterEngine)
+        bluetoothHandler = SimpleBluetoothHandler(this, flutterEngine)
     }
     
     override fun onDestroy() {

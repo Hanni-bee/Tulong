@@ -91,6 +91,19 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
     },
   ];
 
+  String _getInitials(String name) {
+    final parts = name.trim().split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
+    if (parts.isEmpty) return 'ME';
+    if (parts.length == 1) {
+      final word = parts.first;
+      if (word.length >= 2) {
+        return (word[0] + word[1]).toUpperCase();
+      }
+      return word[0].toUpperCase();
+    }
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+  }
+
 
   @override
   void initState() {
@@ -530,7 +543,18 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
     return Consumer<ChatProvider>(
       builder: (context, chatProvider, child) {
         final isConnected = chatProvider.isConnected;
-        
+        final auth = context.watch<AuthProvider>();
+        final currentModelName = auth.currentUserModel?.name ?? '';
+        final modelNameTrimmed = currentModelName.trim();
+        final userNameTrimmed = (auth.userName ?? '').trim();
+        final usernameTrimmed = (auth.userUsername ?? '').trim();
+        final displayName = modelNameTrimmed.isNotEmpty
+            ? modelNameTrimmed
+            : (userNameTrimmed.isNotEmpty
+                ? userNameTrimmed
+                : (usernameTrimmed.isNotEmpty ? usernameTrimmed : 'Me'));
+        final initials = _getInitials(displayName);
+
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -584,21 +608,19 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
+                          Text(
+                            'T.U.L.O.N.G',
+                            style: AppTypography.headlineSmall.copyWith(
+                              color: AppColors.primaryRed,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 1.2,
+                              height: 1.2,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
                           Row(
                             children: [
-                              Expanded(
-                                child: Text(
-                                  'T.U.L.O.N.G',
-                                  style: AppTypography.headlineSmall.copyWith(
-                                    color: AppColors.primaryRed,
-                                    fontWeight: FontWeight.w900,
-                                    letterSpacing: 1.2,
-                                    height: 1.2,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              // Enhanced CONNECTED badge
+                              // Enhanced CONNECTED badge (now under app name)
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                 decoration: BoxDecoration(
@@ -650,6 +672,48 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                                       ),
                                     ),
                                   ],
+                                ),
+                              ),
+                              const Spacer(),
+                              Semantics(
+                                label: 'View profile',
+                                button: true,
+                                child: Material(
+                                  color: Colors.transparent,
+                                  child: InkWell(
+                                    onTap: () => _navigateToSettings(context),
+                                    borderRadius: BorderRadius.circular(18),
+                                    child: Container(
+                                      width: 44,
+                                      height: 44,
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        borderRadius: BorderRadius.circular(18),
+                                        border: Border.all(
+                                          color: Colors.white.withOpacity(0.9),
+                                          width: 1.5,
+                                        ),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Colors.black.withOpacity(0.06),
+                                            blurRadius: 10,
+                                            offset: const Offset(0, 3),
+                                          ),
+                                        ],
+                                      ),
+                                      child: Center(
+                                        child: Text(
+                                          initials,
+                                          style: AppTypography.bodyLarge.copyWith(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.w900,
+                                            color: AppColors.primaryRed,
+                                            letterSpacing: 0.7,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
                                 ),
                               ),
                             ],
@@ -1987,15 +2051,15 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
             severity: severity,
             timestampMs: timestampMs,
           );
-      if (context.mounted) {
-        ModernToastManager.showSuccess(
-          context,
-              'Emergency message sent to local chat network',
-        );
-            // Show success animation
+          if (context.mounted) {
+            ModernToastManager.showSuccess(
+              context,
+              'SOS message sent to nearby devices.',
+            );
+            // Show success modal/animation
             _showEmergencySuccessAnimation(context);
-      }
-    } catch (e) {
+          }
+        } catch (e) {
           // ESP32 send failed
           debugPrint('Failed to send via ESP32: $e');
       if (context.mounted) {
@@ -2111,6 +2175,7 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
   }
 
   void _showEmergencySuccessAnimation(BuildContext context) {
+    HapticFeedback.mediumImpact();
     showDialog(
       context: context,
       barrierColor: Colors.black.withOpacity(0.7),
@@ -2158,9 +2223,10 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Emergency Alert Sent',
+                      'SOS Sent Successfully',
                       style: AppTypography.headlineSmall.copyWith(
                         color: AppColors.error,
                         fontWeight: FontWeight.w700,
@@ -2168,14 +2234,21 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                     ),
                     const SizedBox(height: 10),
                     Text(
-                      'Help is on the way',
+                      'Your SOS message was sent to nearby devices.',
                       style: AppTypography.bodyMedium.copyWith(
-                        color: ThemeColors.textSecondary(dialogContext),
+                        color: ThemeColors.textPrimary(dialogContext),
                       ),
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      'Sent to local network',
+                      'Stay calm and safe while help is on the way.',
+                      style: AppTypography.bodySmall.copyWith(
+                        color: ThemeColors.textSecondary(dialogContext),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Keep your phone nearby in case responders try to contact you.',
                       style: AppTypography.bodySmall.copyWith(
                         color: ThemeColors.textTertiary(dialogContext),
                       ),
@@ -2188,32 +2261,6 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
         ),
       ),
     );
-  }
-
-  void _showSuccessAnimation(BuildContext context, String message) {
-    showDialog(
-      context: context,
-      barrierColor: Colors.black.withOpacity(0.3),
-      barrierDismissible: false,
-      builder: (context) => Dialog(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        child: micro.SuccessAnimation(
-          onComplete: () {
-            if (context.mounted) {
-              Navigator.of(context).pop();
-            }
-          },
-        ),
-      ),
-    );
-    
-    // Also show toast message
-    Future.delayed(const Duration(milliseconds: 600), () {
-      if (context.mounted) {
-        ModernToastManager.showSuccess(context, message);
-      }
-    });
   }
 
   void _showEmergencyDialog(BuildContext context, [String? emergencyType]) {
@@ -2353,9 +2400,9 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                             severity: severity,
                             timestampMs: timestampMs,
                           );
-                      if (dialogContext.mounted) {
-                        Navigator.of(dialogContext).pop();
-                            _showSuccessAnimation(context, 'Emergency message sent to local chat network!');
+                          if (dialogContext.mounted) {
+                            Navigator.of(dialogContext).pop();
+                            _showEmergencySuccessAnimation(context);
                           }
                         } catch (e) {
                           if (dialogContext.mounted) {
@@ -2498,6 +2545,15 @@ class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
     final isSelected = provider.selectedDevice?.address == device.address && provider.isConnected;
     final deviceName = device.name ?? 'Unknown Device';
     final formattedAddress = _formatMacAddress(device.address);
+    final nameLength = deviceName.length;
+    double titleFontSize;
+    if (nameLength <= 20) {
+      titleFontSize = 17;
+    } else if (nameLength <= 30) {
+      titleFontSize = 16;
+    } else {
+      titleFontSize = 15;
+    }
 
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
@@ -2627,38 +2683,42 @@ class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
                               style: AppTypography.bodyLarge.copyWith(
                                 fontWeight: FontWeight.w800,
                                 color: ThemeColors.textPrimary(context),
-                                fontSize: 17,
+                                fontSize: titleFontSize,
                                 letterSpacing: -0.3,
                               ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                              maxLines: 3,
+                              softWrap: true,
                             ),
                           ),
                           if (isESP32)
-                            Container(
-                              margin: const EdgeInsets.only(left: 8),
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: ThemeColors.info(context).withOpacity(0.12),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: ThemeColors.info(context).withOpacity(0.3),
-                                  width: 1,
+                            Flexible(
+                              fit: FlexFit.loose,
+                              child: Container(
+                                margin: const EdgeInsets.only(left: 8),
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: ThemeColors.info(context).withOpacity(0.12),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: ThemeColors.info(context).withOpacity(0.3),
+                                    width: 1,
+                                  ),
                                 ),
-                              ),
-                              child: Text(
-                                'ESP32',
-                                style: AppTypography.bodySmall.copyWith(
-                                  color: ThemeColors.info(context),
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 10,
-                                  letterSpacing: 0.5,
+                                child: Text(
+                                  'ESP32',
+                                  style: AppTypography.bodySmall.copyWith(
+                                    color: ThemeColors.info(context),
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 10,
+                                    letterSpacing: 0.5,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
                             ),
                         ],
                       ),
-                      const SizedBox(height: 6),
+                      const SizedBox(height: 8),
                       Row(
                         children: [
                           Icon(
@@ -2686,55 +2746,61 @@ class _DeviceSelectionDialogState extends State<_DeviceSelectionDialog> {
                   ),
                 ),
                 const SizedBox(width: 12),
-                if (isSelected)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          ThemeColors.accent(context),
-                          ThemeColors.accent(context).withOpacity(0.8),
-                        ],
-                      ),
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [
-                        BoxShadow(
-                          color: ThemeColors.accent(context).withOpacity(0.4),
-                          blurRadius: 8,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.check_circle_rounded, size: 16, color: ThemeColors.textWhite(context)),
-                        const SizedBox(width: 6),
-                        Text(
-                          'Active',
-                          style: AppTypography.bodySmall.copyWith(
-                            color: ThemeColors.textWhite(context),
-                            fontWeight: FontWeight.w800,
-                            fontSize: 12,
-                            letterSpacing: 0.3,
+                Flexible(
+                  fit: FlexFit.loose,
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: isSelected
+                        ? Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  ThemeColors.accent(context),
+                                  ThemeColors.accent(context).withOpacity(0.8),
+                                ],
+                              ),
+                              borderRadius: BorderRadius.circular(20),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: ThemeColors.accent(context).withOpacity(0.4),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.check_circle_rounded,
+                                    size: 14, color: ThemeColors.textWhite(context)),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'Active',
+                                  style: AppTypography.bodySmall.copyWith(
+                                    color: ThemeColors.textWhite(context),
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 11,
+                                    letterSpacing: 0.2,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        : Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: primaryColor.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: primaryColor.withOpacity(0.3),
+                                width: 1.5,
+                              ),
+                            ),
+                            child: Icon(Icons.arrow_forward_rounded, color: primaryColor, size: 18),
                           ),
-                        ),
-                      ],
-                    ),
-                  )
-                else
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: primaryColor.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: primaryColor.withOpacity(0.3),
-                        width: 1.5,
-                      ),
-                    ),
-                    child: Icon(Icons.arrow_forward_rounded, color: primaryColor, size: 20),
                   ),
+                ),
               ],
             ),
           ),

@@ -4,6 +4,10 @@ import android.Manifest
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothSocket
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Handler
@@ -17,7 +21,10 @@ import java.io.InputStream
 import java.io.OutputStream
 import java.util.*
 
-class SimpleBluetoothHandler(private val flutterEngine: FlutterEngine) : MethodChannel.MethodCallHandler {
+class SimpleBluetoothHandler(
+    private val context: Context,
+    flutterEngine: FlutterEngine
+) : MethodChannel.MethodCallHandler {
     
     private val channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "simple_bluetooth")
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -33,10 +40,47 @@ class SimpleBluetoothHandler(private val flutterEngine: FlutterEngine) : MethodC
         private const val ESP32_DEVICE_PREFIX = "ESP32_Node"  // Will match ESP32_Node_A, ESP32_Node_B, etc.
         private val ESP32_UUID: UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB") // Standard SPP UUID
     }
+
+    private val bluetoothStateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            val action = intent.action
+            if (action == BluetoothAdapter.ACTION_STATE_CHANGED) {
+                val state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR)
+                when (state) {
+                    BluetoothAdapter.STATE_OFF -> {
+                        mainHandler.post {
+                            updateStatus("Bluetooth turned off")
+                            if (isConnected) {
+                                disconnect(null)
+                            }
+                            val args = mapOf("enabled" to false)
+                            channel.invokeMethod("onAdapterStateChanged", args)
+                        }
+                    }
+                    BluetoothAdapter.STATE_TURNING_OFF -> {
+                         mainHandler.post {
+                            updateStatus("Bluetooth turning off...")
+                        }
+                    }
+                    BluetoothAdapter.STATE_ON -> {
+                        mainHandler.post {
+                            updateStatus("Bluetooth turned on")
+                            val args = mapOf("enabled" to true)
+                            channel.invokeMethod("onAdapterStateChanged", args)
+                        }
+                    }
+                }
+            }
+        }
+    }
     
     init {
         channel.setMethodCallHandler(this)
         bluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
+        
+        // Register receiver for Bluetooth state changes using the provided Context
+        val filter = IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED)
+        context.registerReceiver(bluetoothStateReceiver, filter)
     }
     
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
@@ -450,8 +494,12 @@ class SimpleBluetoothHandler(private val flutterEngine: FlutterEngine) : MethodC
     }
     
     fun cleanup() {
+        try {
+            context.unregisterReceiver(bluetoothStateReceiver)
+        } catch (e: Exception) {
+            // Ignore if not registered
+        }
         disconnect(null)
         channel.setMethodCallHandler(null)
     }
 }
-

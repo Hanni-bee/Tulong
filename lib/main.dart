@@ -31,7 +31,6 @@ import 'services/offline_sync_service.dart';
 import 'services/philippine_location_service.dart';
 import 'services/app_initialization_service.dart';
 import 'services/sqlite_service.dart';
-import 'utils/enhanced_page_transitions.dart';
 import 'utils/app_themes.dart';
 
 void main() async {

@@ -155,15 +155,23 @@ class _DisasterTipsScreenState extends State<DisasterTipsScreen> {
               iconColor: DisasterTypeColors.general,
               showBackButton: true,
               onBackPressed: () => Navigator.of(context).pop(),
+              compact: true,
+              showUnderline: false,
               actions: [
                 PopupMenuButton<String>(
                   icon: Icon(Icons.more_vert, color: ThemeColors.textPrimary(context)),
                   color: ThemeColors.surfaceContainer(context),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                   onSelected: (value) {
                     if (value == 'reset') _resetProgress();
                   },
                   itemBuilder: (_) => [
-                    const PopupMenuItem(value: 'reset', child: Text('Reset progress')),
+                    const PopupMenuItem(
+                      value: 'reset',
+                      child: Text('Reset progress'),
+                    ),
                   ],
                 ),
               ],

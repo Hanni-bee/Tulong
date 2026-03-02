@@ -71,40 +71,13 @@ class AIAssessmentWidget extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Compact row: AI badge + icon + title + severity; scrollable to prevent overflow on narrow screens
+            // Compact row: icon + title + severity; scrollable to prevent overflow on narrow screens
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  // AI badge - readable size (B.2)
-                  Container(
-                    padding: EdgeInsets.symmetric(horizontal: isSmallScreen ? 8 : 10, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: AppColors.purple,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.psychology, color: AppColors.white, size: 14),
-                        SizedBox(width: isSmallScreen ? 4 : 5),
-                        Text(
-                          'AI ASSESSMENT',
-                          style: AppTypography.captionText.copyWith(
-                            color: AppColors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: isSmallScreen ? 10 : 11,
-                            letterSpacing: 0.2,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  ),
-                  SizedBox(width: isSmallScreen ? 6 : 8),
                   // Icon - smaller so row fits
                   Container(
                     width: isSmallScreen ? 36 : 42,

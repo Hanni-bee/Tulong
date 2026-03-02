@@ -378,15 +378,15 @@ class TopBarConfigs {
     bool compact = false,
     List<Widget>? badges,
   }) {
+    final isConnected = status.toLowerCase().contains('connected');
     return UnifiedTopBar(
       title: 'Local Chat',
       subtitle: status,
-      icon: Icons.bluetooth,
-      iconColor: status.toLowerCase().contains('connected')
-          ? AppColors.success
-          : AppColors.warning,
+      // Channel selection icon (not Bluetooth-specific anymore)
+      icon: Icons.settings_ethernet,
+      iconColor: isConnected ? AppColors.success : AppColors.warning,
       onIconTap: onBluetoothTap,
-      onSubtitleTap: status.toLowerCase().contains('connected') ? onConnectedTap : null,
+      onSubtitleTap: isConnected ? onConnectedTap : null,
       actions: additionalActions,
       compact: compact,
       statusBadges: badges,

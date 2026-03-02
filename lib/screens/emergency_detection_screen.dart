@@ -16,14 +16,11 @@ import '../models/emergency_detection_result.dart';
 import '../services/camera_service.dart';
 import '../services/image_preprocessing_service.dart';
 import '../services/emergency_detection_service.dart';
-import '../services/simple_bluetooth_service.dart';
 import '../services/ml_model_service.dart';
 import '../services/disaster_classification_service.dart';
-import '../services/model_test_service.dart';
 import '../services/model_verification_service.dart';
 import '../services/detection_history_service.dart';
 import '../providers/chat_provider.dart';
-import 'local_chat_screen.dart';
 import '../widgets/unified_top_bar.dart';
 import '../widgets/ai_assessment_widget.dart';
 import '../widgets/ai_info_widget.dart';
@@ -59,8 +56,6 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
   late AnimationController _captureButtonController;
   late Animation<double> _processingAnimation;
   late Animation<double> _captureButtonScale;
-  late Animation<double> _captureButtonGlow;
-  
   // Recent detections history (loaded from SQLite)
   List<EmergencyDetectionResult> _recentDetections = [];
   int _newDetectionsCount = 0;
@@ -107,13 +102,6 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
       CurvedAnimation(
         parent: _captureButtonController,
         curve: Curves.easeInOut,
-      ),
-    );
-    
-    _captureButtonGlow = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _captureButtonController,
-        curve: Curves.easeOut,
       ),
     );
     
@@ -716,7 +704,7 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                 // Header with disaster-type color; red accent when real emergency so urgency is clear
                 Container(
                   padding: EdgeInsets.symmetric(
-                    horizontal: isSmallScreen ? 18 : 22,
+                  horizontal: isSmallScreen ? 14 : 20,
                     vertical: isSmallScreen ? 16 : 20,
                   ),
                   decoration: BoxDecoration(
@@ -842,6 +830,25 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                               ],
                             ),
                           ),
+                          if (adjustedResult.imagePath != null && _isMLModelLoaded)
+                            Semantics(
+                              button: true,
+                              label: 'Re-analyze',
+                              child: IconButton(
+                                onPressed: () => _reAnalyzeFromResultDialog(adjustedResult, dialogContext),
+                                icon: const Icon(Icons.refresh_rounded),
+                                color: Colors.white,
+                                tooltip: 'Re-analyze',
+                                style: IconButton.styleFrom(
+                                  backgroundColor: Colors.white.withOpacity(0.18),
+                                  padding: EdgeInsets.all(isSmallScreen ? 6 : 8),
+                                  minimumSize: Size(
+                                    isSmallScreen ? 36 : 40,
+                                    isSmallScreen ? 36 : 40,
+                                  ),
+                                ),
+                              ),
+                            ),
                           // Close button (upper right)
                           Semantics(
                             button: true,
@@ -852,8 +859,11 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                               color: Colors.white,
                               style: IconButton.styleFrom(
                                 backgroundColor: Colors.white.withOpacity(0.2),
-                                padding: const EdgeInsets.all(8),
-                                minimumSize: const Size(48, 48),
+                                padding: EdgeInsets.all(isSmallScreen ? 6 : 8),
+                                minimumSize: Size(
+                                  isSmallScreen ? 38 : 44,
+                                  isSmallScreen ? 38 : 44,
+                                ),
                               ),
                             ),
                           ),
@@ -1288,7 +1298,7 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                   ),
                 ),
                 
-                // Actions - Not an Emergency, Re-analyze (when ML + image), Send/Try Again
+                // Actions - Not an Emergency, Send/Try Again
                 Container(
                   padding: EdgeInsets.fromLTRB(isSmallScreen ? 12 : 16, 12, isSmallScreen ? 12 : 16, isSmallScreen ? 16 : 20),
                   decoration: BoxDecoration(
@@ -1329,48 +1339,7 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                           ),
                         ),
                       ),
-                      if (adjustedResult.imagePath != null && _isMLModelLoaded) ...[
-                        SizedBox(width: isSmallScreen ? 6 : 8),
-                        SizedBox(
-                          height: 48,
-                          child: TextButton.icon(
-                            onPressed: () async {
-                              Navigator.pop(dialogContext);
-                              if (adjustedResult.imagePath == null || !_isMLModelLoaded || !mounted) return;
-                              setState(() => _isProcessing = true);
-                              try {
-                                final newResult = await _mlClassificationService.classifyDisaster(adjustedResult.imagePath!);
-                                final newAssessment = _mlClassificationService.getDetailedAssessment(newResult.type, newResult.confidence);
-                                if (!mounted) return;
-                                await _historyService.saveDetection(newResult);
-                                await _loadHistory();
-                                _showDetectionResult(newResult, newAssessment);
-                                if (mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: const Text('Analysis updated.'),
-                                      backgroundColor: AppColors.success,
-                                      duration: const Duration(seconds: 2),
-                                    ),
-                                  );
-                                }
-                              } finally {
-                                if (mounted) setState(() => _isProcessing = false);
-                              }
-                            },
-                            icon: Icon(Icons.refresh_rounded, size: 16, color: ThemeColors.primary(dialogContext)),
-                            label: Text(
-                              'Re-analyze',
-                              style: AppTypography.bodyMedium.copyWith(
-                                fontWeight: FontWeight.w600,
-                                fontSize: isSmallScreen ? 11 : 12,
-                                color: ThemeColors.primary(dialogContext),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                      SizedBox(width: isSmallScreen ? 6 : 8),
+                      SizedBox(width: isSmallScreen ? 8 : 10),
                       Expanded(
                         child: SizedBox(
                           height: 48,
@@ -1415,39 +1384,29 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
     );
   }
 
-  void _showNoEmergencyDialog(EmergencyDetectionResult result) {
-    showDialog(
-      context: context,
-      barrierColor: Colors.black54,
-      builder: (dialogContext) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Row(
-          children: [
-            Icon(Icons.check_circle, color: ThemeColors.success(dialogContext), size: 28),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                'No Emergency Detected',
-                style: AppTypography.titleLarge.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: ThemeColors.textPrimary(dialogContext),
-                ),
-              ),
-            ),
-          ],
-        ),
-        content: Text(
-          'The area appears safe. No emergency situation was detected.',
-          style: AppTypography.bodyMedium.copyWith(color: ThemeColors.textSecondary(dialogContext)),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('OK', style: TextStyle(color: ThemeColors.primary(dialogContext))),
+  Future<void> _reAnalyzeFromResultDialog(EmergencyDetectionResult adjustedResult, BuildContext dialogContext) async {
+    Navigator.pop(dialogContext);
+    if (adjustedResult.imagePath == null || !_isMLModelLoaded || !mounted) return;
+    setState(() => _isProcessing = true);
+    try {
+      final newResult = await _mlClassificationService.classifyDisaster(adjustedResult.imagePath!);
+      final newAssessment = _mlClassificationService.getDetailedAssessment(newResult.type, newResult.confidence);
+      if (!mounted) return;
+      await _historyService.saveDetection(newResult);
+      await _loadHistory();
+      _showDetectionResult(newResult, newAssessment);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Analysis updated.'),
+            backgroundColor: AppColors.success,
+            duration: const Duration(seconds: 2),
           ),
-        ],
-      ),
-    );
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isProcessing = false);
+    }
   }
 
   Future<void> _sendToChat(EmergencyDetectionResult result) async {
@@ -1967,18 +1926,31 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                   borderRadius: BorderRadius.circular(22),
                   child: Stack(
                     children: [
-                      // Camera preview with proper aspect ratio
+                      // Camera preview with UI-friendly aspect ratio (less wide)
                       _isCameraInitialized && _cameraService.isReady
                           ? LayoutBuilder(
                               builder: (context, constraints) {
-                                // Get camera aspect ratio to prevent cut-off
+                                // Use native camera aspect ratio inside, but clamp the outer
+                                // frame to a more balanced UI ratio (e.g. 4:3) so it doesn't
+                                // feel overly wide on portrait screens.
                                 final camera = _cameraService.controller!;
                                 final cameraAspectRatio = camera.value.aspectRatio;
+                                const uiAspectRatio = 4 / 3;
                                 
                                 return Center(
                                   child: AspectRatio(
-                                    aspectRatio: cameraAspectRatio,
-                                    child: CameraPreview(camera),
+                                    aspectRatio: uiAspectRatio,
+                                    child: FittedBox(
+                                      fit: BoxFit.cover,
+                                      child: SizedBox(
+                                        // SizedBox keeps the internal texture at the
+                                        // native camera ratio; FittedBox crops as needed
+                                        // to fill the 4:3 frame cleanly.
+                                        width: cameraAspectRatio,
+                                        height: 1,
+                                        child: CameraPreview(camera),
+                                      ),
+                                    ),
                                   ),
                                 );
                               },
@@ -2354,12 +2326,9 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                       ),
                     ),
             ),
-            
-            // Spacing between capture card and Detection History
-            const SizedBox(height: 12),
             // Detection History Section – tap anywhere to open View All (no scrollable list)
-            Expanded(
-              flex: 1,
+            Flexible(
+              fit: FlexFit.loose,
               child: ConstrainedBox(
                 constraints: const BoxConstraints(minHeight: 100),
                 child: GestureDetector(

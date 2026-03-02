@@ -6,7 +6,21 @@ import 'package:flutter_bluetooth_serial_plus/flutter_bluetooth_serial_plus.dart
 class BluetoothService {
   static final BluetoothService _instance = BluetoothService._internal();
   factory BluetoothService() => _instance;
-  BluetoothService._internal();
+  BluetoothService._internal() {
+    // Listen for adapter state changes
+    FlutterBluetoothSerial.instance.onStateChanged().listen((BluetoothState state) {
+      print('BT_DEBUG: Adapter state changed to $state');
+      _debugController.add('Adapter state: $state');
+      
+      if (state == BluetoothState.STATE_OFF || state == BluetoothState.STATE_TURNING_OFF) {
+        // Adapter turned off, ensure we disconnect
+        if (isConnected) {
+          print('BT_DEBUG: Adapter off, forcing disconnect');
+          disconnect();
+        }
+      }
+    });
+  }
 
   BluetoothConnection? _connection;
   final StreamController<String> _messageController = StreamController<String>.broadcast();

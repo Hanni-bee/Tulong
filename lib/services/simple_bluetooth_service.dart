@@ -32,6 +32,7 @@ class SimpleBluetoothService extends ChangeNotifier {
   bool _isConnected = false;
   bool _isConnecting = false;
   bool _isAuthenticated = false;
+  bool _isAdapterEnabled = true;
   String _connectionStatus = 'Disconnected';
   String _lastError = '';
   String _esp32NodeId = '';
@@ -71,6 +72,7 @@ class SimpleBluetoothService extends ChangeNotifier {
   bool get isConnected => _isConnected;
   bool get isConnecting => _isConnecting;
   bool get isAuthenticated => _isAuthenticated;
+  bool get isAdapterEnabled => _isAdapterEnabled;
   String get connectionStatus => _connectionStatus;
   String get lastError => _lastError;
   String get esp32NodeId => _esp32NodeId;
@@ -122,6 +124,9 @@ class SimpleBluetoothService extends ChangeNotifier {
       case 'onStatusChanged':
         _handleStatusChanged(call.arguments);
         break;
+      case 'onAdapterStateChanged':
+        _handleAdapterStateChanged(call.arguments);
+        break;
       case 'onError':
         _handleError(call.arguments);
         break;
@@ -169,6 +174,22 @@ class SimpleBluetoothService extends ChangeNotifier {
       _addStatusLog(status);
       notifyListeners();
     }
+  }
+
+  void _handleAdapterStateChanged(dynamic arguments) {
+    final Map<String, dynamic> data = Map<String, dynamic>.from(arguments);
+    _isAdapterEnabled = data['enabled'] ?? false;
+    
+    if (!_isAdapterEnabled) {
+      _isConnected = false;
+      _isAuthenticated = false;
+      _connectionStatus = 'Bluetooth Disabled';
+      _addStatusLog('Bluetooth adapter turned off');
+    } else {
+      _connectionStatus = 'Bluetooth Enabled';
+      _addStatusLog('Bluetooth adapter turned on');
+    }
+    notifyListeners();
   }
 
   void _handleMessageReceived(dynamic arguments) {

@@ -507,12 +507,25 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
             // Unified top bar
             Consumer<ChatProvider>(
               builder: (context, provider, child) {
-                final statusText = provider.isConnected 
-                    ? 'Connected${provider.connectedUsersCount > 0 ? ' (${provider.connectedUsersCount})' : ''}'
+                final isConnected = provider.isConnected;
+                final connectedCount = provider.connectedUsersCount;
+                final statusText = isConnected
+                    ? 'Connected${connectedCount > 0 ? ' ($connectedCount)' : ''}'
                     : 'Disconnected';
                 return TopBarConfigs.localChatTopBar(
                   status: statusText,
                   onBluetoothTap: () {
+                    if (!isConnected) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'Connect Bluetooth first to change channel',
+                          ),
+                          duration: Duration(seconds: 2),
+                        ),
+                      );
+                      return;
+                    }
                     showChannelSelectorModal(context, provider);
                   },
                   onConnectedTap: () {
