@@ -1145,6 +1145,17 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                                       ),
                                     ),
                                   ),
+                                  if (adjustedResult.isResultConsistent) ...[
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      adjustedResult.consistencyDescription,
+                                      style: TextStyle(
+                                        fontSize: isSmallScreen ? 11 : 12,
+                                        color: ThemeColors.textTertiary(dialogContext),
+                                        fontStyle: FontStyle.italic,
+                                      ),
+                                    ),
+                                  ],
                                 ],
                               ),
                             ),

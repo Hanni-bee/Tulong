@@ -39,9 +39,6 @@ class UserStatusService {
         final emergencyType = (emergencyTypeFromPrefs?.trim().isNotEmpty == true)
             ? emergencyTypeFromPrefs!.trim()
             : 'noEmergency';
-        if (kDebugMode) {
-          debugPrint('📦 [SEVERITY] From prefs: severity=$severity, emergencyType=$emergencyType');
-        }
         return {
           'severity': severity,
           'emergency_type': emergencyType,

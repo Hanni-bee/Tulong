@@ -61,7 +61,7 @@ void main() {
         // Add some organized patterns (lines) to simulate normal structures
         for (int y = 0; y < 224; y += 20) {
           for (int x = 0; x < 224; x++) {
-            img.setPixel(testImage, x, y, img.ColorRgb8(100, 100, 100));
+            testImage.setPixelRgba(x, y, 100, 100, 100, 255);
           }
         }
         
@@ -114,13 +114,13 @@ void main() {
         // Fill 30% with red (fire color)
         for (int y = 0; y < 100; y++) {
           for (int x = 0; x < 30; x++) {
-            img.setPixel(testImage, x, y, img.ColorRgb8(255, 50, 50));
+            testImage.setPixelRgba(x, y, 255, 50, 50, 255);
           }
         }
         // Fill rest with gray
         for (int y = 0; y < 100; y++) {
           for (int x = 30; x < 100; x++) {
-            img.setPixel(testImage, x, y, img.ColorRgb8(128, 128, 128));
+            testImage.setPixelRgba(x, y, 128, 128, 128, 255);
           }
         }
         
@@ -206,6 +206,26 @@ void main() {
         
         expect(result.confidence, greaterThanOrEqualTo(0.0));
         expect(result.confidence, lessThanOrEqualTo(1.0));
+      });
+    });
+
+    group('Consistency (determinism)', () {
+      test('same image yields same result on multiple runs', () async {
+        final testImage = img.Image(width: 224, height: 224);
+        img.fill(testImage, color: img.ColorRgb8(120, 130, 125));
+        final testFile = File(testImagePath);
+        await testFile.writeAsBytes(img.encodeJpg(testImage));
+
+        final preprocessed = Float32List(224 * 224 * 3);
+        for (int i = 0; i < preprocessed.length; i++) {
+          preprocessed[i] = 0.5;
+        }
+
+        final result1 = await service.detectEmergency(preprocessed, testImagePath);
+        final result2 = await service.detectEmergency(preprocessed, testImagePath);
+
+        expect(result1.type, result2.type, reason: 'Same image must yield same type');
+        expect((result1.confidence - result2.confidence).abs(), lessThan(1e-9), reason: 'Same image must yield same confidence');
       });
     });
   });

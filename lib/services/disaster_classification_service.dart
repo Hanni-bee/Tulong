@@ -12,6 +12,21 @@ import 'image_preprocessing_service.dart';
 /// Service for ML-based disaster classification.
 /// Uses TensorFlow Lite (PyImageSearch) to classify into: Flood, Wildfire, Earthquake, Cyclone.
 /// Detection is tuned via [AIDetectionConfig] (thresholds, min gap, entropy).
+///
+/// **100% offline**: Uses only on-device TFLite model, bundled assets, and local image
+/// preprocessing; no server or network calls.
+///
+/// **Supported scenarios**: Typical indoor/outdoor photos (normal) and disaster imagery
+/// (fire, flood, cyclone, earthquake) similar to the model's training data. Normal-scene
+/// override and per-class checks improve separation when the image has balanced colors,
+/// moderate brightness, and natural variation.
+///
+/// **Known limitations**: Model has no explicit "normal" class; very unusual lighting,
+/// heavy filters, or abstract art may still be misclassified. Stricter thresholds
+/// reduce false positives but can miss real disasters in edge cases.
+///
+/// **Validation**: Offline scenario tests (see test/disaster_detection_scenario_test.dart)
+/// validate a fixed set of images; run `flutter test` to confirm behavior.
 class DisasterClassificationService {
   static DisasterClassificationService? _instance;
   static DisasterClassificationService get instance =>
@@ -124,10 +139,10 @@ class DisasterClassificationService {
   /// Check if model is loaded and ready
   bool get isModelLoaded => _mlService.isLoaded;
 
-  /// Classify disaster from image file path
-  /// Returns EmergencyDetectionResult with ML-based classification
-  /// DYNAMIC - runs fresh inference every time, no caching
-  /// ENHANCED: Proper model state checking and error handling
+  /// Classify disaster from image file path.
+  /// Returns EmergencyDetectionResult with ML-based classification.
+  /// Offline-only: no network I/O; uses only on-device model and local image file.
+  /// Deterministic: same image path yields the same result on every run.
   Future<EmergencyDetectionResult> classifyDisaster(String imagePath) async {
     // CRITICAL: Check if model is loaded before attempting classification
     if (!_mlService.isLoaded || !isModelLoaded) {
@@ -184,6 +199,13 @@ class DisasterClassificationService {
 
       final preprocessedImage = preprocessResult.data!;
       debugPrint('✅ Preprocessing complete: ${preprocessedImage.length} pixels in ${preprocessTime.inMilliseconds}ms');
+
+      // Step 1.5: Appears-to-be-dark check (no dataset needed – pixel stats only). Strict but fair.
+      final meanBrightness = _getMeanBrightness(preprocessedImage);
+      if (meanBrightness < AIDetectionConfig.minBrightnessToRunInference) {
+        debugPrint('⚠️ Image appears too dark (brightness=${meanBrightness.toStringAsFixed(3)}) → No Emergency');
+        return _createErrorResult(imagePath, reason: 'Image appears too dark to analyze.');
+      }
 
       // Step 2: Run ML inference (with optional TTA: flip + average)
       debugPrint('🧠 Step 2: Running ML inference...');
@@ -247,13 +269,60 @@ class DisasterClassificationService {
       EmergencyType emergencyType = _mapToEmergencyType(classification['label'] as String);
       double confidence = classification['confidence'] as double;
 
-      // Step 4b: Offline wildfire color sanity check (no network) – reduces false fire in blue/green scenes
+      // Step 4b: Offline wildfire color sanity check (no network). Skip when confidence very high so real fire (e.g. 99%) is not overridden.
       if (emergencyType == EmergencyType.fire &&
           AIDetectionConfig.enableWildfireColorCheck &&
+          confidence < AIDetectionConfig.minConfidenceToSkipWildfireColorCheck &&
           !_imageSupportsWildfire(preprocessedImage)) {
-        debugPrint('⚠️ Wildfire color check failed (image lacks red/orange presence) → No Emergency');
+        debugPrint('⚠️ Wildfire color check failed → No Emergency');
         emergencyType = EmergencyType.noEmergency;
         confidence = AIDetectionConfig.defaultNoEmergencyConfidence;
+      }
+
+      // Step 4c: Offline flood color sanity check – reject when image has no water/blue evidence or is solid blue
+      if (emergencyType == EmergencyType.flood &&
+          AIDetectionConfig.enableFloodColorCheck &&
+          !_imageSupportsFlood(preprocessedImage)) {
+        debugPrint('⚠️ Flood color check failed (no water evidence or solid blue) → No Emergency');
+        emergencyType = EmergencyType.noEmergency;
+        confidence = AIDetectionConfig.defaultNoEmergencyConfidence;
+      }
+
+      // Step 4d: Normal-scene gate – when image has balanced colors (likely normal photo), require higher confidence
+      if (AIDetectionConfig.enableNormalSceneCheck &&
+          emergencyType != EmergencyType.noEmergency &&
+          _isBalancedColorScene(preprocessedImage) &&
+          confidence < AIDetectionConfig.minConfidenceForBalancedScene) {
+        debugPrint('⚠️ Normal-scene gate: balanced colors but confidence ${(confidence * 100).toStringAsFixed(1)}% < ${(AIDetectionConfig.minConfidenceForBalancedScene * 100).toStringAsFixed(0)}% → No Emergency');
+        emergencyType = EmergencyType.noEmergency;
+        confidence = AIDetectionConfig.defaultNoEmergencyConfidence;
+      }
+
+      // Step 4e: Normal-scene OVERRIDE – image strongly looks like normal photo → force No Emergency. Skip when fire confidence very high (real fire 99% should not be overridden).
+      if (AIDetectionConfig.enableForceNoEmergencyForNormalScene &&
+          emergencyType != EmergencyType.noEmergency &&
+          !(emergencyType == EmergencyType.fire && confidence >= AIDetectionConfig.minConfidenceToSkipWildfireColorCheck) &&
+          _looksLikeNormalScene(preprocessedImage)) {
+        debugPrint('⚠️ Normal-scene OVERRIDE: image matches normal-photo criteria → No Emergency (ignoring model ${(confidence * 100).toStringAsFixed(0)}% disaster)');
+        emergencyType = EmergencyType.noEmergency;
+        confidence = AIDetectionConfig.defaultNoEmergencyConfidence;
+      }
+
+      // Step 4f: Cyclone/Earthquake – reject when too flat (no structure) or too dark (retain dark = no disaster)
+      if (emergencyType == EmergencyType.calamity || emergencyType == EmergencyType.earthquake) {
+        final brightnessHere = _getMeanBrightness(preprocessedImage);
+        if (brightnessHere < AIDetectionConfig.minBrightnessForCycloneEarthquake) {
+          debugPrint('⚠️ Cyclone/Earthquake: image too dark (brightness=${brightnessHere.toStringAsFixed(3)}) → No Emergency');
+          emergencyType = EmergencyType.noEmergency;
+          confidence = AIDetectionConfig.defaultNoEmergencyConfidence;
+        } else if (AIDetectionConfig.enableCycloneEarthquakeVarianceCheck) {
+          final lumVariance = _getLuminanceVariance(preprocessedImage);
+          if (lumVariance < AIDetectionConfig.minLuminanceVarianceForDisaster) {
+            debugPrint('⚠️ Cyclone/Earthquake variance check failed (lumVar=${lumVariance.toStringAsFixed(4)} < ${AIDetectionConfig.minLuminanceVarianceForDisaster}) → No Emergency');
+            emergencyType = EmergencyType.noEmergency;
+            confidence = AIDetectionConfig.defaultNoEmergencyConfidence;
+          }
+        }
       }
 
       // Step 5: Enhanced severity assessment
@@ -324,8 +393,158 @@ class DisasterClassificationService {
     }
   }
 
-  /// Offline check: wildfire typically has red/orange presence. Preprocessed pixels are RGB order.
+  /// Offline check: wildfire requires red/orange presence but rejects solid red, dark red, or uniform color.
+  /// Preprocessed pixels are RGB order (0–1).
   bool _imageSupportsWildfire(Float32List pixels) {
+    if (pixels.length < 3) return false;
+    double sumR = 0.0, sumG = 0.0, sumB = 0.0;
+    int n = 0;
+    final List<double> rValues = [];
+    double sumLuminance = 0.0;
+    for (int i = 0; i + 2 < pixels.length; i += 3) {
+      final r = pixels[i];
+      final g = pixels[i + 1];
+      final b = pixels[i + 2];
+      sumR += r;
+      sumG += g;
+      sumB += b;
+      rValues.add(r);
+      sumLuminance += (r + g + b) / 3.0;
+      n++;
+    }
+    if (n == 0) return false;
+    final total = sumR + sumG + sumB;
+    if (total <= 0) return false;
+    final redRatio = sumR / total;
+    final meanBrightness = sumLuminance / n;
+
+    // Compute R variance once (used for both uniform check and high-red exception)
+    double rVariance = 0.0;
+    final meanR = sumR / n;
+    for (final r in rValues) {
+      rVariance += (r - meanR) * (r - meanR);
+    }
+    rVariance /= n;
+
+    // 1) Must have some red (reject blue/green scenes)
+    if (redRatio < AIDetectionConfig.minRedRatioForWildfire) {
+      debugPrint('   Wildfire color check: R ratio=${redRatio.toStringAsFixed(3)} < min ${AIDetectionConfig.minRedRatioForWildfire} → fail (no red)');
+      return false;
+    }
+    // 2) Reject dark: retain dark/semi-dark as no disaster (real fire is typically visible/bright)
+    if (meanBrightness < AIDetectionConfig.minBrightnessForWildfire) {
+      debugPrint('   Wildfire color check: mean brightness=${meanBrightness.toStringAsFixed(3)} < min ${AIDetectionConfig.minBrightnessForWildfire} → fail (too dark)');
+      return false;
+    }
+    // 3) High red ratio: allow if R variance is high (real fire has flames/smoke variation); else reject as solid red
+    if (redRatio > AIDetectionConfig.redRatioThresholdForVarianceCheck) {
+      if (rVariance >= AIDetectionConfig.minRedVarianceToAllowHighRedRatio) {
+        debugPrint('   Wildfire color check: R ratio=${redRatio.toStringAsFixed(3)} high but R var=${rVariance.toStringAsFixed(4)} (real fire) → pass');
+        return true;
+      }
+      if (redRatio > AIDetectionConfig.maxRedRatioForWildfire) {
+        debugPrint('   Wildfire color check: R ratio=${redRatio.toStringAsFixed(3)} > max ${AIDetectionConfig.maxRedRatioForWildfire} and low variance → fail (solid red)');
+        return false;
+      }
+    }
+    // 4) Reject uniform red: very low R variance = solid block, not fire
+    if (rVariance < AIDetectionConfig.minRedVarianceForWildfire) {
+      debugPrint('   Wildfire color check: R variance=${rVariance.toStringAsFixed(4)} < min ${AIDetectionConfig.minRedVarianceForWildfire} → fail (uniform red)');
+      return false;
+    }
+
+    debugPrint('   Wildfire color check: R ratio=${redRatio.toStringAsFixed(3)}, brightness=${meanBrightness.toStringAsFixed(3)}, R var=${rVariance.toStringAsFixed(4)} → pass');
+    return true;
+  }
+
+  /// Offline check: flood requires blue/water presence; rejects solid blue and too-dark. Real flood has variation.
+  bool _imageSupportsFlood(Float32List pixels) {
+    if (pixels.length < 3) return false;
+    double sumR = 0.0, sumG = 0.0, sumB = 0.0;
+    int n = 0;
+    final List<double> bValues = [];
+    double sumLum = 0.0;
+    for (int i = 0; i + 2 < pixels.length; i += 3) {
+      final r = pixels[i];
+      final g = pixels[i + 1];
+      final b = pixels[i + 2];
+      sumR += r;
+      sumG += g;
+      sumB += b;
+      bValues.add(b);
+      sumLum += (r + g + b) / 3.0;
+      n++;
+    }
+    if (n == 0) return false;
+    final total = sumR + sumG + sumB;
+    if (total <= 0) return false;
+    final blueRatio = sumB / total;
+    final meanBrightness = sumLum / n;
+
+    // 1) Must have some blue (reject no-water scenes)
+    if (blueRatio < AIDetectionConfig.minBlueRatioForFlood) {
+      debugPrint('   Flood color check: B ratio=${blueRatio.toStringAsFixed(3)} < min ${AIDetectionConfig.minBlueRatioForFlood} → fail (no water)');
+      return false;
+    }
+    // 2) Too dark to confidently say flood (retain dark/semi-dark as no disaster)
+    if (meanBrightness < AIDetectionConfig.minBrightnessForFlood) {
+      debugPrint('   Flood color check: brightness=${meanBrightness.toStringAsFixed(3)} < min ${AIDetectionConfig.minBrightnessForFlood} → fail (too dark)');
+      return false;
+    }
+    // 3) High blue ratio: allow if B variance is high (real water has waves/debris variation); else reject as solid blue/sky
+    double bVariance = 0.0;
+    final meanB = sumB / n;
+    for (final b in bValues) {
+      bVariance += (b - meanB) * (b - meanB);
+    }
+    bVariance /= n;
+    if (blueRatio > AIDetectionConfig.blueRatioThresholdForVarianceCheck) {
+      if (bVariance >= AIDetectionConfig.minBlueVarianceToAllowHighBlueRatio) {
+        debugPrint('   Flood color check: B ratio=${blueRatio.toStringAsFixed(3)} high but B var=${bVariance.toStringAsFixed(4)} (real water) → pass');
+        return true;
+      }
+      if (blueRatio > AIDetectionConfig.maxBlueRatioForFlood) {
+        debugPrint('   Flood color check: B ratio=${blueRatio.toStringAsFixed(3)} > max and low variance → fail (solid blue)');
+        return false;
+      }
+    }
+    debugPrint('   Flood color check: B ratio=${blueRatio.toStringAsFixed(3)}, brightness=${meanBrightness.toStringAsFixed(3)} → pass');
+    return true;
+  }
+
+  /// Mean brightness (0–1) of preprocessed RGB pixels; used for dark-image check.
+  double _getMeanBrightness(Float32List pixels) {
+    if (pixels.length < 3) return 0.0;
+    double sum = 0.0;
+    int n = 0;
+    for (int i = 0; i + 2 < pixels.length; i += 3) {
+      sum += (pixels[i] + pixels[i + 1] + pixels[i + 2]) / 3.0;
+      n++;
+    }
+    return n == 0 ? 0.0 : sum / n;
+  }
+
+  /// Luminance variance (0–1 scale) of preprocessed RGB pixels; used for Cyclone/Earthquake flat-image check.
+  double _getLuminanceVariance(Float32List pixels) {
+    if (pixels.length < 3) return 0.0;
+    double sumLum = 0.0;
+    int n = 0;
+    for (int i = 0; i + 2 < pixels.length; i += 3) {
+      sumLum += (pixels[i] + pixels[i + 1] + pixels[i + 2]) / 3.0;
+      n++;
+    }
+    if (n == 0) return 0.0;
+    final meanLum = sumLum / n;
+    double varLum = 0.0;
+    for (int i = 0; i + 2 < pixels.length; i += 3) {
+      final lum = (pixels[i] + pixels[i + 1] + pixels[i + 2]) / 3.0;
+      varLum += (lum - meanLum) * (lum - meanLum);
+    }
+    return varLum / n;
+  }
+
+  /// True when no single channel dominates (balanced colors = likely normal photo, not a strong disaster cue).
+  bool _isBalancedColorScene(Float32List pixels) {
     if (pixels.length < 3) return false;
     double sumR = 0.0, sumG = 0.0, sumB = 0.0;
     int n = 0;
@@ -338,10 +557,69 @@ class DisasterClassificationService {
     if (n == 0) return false;
     final total = sumR + sumG + sumB;
     if (total <= 0) return false;
-    final redRatio = sumR / total;
-    final ok = redRatio >= AIDetectionConfig.minRedRatioForWildfire;
-    debugPrint('   Wildfire color check: R ratio=${redRatio.toStringAsFixed(3)} (min=${AIDetectionConfig.minRedRatioForWildfire}) → ${ok ? "pass" : "fail"}');
-    return ok;
+    final rRatio = sumR / total;
+    final gRatio = sumG / total;
+    final bRatio = sumB / total;
+    final maxChannel = math.max(rRatio, math.max(gRatio, bRatio));
+    final balanced = maxChannel <= AIDetectionConfig.maxDominantChannelForBalanced;
+    if (balanced) {
+      debugPrint('   Normal-scene check: balanced colors (max channel=${maxChannel.toStringAsFixed(3)})');
+    }
+    return balanced;
+  }
+
+  /// True when image strongly looks like a normal photo (balanced colors + moderate brightness + natural variation).
+  /// When true, we FORCE No Emergency regardless of model confidence (e.g. even 90% disaster is overridden).
+  bool _looksLikeNormalScene(Float32List pixels) {
+    if (pixels.length < 3) return false;
+    double sumR = 0.0, sumG = 0.0, sumB = 0.0;
+    int n = 0;
+    final List<double> luminances = [];
+    for (int i = 0; i + 2 < pixels.length; i += 3) {
+      final r = pixels[i];
+      final g = pixels[i + 1];
+      final b = pixels[i + 2];
+      sumR += r;
+      sumG += g;
+      sumB += b;
+      luminances.add((r + g + b) / 3.0);
+      n++;
+    }
+    if (n == 0) return false;
+    final total = sumR + sumG + sumB;
+    if (total <= 0) return false;
+    final rRatio = sumR / total;
+    final gRatio = sumG / total;
+    final bRatio = sumB / total;
+    final maxChannel = math.max(rRatio, math.max(gRatio, bRatio));
+
+    // 1) No dominant color (strict: max channel ≤ 0.50)
+    if (maxChannel > AIDetectionConfig.maxDominantChannelForNormalOverride) {
+      return false;
+    }
+
+    // 2) Moderate brightness (typical indoor/outdoor)
+    final meanLum = luminances.reduce((a, b) => a + b) / n;
+    if (meanLum < AIDetectionConfig.minBrightnessForNormalOverride ||
+        meanLum > AIDetectionConfig.maxBrightnessForNormalOverride) {
+      return false;
+    }
+
+    // 3) Has natural variation (not a solid/flat color block)
+    double lumVar = 0.0;
+    for (final L in luminances) {
+      lumVar += (L - meanLum) * (L - meanLum);
+    }
+    lumVar /= n;
+    if (lumVar < AIDetectionConfig.minLuminanceVarianceForNormalOverride) {
+      return false;
+    }
+    if (lumVar > AIDetectionConfig.maxLuminanceVarianceForNormalOverride) {
+      return false;
+    }
+
+    debugPrint('   Normal-scene OVERRIDE: maxChannel=${maxChannel.toStringAsFixed(3)}, brightness=${meanLum.toStringAsFixed(3)}, lumVar=${lumVar.toStringAsFixed(4)}');
+    return true;
   }
 
   /// Horizontally flip preprocessed image (HxWx3 row-major) for TTA.
@@ -501,10 +779,21 @@ class DisasterClassificationService {
 
     final selectedLabel = _modelLabels[bestIndex];
 
-    // Stricter threshold for Wildfire to reduce false positives (fire when there is no fire)
-    if (selectedLabel.toLowerCase() == 'wildfire' &&
+    // Per-class minimum confidence to reduce false positives on normal photos
+    final labelLower = selectedLabel.toLowerCase();
+    if (labelLower == 'wildfire' &&
         normalizedConfidence < AIDetectionConfig.minConfidenceForWildfire) {
       debugPrint('⚠️ Wildfire confidence ${(normalizedConfidence * 100).toStringAsFixed(1)}% < ${(AIDetectionConfig.minConfidenceForWildfire * 100).toStringAsFixed(0)}% → No Emergency');
+      return _noEmergencyResult(normalizedProbs);
+    }
+    if (labelLower == 'flood' &&
+        normalizedConfidence < AIDetectionConfig.minConfidenceForFlood) {
+      debugPrint('⚠️ Flood confidence ${(normalizedConfidence * 100).toStringAsFixed(1)}% < ${(AIDetectionConfig.minConfidenceForFlood * 100).toStringAsFixed(0)}% → No Emergency');
+      return _noEmergencyResult(normalizedProbs);
+    }
+    if ((labelLower == 'cyclone' || labelLower == 'earthquake') &&
+        normalizedConfidence < AIDetectionConfig.minConfidenceForCycloneOrEarthquake) {
+      debugPrint('⚠️ $selectedLabel confidence ${(normalizedConfidence * 100).toStringAsFixed(1)}% < ${(AIDetectionConfig.minConfidenceForCycloneOrEarthquake * 100).toStringAsFixed(0)}% → No Emergency');
       return _noEmergencyResult(normalizedProbs);
     }
 

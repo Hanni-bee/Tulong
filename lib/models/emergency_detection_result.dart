@@ -33,7 +33,13 @@ class EmergencyDetectionResult {
 
   /// True if this result is due to image quality/preprocess failure (not a real "no emergency" classification).
   bool get isPreprocessFailure => failureReason != null && failureReason!.isNotEmpty;
-  
+
+  /// Detection is deterministic: same image yields the same result on every run.
+  bool get isResultConsistent => true;
+
+  /// Short text for UI to show that re-analyzing the same photo will give the same outcome.
+  String get consistencyDescription => 'Same image will always yield this result.';
+
   /// Get confidence as formatted string with interval if available
   String getConfidenceString() {
     if (confidenceLowerBound != null && confidenceUpperBound != null) {

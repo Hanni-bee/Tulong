@@ -20,14 +20,13 @@ class EmergencyDetectionService {
     debugPrint('ML Model usage: ${_useMLModel ? "ENABLED" : "DISABLED"}');
   }
   
-  /// Detect emergency type and severity from preprocessed image
-  /// Uses multi-pass analysis with false positive prevention
-  /// Optionally uses ML model for feature extraction if available
-  /// 
+  /// Detect emergency type and severity from preprocessed image.
+  /// Uses multi-pass analysis with false positive prevention.
+  /// Offline-only: no network I/O; uses only local image file and optional on-device ML features.
+  /// Deterministic: same (preprocessedImage, originalImagePath) yields the same result on every run.
+  ///
   /// [preprocessedImage] - Normalized Float32List from ImagePreprocessingService
   /// [originalImagePath] - Path to original image for additional analysis
-  /// 
-  /// Returns EmergencyDetectionResult with detected type and severity
   Future<EmergencyDetectionResult> detectEmergency(
     Float32List preprocessedImage,
     String originalImagePath,
@@ -697,7 +696,32 @@ class EmergencyDetectionService {
     
     // STRICT false positive prevention
     EmergencyType finalType = initialType;
-    
+
+    // Reject fire only when clearly NOT real fire (solid red, dark, or uniform). Real fire has texture/variation.
+    if (initialType == EmergencyType.fire) {
+      final brightness = fullAnalysis['brightness'] ?? 0.5;
+      final textureVariance = fullAnalysis['texture_variance'] ?? 0.0;
+      final redHistogramVariance = fullAnalysis['red_histogram_variance'] ?? 0.0;
+      final redRatioCheck = fullAnalysis['red_ratio'] ?? 0.0;
+      final orangeRatioCheck = fullAnalysis['orange_ratio'] ?? 0.0;
+      final fireRatioCheck = redRatioCheck + orangeRatioCheck;
+      // Solid red: very high red AND very low texture (flat block); real fire has high texture
+      if (fireRatioCheck > 0.88 && textureVariance < 500) {
+        finalType = EmergencyType.noEmergency;
+        debugPrint('Fire rejected: solid red (fire ratio=$fireRatioCheck, textureVar=$textureVariance)');
+      }
+      // Dark/semi-dark: retain as no disaster (too dark to be confident it's fire)
+      else if (brightness < 0.16 && fireRatioCheck > 0.5) {
+        finalType = EmergencyType.noEmergency;
+        debugPrint('Fire rejected: dark (brightness=$brightness, fire ratio=$fireRatioCheck)');
+      }
+      // Uniform red: very high red AND very low color variance (single flat color); real fire has variance
+      else if (fireRatioCheck > 0.82 && redHistogramVariance < 0.006) {
+        finalType = EmergencyType.noEmergency;
+        debugPrint('Fire rejected: uniform red (redHistVar=$redHistogramVariance)');
+      }
+    }
+
     // If high risk of false positive OR high normal scene likelihood, downgrade
     if (falsePositiveRisk > 0.5 || normalSceneLikelihood > 0.6) {
       // High risk of false positive - be VERY conservative
