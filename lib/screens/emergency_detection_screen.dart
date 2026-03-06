@@ -628,6 +628,10 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
     }
   }
 
+  /// True only when result is specifically "appears too dark" (no other logic changed).
+  bool _isAppearsTooDarkResult(EmergencyDetectionResult r) =>
+      r.failureReason != null && r.failureReason!.toLowerCase().contains('too dark');
+
   void _showDetectionResult(EmergencyDetectionResult result, [Map<String, dynamic>? detailedAssessment]) {
     // Ensure "no emergency" has low severity; preserve failureReason (e.g. image too dark)
     final adjustedResult = result.type == EmergencyType.noEmergency
@@ -778,7 +782,9 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Text(
-                                  adjustedResult.type.label,
+                                  _isAppearsTooDarkResult(adjustedResult)
+                                      ? 'Image too dark'
+                                      : adjustedResult.type.label,
                                   style: TextStyle(
                                     fontSize: isSmallScreen ? 17 : (isLargeScreen ? 22 : 20),
                                     fontWeight: FontWeight.w800,
@@ -972,7 +978,7 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                             ),
                             SizedBox(height: isSmallScreen ? 16 : 20),
                           ] else if (adjustedResult.type == EmergencyType.noEmergency && _isMLModelLoaded) ...[
-                            // Show message: either "No emergency" or preprocess failure (e.g. image too dark)
+                            // Show message: "No emergency" or preprocess failure; special wording for "appears too dark" only
                             Container(
                               padding: EdgeInsets.all(isSmallScreen ? 14 : 16),
                               decoration: BoxDecoration(
@@ -986,25 +992,57 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                                       : ThemeColors.success(dialogContext).withOpacity(ThemeColors.isDark(dialogContext) ? 0.5 : 0.35),
                                 ),
                               ),
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    adjustedResult.isPreprocessFailure ? Icons.info_outline_rounded : Icons.check_circle,
-                                    color: adjustedResult.isPreprocessFailure ? ThemeColors.textSecondary(dialogContext) : ThemeColors.success(dialogContext),
-                                    size: 24,
-                                  ),
-                                  SizedBox(width: 12),
-                                  Expanded(
-                                    child: Text(
-                                      adjustedResult.failureReason ?? 'No emergency detected. Area appears safe.',
-                                      style: AppTypography.bodyMedium.copyWith(
-                                        color: ThemeColors.textPrimary(dialogContext),
-                                        fontWeight: FontWeight.w500,
-                                      ),
+                              child: _isAppearsTooDarkResult(adjustedResult)
+                                  ? Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Icon(
+                                              Icons.brightness_2_rounded,
+                                              color: ThemeColors.textSecondary(dialogContext),
+                                              size: 24,
+                                            ),
+                                            SizedBox(width: 12),
+                                            Text(
+                                              'Low lighting',
+                                              style: AppTypography.bodyMedium.copyWith(
+                                                color: ThemeColors.textPrimary(dialogContext),
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        SizedBox(height: 8),
+                                        Text(
+                                          'We couldn\'t analyze this image clearly. Try again in better lighting.',
+                                          style: AppTypography.bodyMedium.copyWith(
+                                            color: ThemeColors.textPrimary(dialogContext),
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                      ],
+                                    )
+                                  : Row(
+                                      children: [
+                                        Icon(
+                                          adjustedResult.isPreprocessFailure ? Icons.info_outline_rounded : Icons.check_circle,
+                                          color: adjustedResult.isPreprocessFailure ? ThemeColors.textSecondary(dialogContext) : ThemeColors.success(dialogContext),
+                                          size: 24,
+                                        ),
+                                        SizedBox(width: 12),
+                                        Expanded(
+                                          child: Text(
+                                            adjustedResult.failureReason ?? 'No emergency detected. Area appears safe.',
+                                            style: AppTypography.bodyMedium.copyWith(
+                                              color: ThemeColors.textPrimary(dialogContext),
+                                              fontWeight: FontWeight.w500,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                  ),
-                                ],
-                              ),
                             ),
                             SizedBox(height: isSmallScreen ? 16 : 20),
                           ] else ...[
@@ -1356,7 +1394,9 @@ class _EmergencyDetectionScreenState extends State<EmergencyDetectionScreen>
                           height: 48,
                           child: ElevatedButton.icon(
                             onPressed: () {
+                              final isDarkOnly = _isAppearsTooDarkResult(adjustedResult);
                               Navigator.pop(dialogContext);
+                              if (isDarkOnly && mounted) setState(() {});
                               if (!adjustedResult.isPreprocessFailure) _sendToChat(result);
                             },
                             icon: Icon(adjustedResult.isPreprocessFailure ? Icons.refresh_rounded : Icons.send_rounded, size: isSmallScreen ? 16 : 18),
