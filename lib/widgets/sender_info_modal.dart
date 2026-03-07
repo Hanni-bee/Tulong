@@ -1,22 +1,39 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:intl/intl.dart';
 import '../constants/app_colors.dart';
+import '../constants/severity_colors.dart';
 import '../utils/theme_colors.dart';
 import '../constants/app_typography.dart';
+import '../models/emergency_type.dart';
 import '../services/sqlite_service.dart';
-import '../services/unified_data_service.dart';
 import '../providers/chat_provider.dart';
 
-/// Modal to display sender's basic information (Name, Contact Number, Address).
+/// Modal to display sender information.
+/// For Emergency Detection messages, shows Name, Severity, and Date/Time.
+/// For SOS messages, shows Name, SOS Message, and Address.
+/// Otherwise shows Name and Address from profile.
 /// Loads by [senderUid] (exact) when provided; otherwise falls back to [senderName] (LIKE).
-/// Optional: when UID provided and not in DB/cache, requests profile from ESP32 then refreshes.
 class SenderInfoModal extends StatefulWidget {
   final String? senderUid;
   final String? senderName;
+  final SeverityLevel? severityLevel;
+  final EmergencyType? emergencyType;
+  final bool isEmergencyDetection;
+  final bool isSos;
+  final String? messageText;
+  final DateTime? messageTimestamp;
 
   const SenderInfoModal({
     super.key,
     this.senderUid,
     this.senderName,
+    this.severityLevel,
+    this.emergencyType,
+    this.isEmergencyDetection = false,
+    this.isSos = false,
+    this.messageText,
+    this.messageTimestamp,
   });
 
   @override
@@ -28,6 +45,36 @@ class _SenderInfoModalState extends State<SenderInfoModal> {
   Map<String, dynamic>? _userInfo;
   String? _errorMessage;
   bool _requestedProfile = false;
+  SeverityLevel? _profileSeverityLevel;
+
+  String? get _lookupUid {
+    final uid = widget.senderUid?.trim();
+    if (uid == null || uid.isEmpty) return null;
+    if (widget.isSos && uid.length > 3) {
+      return uid.substring(0, uid.length - 3).trim();
+    }
+    return uid;
+  }
+
+  SeverityLevel? get _resolvedSeverityLevel =>
+      widget.isEmergencyDetection ? (widget.severityLevel ?? _profileSeverityLevel) : null;
+
+  bool get _showsEmergencyDetectionSection =>
+      widget.isEmergencyDetection && (_resolvedSeverityLevel != null || widget.emergencyType != null);
+
+  bool get _showsSosSection => widget.isSos;
+
+  String get _dialogTitle {
+    if (_showsEmergencyDetectionSection) return 'Emergency Information';
+    if (_showsSosSection) return 'SOS Information';
+    return 'Sender Information';
+  }
+
+  IconData get _dialogIcon {
+    if (_showsEmergencyDetectionSection) return Icons.emergency;
+    if (_showsSosSection) return Icons.sos_rounded;
+    return Icons.person;
+  }
 
   @override
   void initState() {
@@ -45,13 +92,52 @@ class _SenderInfoModalState extends State<SenderInfoModal> {
       final sqliteService = SQLiteService();
       final db = await sqliteService.database;
       List<Map<String, dynamic>> results = [];
+      SeverityLevel? resolvedProfileSeverity;
+      final prefs = await SharedPreferences.getInstance();
+
+      if (_lookupUid != null && _lookupUid!.isNotEmpty) {
+        final storedSeverity =
+            prefs.getString('profile_severity_$_lookupUid');
+        if (storedSeverity != null &&
+            storedSeverity.isNotEmpty &&
+            storedSeverity.toUpperCase() != 'UNKNOWN') {
+          resolvedProfileSeverity = SeverityLevel.fromString(storedSeverity);
+        }
+
+        final cachedName = prefs.getString('profile_name_$_lookupUid')?.trim() ?? '';
+        final cachedStreet = prefs.getString('profile_street_$_lookupUid')?.trim() ?? '';
+        final cachedBarangay = prefs.getString('profile_barangay_$_lookupUid')?.trim() ?? '';
+        final cachedCity = prefs.getString('profile_city_$_lookupUid')?.trim() ?? '';
+        final cachedProvince = prefs.getString('profile_province_$_lookupUid')?.trim() ?? '';
+
+        final cachedAddress = _formatAddressParts(
+          street: cachedStreet,
+          barangay: cachedBarangay,
+          city: cachedCity,
+          province: cachedProvince,
+        );
+
+        if (cachedName.isNotEmpty || cachedAddress != 'Not provided') {
+          setState(() {
+            _userInfo = {
+              'name': cachedName.isNotEmpty
+                  ? cachedName
+                  : (widget.senderName ?? _lookupUid ?? 'Unknown'),
+              'address': cachedAddress == 'Not provided' ? 'Not available' : cachedAddress,
+            };
+            _profileSeverityLevel = resolvedProfileSeverity;
+            _isLoading = false;
+          });
+          return;
+        }
+      }
 
       // Prefer UID-based lookup (exact) when available
-      if (widget.senderUid != null && widget.senderUid!.trim().isNotEmpty) {
+      if (_lookupUid != null && _lookupUid!.isNotEmpty) {
         results = await db.query(
           'users',
           where: 'uid = ?',
-          whereArgs: [widget.senderUid!.trim()],
+          whereArgs: [_lookupUid!],
         );
       }
 
@@ -81,21 +167,21 @@ class _SenderInfoModalState extends State<SenderInfoModal> {
         setState(() {
           _userInfo = {
             'name': '${user['first_name'] ?? ''} ${user['last_name'] ?? ''}'.trim(),
-            'phone': user['phone']?.toString() ?? 'Not provided',
             'address': _formatAddress(user),
           };
+          _profileSeverityLevel = resolvedProfileSeverity;
           _isLoading = false;
         });
         return;
       }
 
       // Not found: if we have UID and haven't requested profile yet, request then retry
-      if (widget.senderUid != null &&
-          widget.senderUid!.trim().isNotEmpty &&
+      if (_lookupUid != null &&
+          _lookupUid!.isNotEmpty &&
           !_requestedProfile &&
           ChatProvider.instance != null) {
         _requestedProfile = true;
-        await ChatProvider.instance!.requestProfileFromESP32(widget.senderUid!.trim());
+        await ChatProvider.instance!.requestProfileFromESP32(_lookupUid!);
         await Future.delayed(const Duration(milliseconds: 800));
         if (mounted) await _loadSenderInfo();
         return;
@@ -104,10 +190,10 @@ class _SenderInfoModalState extends State<SenderInfoModal> {
       // User not found (offline or no data)
       setState(() {
         _userInfo = {
-          'name': widget.senderName ?? widget.senderUid ?? 'Unknown',
-          'phone': 'Not available',
+          'name': widget.senderName ?? _lookupUid ?? widget.senderUid ?? 'Unknown',
           'address': 'Not available',
         };
+        _profileSeverityLevel = resolvedProfileSeverity;
         _isLoading = false;
       });
     } catch (e) {
@@ -119,26 +205,67 @@ class _SenderInfoModalState extends State<SenderInfoModal> {
     }
   }
 
-  String _formatAddress(Map<String, dynamic> user) {
+  Widget _buildEmergencySeverityCard(Color baseColor) {
+    final severity = _resolvedSeverityLevel;
+    final severityColor = severity != null ? SeverityColors.color(severity) : baseColor;
+    final severityLabel = severity?.label ?? 'Unknown';
+    return _buildInfoCard(
+      icon: Icons.emergency,
+      label: 'Severity',
+      value: severityLabel,
+      color: severityColor,
+    );
+  }
+
+  Widget _buildDateTimeCard(Color baseColor) {
+    final dateTime = widget.messageTimestamp;
+    final value = dateTime != null
+        ? DateFormat('MMM dd, yyyy hh:mm:ss a').format(dateTime)
+        : 'Not available';
+    return _buildInfoCard(
+      icon: Icons.access_time,
+      label: 'Date and Time',
+      value: value,
+      color: baseColor,
+    );
+  }
+
+  Widget _buildSosMessageCard(Color baseColor) {
+    final message = widget.messageText?.trim();
+    return _buildInfoCard(
+      icon: Icons.sms,
+      label: 'SOS Message',
+      value: (message != null && message.isNotEmpty) ? message : 'Not available',
+      color: AppColors.error,
+    );
+  }
+
+  String _formatAddressParts({
+    String? street,
+    String? barangay,
+    String? city,
+    String? province,
+    String? region,
+  }) {
     final parts = <String>[];
-    
-    if (user['street']?.toString().isNotEmpty == true) {
-      parts.add(user['street'].toString());
-    }
-    if (user['barangay']?.toString().isNotEmpty == true) {
-      parts.add(user['barangay'].toString());
-    }
-    if (user['city']?.toString().isNotEmpty == true) {
-      parts.add(user['city'].toString());
-    }
-    if (user['province']?.toString().isNotEmpty == true) {
-      parts.add(user['province'].toString());
-    }
-    if (user['region']?.toString().isNotEmpty == true) {
-      parts.add(user['region'].toString());
-    }
-    
+
+    if (street != null && street.isNotEmpty) parts.add(street);
+    if (barangay != null && barangay.isNotEmpty) parts.add(barangay);
+    if (city != null && city.isNotEmpty) parts.add(city);
+    if (province != null && province.isNotEmpty) parts.add(province);
+    if (region != null && region.isNotEmpty) parts.add(region);
+
     return parts.isEmpty ? 'Not provided' : parts.join(', ');
+  }
+
+  String _formatAddress(Map<String, dynamic> user) {
+    return _formatAddressParts(
+      street: user['street']?.toString(),
+      barangay: user['barangay']?.toString(),
+      city: user['city']?.toString(),
+      province: user['province']?.toString(),
+      region: user['region']?.toString(),
+    );
   }
 
 
@@ -191,8 +318,8 @@ class _SenderInfoModalState extends State<SenderInfoModal> {
                       color: Colors.white.withOpacity(0.2),
                       borderRadius: BorderRadius.circular(14),
                     ),
-                    child: const Icon(
-                      Icons.person,
+                    child: Icon(
+                      _dialogIcon,
                       color: Colors.white,
                       size: 32,
                     ),
@@ -203,7 +330,7 @@ class _SenderInfoModalState extends State<SenderInfoModal> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Sender Information',
+                          _dialogTitle,
                           style: AppTypography.headlineSmall.copyWith(
                             color: Colors.white,
                             fontWeight: FontWeight.bold,
@@ -212,7 +339,7 @@ class _SenderInfoModalState extends State<SenderInfoModal> {
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          widget.senderName ?? widget.senderUid ?? 'Unknown',
+                          _userInfo?['name'] ?? widget.senderName ?? widget.senderUid ?? 'Unknown',
                           style: AppTypography.bodyMedium.copyWith(
                             color: Colors.white.withOpacity(0.95),
                             fontSize: 14,
@@ -266,7 +393,7 @@ class _SenderInfoModalState extends State<SenderInfoModal> {
                               ),
                             ),
                           )
-                        : _userInfo != null
+                        : _userInfo != null || _showsEmergencyDetectionSection || _showsSosSection
                             ? Column(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
@@ -274,27 +401,33 @@ class _SenderInfoModalState extends State<SenderInfoModal> {
                                   _buildInfoCard(
                                     icon: Icons.person,
                                     label: 'Name',
-                                    value: _userInfo!['name'] ?? widget.senderName ?? widget.senderUid ?? 'Unknown',
+                                    value: _userInfo?['name'] ?? widget.senderName ?? widget.senderUid ?? 'Unknown',
                                     color: cyanBlue,
                                   ),
                                   const SizedBox(height: 20),
-                                  
-                                  // Contact Number
-                                  _buildInfoCard(
-                                    icon: Icons.phone,
-                                    label: 'Contact Number',
-                                    value: _userInfo!['phone'] ?? 'Not available',
-                                    color: cyanBlue,
-                                  ),
-                                  const SizedBox(height: 20),
-                                  
-                                  // Address
-                                  _buildInfoCard(
-                                    icon: Icons.location_on,
-                                    label: 'Address',
-                                    value: _userInfo!['address'] ?? 'Not available',
-                                    color: cyanBlue,
-                                  ),
+                                  // Emergency Severity (from Emergency Detection) — replaces Contact Number & Address
+                                  if (_showsEmergencyDetectionSection) ...[
+                                    _buildEmergencySeverityCard(cyanBlue),
+                                    const SizedBox(height: 20),
+                                    _buildDateTimeCard(cyanBlue),
+                                  ] else if (_showsSosSection) ...[
+                                    _buildSosMessageCard(cyanBlue),
+                                    const SizedBox(height: 20),
+                                    _buildInfoCard(
+                                      icon: Icons.location_on,
+                                      label: 'Address',
+                                      value: _userInfo?['address'] ?? 'Not available',
+                                      color: cyanBlue,
+                                    ),
+                                  ] else ...[
+                                    // Address
+                                    _buildInfoCard(
+                                      icon: Icons.location_on,
+                                      label: 'Address',
+                                      value: _userInfo?['address'] ?? 'Not available',
+                                      color: cyanBlue,
+                                    ),
+                                  ],
                                 ],
                               )
                             : const SizedBox.shrink(),

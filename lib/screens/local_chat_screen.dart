@@ -1198,6 +1198,12 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
                       _showSenderInfoModal(
                         senderUid: message.senderUid,
                         senderName: message.senderName,
+                        severityLevel: message.severityLevel,
+                        emergencyType: message.emergencyType,
+                        isEmergencyDetection: isFromEmergencyDetection,
+                        isSos: isEmergency && !isFromEmergencyDetection,
+                        messageText: isEmergency && !isFromEmergencyDetection ? message.text : null,
+                        messageTimestamp: message.timestamp,
                       );
                     }
                   : null,
@@ -1460,12 +1466,27 @@ class _LocalChatScreenState extends State<LocalChatScreen> {
     );
   }
 
-  void _showSenderInfoModal({String? senderUid, String? senderName}) {
+  void _showSenderInfoModal({
+    String? senderUid,
+    String? senderName,
+    SeverityLevel? severityLevel,
+    EmergencyType? emergencyType,
+    bool isEmergencyDetection = false,
+    bool isSos = false,
+    String? messageText,
+    DateTime? messageTimestamp,
+  }) {
     showDialog(
       context: context,
       builder: (context) => SenderInfoModal(
         senderUid: senderUid,
         senderName: senderName,
+        severityLevel: severityLevel,
+        emergencyType: emergencyType,
+        isEmergencyDetection: isEmergencyDetection,
+        isSos: isSos,
+        messageText: messageText,
+        messageTimestamp: messageTimestamp,
       ),
     );
   }

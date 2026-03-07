@@ -190,23 +190,19 @@ class ChatProvider with ChangeNotifier {
     }
   }
   
-  // Get connected users including current user
+  // Get connected users including current user (exclude "Unknown" so list stays clean until UID/profile is known)
   List<String> get connectedUsers {
-    final allUsers = <String>{..._connectedUsers};
+    final allUsers = <String>{
+      ..._connectedUsers.where((u) => u.isNotEmpty && u != 'Unknown'),
+    };
     if (_currentUserName != null && _currentUserName!.isNotEmpty) {
       allUsers.add(_currentUserName!);
     }
     return allUsers.toList()..sort();
   }
   
-  // Count includes current user
-  int get connectedUsersCount {
-    int count = _connectedUsers.length;
-    if (_currentUserName != null && _currentUserName!.isNotEmpty) {
-      count += 1;
-    }
-    return count;
-  }
+  // Count includes current user; matches connectedUsers list (excludes Unknown)
+  int get connectedUsersCount => connectedUsers.length;
   
   // Check if a user is the current user
   bool isCurrentUser(String user) {
@@ -1225,6 +1221,7 @@ class ChatProvider with ChangeNotifier {
       final city = profileData['city']?.toString() ?? '';
       final barangay = profileData['barangay']?.toString() ?? '';
       final suffix = profileData['suffix']?.toString() ?? '';
+      final severity = profileData['severity']?.toString() ?? '';
       
       // Parse name into first_name, last_name
       String firstName = '';
@@ -1252,6 +1249,7 @@ class ChatProvider with ChangeNotifier {
       await prefs.setString('profile_city_$uid', city);
       await prefs.setString('profile_barangay_$uid', barangay);
       await prefs.setString('profile_suffix_$uid', suffix);
+      await prefs.setString('profile_severity_$uid', severity);
       
       // Save to SQLite
       try {
@@ -1320,6 +1318,13 @@ class ChatProvider with ChangeNotifier {
           _messages[i] = msg.copyWith(senderName: displayName);
           updated = true;
         }
+      }
+      // Update connected users: remove "Unknown" and add real name so list and personal info update automatically
+      if (displayName.isNotEmpty && displayName != 'Unknown') {
+        _connectedUsers.remove('Unknown');
+        _connectedUsers.add(displayName);
+        updated = true;
+        print('BT_PROFILE: Updated connected users with name for UID: $uid');
       }
       if (updated) {
         print('BT_PROFILE: Overrode Unknown with name for UID: $uid in chat UI');
@@ -1434,7 +1439,7 @@ class ChatProvider with ChangeNotifier {
         }
       }
       
-      if (senderName != null && senderName.isNotEmpty) {
+      if (senderName != null && senderName.isNotEmpty && senderName != 'Unknown') {
         _addConnectedUser(senderName);
       }
     }
@@ -1516,12 +1521,11 @@ class ChatProvider with ChangeNotifier {
     return null;
   }
   
-  /// Add connected user to the list
+  /// Add connected user to the list (never add "Unknown" — will show once UID/profile is received)
   void _addConnectedUser(String user) {
-    if (user.isNotEmpty && user != 'Me' && user != 'ESP') {
-      _connectedUsers.add(user);
-      notifyListeners();
-    }
+    if (user.isEmpty || user == 'Me' || user == 'ESP' || user == 'Unknown') return;
+    _connectedUsers.add(user);
+    notifyListeners();
   }
   
   /// Manually add a connected user (for testing or ESP32 sync)
