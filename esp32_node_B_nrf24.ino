@@ -1,5 +1,5 @@
 /*
- * ESP32 nRF24L01 + Bluetooth SPP Voice Bridge (Node A / B / C — same code)
+ * ESP32 nRF24L01 + Bluetooth SPP Voice Bridge (2-node point-to-point)
  *
  * VOICE-SAFE + PROFILE/SOS META (severity + timestamp_ms)
  * - Adds severity + timestamp_ms for profile and SOS into ESP32 flash (Preferences/NVS)
@@ -38,8 +38,13 @@ RF24 radio(CE_PIN, CSN_PIN);
 BluetoothSerial SerialBT;
 Preferences flashStorage;
 
-// Single broadcast address: all nodes (A, B, C) use same code, same pipe.
-const byte broadcastAddress[6] = "1Node";
+// Point-to-point RF config. This build listens on MY_NODE_ADDR and only transmits to PEER_NODE_ADDR.
+// If you want a different 2-node pair, change PEER_NODE_UID and PEER_NODE_ADDR together.
+const byte MY_NODE_ADDR[6]   = "NODB1";
+const byte PEER_NODE_ADDR[6] = "NODA1";
+
+const char* MY_NODE_UID = "NODE_B";
+const char* PEER_NODE_UID = "NODE_A";
 
 // nRF settings
 #define RF_CHANNEL     108
@@ -105,6 +110,7 @@ String g_lastProfTargetUid = "";
 bool   g_profileQueued = false;
 String g_queuedTargetUid = "";
 bool   g_queuedForceRf = false;
+String g_voiceTargetNode = PEER_NODE_UID;
 
 // ----------------- Helpers -----------------
 static inline bool voiceActive() {
@@ -132,6 +138,23 @@ static inline String myUidOrUnknown() {
   String u = readFlashString("profile_uid", "");
   if (u.length() == 0 || u == "(not set)") u = "UNKNOWN";
   return u;
+}
+
+const byte* addressForNode(const String& nodeUid) {
+  if (nodeUid == MY_NODE_UID) return MY_NODE_ADDR;
+  if (nodeUid == PEER_NODE_UID) return PEER_NODE_ADDR;
+  return nullptr;
+}
+
+bool selectWritePipeForNode(const String& nodeUid) {
+  const byte* addr = addressForNode(nodeUid);
+  if (addr == nullptr) return false;
+  radio.openWritingPipe(addr);
+  return true;
+}
+
+bool isPeerNode(const String& nodeUid) {
+  return nodeUid == PEER_NODE_UID;
 }
 
 String jsonEscapeBasic(String s) {
@@ -215,6 +238,22 @@ bool sendRfRawVoiceFast(const void* buf, uint8_t len) {
   return ok;
 }
 
+bool sendRfRawToNode(const String& nodeUid, const void* buf, uint8_t len) {
+  if (!selectWritePipeForNode(nodeUid)) {
+    Serial.println(String("[RF_ROUTE_ERR] unknown node ") + nodeUid);
+    return false;
+  }
+  return sendRfRaw(buf, len);
+}
+
+bool sendRfRawVoiceFastToNode(const String& nodeUid, const void* buf, uint8_t len) {
+  if (!selectWritePipeForNode(nodeUid)) {
+    Serial.println(String("[RF_ROUTE_ERR] unknown node ") + nodeUid);
+    return false;
+  }
+  return sendRfRawVoiceFast(buf, len);
+}
+
 bool channelBusy() {
   if (radio.testCarrier()) return true;
   if (rxVoice) return true;
@@ -230,8 +269,9 @@ bool sendVoiceControl(uint8_t type) {
   hdr->seq  = 0;
   hdr->crc8 = crc8_hdr_payload(hdr->type, hdr->seq, nullptr, 0);
 
-  const bool ok = sendRfRaw(buf, sizeof(VoiceHdr));
-  Serial.println(String("[RF_VOICE_TX] ") + (type == VTYPE_START ? "START" : "END") + (ok ? " OK" : " FAIL"));
+  const bool ok = sendRfRawToNode(g_voiceTargetNode, buf, sizeof(VoiceHdr));
+  Serial.println(String("[RF_VOICE_TX] target=") + g_voiceTargetNode + " " +
+                 (type == VTYPE_START ? "START" : "END") + (ok ? " OK" : " FAIL"));
   return ok;
 }
 
@@ -251,9 +291,9 @@ bool sendVoiceLineWithSeq(const String& base64Line) {
     hdr->crc8 = crc8_hdr_payload(hdr->type, hdr->seq, buf + sizeof(VoiceHdr), L);
 
     // For voice, drop instead of stalling (prevents "voice freeze")
-    const bool ok = sendRfRawVoiceFast(buf, sizeof(VoiceHdr) + L);
+    const bool ok = sendRfRawVoiceFastToNode(g_voiceTargetNode, buf, sizeof(VoiceHdr) + L);
     if (!ok) {
-      Serial.println(String("[RF_VOICE_TX_DROP] seq=") + g_txSeq);
+      Serial.println(String("[RF_VOICE_TX_DROP] target=") + g_voiceTargetNode + " seq=" + g_txSeq);
     }
 
     g_txSeq++;
@@ -288,6 +328,50 @@ uint16_t sendStringPacketSeqBase(uint8_t type, const String &msg, uint16_t seqBa
   return seqBase;
 }
 
+uint16_t chunkCountForMsg(const String& msg) {
+  return (uint16_t)((msg.length() + 27) / 28);
+}
+
+bool sendStringPacketToNode(const String& nodeUid, uint8_t type, const String& msg) {
+  if (!selectWritePipeForNode(nodeUid)) {
+    Serial.println(String("[RF_ROUTE_ERR] unknown node ") + nodeUid);
+    return false;
+  }
+  return sendStringPacketSeqBase(type, msg, 0) == chunkCountForMsg(msg);
+}
+
+bool sendStringPacketToPeers(uint8_t type, const String& msg) {
+  return sendStringPacketToNode(String(PEER_NODE_UID), type, msg);
+}
+
+bool sendFramedPacketToNode(const String& nodeUid, uint8_t type, const String& start,
+                            const String& body, const String& end,
+                            uint16_t firstGapMs, uint16_t secondGapMs) {
+  if (!selectWritePipeForNode(nodeUid)) {
+    Serial.println(String("[RF_ROUTE_ERR] unknown node ") + nodeUid);
+    return false;
+  }
+
+  uint16_t seq = 0;
+  seq = sendStringPacketSeqBase(type, start, seq);
+  if (seq != chunkCountForMsg(start)) return false;
+
+  delay(firstGapMs);
+
+  seq = sendStringPacketSeqBase(type, body, seq);
+  if (seq != (uint16_t)(chunkCountForMsg(start) + chunkCountForMsg(body))) return false;
+
+  delay(secondGapMs);
+
+  seq = sendStringPacketSeqBase(type, end, seq);
+  return seq == (uint16_t)(chunkCountForMsg(start) + chunkCountForMsg(body) + chunkCountForMsg(end));
+}
+
+bool sendFramedPacketToPeers(uint8_t type, const String& start, const String& body,
+                             const String& end, uint16_t firstGapMs, uint16_t secondGapMs) {
+  return sendFramedPacketToNode(String(PEER_NODE_UID), type, start, body, end, firstGapMs, secondGapMs);
+}
+
 // ----------------- SEEN (app-driven: phone sends send_seen after rendering; no auto-SEEN on flush) -----------------
 // Fast one-shot; must not block voice. Payload "SEEN|msgId" <= 28 bytes.
 bool rfSendSeenSingleFast(const String& msgId) {
@@ -302,7 +386,7 @@ bool rfSendSeenSingleFast(const String& msgId) {
   hdr->seq  = 0;
   memcpy(buf + sizeof(VoiceHdr), payload.c_str(), payload.length());
   hdr->crc8 = crc8_hdr_payload(hdr->type, hdr->seq, buf + sizeof(VoiceHdr), (uint8_t)payload.length());
-  bool ok = sendRfRawVoiceFast(buf, sizeof(VoiceHdr) + (uint8_t)payload.length());
+  bool ok = sendRfRawVoiceFastToNode(String(PEER_NODE_UID), buf, sizeof(VoiceHdr) + (uint8_t)payload.length());
   Serial.println(String("[RF_SEEN_TX] ") + payload + (ok ? " OK" : " FAIL"));
   return ok;
 }
@@ -335,14 +419,8 @@ void sendSosFramedFromFlash() {
   String body = meta + "\n" + sos;
 
   Serial.println("[SOS_BTN] Sending SOS framed...");
-  uint16_t seq = 0;
-  seq = sendStringPacketSeqBase(TTYPE_TEXT, start, seq);
-  delay(15);
-  seq = sendStringPacketSeqBase(TTYPE_TEXT, body, seq);
-  delay(15);
-  seq = sendStringPacketSeqBase(TTYPE_TEXT, end, seq);
-
-  Serial.println(String("[SOS_BTN] Sent. nextSeq=") + seq);
+  bool ok = sendFramedPacketToPeers(TTYPE_TEXT, start, body, end, 15, 15);
+  Serial.println(ok ? "[SOS_BTN] Sent to peers." : "[SOS_BTN] Failed for all peers.");
 }
 
 // ----------------- Profile RF protocol -----------------
@@ -356,7 +434,7 @@ static inline String makeReqId() {
 
 bool rfSendProfileReq(const String& destUid, const String& targetUid) {
   String reqId = makeReqId();
-  String payload = String("REQ|") + reqId + "|" + destUid + "|" + targetUid;
+  String payload = String("REQ|") + reqId + "|" + destUid + "|" + MY_NODE_UID + "|" + targetUid;
 
   g_lastProfReqId = reqId;
   g_lastProfTargetUid = targetUid;
@@ -364,12 +442,10 @@ bool rfSendProfileReq(const String& destUid, const String& targetUid) {
   Serial.println(String("[RF_PROF_REQ_TX] reqId=") + reqId + " destUid=" + destUid +
                  " targetUid=" + targetUid + " bytes=" + payload.length());
 
-  uint16_t seq = 0;
-  sendStringPacketSeqBase(PTYPE_REQ, payload, seq);
-  return true;
+  return sendStringPacketToPeers(PTYPE_REQ, payload);
 }
 
-bool rfSendProfileResp(const String& reqId, const String& destUid) {
+bool rfSendProfileResp(const String& reqId, const String& destUid, const String& requesterNode) {
   flashStorage.begin("tulong", true);
   String uid      = flashStorage.getString("profile_uid", "");
   String name     = flashStorage.getString("profile_name", "");
@@ -402,13 +478,12 @@ bool rfSendProfileResp(const String& reqId, const String& destUid) {
 
   String payload = String("RSP|") + reqId + "|" + destUid + "|" + j;
 
-  Serial.println(String("[RF_PROF_RESP_TX] reqId=") + reqId + " -> destUid=" + destUid + " bytes=" + payload.length());
+  Serial.println(String("[RF_PROF_RESP_TX] reqId=") + reqId + " -> destUid=" + destUid +
+                 " via " + requesterNode + " bytes=" + payload.length());
 
-  uint16_t seq = 0;
-  seq = sendStringPacketSeqBase(PTYPE_RESP, payload, seq);
-
-  Serial.println(String("[RF_PROF_RESP_TX] sent chunks, nextSeq=") + seq);
-  return true;
+  bool ok = sendStringPacketToNode(requesterNode, PTYPE_RESP, payload);
+  Serial.println(String("[RF_PROF_RESP_TX] ") + (ok ? "sent" : "failed"));
+  return ok;
 }
 
 // ----------------- Flash save functions -----------------
@@ -523,6 +598,18 @@ void handleSyncCommand(const String& msg) {
       }
       Serial.println(String("[RF] Channel set to ") + ch);
     }
+    return;
+  }
+
+  if (command == "set_voice_target") {
+    String targetNode = String((const char*)(doc["target_node"] | ""));
+    if (targetNode.length() == 0) targetNode = String((const char*)(doc["target_uid"] | ""));
+    targetNode.trim();
+
+    bool ok = (targetNode.length() == 0 || isPeerNode(targetNode));
+    SerialBT.println(String("{\"command\":\"voice_target_set\",\"ok\":") +
+                     (ok ? "true" : "false") +
+                     ",\"target_node\":\"" + PEER_NODE_UID + "\"}");
     return;
   }
 
@@ -791,12 +878,11 @@ void setup() {
   Serial.println(String("[RF] Channel ") + (unsigned long)ch);
   radio.setRetries(5, 15);
 
-  // All nodes (A, B, C) same code: broadcast on same pipe
-  radio.openWritingPipe(broadcastAddress);
-  radio.openReadingPipe(1, broadcastAddress);
+  radio.openReadingPipe(1, MY_NODE_ADDR);
+  selectWritePipeForNode(String(PEER_NODE_UID));
   radio.startListening();
 
-  Serial.println(String("[RF] Ready ch=") + RF_CHANNEL);
+  Serial.println(String("[RF] Ready ch=") + RF_CHANNEL + " node=" + MY_NODE_UID + " peer=" + PEER_NODE_UID);
 }
 
 // ----------------- Main Loop -----------------
@@ -888,12 +974,7 @@ void loop() {
           String start = String("<MSG_START:") + uid + ">";
           String end   = "<MSG_END>";
 
-          uint16_t seq = 0;
-          seq = sendStringPacketSeqBase(TTYPE_TEXT, start, seq);
-          delay(10);
-          seq = sendStringPacketSeqBase(TTYPE_TEXT, msg, seq);
-          delay(10);
-          seq = sendStringPacketSeqBase(TTYPE_TEXT, end, seq);
+          sendFramedPacketToPeers(TTYPE_TEXT, start, msg, end, 10, 10);
         }
       }
     }
@@ -943,17 +1024,19 @@ void loop() {
       int p1 = reqBuffer.indexOf('|');
       int p2 = reqBuffer.indexOf('|', p1 + 1);
       int p3 = reqBuffer.indexOf('|', p2 + 1);
-      if (p1 > 0 && p2 > p1 && p3 > p2) {
+      int p4 = reqBuffer.indexOf('|', p3 + 1);
+      if (p1 > 0 && p2 > p1 && p3 > p2 && p4 > p3) {
         String reqId = reqBuffer.substring(p1 + 1, p2);
         String destUid = reqBuffer.substring(p2 + 1, p3);
-        String targetUid = reqBuffer.substring(p3 + 1);
-        reqId.trim(); destUid.trim(); targetUid.trim();
+        String requesterNode = reqBuffer.substring(p3 + 1, p4);
+        String targetUid = reqBuffer.substring(p4 + 1);
+        reqId.trim(); destUid.trim(); requesterNode.trim(); targetUid.trim();
 
         String myUid = myUidOrUnknown();
 
         // avoid responding during voice
         if (!voiceActive() && targetUid.length() > 0 && targetUid == myUid) {
-          rfSendProfileResp(reqId, destUid);
+          rfSendProfileResp(reqId, destUid, requesterNode);
         }
       }
     }
