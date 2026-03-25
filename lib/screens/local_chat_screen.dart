@@ -8,6 +8,7 @@ import '../constants/app_colors.dart';
 import '../constants/app_typography.dart';
 import '../constants/soft_ui_design.dart';
 import '../providers/chat_provider.dart';
+import '../core/models/esp32_delivery_state.dart';
 import '../providers/auth_provider.dart';
 import '../services/voice_chat_extension.dart' as voice;
 import '../widgets/unified_top_bar.dart';
@@ -184,25 +185,28 @@ class _LocalChatScreenState extends State<LocalChatScreen> with WidgetsBindingOb
 
   Future<void> _startRecording() async {
     final provider = context.read<ChatProvider>();
-    if (provider.isConnected) {
-      final success = await provider.startRecording();
-      if (success) {
-        setState(() {
-          _isRecording = true;
-        });
-        _scrollToBottom();
-      }
+    if (!provider.isConnected) return;
+    final success = await provider.beginPttRecording();
+    if (!mounted) return;
+    if (success) {
+      setState(() {
+        _isRecording = true;
+      });
+      _scrollToBottom();
     }
   }
 
   Future<void> _stopRecording() async {
+    final provider = context.read<ChatProvider>();
     if (_isRecording) {
-      final provider = context.read<ChatProvider>();
       await provider.stopRecordingAndSend();
+      if (!mounted) return;
       setState(() {
         _isRecording = false;
       });
       _scrollToBottom();
+    } else if (provider.isAwaitingVoiceReady) {
+      await provider.cancelVoiceTransmitAttempt();
     }
   }
 
@@ -236,14 +240,16 @@ class _LocalChatScreenState extends State<LocalChatScreen> with WidgetsBindingOb
     );
   }
 
-  // UI-only: Check if message is SOS emergency
+  // UI-only: Check if message is SOS emergency (top banner + pinned history).
+  // Must match ESP32 framed SOS ([SOS_META] and/or UID…SOS), hardware buffer, and legacy JSON.
   bool _isSosEmergencyMessage(ChatMessage message) {
     if (!message.isEmergency) return false;
-    // Check source from rawData first (matches UI branch)
-    final source = message.rawData?['source']?.toString();
-    if (source == 'sos') return true;
-    // Fallback heuristic for older/legacy SOS payloads
-    return message.isMe && message.text.contains('🚨');
+    if (message.rawData?['source']?.toString() == 'sos') return true;
+    if (message.isSos) return true;
+    // Received emergency from RF/ESP32 — show banner/history even if rawData omitted source
+    if (!message.isMe) return true;
+    // Own outgoing SOS (e.g. home button) — legacy emoji hint
+    return message.text.contains('🚨');
   }
 
   // UI-only: Get SOS emergency history (last 24 hours)
@@ -483,8 +489,8 @@ class _LocalChatScreenState extends State<LocalChatScreen> with WidgetsBindingOb
                     : 'Disconnected';
                 return TopBarConfigs.localChatTopBar(
                   status: statusText,
-                  onBluetoothTap: () {
-                    // Bluetooth tap handler - can be used for future features
+                  onRfChannelTap: () {
+                    Navigator.pushNamed(context, '/rf-settings');
                   },
                   onConnectedTap: () {
                     if (provider.isConnected) {
@@ -1059,7 +1065,7 @@ class _LocalChatScreenState extends State<LocalChatScreen> with WidgetsBindingOb
                     ),
                     if (message.isMe) ...[
                       const SizedBox(width: 8),
-                      _buildMessageStatus(message.status, message.isRead),
+                      _buildMessageStatus(message),
                     ],
                   ],
                 ),
@@ -1128,18 +1134,35 @@ class _LocalChatScreenState extends State<LocalChatScreen> with WidgetsBindingOb
     );
   }
 
-  Widget _buildMessageStatus(voice.MessageStatus status, bool isRead) {
-    return EnhancedMessageStatus(
-      status: status,
-      isRead: isRead,
-      onRetry: status == voice.MessageStatus.failed
-          ? () {
-              // TODO: Implement retry logic for failed messages
-              // You can access the message from the parent widget if needed
-            }
-          : null,
-      iconColor: Colors.white70,
-      size: 16.0,
+  Widget _buildMessageStatus(ChatMessage message) {
+    final status = message.status;
+    final espSeen = message.esp32Delivery == Esp32DeliveryState.seen;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        EnhancedMessageStatus(
+          status: status,
+          isRead: message.isRead || espSeen,
+          onRetry: status == voice.MessageStatus.failed
+              ? () {
+                  // TODO: Implement retry logic for failed messages
+                }
+              : null,
+          iconColor: Colors.white70,
+          size: 16.0,
+        ),
+        if (espSeen && message.seenByUid != null && message.seenByUid!.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(left: 4),
+            child: Tooltip(
+              message: message.seenByUid!,
+              child: Text(
+                message.seenByUid!.length > 8 ? '${message.seenByUid!.substring(0, 8)}…' : message.seenByUid!,
+                style: AppTypography.bodySmall.copyWith(color: Colors.white70, fontSize: 9),
+              ),
+            ),
+          ),
+      ],
     );
   }
 
@@ -1246,31 +1269,51 @@ class _LocalChatScreenState extends State<LocalChatScreen> with WidgetsBindingOb
               // Voice status indicator
               Consumer<ChatProvider>(
                 builder: (context, provider, child) {
-                  if (provider.isRecording || provider.isPlaying) {
+                  if (provider.isRecording || provider.isPlaying || provider.busyVoice || provider.profileLookupQueued) {
+                    final String label;
+                    Color tone;
+                    IconData icon;
+                    if (provider.profileLookupQueued) {
+                      label = 'Profile lookup queued until voice ends';
+                      tone = AppColors.warning;
+                      icon = Icons.schedule;
+                    } else if (provider.busyVoice) {
+                      label = 'Voice has priority - chat/profile actions are limited';
+                      tone = AppColors.warning;
+                      icon = Icons.priority_high;
+                    } else if (provider.isRecording) {
+                      label = 'Recording...';
+                      tone = AppColors.error;
+                      icon = Icons.mic;
+                    } else {
+                      label = 'Playing...';
+                      tone = AppColors.success;
+                      icon = Icons.volume_up;
+                    }
                     return Container(
                       width: double.infinity,
                       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
                       margin: const EdgeInsets.only(bottom: 12),
                       decoration: SoftUIDesign.cardDecoration(
-                        backgroundColor: provider.isRecording ? AppColors.error.withOpacity(0.08) : AppColors.success.withOpacity(0.08),
+                        backgroundColor: tone.withOpacity(0.08),
                         borderRadius: SoftUIDesign.buttonBorderRadius,
                         elevation: 2.0,
-                        borderColor: provider.isRecording ? AppColors.error.withOpacity(0.3) : AppColors.success.withOpacity(0.3),
+                        borderColor: tone.withOpacity(0.3),
                         showBorder: true,
                       ),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Icon(
-                            provider.isRecording ? Icons.mic : Icons.volume_up,
-                            color: provider.isRecording ? AppColors.error : AppColors.success,
+                            icon,
+                            color: tone,
                             size: 16,
                           ),
                           const SizedBox(width: 8),
                           Text(
-                            provider.isRecording ? 'Recording...' : 'Playing...',
+                            label,
                             style: AppTypography.bodySmall.copyWith(
-                              color: provider.isRecording ? AppColors.error : AppColors.success,
+                              color: tone,
                               fontWeight: FontWeight.w600,
                             ),
                           ),

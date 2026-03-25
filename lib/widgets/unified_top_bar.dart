@@ -23,6 +23,7 @@ class UnifiedTopBar extends StatefulWidget {
   final bool showUnderline; // NEW: animated underline control
   final Color? underlineColor; // NEW: custom underline color
   final VoidCallback? onSubtitleTap; // NEW: tap on subtitle/status badge
+  final String? iconTooltip;
 
   const UnifiedTopBar({
     super.key,
@@ -33,6 +34,7 @@ class UnifiedTopBar extends StatefulWidget {
     this.backgroundColor = AppColors.white,
     this.actions,
     this.onIconTap,
+    this.iconTooltip,
     this.showBackButton = false,
     this.onBackPressed,
     this.compact = false,
@@ -169,67 +171,78 @@ class _UnifiedTopBarState extends State<UnifiedTopBar>
                     ],
 
                 // Main icon with optional presence dot
-                Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    onTap: widget.onIconTap,
-                    borderRadius: BorderRadius.circular(14),
-                    child: Stack(
-                      clipBehavior: Clip.none,
-                      children: [
-                        Container(
-                          width: iconBoxSize,
-                          height: iconBoxSize,
-                          decoration: BoxDecoration(
-                            color: widget.iconColor.withOpacity(0.12),
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
-                              color: widget.iconColor.withOpacity(0.2),
-                              width: 1.5,
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: widget.iconColor.withOpacity(0.08),
-                                blurRadius: 8,
-                                offset: const Offset(0, 2),
-                                spreadRadius: 0,
-                              ),
-                            ],
-                          ),
-                          child: Icon(
-                            widget.icon,
-                            color: widget.iconColor,
-                            size: iconSize,
-                          ),
-                        ),
-                        // Presence dot (top right)
-                        if (widget.showPresenceDot)
-                          Positioned(
-                            top: -3,
-                            right: -3,
-                            child: Container(
-                              width: 14,
-                              height: 14,
+                Builder(
+                  builder: (context) {
+                    final iconInk = Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: widget.onIconTap,
+                        borderRadius: BorderRadius.circular(14),
+                        child: Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            Container(
+                              width: iconBoxSize,
+                              height: iconBoxSize,
                               decoration: BoxDecoration(
-                                color: (widget.presenceColor ?? widget.iconColor),
-                                shape: BoxShape.circle,
+                                color: widget.iconColor.withOpacity(0.12),
+                                borderRadius: BorderRadius.circular(14),
                                 border: Border.all(
-                                  color: widget.backgroundColor,
-                                  width: 2.5,
+                                  color: widget.iconColor.withOpacity(0.2),
+                                  width: 1.5,
                                 ),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: (widget.presenceColor ?? widget.iconColor).withOpacity(0.3),
-                                    blurRadius: 4,
-                                    offset: const Offset(0, 1),
+                                    color: widget.iconColor.withOpacity(0.08),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 2),
+                                    spreadRadius: 0,
                                   ),
                                 ],
                               ),
+                              child: Icon(
+                                widget.icon,
+                                color: widget.iconColor,
+                                size: iconSize,
+                              ),
                             ),
-                          ),
-                      ],
-                    ),
-                  ),
+                            // Presence dot (top right)
+                            if (widget.showPresenceDot)
+                              Positioned(
+                                top: -3,
+                                right: -3,
+                                child: Container(
+                                  width: 14,
+                                  height: 14,
+                                  decoration: BoxDecoration(
+                                    color: (widget.presenceColor ?? widget.iconColor),
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: widget.backgroundColor,
+                                      width: 2.5,
+                                    ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: (widget.presenceColor ?? widget.iconColor).withOpacity(0.3),
+                                        blurRadius: 4,
+                                        offset: const Offset(0, 1),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    );
+                    if (widget.iconTooltip != null && widget.iconTooltip!.isNotEmpty) {
+                      return Tooltip(
+                        message: widget.iconTooltip!,
+                        child: iconInk,
+                      );
+                    }
+                    return iconInk;
+                  },
                 ),
                 const SizedBox(width: 16),
 
@@ -361,7 +374,7 @@ class _UnifiedTopBarState extends State<UnifiedTopBar>
 class TopBarConfigs {
   static Widget localChatTopBar({
     required String status,
-    required VoidCallback onBluetoothTap,
+    required VoidCallback onRfChannelTap,
     VoidCallback? onConnectedTap,
     List<Widget>? additionalActions,
     bool compact = false,
@@ -370,11 +383,12 @@ class TopBarConfigs {
     return UnifiedTopBar(
       title: 'Local Chat',
       subtitle: status,
-      icon: Icons.bluetooth,
+      icon: Icons.settings_input_antenna,
+      iconTooltip: 'RF channel',
       iconColor: status.toLowerCase().contains('connected')
           ? AppColors.success
           : AppColors.warning,
-      onIconTap: onBluetoothTap,
+      onIconTap: onRfChannelTap,
       onSubtitleTap: status.toLowerCase().contains('connected') ? onConnectedTap : null,
       actions: additionalActions,
       compact: compact,

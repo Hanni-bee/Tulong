@@ -63,7 +63,7 @@ class BluetoothService {
               if (completeLine.trim().isNotEmpty) {
                 print('BT_DEBUG: RX line "$completeLine"');
                 _debugController.add('Received line: ${completeLine.length} chars');
-                _messageController.add('$completeLine\n');
+                _messageController.add(completeLine);
               }
             }
           },

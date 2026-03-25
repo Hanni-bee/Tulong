@@ -1,16 +1,28 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bluetooth_serial_plus/flutter_bluetooth_serial_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/bluetooth_service.dart';
+import '../core/protocol/esp32_protocol_parser.dart';
+import '../core/models/esp32_delivery_state.dart';
+import '../core/storage/esp32_local_store.dart';
 import '../services/voice_chat_extension.dart' as voice;
 import '../services/sqlite_service.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import '../utils/enhanced_error_handler.dart';
 import '../services/notification_service.dart';
 import '../widgets/modern_toast.dart';
+
+enum VoiceSessionState {
+  idle,
+  awaitingReady,
+  transmitting,
+  receiving,
+  busyDenied,
+}
 
 class ChatProvider with ChangeNotifier {
   // Static instance for access from services without context
@@ -19,6 +31,7 @@ class ChatProvider with ChangeNotifier {
   
   final BluetoothService _bluetoothService = BluetoothService();
   final voice.VoiceChatExtension _voiceExtension = voice.VoiceChatExtension();
+  final Esp32ProtocolParser _protocolParser = Esp32ProtocolParser();
   
   List<BluetoothDevice> _pairedDevices = [];
   BluetoothDevice? _selectedDevice;
@@ -26,15 +39,29 @@ class ChatProvider with ChangeNotifier {
   final List<ChatMessage> _messages = [];
   final List<String> _debugLogs = [];
   bool _isConnecting = false;
-  
+  VoiceSessionState _voiceSessionState = VoiceSessionState.idle;
+  bool _profileLookupQueued = false;
+  bool _busyVoice = false;
+  String? _lastProfileLookupUid;
+  int _rfChannel = 108;
+  final Map<String, String> _pendingOutgoingByLocalId = <String, String>{};
+  final Set<String> _seenSentMessageIds = <String>{};
+  final StringBuffer _incomingVoiceBase64 = StringBuffer();
+  Completer<bool>? _voiceReadyCompleter;
+  bool _awaitingLocalVoiceReady = false;
+
+  /// True while `<VOICE_START>` was sent and `<VOICE_READY>` not yet received.
+  bool get isAwaitingVoiceReady => _awaitingLocalVoiceReady;
+
   // Loading states
   bool _isLoadingMessages = false;
   bool _isRefreshingMessages = false;
   bool _hasCachedMessages = false;
   final bool _isTyping = false;
   
-  // Connected users on the channel (extracted from messages)
-  final Set<String> _connectedUsers = {};
+  /// Peers seen on RF channel: stable key → display label (no duplicate keys).
+  /// Keys: `u:<lowercase uid>` or `n:<normalized name>` when UID unknown.
+  final Map<String, String> _channelPeers = {};
   String? _currentUserName;
   
   // Track if local chat screen is currently visible
@@ -96,6 +123,10 @@ class ChatProvider with ChangeNotifier {
   }
   List<String> get debugLogs => _debugLogs;
   bool get isConnecting => _isConnecting;
+  VoiceSessionState get voiceSessionState => _voiceSessionState;
+  bool get profileLookupQueued => _profileLookupQueued;
+  bool get busyVoice => _busyVoice;
+  int get rfChannel => _rfChannel;
   bool get isLoadingMessages => _isLoadingMessages;
   bool get isRefreshingMessages => _isRefreshingMessages;
   bool get hasCachedMessages => _hasCachedMessages;
@@ -116,23 +147,17 @@ class ChatProvider with ChangeNotifier {
     }
   }
   
-  // Get connected users including current user
+  /// Display names on channel (unique peers + local user name when set).
   List<String> get connectedUsers {
-    final allUsers = <String>{..._connectedUsers};
+    final allUsers = <String>{..._channelPeers.values};
     if (_currentUserName != null && _currentUserName!.isNotEmpty) {
       allUsers.add(_currentUserName!);
     }
     return allUsers.toList()..sort();
   }
-  
-  // Count includes current user
-  int get connectedUsersCount {
-    int count = _connectedUsers.length;
-    if (_currentUserName != null && _currentUserName!.isNotEmpty) {
-      count += 1;
-    }
-    return count;
-  }
+
+  /// Unique peers + self (matches UI badge semantics).
+  int get connectedUsersCount => connectedUsers.length;
   
   // Check if a user is the current user
   bool isCurrentUser(String user) {
@@ -168,20 +193,9 @@ class ChatProvider with ChangeNotifier {
   }
 
   void _init() {
+    _loadProtocolSettings();
     _messageSubscription = _bluetoothService.messageStream.listen((message) {
-      print('BT_RX_LINE: $message');
-      // Try to parse as JSON first (for SimpleBluetoothService messages)
-      try {
-        final jsonData = json.decode(message);
-        if (jsonData is Map<String, dynamic>) {
-          _processIncomingMapMessage(jsonData);
-          return;
-        }
-      } catch (e) {
-        // Not JSON, process as regular string message
-      }
-      // Process as regular string message (async, but don't await in stream)
-      _processIncomingMessage(message).catchError((error) {
+      _processIncomingLine(message).catchError((error) {
         print('Error processing incoming message: $error');
       });
     });
@@ -232,6 +246,12 @@ class ChatProvider with ChangeNotifier {
         notifyListeners();
       }
     });
+  }
+
+  Future<void> _loadProtocolSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    _rfChannel = prefs.getInt('rf_channel') ?? 108;
+    notifyListeners();
   }
 
   Future<void> loadPairedDevices() async {
@@ -307,6 +327,10 @@ class ChatProvider with ChangeNotifier {
     for (int i = 0; i < _messages.length; i++) {
       if (!_messages[i].isRead && !_messages[i].isMe) {
         _messages[i] = _messages[i].copyWith(isRead: true);
+        final msgId = _messages[i].messageId;
+        if (msgId != null && msgId.isNotEmpty && !_seenSentMessageIds.contains(msgId)) {
+          _sendSeenReceipt(msgId);
+        }
         hasChanges = true;
       }
     }
@@ -437,7 +461,7 @@ class ChatProvider with ChangeNotifier {
     // Keep _selectedDevice so we can show "Reconnect" option in the UI
     // Only clear it when connecting to a different device or explicitly clearing
     _isConnected = false;
-    _connectedUsers.clear(); // Clear connected users on disconnect
+    _channelPeers.clear();
     notifyListeners();
   }
   
@@ -496,13 +520,21 @@ class ChatProvider with ChangeNotifier {
 
   Future<bool> sendMessage(String text, {BuildContext? context}) async {
     if (text.trim().isEmpty) return false;
+    if (_voiceSessionState == VoiceSessionState.transmitting || _voiceSessionState == VoiceSessionState.receiving) {
+      _busyVoice = true;
+      notifyListeners();
+      return false;
+    }
 
+    final localId = 'local_${DateTime.now().millisecondsSinceEpoch}';
     ChatMessage message = ChatMessage(
+      localId: localId,
       text: text.trim(),
       isMe: true,
       timestamp: DateTime.now(),
       status: voice.MessageStatus.sending,
       type: voice.MessageType.text,
+      esp32Delivery: Esp32DeliveryState.sending,
     );
 
     _addMessage(message.text, true, message: message);
@@ -523,10 +555,10 @@ class ChatProvider with ChangeNotifier {
         return false;
       }
 
-      bool success = await _bluetoothService.sendMessage(text);
+      bool success = await _bluetoothService.sendMessage(text.trim());
       
       if (success) {
-        message.status = voice.MessageStatus.sent;
+        _pendingOutgoingByLocalId[localId] = message.text;
       } else {
         message.status = voice.MessageStatus.failed;
         if (context != null) {
@@ -542,6 +574,7 @@ class ChatProvider with ChangeNotifier {
       return success;
     } catch (e) {
       message.status = voice.MessageStatus.failed;
+      message.esp32Delivery = Esp32DeliveryState.failed;
       notifyListeners();
       
       if (context != null) {
@@ -555,23 +588,195 @@ class ChatProvider with ChangeNotifier {
     }
   }
 
+  Future<void> _processIncomingLine(String line) async {
+    final events = _protocolParser.consumeLine(line);
+    for (final event in events) {
+      if (event.type == ProtocolEventType.control) {
+        await _handleControlEvent(event.control!);
+      } else if (event.type == ProtocolEventType.voiceChunk) {
+        _incomingVoiceBase64.write(event.voiceChunk!);
+      } else if (event.type == ProtocolEventType.json) {
+        _processIncomingMapMessage(event.json!);
+      } else if (event.type == ProtocolEventType.chatFrameComplete) {
+        await _handleChatFrame(event.chatHeader!, event.chatBody ?? '');
+      }
+    }
+  }
+
+  Future<void> _handleControlEvent(String marker) async {
+    switch (marker) {
+      case '<VOICE_START>':
+        _voiceSessionState = VoiceSessionState.receiving;
+        _busyVoice = true;
+        _incomingVoiceBase64.clear();
+        break;
+      case '<VOICE_READY>':
+        _awaitingLocalVoiceReady = false;
+        if (_voiceReadyCompleter != null && !_voiceReadyCompleter!.isCompleted) {
+          _voiceReadyCompleter!.complete(true);
+        }
+        _voiceSessionState = VoiceSessionState.transmitting;
+        _busyVoice = true;
+        break;
+      case '<VOICE_DENY_BUSY>':
+        _awaitingLocalVoiceReady = false;
+        if (_voiceReadyCompleter != null && !_voiceReadyCompleter!.isCompleted) {
+          _voiceReadyCompleter!.complete(false);
+        }
+        _voiceSessionState = VoiceSessionState.busyDenied;
+        _busyVoice = true;
+        break;
+      case '<VOICE_DONE>':
+        _voiceSessionState = VoiceSessionState.idle;
+        _busyVoice = false;
+        break;
+      case '<VOICE_END>':
+        if (_incomingVoiceBase64.isNotEmpty) {
+          _addVoiceMessage(_incomingVoiceBase64.toString(), false);
+          _incomingVoiceBase64.clear();
+        }
+        _voiceSessionState = VoiceSessionState.idle;
+        _busyVoice = false;
+        _profileLookupQueued = false;
+        break;
+    }
+    notifyListeners();
+  }
+
+  /// Firmware: send `<VOICE_START>` then wait for `<VOICE_READY>` before recording/sending audio.
+  Future<bool> requestVoiceTransmitStart() async {
+    if (!_bluetoothService.isConnected) return false;
+    if (_voiceSessionState == VoiceSessionState.receiving || _voiceSessionState == VoiceSessionState.transmitting) {
+      return false;
+    }
+    _voiceReadyCompleter = Completer<bool>();
+    _awaitingLocalVoiceReady = true;
+    _voiceSessionState = VoiceSessionState.awaitingReady;
+    notifyListeners();
+    final sent = await _bluetoothService.sendMessage('<VOICE_START>');
+    if (!sent) {
+      _awaitingLocalVoiceReady = false;
+      _voiceSessionState = VoiceSessionState.idle;
+      if (_voiceReadyCompleter != null && !_voiceReadyCompleter!.isCompleted) {
+        _voiceReadyCompleter!.complete(false);
+      }
+      _voiceReadyCompleter = null;
+      notifyListeners();
+      return false;
+    }
+    try {
+      return await _voiceReadyCompleter!.future.timeout(const Duration(seconds: 8));
+    } on TimeoutException {
+      await cancelVoiceTransmitAttempt();
+      return false;
+    } catch (_) {
+      return false;
+    } finally {
+      _awaitingLocalVoiceReady = false;
+      _voiceReadyCompleter = null;
+      notifyListeners();
+    }
+  }
+
+  /// If user aborts before READY or timeout: send `<VOICE_END>` so ESP32 can release TX.
+  Future<void> cancelVoiceTransmitAttempt() async {
+    _awaitingLocalVoiceReady = false;
+    if (_voiceReadyCompleter != null && !_voiceReadyCompleter!.isCompleted) {
+      _voiceReadyCompleter!.complete(false);
+    }
+    await _bluetoothService.sendMessage('<VOICE_END>');
+    if (_voiceSessionState == VoiceSessionState.awaitingReady || _voiceSessionState == VoiceSessionState.busyDenied) {
+      _voiceSessionState = VoiceSessionState.idle;
+    }
+    notifyListeners();
+  }
+
+  Future<void> _handleChatFrame(ChatFrameHeader header, String body) async {
+    final parsedSos = _parseSosMeta(body);
+    final uidLooksSos = header.senderUid.toUpperCase().contains('SOS');
+    final isSos = (parsedSos['isSos'] as bool) || uidLooksSos;
+    String? senderName;
+    if (header.senderUid.isNotEmpty && header.senderUid != 'UNKNOWN') {
+      senderName = await _getSenderNameFromUid(header.senderUid);
+    }
+    final rawData = <String, dynamic>{
+      'sender_uid': header.senderUid,
+      'message_id': header.messageId,
+      'sos_severity': parsedSos['severity'],
+      'sos_timestamp_ms': parsedSos['timestampMs'],
+    };
+    if (isSos) {
+      rawData['source'] = 'sos';
+    }
+    _addMessage(
+      parsedSos['body'] as String,
+      false,
+      senderName: senderName ?? header.senderUid,
+      isEmergency: isSos,
+      rawData: rawData,
+      messageId: header.messageId,
+      senderUid: header.senderUid,
+      isSos: isSos,
+      sosSeverity: parsedSos['severity'] as String?,
+      sosTimestampMs: parsedSos['timestampMs'] as int?,
+    );
+  }
+
+  Map<String, Object?> _parseSosMeta(String body) {
+    final lines = body.split('\n');
+    if (lines.isEmpty) return {'isSos': false, 'body': body, 'severity': null, 'timestampMs': null};
+    final first = lines.first.trim();
+    if (!first.startsWith('[SOS_META]')) {
+      return {'isSos': false, 'body': body, 'severity': null, 'timestampMs': null};
+    }
+    final sevMatch = RegExp(r'severity=([^\s]+)').firstMatch(first);
+    final tsMatch = RegExp(r'timestamp_ms=(\d+)').firstMatch(first);
+    final cleanBody = lines.skip(1).join('\n').trim();
+    return {
+      'isSos': true,
+      'body': cleanBody,
+      'severity': sevMatch?.group(1),
+      'timestampMs': int.tryParse(tsMatch?.group(1) ?? ''),
+    };
+  }
+
+  Future<String?> _getSenderNameFromUid(String uid) async {
+    final prefs = await SharedPreferences.getInstance();
+    final cached = prefs.getString('profile_name_$uid');
+    if (cached != null && cached.isNotEmpty) return cached;
+    try {
+      final users = await SQLiteService().getAllUsers();
+      final user = users.where((u) => (u['uid']?.toString() ?? '') == uid).toList();
+      if (user.isNotEmpty) {
+        final f = user.first['first_name']?.toString() ?? '';
+        final l = user.first['last_name']?.toString() ?? '';
+        final full = '$f $l'.trim();
+        if (full.isNotEmpty) {
+          await prefs.setString('profile_name_$uid', full);
+          return full;
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
   /// Process incoming Map message (JSON format from ESP32)
   /// Handles messages from:
   /// 1. Home page SOS button (sent with isEmergency: true flag)
   /// 2. Other devices forwarding emergency messages (with is_emergency flag)
   void _processIncomingMapMessage(Map<String, dynamic> data) {
     try {
+      final command = (data['command'] ?? '').toString();
+      if (command.isNotEmpty) {
+        _handleCommandMessage(data);
+        return;
+      }
       final messageText = data['message'] ?? '';
       final senderName = data['sender_name'] ?? 'Unknown';
       // Check for emergency flag - this includes messages from home page SOS button
       final isEmergency = data['is_emergency'] == true || data['isEmergency'] == true;
       
       if (messageText.isEmpty) return;
-      
-      // Add connected user if sender name is available
-      if (senderName != 'Unknown') {
-        _addConnectedUser(senderName);
-      }
       
       // Prepare rawData with source for SOS detection
       final rawDataWithSource = Map<String, dynamic>.from(data);
@@ -581,7 +786,14 @@ class ChatProvider with ChangeNotifier {
       
       // Add message with emergency flag and rawData
       // Messages from home page SOS button (isEmergency: true) will be auto-pinned here
-      _addMessage(messageText, false, senderName: senderName, isEmergency: isEmergency, rawData: rawDataWithSource);
+      _addMessage(
+        messageText,
+        false,
+        senderName: senderName,
+        isEmergency: isEmergency,
+        rawData: rawDataWithSource,
+        senderUid: (data['sender_uid'] ?? data['sender_id'])?.toString(),
+      );
       
       // Trigger haptic feedback and sound for emergency messages
       if (isEmergency) {
@@ -599,6 +811,62 @@ class ChatProvider with ChangeNotifier {
         'event': 'Error processing map message',
         'metrics': {'error': e.toString()}
       });
+    }
+  }
+
+  void _handleCommandMessage(Map<String, dynamic> data) {
+    final command = (data['command'] ?? '').toString();
+    if (command == 'msg_sent') {
+      final messageId = (data['message_id'] ?? '').toString();
+      if (messageId.isEmpty) return;
+      for (var i = _messages.length - 1; i >= 0; i--) {
+        final m = _messages[i];
+        if (m.isMe && m.status == voice.MessageStatus.sending && (m.messageId == null || m.messageId!.isEmpty)) {
+          _messages[i] = m.copyWith(
+            messageId: messageId,
+            status: voice.MessageStatus.sent,
+            esp32Delivery: Esp32DeliveryState.sent,
+          );
+          break;
+        }
+      }
+      notifyListeners();
+      return;
+    }
+    if (command == 'msg_seen') {
+      final messageId = (data['message_id'] ?? '').toString();
+      final seenByUid = (data['seen_by_uid'] ?? '').toString();
+      if (messageId.isEmpty) return;
+      for (var i = 0; i < _messages.length; i++) {
+        final m = _messages[i];
+        if (m.isMe && m.messageId == messageId) {
+          _messages[i] = m.copyWith(
+            seenByUid: seenByUid.isEmpty ? null : seenByUid,
+            esp32Delivery: Esp32DeliveryState.seen,
+          );
+        }
+      }
+      notifyListeners();
+      return;
+    }
+    if (command == 'profile_response') {
+      final profileData = data['data'] as Map<String, dynamic>?;
+      if (profileData != null) {
+        _profileLookupQueued = false;
+        _saveProfileFromESP32(profileData);
+        notifyListeners();
+      }
+      return;
+    }
+    if (command == 'profile_queued') {
+      _profileLookupQueued = true;
+      notifyListeners();
+      return;
+    }
+    if (command == 'busy_voice') {
+      _busyVoice = true;
+      notifyListeners();
+      return;
     }
   }
 
@@ -694,7 +962,6 @@ class ChatProvider with ChangeNotifier {
         if (parts.length >= 2) {
           final sender = parts[0].replaceAll('From', '').trim();
           final messageText = parts.sublist(1).join(':').trim();
-          _addConnectedUser(sender);
           _addMessage(messageText, false, senderName: sender);
         } else {
           _addMessage(message, false);
@@ -763,7 +1030,8 @@ class ChatProvider with ChangeNotifier {
       // Send request command (matches ESP32 format)
       final requestJson = jsonEncode({
         "command": "get_profile",
-        "uid": uid,
+        "target_uid": uid,
+        "force_rf": false,
       });
       
       print('BT_PROFILE: Requesting profile for UID: $uid');
@@ -974,15 +1242,19 @@ class ChatProvider with ChangeNotifier {
         }
       }
       
-      if (senderName != null && senderName.isNotEmpty) {
-        _addConnectedUser(senderName);
-      }
     }
     
     // Display the complete message with emergency flag ONLY if from hardware SOS button (UIDSOS)
     // Pinning is based on WHERE it came from, NOT on message content
     final rawDataForHardwareSos = isSosFromHardware ? {'source': 'sos'} : null;
-    _addMessage(completeMessage, false, senderName: senderName ?? 'ESP', isEmergency: isSosFromHardware, rawData: rawDataForHardwareSos);
+    _addMessage(
+      completeMessage,
+      false,
+      senderName: senderName ?? 'ESP',
+      isEmergency: isSosFromHardware,
+      rawData: rawDataForHardwareSos,
+      senderUid: senderUid,
+    );
     
     print('BT_RX: Complete message displayed (${completeMessage.length} chars) from UID: $senderUid, Name: $senderName');
     addStructuredDebug({
@@ -1001,10 +1273,8 @@ class ChatProvider with ChangeNotifier {
         final senderName = jsonData['sender_name'] as String?;
         final senderId = jsonData['sender_id'] as String?;
         if (senderName != null && senderName.isNotEmpty) {
-          _addConnectedUser(senderName);
           return senderName;
         } else if (senderId != null && senderId.isNotEmpty) {
-          _addConnectedUser(senderId);
           return senderId;
         }
       }
@@ -1014,28 +1284,80 @@ class ChatProvider with ChangeNotifier {
     return null;
   }
   
-  /// Add connected user to the list
-  void _addConnectedUser(String user) {
-    if (user.isNotEmpty && user != 'Me' && user != 'ESP') {
-      _connectedUsers.add(user);
+  /// Deduped peer list: one entry per remote UID (or per normalized name if no UID).
+  void _registerPeerFromIncoming({String? senderUid, String? senderName}) {
+    final key = _peerStorageKey(senderUid: senderUid, senderName: senderName);
+    if (key == null) return;
+    final label = _peerDisplayLabel(senderUid: senderUid, senderName: senderName);
+    if (label.isEmpty) return;
+    final lower = label.toLowerCase();
+    if (lower == 'me' || lower == 'esp' || lower == 'unknown') return;
+
+    final existing = _channelPeers[key];
+    if (existing == null) {
+      _channelPeers[key] = label;
+      return;
+    }
+    if (_isRicherPeerLabel(label, existing)) {
+      _channelPeers[key] = label;
+    }
+  }
+
+  String? _peerStorageKey({String? senderUid, String? senderName}) {
+    final u = senderUid?.trim();
+    if (u != null && u.isNotEmpty && u.toUpperCase() != 'UNKNOWN') {
+      return 'u:${u.toLowerCase()}';
+    }
+    final n = (senderName ?? '').trim().toLowerCase();
+    if (n.isEmpty || n == 'unknown') return null;
+    return 'n:$n';
+  }
+
+  String _peerDisplayLabel({String? senderUid, String? senderName}) {
+    final name = senderName?.trim();
+    if (name != null && name.isNotEmpty && name.toLowerCase() != 'unknown') {
+      return name;
+    }
+    final u = senderUid?.trim();
+    if (u != null && u.isNotEmpty && u.toUpperCase() != 'UNKNOWN') {
+      return u;
+    }
+    return name ?? '';
+  }
+
+  bool _isRicherPeerLabel(String candidate, String existing) {
+    final c = candidate.toLowerCase();
+    final e = existing.toLowerCase();
+    if (e.startsWith('uid_') && !c.startsWith('uid_')) return true;
+    if (c.contains(' ') && !e.contains(' ')) return true;
+    if (candidate.length > existing.length && !c.startsWith('uid_')) return true;
+    return false;
+  }
+
+  /// Manually add a peer (name-only; testing / sync).
+  void addConnectedUser(String user) {
+    _registerPeerFromIncoming(senderUid: null, senderName: user);
+    notifyListeners();
+  }
+
+  /// Remove by display label (matches one map entry with that value).
+  void removeConnectedUser(String user) {
+    String? matchKey;
+    for (final e in _channelPeers.entries) {
+      if (e.value == user) {
+        matchKey = e.key;
+        break;
+      }
+    }
+    if (matchKey != null) {
+      _channelPeers.remove(matchKey);
       notifyListeners();
     }
   }
-  
-  /// Manually add a connected user (for testing or ESP32 sync)
-  void addConnectedUser(String user) {
-    _addConnectedUser(user);
-  }
-  
-  /// Remove a connected user
-  void removeConnectedUser(String user) {
-    _connectedUsers.remove(user);
-    notifyListeners();
-  }
-  
-  /// Clear all connected users
+
+  /// Clear all tracked peers (keeps Bluetooth link).
   void clearConnectedUsers() {
-    _connectedUsers.clear();
+    _channelPeers.clear();
     notifyListeners();
   }
 
@@ -1086,6 +1408,9 @@ class ChatProvider with ChangeNotifier {
     );
 
     _messages.add(chatMessage);
+    if (!isMe) {
+      _registerPeerFromIncoming(senderUid: null, senderName: senderName);
+    }
     addStructuredDebug({
       'source': 'CHAT',
       'event': 'Voice message added to chat',
@@ -1099,16 +1424,17 @@ class ChatProvider with ChangeNotifier {
     return await _voiceExtension.startRecording();
   }
 
-  /// Stop recording and send voice message with structured logging
+  /// After [requestVoiceTransmitStart] returned true and mic is recording: stop, send base64 lines + `<VOICE_END>`.
   Future<bool> stopRecordingAndSend() async {
     final recordingPath = await _voiceExtension.stopRecording();
     if (recordingPath == null) {
+      if (_awaitingLocalVoiceReady || _voiceSessionState == VoiceSessionState.awaitingReady) {
+        await cancelVoiceTransmitAttempt();
+      }
       addStructuredDebug({
         'source': 'VOICE',
         'event': 'Recording failed or retrying',
-        'metrics': {
-          'isRetrying': _voiceExtension.isRetrying,
-        }
+        'metrics': {'isRetrying': _voiceExtension.isRetrying},
       });
       return false;
     }
@@ -1116,35 +1442,21 @@ class ChatProvider with ChangeNotifier {
     addStructuredDebug({
       'source': 'VOICE',
       'event': 'Recording completed',
-      'metrics': {
-        'filePath': recordingPath,
-      }
+      'metrics': {'filePath': recordingPath},
     });
 
-    // Convert to Base64
     final base64Audio = await _voiceExtension.audioFileToBase64(recordingPath);
     if (base64Audio == null) {
+      await _bluetoothService.sendMessage('<VOICE_END>');
       addStructuredDebug({
         'source': 'VOICE',
         'event': 'Base64 encoding failed',
-        'metrics': {'filePath': recordingPath}
+        'metrics': {'filePath': recordingPath},
       });
       return false;
     }
 
-    addStructuredDebug({
-      'source': 'VOICE',
-      'event': 'Base64 encoding completed',
-      'metrics': {
-        'base64Length': base64Audio.length,
-        'estimatedSizeKB': (base64Audio.length * 3 / 4 / 1024).toStringAsFixed(1),
-      }
-    });
-
-    // Calculate recording duration
     final recordingDuration = _voiceExtension.getRecordingDuration();
-    
-    // Create voice message
     final voiceMessage = voice.VoiceMessage.fromBase64(
       base64Audio: base64Audio,
       isMe: true,
@@ -1152,7 +1464,6 @@ class ChatProvider with ChangeNotifier {
       duration: recordingDuration,
     );
 
-    // Add to messages
     final chatMessage = ChatMessage(
       text: '🎤 Voice message',
       isMe: true,
@@ -1160,40 +1471,53 @@ class ChatProvider with ChangeNotifier {
       status: voice.MessageStatus.sending,
       type: voice.MessageType.voice,
       voiceMessage: voiceMessage,
+      esp32Delivery: Esp32DeliveryState.sending,
     );
 
     _messages.add(chatMessage);
     notifyListeners();
 
-    // Send over Bluetooth
-    final success = await _voiceExtension.sendVoiceMessage(
+    final success = await _voiceExtension.sendVoicePayloadAfterReady(
       base64Audio,
-      (chunk) => _bluetoothService.sendMessage(chunk),
+      (line) => _bluetoothService.sendMessage(line),
     );
 
     if (success) {
       chatMessage.status = voice.MessageStatus.sent;
       voiceMessage.status = voice.MessageStatus.sent;
+      chatMessage.esp32Delivery = Esp32DeliveryState.sent;
       addStructuredDebug({
         'source': 'VOICE',
         'event': 'Voice message sent successfully',
         'metrics': {
           'base64Length': base64Audio.length,
           'chunkCount': (base64Audio.length / 28).ceil(),
-        }
+        },
       });
     } else {
       chatMessage.status = voice.MessageStatus.failed;
       voiceMessage.status = voice.MessageStatus.failed;
+      chatMessage.esp32Delivery = Esp32DeliveryState.failed;
       addStructuredDebug({
         'source': 'VOICE',
         'event': 'Voice message send failed',
-        'metrics': {'base64Length': base64Audio.length}
+        'metrics': {'base64Length': base64Audio.length},
       });
     }
 
     notifyListeners();
     return success;
+  }
+
+  /// Optional: await [requestVoiceTransmitStart] then start mic (e.g. from PTT down).
+  Future<bool> beginPttRecording() async {
+    final ok = await requestVoiceTransmitStart();
+    if (!ok) return false;
+    final rec = await _voiceExtension.startRecording();
+    if (!rec) {
+      await cancelVoiceTransmitAttempt();
+    }
+    return rec;
   }
 
   /// Play voice message
@@ -1223,16 +1547,30 @@ class ChatProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  void _addMessage(String text, bool isMe, {String? senderName, ChatMessage? message, bool isEmergency = false, Map<String, dynamic>? rawData}) {
+  void _addMessage(
+    String text,
+    bool isMe, {
+    String? senderName,
+    ChatMessage? message,
+    bool isEmergency = false,
+    Map<String, dynamic>? rawData,
+    String? messageId,
+    String? senderUid,
+    bool isSos = false,
+    String? sosSeverity,
+    int? sosTimestampMs,
+  }) {
     if (message == null) {
       // For incoming messages (!isMe), mark as read only if chat screen is visible
       // For outgoing messages (isMe), always mark as read
       final shouldMarkAsRead = isMe || _isLocalChatScreenVisible;
       
       // Generate unique message ID for emergency messages
-      final messageId = isEmergency ? '${DateTime.now().millisecondsSinceEpoch}_${senderName ?? 'unknown'}' : null;
+      final generatedMessageId = messageId ??
+          (isEmergency ? '${DateTime.now().millisecondsSinceEpoch}_${senderName ?? 'unknown'}' : null);
       
       message = ChatMessage(
+        localId: 'local_${DateTime.now().microsecondsSinceEpoch}',
         text: text,
         isMe: isMe,
         timestamp: DateTime.now(),
@@ -1242,7 +1580,11 @@ class ChatProvider with ChangeNotifier {
         isRead: shouldMarkAsRead, // Mark as read if sent by user or if screen is visible
         isEmergency: isEmergency, // Set emergency flag (from hardware SOS button OR home page SOS button)
         isPinned: isEmergency && !isMe, // Auto-pin emergency messages ONLY for received messages (not sender's own messages)
-        messageId: messageId, // Unique ID for unpinning
+        messageId: generatedMessageId,
+        senderUid: senderUid,
+        isSos: isSos,
+        sosSeverity: sosSeverity,
+        sosTimestampMs: sosTimestampMs,
         rawData: rawData, // Store raw data for source detection
       );
     } else if (!isMe && senderName != null) {
@@ -1259,15 +1601,32 @@ class ChatProvider with ChangeNotifier {
       );
     }
     
+    final added = message!;
     // Add message to list (real-time from ESP32)
-    _messages.add(message);
-    
-    // Notify listeners to update badge count
-    notifyListeners();
+    _messages.add(added);
+
+    if (!added.isMe) {
+      _registerPeerFromIncoming(
+        senderUid: added.senderUid ?? (added.rawData?['sender_uid']?.toString()),
+        senderName: added.senderName,
+      );
+    }
+
+    if (!added.isMe &&
+        added.messageId != null &&
+        added.messageId!.isNotEmpty &&
+        _isLocalChatScreenVisible) {
+      final mid = added.messageId!;
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        if (!_seenSentMessageIds.contains(mid)) {
+          _sendSeenReceipt(mid);
+        }
+      });
+    }
     
     // Show notification for received messages (not from current user)
     if (!isMe) {
-      _showMessageNotification(message, senderName);
+      _showMessageNotification(added, senderName);
     }
     
     // Clear loading states when real-time messages arrive (indicates connection is working)
@@ -1333,6 +1692,19 @@ class ChatProvider with ChangeNotifier {
     } catch (e) {
       print('Error showing message notification: $e');
     }
+  }
+
+  Future<void> _sendSeenReceipt(String messageId) async {
+    if (!_bluetoothService.isConnected) return;
+    final prefs = await SharedPreferences.getInstance();
+    final seenByUid = (prefs.getString('session_uid') ?? 'UNKNOWN').trim();
+    final payload = jsonEncode({
+      'command': 'send_seen',
+      'message_id': messageId,
+      'seen_by_uid': seenByUid.isEmpty ? 'UNKNOWN' : seenByUid,
+    });
+    _seenSentMessageIds.add(messageId);
+    await _bluetoothService.sendMessage(payload);
   }
 
   void clearMessages() {
@@ -1460,6 +1832,8 @@ class ChatProvider with ChangeNotifier {
         "province": province,
         "city": city,
         "barangay": barangay,
+        "severity": prefs.getString('profile_severity') ?? "UNKNOWN",
+        "timestamp_ms": DateTime.now().millisecondsSinceEpoch,
       });
       
       print('BT_SYNC: Sending profile data: $profileJson');
@@ -1496,6 +1870,8 @@ class ChatProvider with ChangeNotifier {
       final sosJson = jsonEncode({
         "command": "sync_sos",
         "message": sosMessage,
+        "severity": prefs.getString('sos_severity') ?? "UNKNOWN",
+        "timestamp_ms": DateTime.now().millisecondsSinceEpoch,
       });
       
       print('BT_SYNC: Sending SOS message: $sosJson');
@@ -1534,7 +1910,11 @@ class ChatProvider with ChangeNotifier {
           "street": "123",
           "province": "NCR",
           "city": "Manila",
-          "barangay": "1"
+          "barangay": "1",
+          "uid": "TEST_UID",
+          "suffix": "",
+          "severity": "UNKNOWN",
+          "timestamp_ms": DateTime.now().millisecondsSinceEpoch
         });
         
         print('BT_SYNC: Sending TEST profile data: $testProfileJson');
@@ -1544,7 +1924,9 @@ class ChatProvider with ChangeNotifier {
         // Send test SOS message
         final testSosJson = jsonEncode({
           "command": "sync_sos",
-          "message": "TEST SOS"
+          "message": "TEST SOS",
+          "severity": "UNKNOWN",
+          "timestamp_ms": DateTime.now().millisecondsSinceEpoch
         });
         
         print('BT_SYNC: Sending TEST SOS message: $testSosJson');
@@ -1589,6 +1971,8 @@ class ChatProvider with ChangeNotifier {
         "province": province,
         "city": city,
         "barangay": barangay,
+        "severity": prefs.getString('profile_severity') ?? "UNKNOWN",
+        "timestamp_ms": DateTime.now().millisecondsSinceEpoch,
       });
       
       print('BT_SYNC: Sending profile data: $profileJson');
@@ -1602,6 +1986,8 @@ class ChatProvider with ChangeNotifier {
       final sosJson = jsonEncode({
         "command": "sync_sos",
         "message": sosMessage,
+        "severity": prefs.getString('sos_severity') ?? "UNKNOWN",
+        "timestamp_ms": DateTime.now().millisecondsSinceEpoch,
       });
       
       print('BT_SYNC: Sending SOS message: $sosJson');
@@ -1614,6 +2000,46 @@ class ChatProvider with ChangeNotifier {
       _debugLogs.add('BT_SYNC: Error during sync: $e');
       notifyListeners();
     }
+  }
+
+  Future<bool> setRfChannel(int channel) async {
+    if (channel < 0 || channel > 125) return false;
+    final payload = jsonEncode({
+      'command': 'set_rf_channel',
+      'rf_channel': channel,
+    });
+    final ok = await _bluetoothService.sendMessage(payload);
+    if (ok) {
+      _rfChannel = channel;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('rf_channel', channel);
+      notifyListeners();
+    }
+    return ok;
+  }
+
+  Future<void> requestProfileLookup(String targetUid, {bool forceRf = false}) async {
+    _lastProfileLookupUid = targetUid;
+    final payload = jsonEncode({
+      'command': 'get_profile',
+      'target_uid': targetUid,
+      'force_rf': forceRf,
+    });
+    await _bluetoothService.sendMessage(payload);
+  }
+
+  Future<void> sendSosNow({
+    required String message,
+    required String severity,
+    int? timestampMs,
+  }) async {
+    final payload = jsonEncode({
+      'command': 'send_sos',
+      'message': message,
+      'severity': severity,
+      'timestamp_ms': timestampMs ?? DateTime.now().millisecondsSinceEpoch,
+    });
+    await _bluetoothService.sendMessage(payload);
   }
 
   @override
@@ -1629,6 +2055,7 @@ class ChatProvider with ChangeNotifier {
 }
 
 class ChatMessage {
+  final String localId;
   final String text;
   final bool isMe;
   final DateTime timestamp;
@@ -1640,9 +2067,17 @@ class ChatMessage {
   final bool isEmergency; // Flag to indicate emergency message from SOS ring
   bool isPinned; // Flag to indicate pinned emergency message
   final String? messageId; // Unique ID for message (for unpinning)
+  final String? senderUid;
+  final bool isSos;
+  final String? sosSeverity;
+  final int? sosTimestampMs;
+  final String? seenByUid;
   final Map<String, dynamic>? rawData; // Raw message data for source detection
+  /// RF / ESP32 lifecycle for outgoing chat (text); null for legacy or non-RF messages.
+  Esp32DeliveryState? esp32Delivery;
 
   ChatMessage({
+    String? localId,
     required this.text,
     required this.isMe,
     required this.timestamp,
@@ -1654,10 +2089,17 @@ class ChatMessage {
     this.isEmergency = false, // Default to false for normal messages
     this.isPinned = false, // Default to false, emergency messages auto-pin
     this.messageId,
+    this.senderUid,
+    this.isSos = false,
+    this.sosSeverity,
+    this.sosTimestampMs,
+    this.seenByUid,
     this.rawData, // Raw data for message (e.g., for SOS source)
-  });
+    this.esp32Delivery,
+  }) : localId = localId ?? 'local_${DateTime.now().microsecondsSinceEpoch}';
   
   ChatMessage copyWith({
+    String? localId,
     String? text,
     bool? isMe,
     DateTime? timestamp,
@@ -1669,9 +2111,16 @@ class ChatMessage {
     bool? isEmergency,
     bool? isPinned,
     String? messageId,
+    String? senderUid,
+    bool? isSos,
+    String? sosSeverity,
+    int? sosTimestampMs,
+    String? seenByUid,
     Map<String, dynamic>? rawData,
+    Esp32DeliveryState? esp32Delivery,
   }) {
     return ChatMessage(
+      localId: localId ?? this.localId,
       text: text ?? this.text,
       isMe: isMe ?? this.isMe,
       timestamp: timestamp ?? this.timestamp,
@@ -1683,7 +2132,13 @@ class ChatMessage {
       isEmergency: isEmergency ?? this.isEmergency,
       isPinned: isPinned ?? this.isPinned,
       messageId: messageId ?? this.messageId,
+      senderUid: senderUid ?? this.senderUid,
+      isSos: isSos ?? this.isSos,
+      sosSeverity: sosSeverity ?? this.sosSeverity,
+      sosTimestampMs: sosTimestampMs ?? this.sosTimestampMs,
+      seenByUid: seenByUid ?? this.seenByUid,
       rawData: rawData ?? this.rawData,
+      esp32Delivery: esp32Delivery ?? this.esp32Delivery,
     );
   }
 }

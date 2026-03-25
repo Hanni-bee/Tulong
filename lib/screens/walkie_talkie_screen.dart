@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 
 import '../constants/app_colors.dart';
+import '../providers/chat_provider.dart';
 import '../widgets/unified_top_bar.dart';
 import '../utils/prototype_animations.dart';
 import '../widgets/enhanced_skeleton_loaders.dart';
@@ -154,8 +156,7 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
                   status: _isTransmitting ? 'Transmitting...' : null,
                   onRefresh: _refreshConnections,
                   onSettings: () {
-                    // UI branch uses a settings button here; keep behavior minimal for now.
-                    // If you have a specific settings screen to open, tell me and I'll wire it.
+                    Navigator.pushNamed(context, '/rf-settings');
                   },
                   badges: _isTransmitting
                       ? [
@@ -576,10 +577,19 @@ class _WalkieTalkieScreenState extends State<WalkieTalkieScreen>
     Future.delayed(const Duration(seconds: 1), _tickTransmission);
   }
 
-  void _stopTransmission() {
-    setState(() => _isTransmitting = false);
+  Future<void> _stopTransmission() async {
+    final chat = context.read<ChatProvider>();
+    if (_isTransmitting) {
+      await chat.stopRecordingAndSend();
+    } else if (chat.isAwaitingVoiceReady) {
+      await chat.cancelVoiceTransmitAttempt();
+    }
+    if (!mounted) return;
+    setState(() {
+      _isTransmitting = false;
+      _transmissionTime = Duration.zero;
+    });
     _recordingController.reverse();
-    _transmissionTime = Duration.zero;
   }
 
   Future<void> _refreshConnections() async {

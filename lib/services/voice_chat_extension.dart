@@ -543,40 +543,43 @@ class VoiceChatExtension {
     return base64Encode(bytes);
   }
 
-  /// Send voice message over Bluetooth in 28-byte chunks (ESP32 compatible)
-  Future<bool> sendVoiceMessage(String base64Audio, Function(String) sendChunk) async {
-    try {
-      _debugController.add('[BT_TX] Sending voice message (${base64Audio.length} chars)');
-      
-      // Send start marker
-      await sendChunk('<VOICE_START>\n');
-      _debugController.add('[BT_TX] Sent <VOICE_START>');
+  /// Prefer: app sends `<VOICE_START>`, waits for `<VOICE_READY>`, records, then [sendVoicePayloadAfterReady].
+  @Deprecated('Use START handshake + sendVoicePayloadAfterReady')
+  Future<bool> sendVoiceMessage(String base64Audio, Future<bool> Function(String line) sendChunk) async {
+    return sendVoicePayloadAfterReady(base64Audio, sendChunk);
+  }
 
-      // Send audio data in 28-byte chunks (ESP32 compatible)
+  /// After ESP32 returns `<VOICE_READY>`, send base64 lines + `<VOICE_END>` only (no second START).
+  Future<bool> sendVoicePayloadAfterReady(String base64Audio, Future<bool> Function(String line) sendChunk) async {
+    try {
+      _debugController.add('[BT_TX] Payload after READY (${base64Audio.length} chars)');
       int chunkCount = 0;
       for (int i = 0; i < base64Audio.length; i += VQVConstants.CHUNK_SIZE) {
         final end = (i + VQVConstants.CHUNK_SIZE < base64Audio.length) ? i + VQVConstants.CHUNK_SIZE : base64Audio.length;
         final chunk = base64Audio.substring(i, end);
-        await sendChunk('$chunk\n');
-        
+        final ok = await sendChunk('$chunk\n');
+        if (!ok) {
+          _debugController.add('[BT_TX] Chunk send failed at $chunkCount');
+          return false;
+        }
         chunkCount++;
         if (_enableDiagnostics && chunkCount % 10 == 0) {
-          _debugController.add('[BT_TX] Sent chunk $chunkCount (${((i + VQVConstants.CHUNK_SIZE) / base64Audio.length * 100).toStringAsFixed(1)}%)');
+          _debugController.add('[BT_TX] Sent chunk $chunkCount');
         }
-        
-        // Slow pacing for safe Bluetooth SPP transfer
         await Future.delayed(const Duration(milliseconds: 5));
       }
-
-      // Send end marker
-      await sendChunk('<VOICE_END>\n');
-      _debugController.add('[BT_TX] Sent <VOICE_END> / <VOICE_END> successfully');
-      
-      return true;
+      final endOk = await sendChunk('<VOICE_END>\n');
+      _debugController.add('[BT_TX] Sent <VOICE_END> ok=$endOk');
+      return endOk;
     } catch (e) {
-      _debugController.add('Error sending voice message: $e');
+      _debugController.add('Error sending voice payload: $e');
       return false;
     }
+  }
+
+  /// Abort local TX if user cancelled before READY or to clean up (sends `<VOICE_END>` per firmware cleanup path).
+  Future<bool> sendVoiceEndOnly(Future<bool> Function(String line) sendChunk) async {
+    return sendChunk('<VOICE_END>\n');
   }
 
   /// Play voice message from Base64 data

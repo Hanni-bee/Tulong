@@ -30,7 +30,6 @@ import '../widgets/enhanced_micro_interactions.dart' as micro;
 import '../widgets/animated_neumorphic_card.dart';
 import '../utils/icon_system.dart';
 import '../utils/enhanced_page_transitions.dart';
-import '../services/simple_bluetooth_service.dart';
 import 'package:flutter_bluetooth_serial_plus/flutter_bluetooth_serial_plus.dart';
 
 class ModernHomeScreen extends StatefulWidget {
@@ -1687,12 +1686,10 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
       emergencyMessage = '🚨 EMERGENCY: I need immediate assistance!';
     }
     
-    // Check if ESP32 is connected
-    final bluetoothService = SimpleBluetoothService();
-    final isESP32Connected = bluetoothService.isConnected && bluetoothService.isAuthenticated;
-    
-    // If ESP32 not connected, show error and return false
-    if (!isESP32Connected) {
+    // Same source as Home "CONNECTED" badge: ChatProvider SPP link to ESP32
+    final isEsp32Connected = context.read<ChatProvider>().isConnected;
+
+    if (!isEsp32Connected) {
       if (context.mounted) {
         _showESP32ConnectionRequiredDialog(context);
       }
@@ -1855,67 +1852,60 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
     ) ?? false; // Return false if dialog is dismissed
   }
 
-  /// Send emergency message after confirmation
-  /// Offline-first: Only sends via ESP32 when connected
+  /// Send emergency message after confirmation (`send_sos` over SPP — same stack as Local Chat).
   Future<void> _sendEmergencyMessageConfirmed(BuildContext context) async {
     try {
       final authProvider = context.read<AuthProvider>();
-      
-      // Get the user's emergency message (use default if not set)
-      String emergencyMessage = authProvider.emergencyMessage ?? 
+
+      String emergencyMessage = authProvider.emergencyMessage ??
           '🚨 EMERGENCY: I need immediate assistance!';
-      
-      // Ensure message is not empty
+
       if (emergencyMessage.trim().isEmpty) {
         emergencyMessage = '🚨 EMERGENCY: I need immediate assistance!';
       }
-      
-      // Check if ESP32 is connected via SimpleBluetoothService
-      final bluetoothService = SimpleBluetoothService();
-      final isESP32Connected = bluetoothService.isConnected && bluetoothService.isAuthenticated;
-      
-      if (isESP32Connected) {
-        // Send via local chat to ESP32 with emergency flag
-        try {
-          await bluetoothService.sendGroupMessage(emergencyMessage, isEmergency: true);
-      
-      if (context.mounted) {
-        ModernToastManager.showSuccess(
-          context,
-              'Emergency message sent to local chat network',
-        );
-            // Show success animation
-            _showEmergencySuccessAnimation(context);
-      }
-    } catch (e) {
-          // ESP32 send failed
-          debugPrint('Failed to send via ESP32: $e');
-      if (context.mounted) {
-        ModernToastManager.showError(
-          context,
-              'Failed to send emergency message. Please check ESP32 connection.',
-            );
-          }
-        }
-      } else {
-        // ESP32 not connected - show error message
-        if (context.mounted) {
-          ModernToastManager.showError(
-            context,
-            'ESP32 not connected. Please connect to ESP32 to send emergency messages.',
-          );
-          
-          // Show dialog with connection instructions
-          _showESP32ConnectionRequiredDialog(context);
-        }
-      }
-      
+
+      await _sendSosViaEsp32Protocol(context, emergencyMessage);
     } catch (e) {
       debugPrint('Error sending emergency message: $e');
       if (context.mounted) {
         ModernToastManager.showError(
           context,
           'Failed to send emergency message: ${e.toString()}',
+        );
+      }
+    }
+  }
+
+  /// Uses [ChatProvider] SPP connection (matches Home header) and firmware `send_sos` JSON.
+  Future<void> _sendSosViaEsp32Protocol(BuildContext context, String emergencyMessage) async {
+    final chat = context.read<ChatProvider>();
+    if (!chat.isConnected) {
+      if (context.mounted) {
+        _showESP32ConnectionRequiredDialog(context);
+      }
+      return;
+    }
+    final prefs = await SharedPreferences.getInstance();
+    final severity = prefs.getString('sos_severity') ?? 'UNKNOWN';
+    try {
+      await chat.sendSosNow(
+        message: emergencyMessage.trim(),
+        severity: severity,
+        timestampMs: DateTime.now().millisecondsSinceEpoch,
+      );
+      if (context.mounted) {
+        ModernToastManager.showSuccess(
+          context,
+          'Emergency message sent to local chat network',
+        );
+        _showEmergencySuccessAnimation(context);
+      }
+    } catch (e) {
+      debugPrint('Failed to send SOS via ESP32: $e');
+      if (context.mounted) {
+        ModernToastManager.showError(
+          context,
+          'Failed to send emergency message. Please check ESP32 connection.',
         );
       }
     }
@@ -1932,7 +1922,7 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
           borderRadius: BorderRadius.circular(SoftUIDesign.cardBorderRadius),
         ),
         title: const SolidModalHeader(
-          icon: Icons.bluetooth_disabled,
+          icon: Icons.settings_input_antenna,
           iconColor: AppColors.warning,
           title: 'ESP32 Connection Required',
         ),
@@ -2207,39 +2197,43 @@ class _ModernHomeScreenState extends State<ModernHomeScreen>
                       });
                       
                       HapticFeedback.heavyImpact();
-                      
-                      // Check ESP32 connection first (offline-first approach)
-                      final bluetoothService = SimpleBluetoothService();
-                      final isESP32Connected = bluetoothService.isConnected && bluetoothService.isAuthenticated;
-                      
-                      if (isESP32Connected) {
-                        // Send via ESP32
-                        try {
-                          await bluetoothService.sendGroupMessage(emergencyMessage, isEmergency: true);
-                      
-                      if (dialogContext.mounted) {
-                        Navigator.of(dialogContext).pop();
-                            _showSuccessAnimation(context, 'Emergency message sent to local chat network!');
-                          }
-                        } catch (e) {
-                          if (dialogContext.mounted) {
-                            setDialogState(() {
-                              isSending = false;
-                            });
-                            ModernToastManager.showError(
-                              context,
-                              'Failed to send. Please check ESP32 connection.',
-                            );
-                          }
-                        }
-                      } else {
-                        // ESP32 not connected
+
+                      final chat = context.read<ChatProvider>();
+                      if (!chat.isConnected) {
                         if (dialogContext.mounted) {
                           setDialogState(() {
                             isSending = false;
                           });
                           Navigator.of(dialogContext).pop();
                           _showESP32ConnectionRequiredDialog(context);
+                        }
+                        return;
+                      }
+
+                      try {
+                        final prefs = await SharedPreferences.getInstance();
+                        final severity = prefs.getString('sos_severity') ?? 'UNKNOWN';
+                        await chat.sendSosNow(
+                          message: emergencyMessage.trim(),
+                          severity: severity,
+                          timestampMs: DateTime.now().millisecondsSinceEpoch,
+                        );
+                        if (dialogContext.mounted) {
+                          Navigator.of(dialogContext).pop();
+                          _showSuccessAnimation(
+                            context,
+                            'Emergency message sent to local chat network!',
+                          );
+                        }
+                      } catch (e) {
+                        if (dialogContext.mounted) {
+                          setDialogState(() {
+                            isSending = false;
+                          });
+                          ModernToastManager.showError(
+                            context,
+                            'Failed to send. Please check ESP32 connection.',
+                          );
                         }
                       }
                     },
